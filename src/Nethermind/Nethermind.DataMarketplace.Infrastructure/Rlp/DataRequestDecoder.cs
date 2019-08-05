@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 return null;
             }
 
-            var headerId = context.DecodeKeccak();
+            var assetId = context.DecodeKeccak();
             var units = context.DecodeUInt();
             var value = context.DecodeUInt256();
             var expiryTime = context.DecodeUInt();
@@ -58,7 +58,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var consumer = context.DecodeAddress();
             var signature = SignatureDecoder.DecodeSignature(context);
 
-            return new DataRequest(headerId, units, value, expiryTime, salt, provider, consumer, signature);
+            return new DataRequest(assetId, units, value, expiryTime, salt, provider, consumer, signature);
         }
 
         public Nethermind.Core.Encoding.Rlp Encode(DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.DataHeaderId),
+                Nethermind.Core.Encoding.Rlp.Encode(item.DataAssetId),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Units),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Value),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ExpiryTime),

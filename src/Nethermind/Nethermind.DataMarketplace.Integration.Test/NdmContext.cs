@@ -60,30 +60,30 @@ namespace Nethermind.DataMarketplace.Integration.Test
             return LeaveContext().SetContext(testContext);
         }
 
-        public NdmContext AddDataHeader(Func<DataHeaderDto> dataHeader, string name = "Add data header",
+        public NdmContext AddDataAsset(Func<DataAssetDto> dataAsset, string name = "Add data asset",
             Func<string, bool> validator = null, Action<NdmState, JsonRpcResponse<string>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc(name, "npm_addDataHeader",
-                () => client.PostAsync<string>(nameof(AddDataHeader), new object[] {dataHeader()}), validator, stateUpdater);
+            return AddJsonRpc(name, "npm_addDataAsset",
+                () => client.PostAsync<string>(nameof(AddDataAsset), new object[] {dataAsset()}), validator, stateUpdater);
         }
 
-        public NdmContext GetDataHeaders(string name = "Get data headers",
-            Func<DataHeaderDto[], bool> validator = null,
-            Action<NdmState, JsonRpcResponse<DataHeaderDto[]>> stateUpdater = null)
+        public NdmContext GetDataAssets(string name = "Get data assets",
+            Func<DataAssetDto[], bool> validator = null,
+            Action<NdmState, JsonRpcResponse<DataAssetDto[]>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc(name, "npm_getDataHeaders",
-                () => client.PostAsync<DataHeaderDto[]>(nameof(GetDataHeaders)), validator, stateUpdater);
+            return AddJsonRpc(name, "npm_getDataAssets",
+                () => client.PostAsync<DataAssetDto[]>(nameof(GetDataAssets)), validator, stateUpdater);
         }
 
-        public NdmContext GetDiscoveredDataHeaders(string name = "Get discovered data headers",
-            Func<DataHeaderDto[], bool> validator = null,
-            Action<NdmState, JsonRpcResponse<DataHeaderDto[]>> stateUpdater = null)
+        public NdmContext GetDiscoveredDataAssets(string name = "Get discovered data assets",
+            Func<DataAssetDto[], bool> validator = null,
+            Action<NdmState, JsonRpcResponse<DataAssetDto[]>> stateUpdater = null)
         {
             IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc(name, "npm_getDiscoveredDataHeaders",
-                () => client.PostAsync<DataHeaderDto[]>(nameof(GetDiscoveredDataHeaders)), validator, stateUpdater);
+            return AddJsonRpc(name, "npm_getDiscoveredDataAssets",
+                () => client.PostAsync<DataAssetDto[]>(nameof(GetDiscoveredDataAssets)), validator, stateUpdater);
         }
 
         public NdmContext GetDeposits(string name = "Get deposits",

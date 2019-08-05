@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class DataRequest
     {
-        public Keccak DataHeaderId { get; }
+        public Keccak DataAssetId { get; }
         public uint Units { get; }
         public UInt256 Value { get; }
         public uint ExpiryTime { get; }
@@ -33,10 +33,10 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public Address Consumer { get; }
         public Signature Signature { get; }
 
-        public DataRequest(Keccak dataHeaderId, uint units, UInt256 value, uint expiryTime, byte[] pepper,
+        public DataRequest(Keccak dataAssetId, uint units, UInt256 value, uint expiryTime, byte[] pepper,
             Address provider, Address consumer, Signature signature)
         {
-            DataHeaderId = dataHeaderId;
+            DataAssetId = dataAssetId;
             Units = units;
             Value = value;
             ExpiryTime = expiryTime;

@@ -38,15 +38,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             _rlpDecoder = rlpDecoder;
         }
 
-        public async Task<IReadOnlyList<DataHeaderInfo>> GetDataHeadersAsync()
+        public async Task<IReadOnlyList<DataAssetInfo>> GetDataAssetsAsync()
             => await Task.FromResult(GetAll()
-                .Select(d => new DataHeaderInfo(d.DataHeader.Id, d.DataHeader.Name, d.DataHeader.Description))
+                .Select(d => new DataAssetInfo(d.DataAsset.Id, d.DataAsset.Name, d.DataAsset.Description))
                 .Distinct()
                 .ToList());
 
         public async Task<IReadOnlyList<ProviderInfo>> GetProvidersAsync()
             => await Task.FromResult(GetAll()
-                .Select(d => new ProviderInfo(d.DataHeader.Provider.Name, d.DataHeader.Provider.Address))
+                .Select(d => new ProviderInfo(d.DataAsset.Provider.Name, d.DataAsset.Provider.Address))
                 .Distinct()
                 .ToList());
 
@@ -58,10 +58,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 yield break;
             }
 
-            var dataHeaders = new DepositDetails[depositsBytes.Length];
+            var dataAssets = new DepositDetails[depositsBytes.Length];
             for (var i = 0; i < depositsBytes.Length; i++)
             {
-                yield return dataHeaders[i] = Decode(depositsBytes[i]);
+                yield return dataAssets[i] = Decode(depositsBytes[i]);
             }
         }
 

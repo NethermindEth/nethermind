@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
             => Receipts.Find(c => c.Id == id).FirstOrDefaultAsync();
 
         public async Task<IReadOnlyList<DataDeliveryReceiptDetails>> BrowseAsync(Keccak depositId = null,
-            Keccak dataHeaderId = null, Keccak sessionId = null)
+            Keccak dataAssetId = null, Keccak sessionId = null)
         {
             var receipts = Receipts.AsQueryable();
             if (!(depositId is null))
@@ -49,9 +49,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositori
                 receipts = receipts.Where(c => c.DepositId == depositId);
             }
             
-            if (!(dataHeaderId is null))
+            if (!(dataAssetId is null))
             {
-                receipts = receipts.Where(c => c.DataHeaderId == dataHeaderId);
+                receipts = receipts.Where(c => c.DataAssetId == dataAssetId);
             }
 
             if (!(sessionId is null))

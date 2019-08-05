@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Wallet,
                 state.TransactionProcessor,
                 services.Ecdsa);
-            var dataHeaderRlpDecoder = new DataHeaderDecoder();
+            var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
             var depositService = new DepositService(blockchainBridge, encoder, services.Wallet, contractAddress,
                 LimboLogs.Instance);
@@ -77,7 +77,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
 //            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
 
-            return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataHeaderRlpDecoder,
+            return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
                 depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
                 blockchainBridge));
         }
@@ -88,10 +88,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             DataDeliveryReceiptRequestDecoder.Init();
             DataDeliveryReceiptToMergeDecoder.Init();
             DataDeliveryReceiptDetailsDecoder.Init();
-            DataHeaderDecoder.Init();
-            DataHeaderRuleDecoder.Init();
-            DataHeaderRulesDecoder.Init();
-            DataHeaderProviderDecoder.Init();
+            DataAssetDecoder.Init();
+            DataAssetRuleDecoder.Init();
+            DataAssetRulesDecoder.Init();
+            DataAssetProviderDecoder.Init();
             DataRequestDecoder.Init();
             DepositDecoder.Init();
             DepositApprovalDecoder.Init();

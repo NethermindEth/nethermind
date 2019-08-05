@@ -49,8 +49,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly ConcurrentDictionary<Keccak, ConsumerSession> _sessions =
             new ConcurrentDictionary<Keccak, ConsumerSession>();
 
-        private readonly ConcurrentDictionary<Keccak, DataHeader> _discoveredDataHeaders =
-            new ConcurrentDictionary<Keccak, DataHeader>();
+        private readonly ConcurrentDictionary<Keccak, DataAsset> _discoveredDataAssets =
+            new ConcurrentDictionary<Keccak, DataAsset>();
 
         private readonly ConcurrentDictionary<PublicKey, INdmPeer> _providers =
             new ConcurrentDictionary<PublicKey, INdmPeer>();
@@ -259,7 +259,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 await _depositRepository.UpdateAsync(deposit);
             }
 
-            await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataHeader.Name,
+            await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
                 (uint) confirmations, _depositRequiredConfirmations, deposit.ConfirmationTimestamp, confirmed);
         }
 
@@ -337,40 +337,40 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (_logger.IsInfo) _logger.Info($"Added provider peer: '{peer.NodeId}' for address: '{peer.ProviderAddress}', nodes: {nodes.Count}.");
         }
 
-        public void AddDiscoveredDataHeader(DataHeader dataHeader, INdmPeer peer)
+        public void AddDiscoveredDataAsset(DataAsset dataAsset, INdmPeer peer)
         {
-            _discoveredDataHeaders.TryAdd(dataHeader.Id, dataHeader);
+            _discoveredDataAssets.TryAdd(dataAsset.Id, dataAsset);
         }
 
-        public void AddDiscoveredDataHeaders(DataHeader[] dataHeaders, INdmPeer peer)
+        public void AddDiscoveredDataAssets(DataAsset[] dataAssets, INdmPeer peer)
         {
-            for (var i = 0; i < dataHeaders.Length; i++)
+            for (var i = 0; i < dataAssets.Length; i++)
             {
-                var dataHeader = dataHeaders[i];
-                _discoveredDataHeaders.TryAdd(dataHeader.Id, dataHeader);
+                var dataAsset = dataAssets[i];
+                _discoveredDataAssets.TryAdd(dataAsset.Id, dataAsset);
             }
         }
 
-        public void ChangeDataHeaderState(Keccak dataHeaderId, DataHeaderState state)
+        public void ChangeDataAssetState(Keccak dataAssetId, DataAssetState state)
         {
-            if (!_discoveredDataHeaders.TryGetValue(dataHeaderId, out var dataHeader))
+            if (!_discoveredDataAssets.TryGetValue(dataAssetId, out var dataAsset))
             {
                 return;
             }
             
-            dataHeader.SetState(state);
-            _consumerNotifier.SendDataAssetStateChangedAsync(dataHeaderId, dataHeader.Name, state);
-            if (_logger.IsInfo) _logger.Info($"Changed discovered data header: '{dataHeaderId}' state to: '{state}'.");
+            dataAsset.SetState(state);
+            _consumerNotifier.SendDataAssetStateChangedAsync(dataAssetId, dataAsset.Name, state);
+            if (_logger.IsInfo) _logger.Info($"Changed discovered data header: '{dataAssetId}' state to: '{state}'.");
         }
 
-        public void RemoveDiscoveredDataHeader(Keccak dataHeaderId)
+        public void RemoveDiscoveredDataAsset(Keccak dataAssetId)
         {
-            if (!_discoveredDataHeaders.TryRemove(dataHeaderId, out var dataHeader))
+            if (!_discoveredDataAssets.TryRemove(dataAssetId, out var dataAsset))
             {
                 return;
             }
 
-            _consumerNotifier.SendDataAssetRemovedAsync(dataHeaderId, dataHeader.Name);
+            _consumerNotifier.SendDataAssetRemovedAsync(dataAssetId, dataAsset.Name);
         }
 
         public async Task StartSessionAsync(Session session, INdmPeer provider)
@@ -390,31 +390,31 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var dataHeaderId = depositDetails.DataHeader.Id;
-            if (!_discoveredDataHeaders.TryGetValue(dataHeaderId, out var dataHeader))
+            var dataAssetId = depositDetails.DataAsset.Id;
+            if (!_discoveredDataAssets.TryGetValue(dataAssetId, out var dataAsset))
             {
-                if (_logger.IsWarn) _logger.Warn($"Available data header: '{dataHeaderId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Available data header: '{dataAssetId}' was not found.");
 
                 return;
             }
 
-            if (!IsDataHeaderAvailable(dataHeader))
+            if (!IsDataAssetAvailable(dataAsset))
             {
-                if (_logger.IsWarn) _logger.Warn($"Data header: '{dataHeaderId}' is unavailable, state: {dataHeader.State}.");
+                if (_logger.IsWarn) _logger.Warn($"Data header: '{dataAssetId}' is unavailable, state: {dataAsset.State}.");
 
                 return;
             }
 
-            if (!providerPeer.ProviderAddress.Equals(depositDetails.DataHeader.Provider.Address))
+            if (!providerPeer.ProviderAddress.Equals(depositDetails.DataAsset.Provider.Address))
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', provider address (peer): '{providerPeer.ProviderAddress}' doesn't equal the address from data header: '{depositDetails.DataHeader.Provider.Address}'.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', provider address (peer): '{providerPeer.ProviderAddress}' doesn't equal the address from data header: '{depositDetails.DataAsset.Provider.Address}'.");
 
                 return;
             }
 
-            if (!_discoveredDataHeaders.TryGetValue(depositDetails.DataHeader.Id, out _))
+            if (!_discoveredDataAssets.TryGetValue(depositDetails.DataAsset.Id, out _))
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', discovered data header: '{depositDetails.DataHeader.Id}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot start the session: '{session.Id}' for deposit: '{session.DepositId}', discovered data header: '{depositDetails.DataAsset.Id}' was not found.");
 
                 return;
             }
@@ -429,7 +429,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var consumerSession = ConsumerSession.From(session);
             consumerSession.Start(session.StartTimestamp);
             var previousSession = await _sessionRepository.GetPreviousAsync(consumerSession);
-            var upfrontUnits = (uint) (depositDetails.DataHeader.Rules.UpfrontPayment?.Value ?? 0);
+            var upfrontUnits = (uint) (depositDetails.DataAsset.Rules.UpfrontPayment?.Value ?? 0);
             if (upfrontUnits > 0 && previousSession is null)
             {
                 consumerSession.AddUnpaidUnits(upfrontUnits);
@@ -443,7 +443,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 if (_logger.IsInfo) _logger.Info($"Unpaid units: {unpaidUnits} for session: '{session.Id}' from previous session: '{previousSession.Id}'.");
             }
             
-            if (depositDetails.DataHeader.UnitType == DataHeaderUnitType.Time)
+            if (depositDetails.DataAsset.UnitType == DataAssetUnitType.Time)
             {
                 var unpaidTimeUnits = (uint) consumerSession.StartTimestamp - depositDetails.ConfirmationTimestamp;
                 consumerSession.AddUnpaidUnits(unpaidTimeUnits);
@@ -465,9 +465,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
             
             session.SetConsumedUnitsFromProvider(consumedUnitsFromProvider);
-            switch (deposit.DataHeader.UnitType)
+            switch (deposit.DataAsset.UnitType)
             {
-                case DataHeaderUnitType.Time:
+                case DataAssetUnitType.Time:
                     var now = (uint) _timestamper.EpochSeconds;
                     var currentlyConsumedUnits = now - deposit.ConfirmationTimestamp;
                     var currentlyUnpaidUnits = currentlyConsumedUnits > session.PaidUnits
@@ -476,7 +476,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     session.SetConsumedUnits((uint)(now - session.StartTimestamp));
                     session.SetUnpaidUnits(currentlyUnpaidUnits);
                     break;
-                case DataHeaderUnitType.Unit:
+                case DataAssetUnitType.Unit:
                     session.IncrementConsumedUnits();
                     session.IncrementUnpaidUnits();
                     break;
@@ -517,7 +517,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             await _consumerNotifier.SendDataAvailabilityChangedAsync(depositId, session.Id, dataAvailability);
         }
 
-        public async Task<Keccak> MakeDepositAsync(Keccak headerId, uint units, UInt256 value)
+        public async Task<Keccak> MakeDepositAsync(Keccak assetId, uint units, UInt256 value)
         {
             if (_accountLocked)
             {
@@ -526,26 +526,26 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
             
-            if (!_discoveredDataHeaders.TryGetValue(headerId, out var dataHeader))
+            if (!_discoveredDataAssets.TryGetValue(assetId, out var dataAsset))
             {
-                if (_logger.IsWarn) _logger.Warn($"Available data header: '{headerId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Available data header: '{assetId}' was not found.");
 
                 return null;
             }
 
-            if (!IsDataHeaderAvailable(dataHeader))
+            if (!IsDataAssetAvailable(dataAsset))
             {
-                if (_logger.IsWarn) _logger.Warn($"Data header: '{headerId}' is unavailable, state: {dataHeader.State}.");
+                if (_logger.IsWarn) _logger.Warn($"Data header: '{assetId}' is unavailable, state: {dataAsset.State}.");
 
                 return null;
             }
 
-            if (!(await VerifyKycAsync(dataHeader)))
+            if (!(await VerifyKycAsync(dataAsset)))
             {
                 return null;
             }
 
-            var providerAddress = dataHeader.Provider.Address;
+            var providerAddress = dataAsset.Provider.Address;
             if (!_providersWithCommonAddress.TryGetValue(providerAddress, out var nodes) || nodes.Count == 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Provider nodes were not found for address: '{providerAddress}'.");
@@ -553,15 +553,15 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
 
-            if (dataHeader.MinUnits > units || dataHeader.MaxUnits < units)
+            if (dataAsset.MinUnits > units || dataAsset.MaxUnits < units)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid data request units: '{units}', min: '{dataHeader.MinUnits}', max: '{dataHeader.MaxUnits}'.");
+                if (_logger.IsWarn) _logger.Warn($"Invalid data request units: '{units}', min: '{dataAsset.MinUnits}', max: '{dataAsset.MaxUnits}'.");
 
                 return null;
             }
 
-            var unitsValue = units * dataHeader.UnitPrice;
-            if (units * dataHeader.UnitPrice != value)
+            var unitsValue = units * dataAsset.UnitPrice;
+            if (units * dataAsset.UnitPrice != value)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid data request value: '{value}', while it should be: '{unitsValue}'.");
 
@@ -569,18 +569,18 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             var now = (uint) _timestamper.EpochSeconds;
-            var expiryTime = now + (uint) dataHeader.Rules.Expiry.Value;
-            expiryTime += dataHeader.UnitType == DataHeaderUnitType.Unit ? 0 : units;
+            var expiryTime = now + (uint) dataAsset.Rules.Expiry.Value;
+            expiryTime += dataAsset.UnitType == DataAssetUnitType.Unit ? 0 : units;
             var pepper = _cryptoRandom.GenerateRandomBytes(16);
-            var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _depositAbiSig, headerId.Bytes,
-                units, value, expiryTime, pepper, dataHeader.Provider.Address, _consumerAddress);
+            var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _depositAbiSig, assetId.Bytes,
+                units, value, expiryTime, pepper, dataAsset.Provider.Address, _consumerAddress);
             var depositId = Keccak.Compute(abiHash);
             var deposit = new Deposit(depositId, units, expiryTime, value);
             var transactionHash = _depositService.MakeDeposit(_consumerAddress, deposit);
-            var depositDetails = new DepositDetails(deposit, dataHeader, _consumerAddress, pepper, now,
+            var depositDetails = new DepositDetails(deposit, dataAsset, _consumerAddress, pepper, now,
                 transactionHash, requiredConfirmations: _depositRequiredConfirmations);
             await _depositRepository.AddAsync(depositDetails);
-            if (_logger.IsInfo) _logger.Info($"Making a deposit with id: '{depositId}' for data header: '{headerId}', address: '{_consumerAddress}'.");
+            if (_logger.IsInfo) _logger.Info($"Making a deposit with id: '{depositId}' for data header: '{assetId}', address: '{_consumerAddress}'.");
 
             return depositId;
         }
@@ -590,15 +590,15 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         public IReadOnlyList<ConsumerSession> GetActiveSessions() => _sessions.Values.ToArray();
         
-        public IReadOnlyList<DataHeader> GetDiscoveredDataHeaders()
-            => _discoveredDataHeaders.Values.Where(h => h.State == DataHeaderState.Published ||
-                                                        h.State == DataHeaderState.UnderMaintenance).ToArray();
+        public IReadOnlyList<DataAsset> GetDiscoveredDataAssets()
+            => _discoveredDataAssets.Values.Where(h => h.State == DataAssetState.Published ||
+                                                        h.State == DataAssetState.UnderMaintenance).ToArray();
 
         public Task<IReadOnlyList<ProviderInfo>> GetKnownProvidersAsync()
             => _providerRepository.GetProvidersAsync();
 
-        public Task<IReadOnlyList<DataHeaderInfo>> GetKnownDataHeadersAsync()
-            => _providerRepository.GetDataHeadersAsync();
+        public Task<IReadOnlyList<DataAssetInfo>> GetKnownDataAssetsAsync()
+            => _providerRepository.GetDataAssetsAsync();
         
         public async Task<PagedResult<DepositDetails>> GetDepositsAsync(GetDeposits query)
         {
@@ -657,7 +657,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 _deposits.TryAdd(depositId, depositDetails);
             }
 
-            if (!(await VerifyKycAsync(depositDetails.DataHeader)))
+            if (!(await VerifyKycAsync(depositDetails.DataAsset)))
             {
                 if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' has unconfirmed KYC.'");
                 
@@ -671,7 +671,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return DataRequestResult.DepositUnconfirmed;
             }
 
-            var providerPeer = GetProviderPeer(depositDetails.DataHeader.Provider.Address);
+            var providerPeer = GetProviderPeer(depositDetails.DataAsset.Provider.Address);
             if (providerPeer is null)
             {
                 return DataRequestResult.ProviderNotFound;
@@ -686,37 +686,37 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (_logger.IsInfo) _logger.Info($"Sending data request for deposit with id: '{depositId}', consumed units: {consumedUnits}, address: '{_consumerAddress}'.");
             var dataRequest = CreateDataRequest(depositDetails);
             var result = await providerPeer.SendDataRequestAsync(dataRequest, consumedUnits);
-            if (_logger.IsInfo) _logger.Info($"Received data request result: '{result}' for data header: '{dataRequest.DataHeaderId}', deposit: '{depositId}', consumed units: {consumedUnits}, address: '{_consumerAddress}'.");
+            if (_logger.IsInfo) _logger.Info($"Received data request result: '{result}' for data header: '{dataRequest.DataAssetId}', deposit: '{depositId}', consumed units: {consumedUnits}, address: '{_consumerAddress}'.");
             await _consumerNotifier.SendDataRequestResultAsync(depositId, result);
             
             return result;
         }
 
-        private async Task<bool> VerifyKycAsync(DataHeader dataHeader)
+        private async Task<bool> VerifyKycAsync(DataAsset dataAsset)
         {
-            if (!dataHeader.KycRequired)
+            if (!dataAsset.KycRequired)
             {
                 return true;
             }
 
-            var headerId = dataHeader.Id;
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(headerId), Rlp.Encode(_consumerAddress)));
+            var assetId = dataAsset.Id;
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(_consumerAddress)));
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {
-                if (_logger.IsError) _logger.Error($"Deposit approval for data header: '{headerId}' was not found.");
+                if (_logger.IsError) _logger.Error($"Deposit approval for data header: '{assetId}' was not found.");
 
                 return false;
             }
 
             if (depositApproval.State != DepositApprovalState.Confirmed)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' has state: '{depositApproval.State}'.");
+                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{assetId}' has state: '{depositApproval.State}'.");
 
                 return false;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was confirmed, required KYC is valid.");
+            if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{assetId}' was confirmed, required KYC is valid.");
 
             return true;
         }
@@ -806,17 +806,17 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
             
-            var dataHeaderId = depositDetails.DataHeader.Id;
-            if (!_discoveredDataHeaders.TryGetValue(dataHeaderId, out var dataHeader))
+            var dataAssetId = depositDetails.DataAsset.Id;
+            if (!_discoveredDataAssets.TryGetValue(dataAssetId, out var dataAsset))
             {
-                if (_logger.IsWarn) _logger.Warn($"Available data header: '{dataHeaderId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Available data header: '{dataAssetId}' was not found.");
 
                 return null;
             }
 
-            if (!IsDataHeaderAvailable(dataHeader))
+            if (!IsDataAssetAvailable(dataAsset))
             {
-                if (_logger.IsWarn) _logger.Warn($"Data header: '{dataHeaderId}' is unavailable, state: {dataHeader.State}.");
+                if (_logger.IsWarn) _logger.Warn($"Data header: '{dataAssetId}' is unavailable, state: {dataAsset.State}.");
 
                 return null;
             }
@@ -895,7 +895,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var providerAddress = deposit.DataHeader.Provider.Address;
+            var providerAddress = deposit.DataAsset.Provider.Address;
             if (!_providers.TryGetValue(session.ProviderNodeId, out var providerPeer))
             {
                 if (_logger.IsWarn) _logger.Warn($"Provider: '{providerAddress}' was not found.");
@@ -913,7 +913,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptRequestRange,
                     session.ConsumedUnits, session.UnpaidUnits, new Signature(1, 1, 27));
                 await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                    session.DataHeaderId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
+                    session.DataAssetId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
                 await _sessionRepository.UpdateAsync(session);
                 providerPeer.SendDataDeliveryReceipt(depositId, receipt);
                 return;
@@ -930,7 +930,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptAddress,
                     session.ConsumedUnits, session.UnpaidUnits, new Signature(1, 1, 27));
                 await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                    session.DataHeaderId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
+                    session.DataAssetId, _nodePublicKey, request, receipt, _timestamper.EpochSeconds, false));
                 await _sessionRepository.UpdateAsync(session);
                 providerPeer.SendDataDeliveryReceipt(depositId, receipt);
                 return;
@@ -961,7 +961,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var deliveryReceipt = new DataDeliveryReceipt(StatusCodes.Ok, session.ConsumedUnits,
                 session.UnpaidUnits, signature);
             await _receiptRepository.AddAsync(new DataDeliveryReceiptDetails(receiptId, session.Id,
-                session.DataHeaderId, _nodePublicKey, request, deliveryReceipt, _timestamper.EpochSeconds, false));
+                session.DataAssetId, _nodePublicKey, request, deliveryReceipt, _timestamper.EpochSeconds, false));
             providerPeer.SendDataDeliveryReceipt(depositId, deliveryReceipt);
             if (_logger.IsInfo) _logger.Info($"Sent data delivery receipt for deposit: '{depositId}', range: [{request.UnitsRange.From}, {request.UnitsRange.To}].");
         }
@@ -979,11 +979,11 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             if (_logger.IsInfo) _logger.Info($"Early refund claim for deposit: '{ticket.DepositId}', reason: '{reason}'.");
         }
 
-        public async Task<Keccak> RequestDepositApprovalAsync(Keccak headerId, string kyc)
+        public async Task<Keccak> RequestDepositApprovalAsync(Keccak assetId, string kyc)
         {
-            if (!_discoveredDataHeaders.TryGetValue(headerId, out var dataHeader))
+            if (!_discoveredDataAssets.TryGetValue(assetId, out var dataAsset))
             {
-                if (_logger.IsError) _logger.Error($"Available data header: '{headerId}' was not found.");
+                if (_logger.IsError) _logger.Error($"Available data header: '{assetId}' was not found.");
 
                 return null;
             }
@@ -1002,22 +1002,22 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
 
-            var providerPeer = GetProviderPeer(dataHeader.Provider.Address);
+            var providerPeer = GetProviderPeer(dataAsset.Provider.Address);
             if (providerPeer is null)
             {
                 return null;
             }
 
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(headerId), Rlp.Encode(_consumerAddress)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(_consumerAddress)));
             var approval = await _depositApprovalRepository.GetAsync(id);
             if (approval is null)
             {
-                approval = new DepositApproval(id, headerId, dataHeader.Name, kyc, _consumerAddress,
-                    dataHeader.Provider.Address, _timestamper.EpochSeconds);
+                approval = new DepositApproval(id, assetId, dataAsset.Name, kyc, _consumerAddress,
+                    dataAsset.Provider.Address, _timestamper.EpochSeconds);
                 await _depositApprovalRepository.AddAsync(approval);
             }
 
-            providerPeer.SendRequestDepositApproval(headerId, kyc);
+            providerPeer.SendRequestDepositApproval(assetId, kyc);
 
             return id;
         }
@@ -1041,7 +1041,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 if (existingDepositApproval is null)
                 {
                     await _depositApprovalRepository.AddAsync(depositApproval);
-                    if (_logger.IsInfo) _logger.Info($"Added deposit approval for data header: '{depositApproval.HeaderId}'.");
+                    if (_logger.IsInfo) _logger.Info($"Added deposit approval for data header: '{depositApproval.AssetId}'.");
                     continue;
                 }
 
@@ -1055,16 +1055,16 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     case DepositApprovalState.Confirmed:
                         existingDepositApproval.Confirm();
                         await _depositApprovalRepository.UpdateAsync(existingDepositApproval);
-                        await _consumerNotifier.SendDepositApprovalConfirmedAsync(depositApproval.HeaderId,
-                            depositApproval.HeaderName);
-                        if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{depositApproval.HeaderId}' was confirmed.");
+                        await _consumerNotifier.SendDepositApprovalConfirmedAsync(depositApproval.AssetId,
+                            depositApproval.AssetName);
+                        if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{depositApproval.AssetId}' was confirmed.");
                         break;
                     case DepositApprovalState.Rejected:
                         existingDepositApproval.Reject();
                         await _depositApprovalRepository.UpdateAsync(existingDepositApproval);
-                        await _consumerNotifier.SendDepositApprovalRejectedAsync(depositApproval.HeaderId,
-                            depositApproval.HeaderName);
-                        if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{depositApproval.HeaderId}' was rejected.");
+                        await _consumerNotifier.SendDepositApprovalRejectedAsync(depositApproval.AssetId,
+                            depositApproval.AssetName);
+                        if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{depositApproval.AssetId}' was rejected.");
                         break;
                 }
             }
@@ -1076,54 +1076,54 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         public async Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query)
             => await _depositApprovalRepository.BrowseAsync(query);
 
-        public async Task ConfirmDepositApprovalAsync(Keccak headerId)
+        public async Task ConfirmDepositApprovalAsync(Keccak assetId)
         {
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(headerId), Rlp.Encode(_consumerAddress)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(_consumerAddress)));
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{assetId}' was not found.");
                 
                 return;
             }
 
             if (depositApproval.State == DepositApprovalState.Confirmed)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was already confirmed.");
+                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{assetId}' was already confirmed.");
                 
                 return;
             }
             
             depositApproval.Confirm();
             await _depositApprovalRepository.UpdateAsync(depositApproval);
-            await _consumerNotifier.SendDepositApprovalConfirmedAsync(depositApproval.HeaderId,
-                depositApproval.HeaderName);
-            if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was confirmed.");
+            await _consumerNotifier.SendDepositApprovalConfirmedAsync(depositApproval.AssetId,
+                depositApproval.AssetName);
+            if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{assetId}' was confirmed.");
         }
 
-        public async Task RejectDepositApprovalAsync(Keccak headerId)
+        public async Task RejectDepositApprovalAsync(Keccak assetId)
         {
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(headerId), Rlp.Encode(_consumerAddress)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(_consumerAddress)));
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was not found.");
+                if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{assetId}' was not found.");
                 
                 return;
             }
 
             if (depositApproval.State == DepositApprovalState.Rejected)
             {
-                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{headerId}' was already rejected.");
+                if (_logger.IsInfo) _logger.Info($"Deposit approval for data header: '{assetId}' was already rejected.");
                 
                 return;
             }
             
             depositApproval.Reject();
             await _depositApprovalRepository.UpdateAsync(depositApproval);
-            await _consumerNotifier.SendDepositApprovalRejectedAsync(depositApproval.HeaderId,
-                depositApproval.HeaderName);
-            if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{headerId}' was rejected.");
+            await _consumerNotifier.SendDepositApprovalRejectedAsync(depositApproval.AssetId,
+                depositApproval.AssetName);
+            if (_logger.IsWarn) _logger.Warn($"Deposit approval for data header: '{assetId}' was rejected.");
         }
 
         public async Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true)
@@ -1242,9 +1242,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var depositId = depositDetails.Deposit.Id;
             var dataRequest = CreateDataRequest(depositDetails);
             var ticket = depositDetails.EarlyRefundTicket;
-            var earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, depositDetails.DataHeader.Id,
+            var earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, depositDetails.DataAsset.Id,
                 dataRequest.Units, dataRequest.Value, dataRequest.ExpiryTime, dataRequest.Pepper,
-                depositDetails.DataHeader.Provider.Address,
+                depositDetails.DataAsset.Provider.Address,
                 ticket.ClaimableAfter, ticket.Signature, _consumerAddress);
             var transactionHash = _refundService.ClaimEarlyRefund(_consumerAddress, earlyRefundClaim);
             var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
@@ -1263,7 +1263,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositDetails.SetRefundClaimed(transactionHash);
             await _depositRepository.UpdateAsync(depositDetails);
-            await _consumerNotifier.SendClaimedEarlyRefundAsync(depositId, depositDetails.DataHeader.Name, transactionHash);
+            await _consumerNotifier.SendClaimedEarlyRefundAsync(depositId, depositDetails.DataAsset.Name, transactionHash);
             if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
         }
 
@@ -1271,8 +1271,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         {
             var depositId = depositDetails.Deposit.Id;
             var dataRequest = CreateDataRequest(depositDetails);
-            var provider = depositDetails.DataHeader.Provider.Address;
-            var refundClaim = new RefundClaim(depositId, depositDetails.DataHeader.Id, dataRequest.Units,
+            var provider = depositDetails.DataAsset.Provider.Address;
+            var refundClaim = new RefundClaim(depositId, depositDetails.DataAsset.Id, dataRequest.Units,
                 dataRequest.Value, dataRequest.ExpiryTime, dataRequest.Pepper, provider, _consumerAddress);
             var transactionHash = _refundService.ClaimRefund(_consumerAddress, refundClaim);
             var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
@@ -1291,7 +1291,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             depositDetails.SetRefundClaimed(transactionHash);
             await _depositRepository.UpdateAsync(depositDetails);
-            await _consumerNotifier.SendClaimedRefundAsync(depositId, depositDetails.DataHeader.Name, transactionHash);
+            await _consumerNotifier.SendClaimedRefundAsync(depositId, depositDetails.DataAsset.Name, transactionHash);
             if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
         }
 
@@ -1320,16 +1320,16 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return null;
         }
 
-        private bool IsDataHeaderAvailable(DataHeader dataHeader)
-            => dataHeader.State == DataHeaderState.Published || dataHeader.State == DataHeaderState.UnderMaintenance;
+        private bool IsDataAssetAvailable(DataAsset dataAsset)
+            => dataAsset.State == DataAssetState.Published || dataAsset.State == DataAssetState.UnderMaintenance;
 
         private DataRequest CreateDataRequest(DepositDetails deposit)
         {
             var hash = Keccak.Compute(_nodePublicKey.Bytes);
             var signature = _wallet.Sign(hash, _consumerAddress);
 
-            return new DataRequest(deposit.DataHeader.Id, deposit.Deposit.Units, deposit.Deposit.Value,
-                deposit.Deposit.ExpiryTime, deposit.Pepper, deposit.DataHeader.Provider.Address, deposit.Consumer,
+            return new DataRequest(deposit.DataAsset.Id, deposit.Deposit.Units, deposit.Deposit.Value,
+                deposit.Deposit.ExpiryTime, deposit.Pepper, deposit.DataAsset.Provider.Address, deposit.Consumer,
                 signature);
         }
 

@@ -34,15 +34,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             _database = database;
         }
 
-        public async Task<IReadOnlyList<DataHeaderInfo>> GetDataHeadersAsync()
+        public async Task<IReadOnlyList<DataAssetInfo>> GetDataAssetsAsync()
             => await Deposits.AsQueryable()
-                .Select(d => new DataHeaderInfo(d.DataHeader.Id, d.DataHeader.Name, d.DataHeader.Description))
+                .Select(d => new DataAssetInfo(d.DataAsset.Id, d.DataAsset.Name, d.DataAsset.Description))
                 .Distinct()
                 .ToListAsync();
 
         public async Task<IReadOnlyList<ProviderInfo>> GetProvidersAsync()
             => await Deposits.AsQueryable()
-                .Select(d => new ProviderInfo(d.DataHeader.Provider.Name, d.DataHeader.Provider.Address))
+                .Select(d => new ProviderInfo(d.DataAsset.Provider.Name, d.DataAsset.Provider.Address))
                 .Distinct()
                 .ToListAsync();
 

@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
         public static AbiSignature VerifyDepositAbiSig = new AbiSignature("verifyDeposit", new AbiBytes(32));
         
         public static AbiSignature ClaimRefundSig = new AbiSignature("claimRefund",
-            new AbiBytes(32), // headerID
+            new AbiBytes(32), // assetID
             new AbiUInt(32), // units
             new AbiUInt(96), // value
             new AbiUInt(32), // expiryTimestamp
@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
             AbiType.Address); // refundTo
         
         public static AbiSignature ClaimEarlyRefundSig = new AbiSignature("claimEarlyRefund",
-            new AbiBytes(32), // headerID
+            new AbiBytes(32), // assetID
             new AbiUInt(32), // units
             new AbiUInt(96), // value
             new AbiUInt(32), // expiryTimestamp

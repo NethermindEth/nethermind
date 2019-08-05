@@ -48,20 +48,20 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             private set => _consumedUnitsFromProvider = value;
         }
 
-        public ConsumerSession(Keccak id, Keccak depositId, Keccak dataHeaderId, Address consumerAddress,
+        public ConsumerSession(Keccak id, Keccak depositId, Keccak dataAssetId, Address consumerAddress,
             PublicKey consumerNodeId, Address providerAddress, PublicKey providerNodeId, uint startUnitsFromConsumer,
-            uint startUnitsFromProvider) : this(id, depositId, dataHeaderId, consumerAddress, consumerNodeId,
+            uint startUnitsFromProvider) : this(id, depositId, dataAssetId, consumerAddress, consumerNodeId,
             providerAddress, providerNodeId, SessionState.Unknown, startUnitsFromConsumer, startUnitsFromProvider)
         {
         }
 
-        public ConsumerSession(Keccak id, Keccak depositId, Keccak dataHeaderId, Address consumerAddress,
+        public ConsumerSession(Keccak id, Keccak depositId, Keccak dataAssetId, Address consumerAddress,
             PublicKey consumerNodeId, Address providerAddress, PublicKey providerNodeId, SessionState state,
             uint startUnitsFromConsumer, uint startUnitsFromProvider, ulong startTimestamp = 0,
             ulong finishTimestamp = 0, uint consumedUnits = 0, uint unpaidUnits = 0, uint paidUnits = 0,
             uint settledUnits = 0, uint consumedUnitsFromProvider = 0,
             DataAvailability dataAvailability = DataAvailability.Unknown)
-            : base(id, depositId, dataHeaderId, consumerAddress, consumerNodeId, providerAddress, providerNodeId, state,
+            : base(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress, providerNodeId, state,
                 startUnitsFromConsumer, startUnitsFromProvider, startTimestamp, finishTimestamp, consumedUnits,
                 unpaidUnits, paidUnits, settledUnits)
         {
@@ -70,7 +70,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         }
 
         public static ConsumerSession From(Session session) => new ConsumerSession(session.Id, session.DepositId,
-            session.DataHeaderId, session.ConsumerAddress, session.ConsumerNodeId, session.ProviderAddress,
+            session.DataAssetId, session.ConsumerAddress, session.ConsumerNodeId, session.ProviderAddress,
             session.ProviderNodeId, session.State, session.StartUnitsFromConsumer, session.StartUnitsFromProvider,
             session.StartTimestamp, session.FinishTimestamp, session.ConsumedUnits, session.UnpaidUnits,
             session.PaidUnits, session.SettledUnits);

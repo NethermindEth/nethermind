@@ -51,7 +51,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         
         public Keccak ClaimRefund(Address onBehalfOf, RefundClaim refundClaim)
         {
-            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, refundClaim.HeaderId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
+            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;
@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         public Keccak ClaimEarlyRefund(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim)
         {
-            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimEarlyRefundSig, earlyRefundClaim.HeaderId.Bytes, earlyRefundClaim.Units, earlyRefundClaim.Value, earlyRefundClaim.ExpiryTime, earlyRefundClaim.Pepper, earlyRefundClaim.Provider, earlyRefundClaim.ClaimableAfter, earlyRefundClaim.Signature.V, earlyRefundClaim.Signature.R, earlyRefundClaim.Signature.S, onBehalfOf);
+            byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimEarlyRefundSig, earlyRefundClaim.AssetId.Bytes, earlyRefundClaim.Units, earlyRefundClaim.Value, earlyRefundClaim.ExpiryTime, earlyRefundClaim.Pepper, earlyRefundClaim.Provider, earlyRefundClaim.ClaimableAfter, earlyRefundClaim.Signature.V, earlyRefundClaim.Signature.R, earlyRefundClaim.Signature.S, onBehalfOf);
             Transaction transaction = new Transaction();
             transaction.Value = 0;
             transaction.Data = txData;

@@ -112,12 +112,12 @@ namespace Nethermind.DataMarketplace.Subprotocols
             => new Dictionary<int, Action<Packet>>
             {
                 [NdmMessageCode.Hi] = message => Handle(Deserialize<HiMessage>(message.Data)),
-                [NdmMessageCode.DataHeaders] = message => Handle(Deserialize<DataHeadersMessage>(message.Data)),
-                [NdmMessageCode.DataHeader] = message => Handle(Deserialize<DataHeaderMessage>(message.Data)),
-                [NdmMessageCode.DataHeaderStateChanged] = message =>
-                    Handle(Deserialize<DataHeaderStateChangedMessage>(message.Data)),
-                [NdmMessageCode.DataHeaderRemoved] =
-                    message => Handle(Deserialize<DataHeaderRemovedMessage>(message.Data)),
+                [NdmMessageCode.DataAssets] = message => Handle(Deserialize<DataAssetsMessage>(message.Data)),
+                [NdmMessageCode.DataAsset] = message => Handle(Deserialize<DataAssetMessage>(message.Data)),
+                [NdmMessageCode.DataAssetStateChanged] = message =>
+                    Handle(Deserialize<DataAssetStateChangedMessage>(message.Data)),
+                [NdmMessageCode.DataAssetRemoved] =
+                    message => Handle(Deserialize<DataAssetRemovedMessage>(message.Data)),
                 [NdmMessageCode.DataRequestResult] =
                     message => Handle(Deserialize<DataRequestResultMessage>(message.Data)),
                 [NdmMessageCode.DataAssetData] = message => Handle(Deserialize<DataAssetDataMessage>(message.Data)),
@@ -268,7 +268,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             }
             
             ConsumerService.AddProviderPeer(this);
-            SendGetDataHeaders();
+            SendGetDataAssets();
             SendGetDepositApprovals().ContinueWith(async t =>
             {
                 if (t.IsFaulted && Logger.IsError)
@@ -299,28 +299,28 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Session.InitiateDisconnect(disconnectReason, details);
         }
 
-        private void SendGetDataHeaders()
+        private void SendGetDataAssets()
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: getdataheaders");
-            Send(new GetDataHeadersMessage());
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: getdataassets");
+            Send(new GetDataAssetsMessage());
         }
         
-        private void Handle(DataHeaderStateChangedMessage message)
+        private void Handle(DataAssetStateChangedMessage message)
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaderstatechanged");
-            ConsumerService.ChangeDataHeaderState(message.DataHeaderId, message.State);
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataassetstatechanged");
+            ConsumerService.ChangeDataAssetState(message.DataAssetId, message.State);
         }
 
-        private void Handle(DataHeaderMessage message)
+        private void Handle(DataAssetMessage message)
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheader");
-            ConsumerService.AddDiscoveredDataHeader(message.DataHeader, this);
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataasset");
+            ConsumerService.AddDiscoveredDataAsset(message.DataAsset, this);
         }
 
-        private void Handle(DataHeaderRemovedMessage message)
+        private void Handle(DataAssetRemovedMessage message)
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaderremoved");
-            ConsumerService.RemoveDiscoveredDataHeader(message.DataHeaderId);
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataassetremoved");
+            ConsumerService.RemoveDiscoveredDataAsset(message.DataAssetId);
         }
 
         public virtual void ChangeConsumerAddress(Address address)
@@ -345,7 +345,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
             }
 
             ConsumerService.AddProviderPeer(this);
-            SendGetDataHeaders();
+            SendGetDataAssets();
             SendGetDepositApprovals().ContinueWith(async t =>
             {
                 if (t.IsFaulted && Logger.IsError)
@@ -455,10 +455,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new DisableDataStreamMessage(depositId, client));
         }
         
-        public void SendRequestDepositApproval(Keccak headerId, string kyc)
+        public void SendRequestDepositApproval(Keccak assetId, string kyc)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requestdepositapproval");
-            Send(new RequestDepositApprovalMessage(headerId, kyc));
+            Send(new RequestDepositApprovalMessage(assetId, kyc));
         }
         
         private void Handle(SessionFinishedMessage message)
@@ -476,7 +476,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DepositApprovalConfirmedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalconfirmed");
-            ConsumerService.ConfirmDepositApprovalAsync(message.DataHeaderId).ContinueWith(t =>
+            ConsumerService.ConfirmDepositApprovalAsync(message.DataAssetId).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -488,7 +488,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DepositApprovalRejectedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalrejected");
-            ConsumerService.RejectDepositApprovalAsync(message.DataHeaderId).ContinueWith(t =>
+            ConsumerService.RejectDepositApprovalAsync(message.DataAssetId).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
                 {
@@ -497,12 +497,12 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        public async Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataHeaderId = null,
+        public async Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataAssetId = null,
             bool onlyPending = false, CancellationToken? token = null)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: getdepositapprovals");
             var cancellationToken = token ?? CancellationToken.None;
-            var message = new GetDepositApprovalsMessage(dataHeaderId, onlyPending);
+            var message = new GetDepositApprovalsMessage(dataAssetId, onlyPending);
             var request = new Request<GetDepositApprovalsMessage, DepositApproval[]>(message);
             DepositApprovalsRequests.Add(request, cancellationToken);
             Send(request.Message);
@@ -597,10 +597,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             });
         }
 
-        private void Handle(DataHeadersMessage message)
+        private void Handle(DataAssetsMessage message)
         {
-            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataheaders");
-            ConsumerService.AddDiscoveredDataHeaders(message.DataHeaders, this);
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataassets");
+            ConsumerService.AddDiscoveredDataAssets(message.DataAssets, this);
         }
 
         private void Handle(DataAvailabilityMessage message)

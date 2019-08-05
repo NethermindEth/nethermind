@@ -28,8 +28,8 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
     public class DepositReportItem
     {
         public Keccak Id { get; }
-        public Keccak HeaderId { get; }
-        public string HeaderName { get; }
+        public Keccak AssetId { get; }
+        public string AssetName { get; }
         public Address Provider { get; }
         public string ProviderName { get; }
         public UInt256 Value { get; }
@@ -55,15 +55,15 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public UInt256 RemainingValue { get; }
         public IEnumerable<DataDeliveryReceiptReportItem> Receipts { get; }
 
-        public DepositReportItem(Keccak id, Keccak headerId, string headerName, Address provider, string providerName,
+        public DepositReportItem(Keccak id, Keccak assetId, string assetName, Address provider, string providerName,
             UInt256 value, uint units, Address consumer, uint timestamp, uint expiryTime, bool expired,
             Keccak transactionHash, uint confirmationTimestamp, uint confirmations, uint requiredConfirmations,
             bool confirmed, Keccak claimedRefundTransactionHash, uint consumedUnits,
             IEnumerable<DataDeliveryReceiptReportItem> receipts)
         {
             Id = id;
-            HeaderId = headerId;
-            HeaderName = headerName;
+            AssetId = assetId;
+            AssetName = assetName;
             Provider = provider;
             ProviderName = providerName;
             Value = value;

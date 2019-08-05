@@ -62,10 +62,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             => current.Equals(previous) ? null : previous;
 
         public async Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)
-            => await Filter(query.DepositId, query.DataHeaderId, query.ConsumerNodeId, query.ConsumerAddress,
+            => await Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).PaginateAsync(query);
 
-        private IMongoQueryable<ConsumerSession> Filter(Keccak depositId = null, Keccak dataHeaderId = null,
+        private IMongoQueryable<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
             PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
             Address providerAddress = null)
         {
@@ -75,9 +75,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                 sessions = sessions.Where(s => s.DepositId == depositId);
             }
 
-            if (!(dataHeaderId is null))
+            if (!(dataAssetId is null))
             {
-                sessions = sessions.Where(s => s.DataHeaderId == dataHeaderId);
+                sessions = sessions.Where(s => s.DataAssetId == dataAssetId);
             }
 
             if (!(consumerNodeId is null))

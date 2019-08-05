@@ -41,28 +41,28 @@ namespace Nethermind.DataMarketplace.TestRunner.Tester.Scenarios
                 .Wait()
                 .SetState(state)
                 .DP.DeployNdmContract()
-                .DP.AddDataHeader(() => new DataHeaderDto
+                .DP.AddDataAsset(() => new DataAssetDto
                     {
-                        Name = "Test data header #1",
-                        Description = "Test data header #1 description",
+                        Name = "Test data asset #1",
+                        Description = "Test data asset #1 description",
                         UnitPrice = "0x1",
                         UnitType = "unit",
                         MinUnits = 1,
                         MaxUnits = 100000,
-                        ExpiryRule = new DataHeaderExpiryRuleDto
+                        ExpiryRule = new DataAssetExpiryRuleDto
                         {
                             Value = "0x10000"
                         }
                     },
                     validator: d => (d?.Replace("0x", string.Empty).Length ?? 0) == 64,
-                    stateUpdater: (s, r) => s.DataHeaderId = r.Result)
-                .DP.GetDataHeaders(validator: d => d.Any())
+                    stateUpdater: (s, r) => s.DataAssetId = r.Result)
+                .DP.GetDataAssets(validator: d => d.Any())
                 .StartDataConsumer()
                 .Wait()
-                .DC.GetDiscoveredDataHeaders(validator: d => d.Any())
+                .DC.GetDiscoveredDataAssets(validator: d => d.Any())
                 .DC.MakeDeposit(() => new MakeDepositDto
                     {
-                        DataHeaderId = state.DataHeaderId,
+                        DataAssetId = state.DataAssetId,
                         Units = 336,
                         Value = "33600000000000000000",
                         ExpiryTime = 1549531335
@@ -88,9 +88,9 @@ namespace Nethermind.DataMarketplace.TestRunner.Tester.Scenarios
                            !deposit.Subscriptions.Any();
                 })
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
-                    DataHeaderId = state.DataHeaderId,
+                    DataAssetId = state.DataAssetId,
                     Data = "test-data",
                     Subscription = "test-sub"
                 })
@@ -109,17 +109,17 @@ namespace Nethermind.DataMarketplace.TestRunner.Tester.Scenarios
                            deposit.Subscriptions.Contains("test-sub");
                 })
                 .DC.DisableDataStream(() => state.DepositId)
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
-                    DataHeaderId = state.DataHeaderId,
+                    DataAssetId = state.DataAssetId,
                     Data = "test-data",
                     Subscription = "test-sub"
                 })
                 .DC.PullData(() => state.DepositId, validator: string.IsNullOrWhiteSpace)
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
-                    DataHeaderId = state.DataHeaderId,
+                    DataAssetId = state.DataAssetId,
                     Data = "test-data-2",
                     Subscription = "test-sub"
                 })
@@ -154,21 +154,21 @@ namespace Nethermind.DataMarketplace.TestRunner.Tester.Scenarios
                 })
                 .DC.SendDataRequest(() => state.DepositId, validator: d => !string.IsNullOrWhiteSpace(d))
                 .DC.EnableDataStream(() => state.DepositId, new[] {"test-sub"})
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
-                    DataHeaderId = state.DataHeaderId,
+                    DataAssetId = state.DataAssetId,
                     Data = "test-data-3",
                     Subscription = "test-sub"
                 })
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
-                    DataHeaderId = state.DataHeaderId,
+                    DataAssetId = state.DataAssetId,
                     Data = "test-data-4",
                     Subscription = "test-sub"
                 })
-                .DP.SendData(() => new DataHeaderDataDto
+                .DP.SendData(() => new DataAssetDataDto
                 {
-                    DataHeaderId = state.DataHeaderId,
+                    DataAssetId = state.DataAssetId,
                     Data = "test-data-5",
                     Subscription = "test-sub"
                 })

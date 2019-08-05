@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     previousAddress
                 }));
 
-        public Task SendDataAssetStateChangedAsync(Keccak id, string name, DataHeaderState state)
+        public Task SendDataAssetStateChangedAsync(Keccak id, string name, DataAssetState state)
             => _notifier.NotifyAsync(new Notification("data_asset_state_changed",
                 new
                 {

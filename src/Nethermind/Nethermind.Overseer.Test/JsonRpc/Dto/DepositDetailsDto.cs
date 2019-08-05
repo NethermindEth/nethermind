@@ -25,7 +25,7 @@ namespace Nethermind.Overseer.Test.JsonRpc.Dto
         public uint StartTimestamp { get; set; }
         public uint SessionTimestamp { get; set; }
         public string TransactionHash { get; set; }
-        public DataHeaderDto DataHeader { get; set; }
+        public DataAssetDto DataAsset { get; set; }
         public DataRequestDto DataRequest { get; set; }
         public string[] Args { get; set; }
         public bool StreamEnabled { get; set; }

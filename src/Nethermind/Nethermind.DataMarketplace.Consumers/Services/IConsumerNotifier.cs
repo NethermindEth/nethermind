@@ -19,7 +19,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task SendConsumerAccountLockedAsync(Address address);
         Task SendConsumerAddressChangedAsync(Address newAddress, Address previousAddress);
         Task SendProviderAddressChangedAsync(Address newAddress, Address previousAddress);
-        Task SendDataAssetStateChangedAsync(Keccak id, string name, DataHeaderState state);
+        Task SendDataAssetStateChangedAsync(Keccak id, string name, DataAssetState state);
         Task SendDataAssetRemovedAsync(Keccak id, string name);
         Task SendDataAvailabilityChangedAsync(Keccak depositId, Keccak sessionId, DataAvailability availability);
         Task SendDataStreamEnabledAsync(Keccak depositId, Keccak sessionId);

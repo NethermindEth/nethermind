@@ -112,27 +112,27 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public void get_discovered_data_headers_should_return_data_headers()
+        public void get_discovered_data_assets_should_return_data_assets()
         {
-            _consumerService.GetDiscoveredDataHeaders().Returns(new List<DataHeader> {GetDataHeader()});
-            var result = _rpc.ndm_getDiscoveredDataHeaders();
-            _consumerService.Received().GetDiscoveredDataHeaders();
+            _consumerService.GetDiscoveredDataAssets().Returns(new List<DataAsset> {GetDataAsset()});
+            var result = _rpc.ndm_getDiscoveredDataAssets();
+            _consumerService.Received().GetDiscoveredDataAssets();
             result.Data.Should().ContainSingle();
-            VerifyDataHeader(result.Data.Single());
+            VerifyDataAsset(result.Data.Single());
         }
 
         [Test]
-        public async Task get_known_data_headers_should_return_data_header_info()
+        public async Task get_known_data_assets_should_return_data_asset_info()
         {
-            _consumerService.GetKnownDataHeadersAsync()
-                .Returns(new[] {new DataHeaderInfo(Keccak.Zero, "test", "test")});
-            var result = await _rpc.ndm_getKnownDataHeaders();
-            await _consumerService.Received().GetKnownDataHeadersAsync();
+            _consumerService.GetKnownDataAssetsAsync()
+                .Returns(new[] {new DataAssetInfo(Keccak.Zero, "test", "test")});
+            var result = await _rpc.ndm_getKnownDataAssets();
+            await _consumerService.Received().GetKnownDataAssetsAsync();
             result.Data.Should().ContainSingle();
-            var dataHeader = result.Data.Single();
-            dataHeader.Id.Should().Be(Keccak.Zero);
-            dataHeader.Name.Should().Be("test");
-            dataHeader.Description.Should().Be("test");
+            var dataAsset = result.Data.Single();
+            dataAsset.Id.Should().Be(Keccak.Zero);
+            dataAsset.Name.Should().Be("test");
+            dataAsset.Description.Should().Be("test");
         }
 
         [Test]
@@ -215,14 +215,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var request = new MakeDepositForRpc
             {
-                DataHeaderId = Keccak.Zero,
+                DataAssetId = Keccak.Zero,
                 Units = 10,
                 Value = 100
             };
             var depositId = TestItem.KeccakA;
-            _consumerService.MakeDepositAsync(request.DataHeaderId, request.Units, request.Value).Returns(depositId);
+            _consumerService.MakeDepositAsync(request.DataAssetId, request.Units, request.Value).Returns(depositId);
             var result = await _rpc.ndm_makeDeposit(request);
-            await _consumerService.Received().MakeDepositAsync(request.DataHeaderId, request.Units, request.Value);
+            await _consumerService.Received().MakeDepositAsync(request.DataAssetId, request.Units, request.Value);
             result.Data.Should().Be(depositId);
         }
 
@@ -353,8 +353,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.TotalResults.Should().Be(1);
             result.Data.IsEmpty.Should().BeFalse();
             var rpcApproval = result.Data.Items.Single();
-            rpcApproval.HeaderId.Should().Be(approval.HeaderId);
-            rpcApproval.HeaderName.Should().Be(approval.HeaderName);
+            rpcApproval.AssetId.Should().Be(approval.AssetId);
+            rpcApproval.AssetName.Should().Be(approval.AssetName);
             rpcApproval.Kyc.Should().Be(approval.Kyc);
             rpcApproval.Consumer.Should().Be(approval.Consumer);
             rpcApproval.Provider.Should().Be(approval.Provider);
@@ -372,7 +372,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public async Task request_deposit_approval_should_fail_if_header_was_not_found()
+        public async Task request_deposit_approval_should_fail_if_asset_was_not_found()
         {
             var result = await _rpc.ndm_requestDepositApproval(Keccak.Zero, "kyc");
             await _consumerService.Received().RequestDepositApprovalAsync(Keccak.Zero, "kyc");
@@ -415,8 +415,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)
         {
             rpcItem.Id.Should().Be(item.Id);
-            rpcItem.HeaderId.Should().Be(item.HeaderId);
-            rpcItem.HeaderName.Should().Be(item.HeaderName);
+            rpcItem.AssetId.Should().Be(item.AssetId);
+            rpcItem.AssetName.Should().Be(item.AssetName);
             rpcItem.Provider.Should().Be(item.Provider);
             rpcItem.ProviderName.Should().Be(item.ProviderName);
             rpcItem.Value.Should().Be(item.Value);
@@ -468,7 +468,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             session.Id.Should().Be(Keccak.Zero);
             session.DepositId.Should().Be(TestItem.KeccakA);
-            session.DataHeaderId.Should().Be(TestItem.KeccakB);
+            session.DataAssetId.Should().Be(TestItem.KeccakB);
             session.ConsumerAddress.Should().Be(TestItem.AddressA);
             session.ConsumerNodeId.Should().Be(TestItem.PublicKeyA);
             session.ProviderAddress.Should().Be(TestItem.AddressB);
@@ -501,31 +501,31 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             deposit.ConsumedUnits.Should().Be(0);
             deposit.Kyc.Should().BeNullOrEmpty();
-            VerifyDataHeader(deposit.DataHeader);
+            VerifyDataAsset(deposit.DataAsset);
         }
 
-        private static void VerifyDataHeader(DataHeaderForRpc dataHeader)
+        private static void VerifyDataAsset(DataAssetForRpc dataAsset)
         {
-            dataHeader.Should().NotBeNull();
-            dataHeader.Id.Should().NotBeNull();
-            dataHeader.Name.Should().Be("test");
-            dataHeader.Description.Should().Be("test");
-            dataHeader.UnitPrice.Should().Be(1);
-            dataHeader.UnitType.Should().Be(DataHeaderUnitType.Unit.ToString().ToLowerInvariant());
-            dataHeader.QueryType.Should().Be(QueryType.Stream.ToString().ToLowerInvariant());
-            dataHeader.MinUnits.Should().Be(0);
-            dataHeader.MaxUnits.Should().Be(10);
-            dataHeader.Rules.Should().NotBeNull();
-            dataHeader.Rules.Expiry.Should().NotBeNull();
-            dataHeader.Rules.Expiry.Value.Should().Be(1);
-            dataHeader.Rules.UpfrontPayment.Should().BeNull();
-            dataHeader.Provider.Address.Should().Be(Address.Zero);
-            dataHeader.Provider.Name.Should().Be("test");
-            dataHeader.File.Should().BeNullOrEmpty();
-            dataHeader.Data.Should().BeNullOrEmpty();
-            dataHeader.State.Should().Be(DataHeaderState.Unpublished.ToString().ToLowerInvariant());
-            dataHeader.TermsAndConditions.Should().BeNullOrEmpty();
-            dataHeader.KycRequired.Should().BeFalse();
+            dataAsset.Should().NotBeNull();
+            dataAsset.Id.Should().NotBeNull();
+            dataAsset.Name.Should().Be("test");
+            dataAsset.Description.Should().Be("test");
+            dataAsset.UnitPrice.Should().Be(1);
+            dataAsset.UnitType.Should().Be(DataAssetUnitType.Unit.ToString().ToLowerInvariant());
+            dataAsset.QueryType.Should().Be(QueryType.Stream.ToString().ToLowerInvariant());
+            dataAsset.MinUnits.Should().Be(0);
+            dataAsset.MaxUnits.Should().Be(10);
+            dataAsset.Rules.Should().NotBeNull();
+            dataAsset.Rules.Expiry.Should().NotBeNull();
+            dataAsset.Rules.Expiry.Value.Should().Be(1);
+            dataAsset.Rules.UpfrontPayment.Should().BeNull();
+            dataAsset.Provider.Address.Should().Be(Address.Zero);
+            dataAsset.Provider.Name.Should().Be("test");
+            dataAsset.File.Should().BeNullOrEmpty();
+            dataAsset.Data.Should().BeNullOrEmpty();
+            dataAsset.State.Should().Be(DataAssetState.Unpublished.ToString().ToLowerInvariant());
+            dataAsset.TermsAndConditions.Should().BeNullOrEmpty();
+            dataAsset.KycRequired.Should().BeFalse();
         }
 
         private static ConsumerSession GetConsumerSession()
@@ -533,14 +533,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 TestItem.PublicKeyA, TestItem.AddressB, TestItem.PublicKeyB, SessionState.Started,
                 0, 0, dataAvailability: DataAvailability.Available);
 
-        private static DataHeader GetDataHeader()
-            => new DataHeader(Keccak.OfAnEmptyString, "test", "test", 1,
-                DataHeaderUnitType.Unit, 0, 10, new DataHeaderRules(new DataHeaderRule(1)),
-                new DataHeaderProvider(Address.Zero, "test"));
+        private static DataAsset GetDataAsset()
+            => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,
+                DataAssetUnitType.Unit, 0, 10, new DataAssetRules(new DataAssetRule(1)),
+                new DataAssetProvider(Address.Zero, "test"));
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, 1, 1),
-                GetDataHeader(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
+                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,

@@ -70,10 +70,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
 
 
         public Task<PagedResult<ConsumerSession>> BrowseAsync(GetConsumerSessions query)
-            => Task.FromResult(Filter(query.DepositId, query.DataHeaderId, query.ConsumerNodeId, query.ConsumerAddress,
+            => Task.FromResult(Filter(query.DepositId, query.DataAssetId, query.ConsumerNodeId, query.ConsumerAddress,
                 query.ProviderNodeId, query.ProviderAddress).Paginate(query));
 
-        private IReadOnlyList<ConsumerSession> Filter(Keccak depositId = null, Keccak dataHeaderId = null,
+        private IReadOnlyList<ConsumerSession> Filter(Keccak depositId = null, Keccak dataAssetId = null,
             PublicKey consumerNodeId = null, Address consumerAddress = null, PublicKey providerNodeId = null,
             Address providerAddress = null)
         {
@@ -89,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 sessions[i] = Decode(sessionsBytes[i]);
             }
 
-            if (depositId is null && dataHeaderId is null && consumerNodeId is null && consumerAddress is null
+            if (depositId is null && dataAssetId is null && consumerNodeId is null && consumerAddress is null
                 && providerNodeId is null && providerAddress is null)
             {
                 return sessions;
@@ -101,9 +101,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                 filteredSessions = filteredSessions.Where(s => s.DepositId == depositId);
             }
 
-            if (!(dataHeaderId is null))
+            if (!(dataAssetId is null))
             {
-                filteredSessions = filteredSessions.Where(s => s.DataHeaderId == dataHeaderId);
+                filteredSessions = filteredSessions.Where(s => s.DataAssetId == dataAssetId);
             }
 
             if (!(consumerNodeId is null))

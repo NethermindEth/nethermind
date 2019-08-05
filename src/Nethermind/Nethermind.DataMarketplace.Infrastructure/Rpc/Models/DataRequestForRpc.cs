@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DataRequestForRpc
     {
-        public Keccak DataHeaderId { get; set; }
+        public Keccak DataAssetId { get; set; }
         public uint Units { get; set; }
         public BigInteger Value { get; set; }
         public uint ExpiryTime { get; set; }
@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 
         public DataRequestForRpc(DataRequest dataRequest)
         {
-            DataHeaderId = dataRequest.DataHeaderId;
+            DataAssetId = dataRequest.DataAssetId;
             Units = dataRequest.Units;
             Value = dataRequest.Value;
             ExpiryTime = dataRequest.ExpiryTime;

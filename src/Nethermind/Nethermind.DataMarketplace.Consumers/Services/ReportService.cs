@@ -45,17 +45,17 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             var foundDeposits = deposits.Items
-                .Where(d => (query.Provider is null || d.DataHeader.Provider.Address == query.Provider) &&
-                            (query.HeaderId is null || d.DataHeader.Id == query.HeaderId))
+                .Where(d => (query.Provider is null || d.DataAsset.Provider.Address == query.Provider) &&
+                            (query.AssetId is null || d.DataAsset.Id == query.AssetId))
                 .ToDictionary(d => d.Id, d => d);
             if (!foundDeposits.Any())
             {
                 return DepositsReport.Empty;
             }
 
-            var headerIds = foundDeposits.Select(d => d.Value.DataHeader.Id);
-            var receipts = await _receiptRepository.BrowseAsync(query.DepositId, query.HeaderId);
-            var depositsReceipts = receipts.Where(r => headerIds.Contains(r.DataHeaderId))
+            var assetIds = foundDeposits.Select(d => d.Value.DataAsset.Id);
+            var receipts = await _receiptRepository.BrowseAsync(query.DepositId, query.AssetId);
+            var depositsReceipts = receipts.Where(r => assetIds.Contains(r.DataAssetId))
                 .GroupBy(r => r.DepositId).ToDictionary(r => r.Key, r => r.AsEnumerable());
 
             var page = query.Page;
@@ -86,8 +86,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     Results = int.MaxValue
                 });
                 var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
-                items.Add(new DepositReportItem(deposit.Id, deposit.DataHeader.Id, deposit.DataHeader.Name,
-                    deposit.DataHeader.Provider.Address, deposit.DataHeader.Provider.Name, deposit.Deposit.Value,
+                items.Add(new DepositReportItem(deposit.Id, deposit.DataAsset.Id, deposit.DataAsset.Name,
+                    deposit.DataAsset.Provider.Address, deposit.DataAsset.Provider.Name, deposit.Deposit.Value,
                     deposit.Deposit.Units, deposit.Consumer, deposit.Timestamp, deposit.Deposit.ExpiryTime, expired,
                     deposit.TransactionHash, deposit.ConfirmationTimestamp, deposit.Confirmations,
                     deposit.RequiredConfirmations, deposit.Confirmed, deposit.ClaimedRefundTransactionHash,

@@ -315,7 +315,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Test_packed(AbiEncodingStyle encodingStyle)
         {
-            Keccak headerId = Keccak.Compute("headerId");
+            Keccak assetId = Keccak.Compute("assetId");
             uint expiryTime = (uint) new Timestamper().EpochSeconds + 86000;
             UInt256 value = 1.Ether();
             uint units = 10U;
@@ -330,7 +330,7 @@ namespace Nethermind.Abi.Test
                 AbiType.Address,
                 AbiType.Address);
 
-            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, headerId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
+            byte[] encoded = _abiEncoder.Encode(AbiEncodingStyle.Packed, abiDef, assetId.Bytes, units, value, expiryTime, salt, Address.Zero, Address.Zero);
             Assert.AreEqual(108, encoded.Length);
         }
 

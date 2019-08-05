@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public uint Number { get; private set; }
         public Keccak DepositId { get; private set; }
         public Keccak SessionId { get; private set; }
-        public Keccak DataHeaderId { get; private set; }
+        public Keccak DataAssetId { get; private set; }
         public PublicKey ConsumerNodeId { get; private set; }
         public DataDeliveryReceiptRequest Request { get; private set; }
         public DataDeliveryReceipt Receipt { get; private set; }
@@ -36,14 +36,14 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public bool IsMerged { get; private set; }
         public bool IsClaimed { get; private set; }
 
-        public DataDeliveryReceiptDetails(Keccak id, Keccak sessionId, Keccak dataHeaderId, PublicKey consumerNodeId,
+        public DataDeliveryReceiptDetails(Keccak id, Keccak sessionId, Keccak dataAssetId, PublicKey consumerNodeId,
             DataDeliveryReceiptRequest request, DataDeliveryReceipt receipt, ulong timestamp, bool isClaimed)
         {
             Id = id;
             Number = request.Number;
             DepositId = request.DepositId;
             SessionId = sessionId;
-            DataHeaderId = dataHeaderId;
+            DataAssetId = dataAssetId;
             ConsumerNodeId = consumerNodeId;
             Request = request;
             Receipt = receipt;

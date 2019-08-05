@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
     {
         public Keccak Id { get; private set; }
         public Deposit Deposit { get; private set; }
-        public DataHeader DataHeader { get; private set; }
+        public DataAsset DataAsset { get; private set; }
         public Address Consumer { get; private set; }
         public byte[] Pepper { get; private set; }
         public uint Timestamp { get; private set; }
@@ -42,14 +42,14 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public uint Confirmations { get; private set; }
         public uint RequiredConfirmations { get; private set; }
 
-        public DepositDetails(Deposit deposit, DataHeader dataHeader, Address consumer, byte[] pepper, uint timestamp, 
+        public DepositDetails(Deposit deposit, DataAsset dataAsset, Address consumer, byte[] pepper, uint timestamp, 
             Keccak transactionHash, uint confirmationTimestamp = 0, EarlyRefundTicket earlyRefundTicket = null,
             Keccak claimedRefundTransactionHash = null, string kyc = null, uint confirmations = 0,
             uint requiredConfirmations = 0)
         {
             Id = deposit.Id;
             Deposit = deposit;
-            DataHeader = dataHeader;
+            DataAsset = dataAsset;
             Consumer = consumer;
             Pepper = pepper;
             Timestamp = timestamp;
@@ -88,7 +88,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
 
         public bool CanClaimRefund(ulong currentBlockTimestamp, uint depositUnits)
             => !RefundClaimed && currentBlockTimestamp >= Deposit.ExpiryTime &&
-               ConfirmationTimestamp + depositUnits + DataHeader.Rules.Expiry.Value <=
+               ConfirmationTimestamp + depositUnits + DataAsset.Rules.Expiry.Value <=
                currentBlockTimestamp;
 
         public void SetConfirmations(uint confirmations)

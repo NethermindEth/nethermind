@@ -51,14 +51,14 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
             var id = context.DecodeKeccak();
             var sessionId = context.DecodeKeccak();
-            var dataHeaderId = context.DecodeKeccak();
+            var dataAssetId = context.DecodeKeccak();
             var consumerNodeId = new PublicKey(context.DecodeByteArray());
             var request = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceiptRequest>(context);
             var receipt = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceipt>(context);
             var timestamp = context.DecodeUlong();
             var isClaimed = context.DecodeBool();
 
-            return new DataDeliveryReceiptDetails(id, sessionId, dataHeaderId, consumerNodeId, request, receipt,
+            return new DataDeliveryReceiptDetails(id, sessionId, dataAssetId, consumerNodeId, request, receipt,
                 timestamp, isClaimed);
         }
 
@@ -73,7 +73,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return Nethermind.Core.Encoding.Rlp.Encode(
                 Nethermind.Core.Encoding.Rlp.Encode(item.Id),
                 Nethermind.Core.Encoding.Rlp.Encode(item.SessionId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DataHeaderId),
+                Nethermind.Core.Encoding.Rlp.Encode(item.DataAssetId),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerNodeId.Bytes),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Request),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Receipt),

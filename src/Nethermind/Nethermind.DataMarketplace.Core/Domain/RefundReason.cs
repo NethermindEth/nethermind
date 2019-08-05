@@ -20,12 +20,12 @@ namespace Nethermind.DataMarketplace.Core.Domain
 {
     public enum RefundReason
     {
-        InvalidDataHeader,
+        InvalidDataAsset,
         InvalidDataRequestValue,
         InvalidDataRequestUnits,
         InvalidConsumedUnitsAmount,
         DataDiscontinued,
-        DataHeaderStateChanged,
+        DataAssetStateChanged,
         UnconfirmedKyc
     }
 }

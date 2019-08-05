@@ -27,7 +27,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
     {
         public Keccak Id { get; set; }
         public DepositForRpc Deposit { get; set; }
-        public DataHeaderForRpc DataHeader { get; set; }
+        public DataAssetForRpc DataAsset { get; set; }
         public Address Consumer { get; set; }
         public uint Timestamp { get; set; }
         public Keccak TransactionHash { get; set; }
@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         {
             Id = deposit.Id;
             Deposit = new DepositForRpc(deposit.Deposit);
-            DataHeader = new DataHeaderForRpc(deposit.DataHeader);
+            DataAsset = new DataAssetForRpc(deposit.DataAsset);
             Consumer = deposit.Consumer;
             Timestamp = deposit.Timestamp;
             TransactionHash = deposit.TransactionHash;

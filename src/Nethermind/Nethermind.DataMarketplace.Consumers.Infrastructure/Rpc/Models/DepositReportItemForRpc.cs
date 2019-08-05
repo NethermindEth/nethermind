@@ -28,8 +28,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
     public class DepositReportItemForRpc
     {
         public Keccak Id { get; set; }
-        public Keccak HeaderId { get; set; }
-        public string HeaderName { get; set; }
+        public Keccak AssetId { get; set; }
+        public string AssetName { get; set; }
         public Address Provider { get; set; }
         public string ProviderName { get; set; }
         public UInt256 Value { get; set; }
@@ -62,8 +62,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public DepositReportItemForRpc(DepositReportItem report)
         {
             Id = report.Id;
-            HeaderId = report.HeaderId;
-            HeaderName = report.HeaderName;
+            AssetId = report.AssetId;
+            AssetName = report.AssetName;
             Provider = report.Provider;
             ProviderName = report.ProviderName;
             Value = report.Value;

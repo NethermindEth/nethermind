@@ -48,15 +48,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             var id = context.DecodeKeccak();
-            var headerId = context.DecodeKeccak();
-            var headerName = context.DecodeString();
+            var assetId = context.DecodeKeccak();
+            var assetName = context.DecodeString();
             var kyc = context.DecodeString();
             var consumer = context.DecodeAddress();
             var provider = context.DecodeAddress();
             var timestamp = context.DecodeUlong();
             var state = (DepositApprovalState) context.DecodeInt();
 
-            return new DepositApproval(id, headerId, headerName, kyc, consumer, provider, timestamp, state);
+            return new DepositApproval(id, assetId, assetName, kyc, consumer, provider, timestamp, state);
         }
 
         public Nethermind.Core.Encoding.Rlp Encode(DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -68,8 +68,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
             return Nethermind.Core.Encoding.Rlp.Encode(
                 Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.HeaderId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.HeaderName),
+                Nethermind.Core.Encoding.Rlp.Encode(item.AssetId),
+                Nethermind.Core.Encoding.Rlp.Encode(item.AssetName),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Kyc),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Consumer),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Provider),

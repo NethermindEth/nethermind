@@ -21,11 +21,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
     public class NdmMessageCode
     {
         public const int Hi = 0x00;
-        public const int GetDataHeaders = 0x01;
-        public const int DataHeaders = 0x02;
-        public const int DataHeader = 0x03;
-        public const int DataHeaderStateChanged = 0x4;
-        public const int DataHeaderRemoved = 0x05;
+        public const int GetDataAssets = 0x01;
+        public const int DataAssets = 0x02;
+        public const int DataAsset = 0x03;
+        public const int DataAssetStateChanged = 0x4;
+        public const int DataAssetRemoved = 0x05;
         public const int DataAssetData = 0x06;
         public const int InvalidData = 0x07;
         public const int DataRequest = 0x08;
