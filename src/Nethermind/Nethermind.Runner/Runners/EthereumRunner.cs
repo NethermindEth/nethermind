@@ -24,10 +24,13 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Abi;
 using Nethermind.AuRa;
+using Nethermind.AuRa.Rewards;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.TxPools;
@@ -427,7 +430,14 @@ namespace Nethermind.Runner.Runners
             
             _snapshotManager = null;
             
-            InitSealEngine();
+            _stateProvider = new StateProvider(
+                _dbProvider.StateDb,
+                _dbProvider.CodeDb,
+                _logManager);
+            
+            IList<IBlockPreProcessor> blockPreProcessors = new List<IBlockPreProcessor>();
+            
+            InitSealEngine(blockPreProcessors);
 
             /* validation */
             _headerValidator = new HeaderValidator(
@@ -449,12 +459,6 @@ namespace Nethermind.Runner.Runners
                 ommersValidator,
                 _specProvider,
                 _logManager);
-
-            _stateProvider = new StateProvider(
-                _dbProvider.StateDb,
-                _dbProvider.CodeDb,
-                _logManager);
-
 
             _storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
@@ -493,7 +497,8 @@ namespace Nethermind.Runner.Runners
                 _storageProvider,
                 _txPool,
                 _receiptStorage,
-                _logManager);
+                _logManager,
+                blockPreProcessors);
 
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
@@ -600,7 +605,7 @@ namespace Nethermind.Runner.Runners
             }
         }
 
-        private void InitSealEngine()
+        private void InitSealEngine(IList<IBlockPreProcessor> blockPreProcessors)
         {
             switch (_chainSpec.SealEngineType)
             {
@@ -649,7 +654,8 @@ namespace Nethermind.Runner.Runners
                 case SealEngineType.AuRa:
                     _sealer = new AuRaSealer();
                     _sealValidator = new AuRaSealValidator(_logManager);
-                    _rewardCalculator = NoBlockRewards.Instance;
+                    _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa);
+                    blockPreProcessors.Add(new AuRaBlockPreProcessor(_stateProvider, new AbiEncoder(), _chainSpec.AuRa));
                     break;
                 default:
                     throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");

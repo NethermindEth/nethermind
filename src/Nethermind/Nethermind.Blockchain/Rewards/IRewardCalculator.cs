@@ -18,7 +18,7 @@
 
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Rewards
 {
     public interface IRewardCalculator
     {

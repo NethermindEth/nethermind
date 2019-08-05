@@ -16,21 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
-    public class NoBlockRewards : IRewardCalculator
-    {   
-        private NoBlockRewards()
-        {
-        }
-
-        public static NoBlockRewards Instance { get; } = new NoBlockRewards();
-        
-        private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
-
-        public BlockReward[] CalculateRewards(Block block) => _noRewards;
+    public interface IBlockPreProcessor
+    {
+        Transaction[] InjectTransactions(Block block);
     }
 }

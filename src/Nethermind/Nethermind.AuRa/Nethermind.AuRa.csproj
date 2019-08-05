@@ -5,6 +5,9 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
       <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj" />
     </ItemGroup>
 

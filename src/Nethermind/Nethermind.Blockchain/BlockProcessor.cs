@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -49,6 +50,7 @@ namespace Nethermind.Blockchain
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITxPool _txPool;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IBlockPreProcessor[] _blockPreProcessors;
 
         public BlockProcessor(ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -61,7 +63,8 @@ namespace Nethermind.Blockchain
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
-            ILogManager logManager)
+            ILogManager logManager,
+            IEnumerable<IBlockPreProcessor> blockPreProcessors = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -70,6 +73,7 @@ namespace Nethermind.Blockchain
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _blockPreProcessors = blockPreProcessors?.ToArray() ?? new IBlockPreProcessor[0];
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -198,6 +202,7 @@ namespace Nethermind.Blockchain
             }
 
             Block block = PrepareBlockForProcessing(suggestedBlock);
+            PreProcessOne(block);
             var receipts = ProcessTransactions(block, options, blockTracer);
             SetReceiptsRootAndBloom(block, receipts);
             ApplyMinerRewards(block, blockTracer);
@@ -206,9 +211,11 @@ namespace Nethermind.Blockchain
 
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+            
             if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+                if (_logger.IsError) _logger.Error($"State: {_stateProvider.DumpState()}");
                 throw new InvalidBlockException(suggestedBlock.Hash);
             }
 
@@ -224,6 +231,18 @@ namespace Nethermind.Blockchain
 
             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
             return block;
+        }
+
+        private void PreProcessOne(Block block)
+        {
+            for (int i = 0; i < _blockPreProcessors.Length; i++)
+            {
+                var injectedTransactions = _blockPreProcessors[i].InjectTransactions(block);
+                for (int j = 0; j < injectedTransactions.Length; j++)
+                {
+                    _transactionProcessor.CallAndRestore(injectedTransactions[i], block.Header, NullTxTracer.Instance);
+                }
+            }
         }
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)

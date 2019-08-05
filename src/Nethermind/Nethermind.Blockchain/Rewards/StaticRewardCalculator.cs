@@ -16,22 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain.Rewards;
+using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Rewards
 {
-    public class NoBlockRewardsTests
+    public class StaticRewardCalculator : IRewardCalculator
     {
-        [Test]
-        public void No_rewards()
+        private readonly BigInteger _blockReward;
+
+        public StaticRewardCalculator(UInt256 blockReward)
         {
-            Block block = Build.A.Block.WithNumber(10).WithOmmers(Build.A.Block.WithNumber(9).TestObject).TestObject;
-            NoBlockRewards calculator = NoBlockRewards.Instance;
-            var rewards = calculator.CalculateRewards(block);
-            Assert.IsEmpty(rewards);
+            _blockReward = blockReward;
+        }
+
+        public BlockReward[] CalculateRewards(Block block)
+        {
+            return new[] { new BlockReward(block.Beneficiary, _blockReward) };
         }
     }
 }

@@ -80,7 +80,7 @@ namespace Nethermind.Store
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {new Rlp.DecoderContext(value).DecodeByteArray().ToHexString()}");
+                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {new Rlp.DecoderContext(value).DecodeByteArray().ToHexString(true, true)}");
             }
         }
 

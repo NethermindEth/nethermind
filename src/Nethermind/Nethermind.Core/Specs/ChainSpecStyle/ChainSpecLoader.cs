@@ -70,30 +70,32 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.Parameters.AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero;
-            chainSpec.Parameters.GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400;
-            chainSpec.Parameters.MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32;
-            chainSpec.Parameters.MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000;
-            chainSpec.Parameters.MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? long.MaxValue;
-            chainSpec.Parameters.MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0;
-            chainSpec.Parameters.Registrar = chainSpecJson.Params.EnsRegistrar;
-            chainSpec.Parameters.ForkBlock = chainSpecJson.Params.ForkBlock;
-            chainSpec.Parameters.ForkCanonHash = chainSpecJson.Params.ForkCanonHash;
-            chainSpec.Parameters.Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0;
-            chainSpec.Parameters.Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0;
-            chainSpec.Parameters.Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0;
-            chainSpec.Parameters.Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0;
-            chainSpec.Parameters.Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0;
-            chainSpec.Parameters.Eip140Transition = chainSpecJson.Params.Eip140Transition;
-            chainSpec.Parameters.Eip211Transition = chainSpecJson.Params.Eip211Transition;
-            chainSpec.Parameters.Eip214Transition = chainSpecJson.Params.Eip214Transition;
-            chainSpec.Parameters.Eip658Transition = chainSpecJson.Params.Eip658Transition;
-            chainSpec.Parameters.Eip145Transition = chainSpecJson.Params.Eip145Transition;
-            chainSpec.Parameters.Eip1014Transition = chainSpecJson.Params.Eip1014Transition;
-            chainSpec.Parameters.Eip1052Transition = chainSpecJson.Params.Eip1052Transition;
-            chainSpec.Parameters.Eip1283Transition = chainSpecJson.Params.Eip1283Transition;
-            chainSpec.Parameters.Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition;
+            chainSpec.Parameters = new ChainParameters
+            {
+                AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero,
+                GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
+                MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
+                MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
+                MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? long.MaxValue,
+                MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0,
+                Registrar = chainSpecJson.Params.EnsRegistrar,
+                ForkBlock = chainSpecJson.Params.ForkBlock,
+                ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
+                Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
+                Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,
+                Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0,
+                Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0,
+                Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0,
+                Eip140Transition = chainSpecJson.Params.Eip140Transition,
+                Eip211Transition = chainSpecJson.Params.Eip211Transition,
+                Eip214Transition = chainSpecJson.Params.Eip214Transition,
+                Eip658Transition = chainSpecJson.Params.Eip658Transition,
+                Eip145Transition = chainSpecJson.Params.Eip145Transition,
+                Eip1014Transition = chainSpecJson.Params.Eip1014Transition,
+                Eip1052Transition = chainSpecJson.Params.Eip1052Transition,
+                Eip1283Transition = chainSpecJson.Params.Eip1283Transition,
+                Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition
+            };
         }
 
         private void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -115,14 +117,16 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             if (chainSpecJson.Engine?.AuthorityRound != null)
             {
                 chainSpec.SealEngineType = SealEngineType.AuRa;
-                chainSpec.AuRa = new AuRaParameters();
-                chainSpec.AuRa.MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount;
-                chainSpec.AuRa.MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition;
-                chainSpec.AuRa.StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration;
-                chainSpec.AuRa.BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward;
-                chainSpec.AuRa.BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress;
-                chainSpec.AuRa.BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition;
-                chainSpec.AuRa.Validators = new Dictionary<long, Address>();
+                chainSpec.AuRa = new AuRaParameters
+                {
+                    MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
+                    MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition,
+                    StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration,
+                    BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
+                    BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
+                    BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
+                    Validators = new SortedList<long, Address>()
+                };
                 foreach ((long blockNumber, ChainSpecJson.AuRaValidatorJson validator) in chainSpecJson.Engine.AuthorityRound.Validators.Multi)
                 {
                     chainSpec.AuRa.Validators.Add(blockNumber, validator.SafeContract);
@@ -131,25 +135,29 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             else if (chainSpecJson.Engine?.Clique != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Clique;
-                chainSpec.Clique = new CliqueParameters();
-                chainSpec.Clique.Epoch = chainSpecJson.Engine.Clique.Epoch;
-                chainSpec.Clique.Period = chainSpecJson.Engine.Clique.Period;
-                chainSpec.Clique.Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero;
+                chainSpec.Clique = new CliqueParameters
+                {
+                    Epoch = chainSpecJson.Engine.Clique.Epoch,
+                    Period = chainSpecJson.Engine.Clique.Period,
+                    Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero
+                };
             }
             else if (chainSpecJson.Engine?.Ethash != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Ethash;
-                chainSpec.Ethash = new EthashParameters();
-                chainSpec.Ethash.MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L;
-                chainSpec.Ethash.DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? 0x0800L;
-                chainSpec.Ethash.DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L;
-                chainSpec.Ethash.HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0;
-                chainSpec.Ethash.DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
-                chainSpec.Ethash.DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary;
-                chainSpec.Ethash.DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0];
-                chainSpec.Ethash.Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L;
+                chainSpec.Ethash = new EthashParameters
+                {
+                    MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L,
+                    DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? 0x0800L,
+                    DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L,
+                    HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0,
+                    DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition,
+                    DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
+                    DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0],
+                    Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
+                    BlockRewards = new Dictionary<long, UInt256>()
+                };
 
-                chainSpec.Ethash.BlockRewards = new Dictionary<long, UInt256>();
                 foreach (KeyValuePair<string, UInt256> reward in chainSpecJson.Engine.Ethash.BlockReward)
                 {
                     chainSpec.Ethash.BlockRewards.Add(LongConverter.FromString(reward.Key), reward.Value);

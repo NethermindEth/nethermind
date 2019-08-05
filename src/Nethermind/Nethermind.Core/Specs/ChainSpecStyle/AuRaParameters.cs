@@ -41,6 +41,6 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         
         public long BlockRewardContractTransition { get; set; }
         
-        public Dictionary<long, Address> Validators { get; set; }
+        public SortedList<long, Address> Validators { get; set; }
     }
 }

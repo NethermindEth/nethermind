@@ -23,7 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Rewards
 {
     public class RewardCalculator : IRewardCalculator
     {
