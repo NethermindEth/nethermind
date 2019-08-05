@@ -202,10 +202,10 @@ namespace Nethermind.Blockchain
             }
 
             Block block = PrepareBlockForProcessing(suggestedBlock);
-            PreProcessOne(block);
             var receipts = ProcessTransactions(block, options, blockTracer);
             SetReceiptsRootAndBloom(block, receipts);
             ApplyMinerRewards(block, blockTracer);
+            PreProcessOne(block, blockTracer);
             
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
 
@@ -233,14 +233,14 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        private void PreProcessOne(Block block)
+        private void PreProcessOne(Block block, IBlockTracer blockTracer)
         {
             for (int i = 0; i < _blockPreProcessors.Length; i++)
             {
                 var injectedTransactions = _blockPreProcessors[i].InjectTransactions(block);
                 for (int j = 0; j < injectedTransactions.Length; j++)
                 {
-                    _transactionProcessor.CallAndRestore(injectedTransactions[i], block.Header, NullTxTracer.Instance);
+                    _transactionProcessor.Execute(injectedTransactions[i], block.Header, NullTxTracer.Instance);
                 }
             }
         }
