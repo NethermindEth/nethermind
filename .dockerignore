@@ -1,2 +1,5 @@
-**/obj/
-**/bin/
+**/obj
+**/bin
+**/logs
+**/ndm_db
+**/nethermind_db
