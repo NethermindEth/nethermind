@@ -114,23 +114,16 @@ namespace Nethermind.JsonRpc
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
 
-            var result = _rpcModuleProvider.ResolveAndRent(methodName);
-            try
+            var result = _rpcModuleProvider.Resolve(methodName);
+            if (result != null)
             {
-                if (result.Module != null)
-                {
-                    return await ExecuteAsync(rpcRequest, methodName, result.Method, result.Module);
-                }
-            }
-            finally
-            {
-                _rpcModuleProvider.Return(methodName, result.Module);
+                return await ExecuteAsync(rpcRequest, methodName, result);
             }
 
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
-        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method, object module)
+        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method)
         {
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
@@ -172,15 +165,23 @@ namespace Nethermind.JsonRpc
 
             //execute method
             IResultWrapper resultWrapper = null;
-            var invocationResult = method.Invoke(module, parameters);
-            if (invocationResult is IResultWrapper wrapper)
+            IModule module = _rpcModuleProvider.Rent(methodName);
+            try
             {
-                resultWrapper = wrapper;
+                var invocationResult = method.Invoke(module, parameters);
+                if (invocationResult is IResultWrapper wrapper)
+                {
+                    resultWrapper = wrapper;
+                }
+                else if (invocationResult is Task task)
+                {
+                    await task;
+                    resultWrapper = task.GetType().GetProperty("Result").GetValue(task) as IResultWrapper;
+                }
             }
-            else if (invocationResult is Task task)
+            finally
             {
-                await task;
-                resultWrapper = task.GetType().GetProperty("Result").GetValue(task) as IResultWrapper;
+                _rpcModuleProvider.Return(methodName, module);
             }
 
             if (resultWrapper is null)

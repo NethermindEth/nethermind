@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc
 
             if (rpcRequest.Model != null)
             {
-                if (_logger.IsInfo) _logger.Info($"JSON RPC request {rpcRequest.Model.Method}");
+                if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model.Method}");
                 
                 Metrics.JsonRpcRequests++;
                 JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
@@ -104,13 +104,13 @@ namespace Nethermind.JsonRpc
 
                 TraceResult(response);
                 stopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"  {rpcRequest.Model.Method} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+                if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model.Method} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
                 return JsonRpcResult.Single(response);
             }
 
             if (rpcRequest.Collection != null)
             {
-                if (_logger.IsInfo) _logger.Info($"{rpcRequest.Collection.Count} JSON RPC requests");
+                if (_logger.IsDebug) _logger.Debug($"{rpcRequest.Collection.Count} JSON RPC requests");
                 
                 var responses = new List<JsonRpcResponse>();
                 int requestIndex = 0;
@@ -134,13 +134,13 @@ namespace Nethermind.JsonRpc
                     }
 
                     singleRequestWatch.Stop();
-                    if (_logger.IsInfo) _logger.Info($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
+                    if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
                 }
 
                 TraceResult(responses);
                 stopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+                if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Collection.Count} requests handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
                 return JsonRpcResult.Collection(responses);
             }
 
@@ -148,7 +148,7 @@ namespace Nethermind.JsonRpc
             JsonRpcResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
             TraceResult(errorResponse);
             stopwatch.Stop();
-            if (_logger.IsInfo) _logger.Info($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
             return JsonRpcResult.Single(errorResponse);
         }
 

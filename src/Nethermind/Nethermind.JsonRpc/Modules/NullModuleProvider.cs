@@ -46,9 +46,14 @@ namespace Nethermind.JsonRpc.Modules
             return ModuleResolution.Unknown;
         }
 
-        public (IModule Module, MethodInfo Method) ResolveAndRent(string methodName)
+        public MethodInfo Resolve(string methodName)
         {
-            return (null, null);
+            return null;
+        }
+
+        public IModule Rent(string methodName)
+        {
+            return null;
         }
 
         public void Return(string methodName, IModule module)

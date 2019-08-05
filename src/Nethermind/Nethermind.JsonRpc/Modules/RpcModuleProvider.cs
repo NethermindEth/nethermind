@@ -81,15 +81,26 @@ namespace Nethermind.JsonRpc.Modules
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
-        public (IModule Module, MethodInfo Method) ResolveAndRent(string methodName)
+        public MethodInfo Resolve(string methodName)
         {
             if (!_methods.ContainsKey(methodName))
             {
-                return (null, null);
+                return null;
             }
             
             var result = _methods[methodName];
-            return (_pools[result.ModuleType].RentModule(), result.MethodInfo);
+            return result.MethodInfo;
+        }
+        
+        public IModule Rent(string methodName)
+        {
+            if (!_methods.ContainsKey(methodName))
+            {
+                return null;
+            }
+            
+            var result = _methods[methodName];
+            return _pools[result.ModuleType].RentModule();
         }
         
         public void Return(string methodName, IModule module)
