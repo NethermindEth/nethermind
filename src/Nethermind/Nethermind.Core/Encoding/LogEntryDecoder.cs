@@ -18,7 +18,6 @@
 
 using System;
 using System.IO;
-using System.Linq;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
@@ -66,10 +65,13 @@ namespace Nethermind.Core.Encoding
                 stream.Write(Rlp.OfEmptySequence.Bytes);
                 return;
             }
-            
-            Rlp.StartSequence(stream, GetLength(item, rlpBehaviors));
+
+            var (total, topics) = GetContentLength(item);
+            Rlp.StartSequence(stream, total);
             
             Rlp.Encode(stream, item.LoggersAddress);
+            Rlp.StartSequence(stream, topics);
+
             for (var i = 0; i < item.Topics.Length; i++)
             {
                 Rlp.Encode(stream, item.Topics[i]);
@@ -80,24 +82,48 @@ namespace Nethermind.Core.Encoding
 
         public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Rlp.LengthOfSequence(GetContentLength(item));
+            if (item == null)
+            {
+                return 1;
+            }
+            
+            return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
         
-        private int GetContentLength(LogEntry item)
+        private (int Total, int Topics) GetContentLength(LogEntry item)
         {
             var contentLength = 0;
             if (item == null)
             {
-                return contentLength;
+                return (contentLength, 0);
             }
 
             contentLength += Rlp.LengthOf(item.LoggersAddress);
+            
             for (var i = 0; i < item.Topics.Length; i++)
             {
                 contentLength += Rlp.LengthOf(item.Topics[i]);
             }
+            
+            
+            int topicsLength = GetTopicsLength(item);
+            contentLength += Rlp.GetSequenceRlpLength(topicsLength);
             contentLength += Rlp.LengthOf(item.Data);
-            return contentLength;
+            
+            return (contentLength, topicsLength);
         }
+        
+        private int GetTopicsLength(LogEntry item)
+        {
+            int topicsLength = 0;
+            for (int i = 0; i < item.Topics.Length; i++)
+            {
+                topicsLength += Rlp.LengthOf(item.Topics[i]);
+            }
+            
+            return topicsLength;
+        }
+        
+        
     }
 }

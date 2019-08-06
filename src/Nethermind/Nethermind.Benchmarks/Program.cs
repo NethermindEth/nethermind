@@ -62,16 +62,16 @@ namespace Nethermind.Benchmarks
 //            BenchmarkRunner.Run<RlpEncodeAccount>();
 //            BenchmarkRunner.Run<RlpDecodeBlock>();
 //            BenchmarkRunner.Run<RlpEncodeBlock>();
-//            BenchmarkRunner.Run<RlpEncodeHeader>();
+            BenchmarkRunner.Run<RlpEncodeHeader>();
 //            BenchmarkRunner.Run<RlpEncodeTransaction>();
 //              BenchmarkRunner.Run<RlpEncodeLong>();
 //              BenchmarkRunner.Run<RlpDecodeLong>();
 //              BenchmarkRunner.Run<RlpDecodeInt>();
-              BenchmarkRunner.Run<SignExtend>();
-            BenchmarkRunner.Run<BitwiseOr>();
-            BenchmarkRunner.Run<BitwiseAnd>();
-            BenchmarkRunner.Run<BitwiseNot>();
-            BenchmarkRunner.Run<BitwiseXor>();
+//              BenchmarkRunner.Run<SignExtend>();
+//            BenchmarkRunner.Run<BitwiseOr>();
+//            BenchmarkRunner.Run<BitwiseAnd>();
+//            BenchmarkRunner.Run<BitwiseNot>();
+//            BenchmarkRunner.Run<BitwiseXor>();
 
 //              BenchmarkRunner.Run<PatriciaTree>();
 //            
