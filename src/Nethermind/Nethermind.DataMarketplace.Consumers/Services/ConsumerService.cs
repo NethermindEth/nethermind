@@ -257,19 +257,30 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var startingBlockNumber = receipt.BlockNumber;
-            var lastBlockNumber = startingBlockNumber + _depositRequiredConfirmations;
-            for (var i = startingBlockNumber; i < lastBlockNumber; i++)
+            var confirmations = 0;
+            var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
+            while (confirmations < _depositRequiredConfirmations)
             {
-                var block = _blockchainBridge.FindBlock(i);
                 var (blockExists, transactionConfirmed) = await ConfirmTransactionAsync(block, deposit);
                 if (!blockExists || !transactionConfirmed)
                 {
                     return;
                 }
+                
+                confirmations++;
+                if (confirmations == _depositRequiredConfirmations)
+                {
+                    break;
+                }
+
+                if (receipt.BlockHash == block.Hash)
+                {
+                    break;
+                }
+
+                block = _blockchainBridge.FindBlock(block.ParentHash);
             }
 
-            var confirmations = _blockchainBridge.Head.Number - startingBlockNumber;
             if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_depositRequiredConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
             var confirmed = confirmations >= _depositRequiredConfirmations;
             if (confirmed)
