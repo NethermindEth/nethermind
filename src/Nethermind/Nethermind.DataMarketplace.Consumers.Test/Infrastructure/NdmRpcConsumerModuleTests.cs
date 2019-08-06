@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -68,7 +69,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void module_type_should_be_ndm_consumer()
         {
-            _rpc.ModuleType.Should().Be(ModuleType.NdmConsumer);
+             _rpc.GetType().GetCustomAttribute<RpcModuleAttribute>().ModuleType.Should().Be(ModuleType.NdmConsumer);
         }
 
         [Test]

@@ -23,7 +23,5 @@ namespace Nethermind.JsonRpc.Modules
 {
     public interface IModule
     {
-        ModuleType ModuleType { get; }
-        IReadOnlyCollection<JsonConverter> GetConverters();
     }
 }

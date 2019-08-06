@@ -18,21 +18,20 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.Blockchain
 {
-    internal class OneTimeProcessor : IBlockchainProcessor
+    public class OneTimeChainProcessor : IBlockchainProcessor
     {
-        private readonly IReadOnlyDbProvider _readOnlyDbProvider;
         private readonly IBlockchainProcessor _processor;
+        private readonly IReadOnlyDbProvider _readOnlyDbProvider;
 
         private object _lock = new object();
 
-        public OneTimeProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
+        public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));

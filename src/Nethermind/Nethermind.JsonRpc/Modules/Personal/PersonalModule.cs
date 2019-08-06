@@ -29,17 +29,15 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
-    public class PersonalModule : ModuleBase, IPersonalModule
+    public class PersonalModule : IPersonalModule
     {
         private Encoding _messageEncoding = Encoding.UTF8;
         private readonly IPersonalBridge _bridge;
 
-        public PersonalModule(IPersonalBridge bridge, ILogManager logManager) : base(logManager)
+        public PersonalModule(IPersonalBridge bridge, ILogManager logManager)
         {
             _bridge = bridge ?? throw new ArgumentNullException(nameof(bridge));
         }
-
-        public override ModuleType ModuleType => ModuleType.Personal;
 
         public ResultWrapper<Address> personal_importRawKey(byte keyData, string passphrase)
         {

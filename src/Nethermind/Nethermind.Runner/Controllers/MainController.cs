@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -70,8 +71,8 @@ namespace Nethermind.Runner.Controllers
         {
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
-                var result = await _jsonRpcProcessor.ProcessAsync(await reader.ReadToEndAsync());
-
+                string request = await reader.ReadToEndAsync();
+                var result = await _jsonRpcProcessor.ProcessAsync(request);
                 using (var streamWriter = new StreamWriter(Response.Body))
                 using (var jsonTextWriter = new JsonTextWriter(streamWriter))
                 {
@@ -85,8 +86,6 @@ namespace Nethermind.Runner.Controllers
                     }
                 }
             }
-
-            await Response.WriteAsync("\n");
         }
     }
 }

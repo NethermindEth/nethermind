@@ -19,38 +19,99 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
     public class RpcModuleProvider : IRpcModuleProvider
     {
+        public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
+        
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private List<ModuleInfo> _modules = new List<ModuleInfo>();
-        private List<ModuleInfo> _enabledModules = new List<ModuleInfo>();
+        private Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)> _methods = new Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)>();
+        private Dictionary<ModuleType, (Func<IModule> RentModule, Action<IModule> ReturnModule)> _pools = new Dictionary<ModuleType, (Func<IModule> RentModule, Action<IModule> ReturnModule)>();
+
+        private List<ModuleType> _modules = new List<ModuleType>();
+        private List<ModuleType> _enabledModules = new List<ModuleType>();
 
         public RpcModuleProvider(IJsonRpcConfig jsonRpcConfig)
         {
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
         }
 
-        public void Register<T>(IModule module) where T : IModule
+        private IDictionary<string, MethodInfo> GetMethodDict(Type type)
         {
-            ModuleInfo moduleInfo = new ModuleInfo(module.ModuleType, typeof(T), module);
-            _modules.Add(moduleInfo);
-            if (_jsonRpcConfig.EnabledModules.Contains(module.ModuleType))
+            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            return methods.ToDictionary(x => x.Name.Trim().ToLower());
+        }
+        
+        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
+        {
+            ModuleType moduleType = typeof(T).GetCustomAttribute<RpcModuleAttribute>().ModuleType;
+
+            _pools[moduleType] = (() => pool.GetModule(), (m) => pool.ReturnModule((T)m));
+            _modules.Add(moduleType);
+            
+            ((List<JsonConverter>)Converters).AddRange(pool.Factory.GetConverters());
+
+            foreach ((string name, MethodInfo info) in GetMethodDict(typeof(T)))
             {
-                _enabledModules.Add(moduleInfo);
+                _methods[name] = (moduleType, info);
+            }
+
+            if (_jsonRpcConfig.EnabledModules.Contains(moduleType))
+            {
+                _enabledModules.Add(moduleType);
             }
         }
 
-        public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
+        public IReadOnlyCollection<ModuleType> Enabled => _enabledModules;
+
+        public IReadOnlyCollection<ModuleType> All => _modules;
+        
+        public ModuleResolution Check(string methodName)
         {
-            return _enabledModules;
+            if (!_methods.ContainsKey(methodName))
+            {
+                return ModuleResolution.Unknown;
+            }
+            
+            var result = _methods[methodName];
+            return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
-        public IReadOnlyCollection<ModuleInfo> GetAllModules()
+        public MethodInfo Resolve(string methodName)
         {
-            return _modules;
+            if (!_methods.ContainsKey(methodName))
+            {
+                return null;
+            }
+            
+            var result = _methods[methodName];
+            return result.MethodInfo;
+        }
+        
+        public IModule Rent(string methodName)
+        {
+            if (!_methods.ContainsKey(methodName))
+            {
+                return null;
+            }
+            
+            var result = _methods[methodName];
+            return _pools[result.ModuleType].RentModule();
+        }
+        
+        public void Return(string methodName, IModule module)
+        {
+            if (!_methods.ContainsKey(methodName))
+            {
+                throw new InvalidOperationException("Not possible to return an unresolved module");
+            }
+            
+            var result = _methods[methodName];
+            _pools[result.ModuleType].ReturnModule(module);
         }
     }
 }

@@ -95,7 +95,7 @@ namespace Nethermind.Runner.Runners
             _webHost = webHost;
             _webHost.Start();
             if (_logger.IsInfo) _logger.Info($"JSON RPC     : {host}");
-            if (_logger.IsInfo) _logger.Info($"RPC modules  : {string.Join(", ", _moduleProvider.GetEnabledModules().Select(m => m.ModuleType.ToString()).OrderBy(x => x))}");
+            if (_logger.IsInfo) _logger.Info($"RPC modules  : {string.Join(", ", _moduleProvider.Enabled.OrderBy(x => x))}");
             return Task.CompletedTask;
         }
 

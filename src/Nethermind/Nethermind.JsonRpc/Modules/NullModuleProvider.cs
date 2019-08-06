@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -29,18 +31,33 @@ namespace Nethermind.JsonRpc.Modules
         {
         }
 
-        public void Register<T>(IModule module) where T : IModule
+        public void Register<T>(IRpcModulePool<T> pool) where T : IModule
         {
         }
 
-        public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
+        public IReadOnlyCollection<JsonConverter> Converters => ArraySegment<JsonConverter>.Empty;
+        
+        public IReadOnlyCollection<ModuleType> Enabled => ArraySegment<ModuleType>.Empty;
+        
+        public IReadOnlyCollection<ModuleType> All => ArraySegment<ModuleType>.Empty;
+        
+        public ModuleResolution Check(string methodName)
         {
-            return ArraySegment<ModuleInfo>.Empty;
+            return ModuleResolution.Unknown;
         }
 
-        public IReadOnlyCollection<ModuleInfo> GetAllModules()
+        public MethodInfo Resolve(string methodName)
         {
-            return ArraySegment<ModuleInfo>.Empty;
+            return null;
+        }
+
+        public IModule Rent(string methodName)
+        {
+            return null;
+        }
+
+        public void Return(string methodName, IModule module)
+        {
         }
     }
 }

@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
+    [RpcModule(ModuleType.Debug)]
     public interface IDebugModule : IModule
     {
         [JsonRpcMethod(Description = "")]

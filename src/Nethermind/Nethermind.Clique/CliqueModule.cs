@@ -28,16 +28,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Clique
 {
-    public class CliqueModule : ModuleBase, ICliqueModule
+    public class CliqueModule : ICliqueModule
     {
         private readonly ICliqueBridge _cliqueBridge;
 
-        public CliqueModule(ILogManager logManager, ICliqueBridge cliqueBridge) : base(logManager)
+        public CliqueModule(ILogManager logManager, ICliqueBridge cliqueBridge)
         {
             _cliqueBridge = cliqueBridge ?? throw new ArgumentNullException(nameof(cliqueBridge));
         }
-
-        public override ModuleType ModuleType => ModuleType.Clique;
 
         public ResultWrapper<Snapshot> clique_getSnapshot()
         {

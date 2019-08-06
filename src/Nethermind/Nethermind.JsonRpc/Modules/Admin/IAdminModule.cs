@@ -20,6 +20,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
+    [RpcModule(ModuleType.Admin)]
     public interface IAdminModule : IModule
     {
         Task<ResultWrapper<string>> admin_addPeer(string enode);

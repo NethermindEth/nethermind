@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             int accountsBefore = _bridge.ListAccounts().Length;
             string passphrase = "testPass";
             IPersonalModule module = new PersonalModule(_bridge, NullLogManager.Instance);
-            string serialized = RpcTest.TestSerializedRequest(module, "personal_newAccount", passphrase);
+            string serialized = RpcTest.TestSerializedRequest( module, "personal_newAccount", passphrase);
             var accountsNow = _bridge.ListAccounts();
             Assert.AreEqual(accountsBefore + 1, accountsNow.Length, "length");
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{accountsNow.Last()}\"}}", serialized);

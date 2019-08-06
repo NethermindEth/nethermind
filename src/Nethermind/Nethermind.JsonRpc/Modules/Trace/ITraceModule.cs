@@ -23,6 +23,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
+    [RpcModule(ModuleType.Trace)]
     public interface ITraceModule : IModule
     {
         [JsonRpcMethod(Description = "", IsImplemented = false)]

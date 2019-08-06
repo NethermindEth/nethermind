@@ -32,13 +32,12 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
-    public class TraceModule : ModuleBase, ITraceModule
+    public class TraceModule : ITraceModule
     {
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly ITracer _tracer;
 
         public TraceModule(IBlockchainBridge blockchainBridge, ILogManager logManager, ITracer tracer)
-            : base(logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
@@ -113,21 +112,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<ParityLikeTxTrace> trace_transaction(Keccak txHash)
         {
             return ResultWrapper<ParityLikeTxTrace>.Success(_tracer.ParityTrace(txHash, ParityTraceTypes.Trace));
-        }
-
-        public override ModuleType ModuleType => ModuleType.Trace;
-
-        public override IReadOnlyCollection<JsonConverter> GetConverters()
-        {
-            return new JsonConverter[]
-            {
-                new ParityLikeTxTraceConverter(),
-                new ParityAccountStateChangeConverter(),
-                new ParityTraceActionConverter(),
-                new ParityTraceResultConverter(),
-                new ParityVmOperationTraceConverter(),
-                new ParityVmTraceConverter()
-            };
         }
     }
 }

@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Web3
 {
+    [RpcModule(ModuleType.Web3)]
     public interface IWeb3Module : IModule
     {
         ResultWrapper<string> web3_clientVersion();

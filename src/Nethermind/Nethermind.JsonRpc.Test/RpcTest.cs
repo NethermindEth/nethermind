@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test.Modules;
@@ -35,23 +36,28 @@ namespace Nethermind.JsonRpc.Test
             return service.SendRequestAsync(request).Result;
         }
         
-        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        public static string TestSerializedRequest<T>(IReadOnlyCollection<JsonConverter> converters, T module, string method, params string[] parameters) where T : class, IModule
         {
-            IJsonRpcService service = BuildRpcService<T>(module);
+            IJsonRpcService service = BuildRpcService(module);
             JsonRpcRequest request = GetJsonRequest(method, parameters);
             JsonRpcResponse response = service.SendRequestAsync(request).Result;
             JsonSerializerSettings settings = new JsonSerializerSettings();
             settings.ContractResolver = new CamelCasePropertyNamesContractResolver();
-            settings.Converters = service.Converters.ToArray();
+            settings.Converters = service.Converters.Union(converters).ToArray();
             string serialized = JsonConvert.SerializeObject(response, settings);
             TestContext.WriteLine(serialized.Replace("\"", "\\\""));
             return serialized;
         }
         
+        public static string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IModule
+        {
+            return TestSerializedRequest(new JsonConverter[0], module, method, parameters);
+        }
+        
         public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
-            moduleProvider.Register<T>(module);
+            moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module)));
             IJsonRpcService service = new JsonRpcService(moduleProvider, NullLogManager.Instance);
             return service;
         }

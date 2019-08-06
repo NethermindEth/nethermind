@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Newtonsoft.Json;
-using NLog;
-
-namespace Nethermind.Core
+namespace Nethermind.JsonRpc.Modules
 {
-    public interface IJsonSerializer
+    public interface IRpcModulePool<T> where T : IModule
     {
-        [Todo(Improve.Refactor, "Move this method to a IRpcJsonSerializer")]
-        T DeserializeAnonymousType<T>(string json, T definition);
+        T GetModule();
         
-        [Todo(Improve.Refactor, "Move this method to a IRpcJsonSerializer")]
-        (T Model, List<T> Collection) DeserializeObjectOrArray<T>(string json);
-        
-        T Deserialize<T>(string json);
-        string Serialize<T>(T value, bool indented = false); // TODO: support serializing to stream
-        void RegisterConverter(JsonConverter converter);
+        void ReturnModule(T module);
+
+        IRpcModuleFactory<T> Factory { get; set; }
     }
 }

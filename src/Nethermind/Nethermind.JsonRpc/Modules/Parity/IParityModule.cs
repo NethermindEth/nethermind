@@ -18,6 +18,7 @@
 
 namespace Nethermind.JsonRpc.Modules.Parity
 {
+    [RpcModule(ModuleType.Parity)]
     public interface IParityModule : IModule
     {
         ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
