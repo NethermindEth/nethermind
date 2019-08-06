@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         [Test]
         public void module_type_should_be_ndm_consumer()
         {
-             _rpc.GetType().GetCustomAttribute<RpcModuleAttribute>().ModuleType.Should().Be(ModuleType.NdmConsumer);
+             typeof(INdmRpcConsumerModule).GetCustomAttribute<RpcModuleAttribute>().ModuleType.Should().Be(ModuleType.NdmConsumer);
         }
 
         [Test]
