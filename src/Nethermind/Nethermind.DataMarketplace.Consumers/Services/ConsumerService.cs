@@ -303,7 +303,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         {
             if (block is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block with hash: '{_blockchainBridge.Head.Hash}' for deposit: '{deposit.Id}' was not found.");
+                if (_logger.IsWarn) _logger.Warn("Block was not found.");
                 return (false, false);
             }
             
