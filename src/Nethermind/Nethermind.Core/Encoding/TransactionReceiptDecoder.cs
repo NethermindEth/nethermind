@@ -148,10 +148,6 @@ namespace Nethermind.Core.Encoding
                 return contentLength;
             }
             
-            contentLength += Rlp.LengthOf(item.GasUsedTotal);
-            contentLength += Rlp.LengthOf(item.Bloom);
-            contentLength += item.Logs.Sum(Rlp.LengthOf);
-
             if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
             {
                 contentLength += Rlp.LengthOf(item.BlockHash);
@@ -162,6 +158,16 @@ namespace Nethermind.Core.Encoding
                 contentLength += Rlp.LengthOf(item.ContractAddress);
                 contentLength += Rlp.LengthOf(item.GasUsed);
                 contentLength += Rlp.LengthOf(item.Error);
+            }
+            else
+            {
+                contentLength += Rlp.LengthOf(item.GasUsedTotal);
+                contentLength += Rlp.LengthOf(item.Bloom);
+                
+                for (var i = 0; i < item.Logs.Length; i++)
+                {
+                    contentLength += Rlp.LengthOf(item.Logs[i]);
+                }
             }
 
             

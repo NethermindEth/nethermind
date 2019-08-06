@@ -70,10 +70,11 @@ namespace Nethermind.Core.Encoding
             Rlp.StartSequence(stream, GetLength(item, rlpBehaviors));
             
             Rlp.Encode(stream, item.LoggersAddress);
-            foreach (var topic in item.Topics)
+            for (var i = 0; i < item.Topics.Length; i++)
             {
-                Rlp.Encode(stream, topic);
+                Rlp.Encode(stream, item.Topics[i]);
             }
+            
             Rlp.Encode(stream, item.Data);
         }
 
@@ -91,7 +92,10 @@ namespace Nethermind.Core.Encoding
             }
 
             contentLength += Rlp.LengthOf(item.LoggersAddress);
-            contentLength += item.Topics.Sum(Rlp.LengthOf);
+            for (var i = 0; i < item.Topics.Length; i++)
+            {
+                contentLength += Rlp.LengthOf(item.Topics[i]);
+            }
             contentLength += Rlp.LengthOf(item.Data);
             return contentLength;
         }
