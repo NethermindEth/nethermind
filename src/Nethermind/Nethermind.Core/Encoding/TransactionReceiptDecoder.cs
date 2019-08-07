@@ -76,7 +76,9 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
+
+            if (isStorage)
             {
                 return Rlp.Encode(
                     rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
@@ -110,8 +112,11 @@ namespace Nethermind.Core.Encoding
             
             var (totalLength, logsLength) = GetContentLength(item, rlpBehaviors);
             
+            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
+            bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
+
             Rlp.StartSequence(stream, totalLength);
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts))
+            if (isEip658receipts)
             {
                 Rlp.Encode(stream, item.StatusCode);
             }
@@ -120,7 +125,7 @@ namespace Nethermind.Core.Encoding
                 Rlp.Encode(stream, item.PostTransactionState);
             }
 
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            if (isStorage)
             {
                 Rlp.Encode(stream, item.BlockHash);
                 Rlp.Encode(stream, item.BlockNumber);
@@ -163,8 +168,9 @@ namespace Nethermind.Core.Encoding
             {
                 return (contentLength, 0);
             }
-            
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
+
+            if (isStorage)
             {
                 contentLength += Rlp.LengthOf(item.BlockHash);
                 contentLength += Rlp.LengthOf(item.BlockNumber);
@@ -182,8 +188,9 @@ namespace Nethermind.Core.Encoding
             logsLength = GetLogsLength(item);
             contentLength += Rlp.GetSequenceRlpLength(logsLength);
 
-            
-            if (rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts))
+            bool isEip658receipts = (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts;
+
+            if (isEip658receipts)
             {
                 contentLength += Rlp.LengthOf(item.StatusCode);
             }
