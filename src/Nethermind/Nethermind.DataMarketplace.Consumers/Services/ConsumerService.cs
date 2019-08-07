@@ -153,7 +153,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                         return;
                     }
 
-                    await TryConfirmDepositsAsync(t.Result.Items);
                     await TryClaimRefundsAsync(t.Result.Items);
                 });
         }
@@ -261,13 +260,18 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
             while (confirmations < _requiredBlockConfirmations)
             {
-                var (blockExists, transactionConfirmed) = await ConfirmTransactionAsync(block, deposit);
-                if (!blockExists || !transactionConfirmed)
+                if (block is null)
                 {
+                    if (_logger.IsWarn) _logger.Warn("Block was not found.");
                     return;
                 }
                 
-                confirmations++;
+                if (_depositService.VerifyDeposit(deposit.Consumer, deposit.Id, block.Header) > 0)
+                {
+                    confirmations++;
+                    if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}' (transaction hash: '{deposit.TransactionHash}'.");
+                }
+                
                 if (confirmations == _requiredBlockConfirmations)
                 {
                     break;
@@ -279,6 +283,16 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 }
 
                 block = _blockchainBridge.FindBlock(block.ParentHash);
+            }
+
+            var blocksDifference = _blockchainBridge.Head.Number - receipt.BlockNumber;
+            if (blocksDifference >= _requiredBlockConfirmations && confirmations < _requiredBlockConfirmations)
+            {
+                deposit.Reject();
+                await _depositRepository.UpdateAsync(deposit);
+                await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
+                if (_logger.IsError) _logger.Error($"Deposit: '{deposit.Id}' has been rejected - missing confirmation in block number: {block.Number}, hash: {block.Hash}' (transaction hash: '{deposit.TransactionHash}').");
+                return;
             }
 
             if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
@@ -296,28 +310,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
                 (uint) confirmations, _requiredBlockConfirmations, deposit.ConfirmationTimestamp, confirmed);
-        }
-
-        private async Task<(bool blockExists, bool transactionConfirmed)> ConfirmTransactionAsync(Block block,
-            DepositDetails deposit)
-        {
-            if (block is null)
-            {
-                if (_logger.IsWarn) _logger.Warn("Block was not found.");
-                return (false, false);
-            }
-            
-            if (_depositService.VerifyDeposit(deposit.Consumer, deposit.Id, block.Header) > 0)
-            {
-                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{deposit.TransactionHash}' for deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}'.");
-                return (true, true);
-            }
-            
-            deposit.Reject();
-            await _depositRepository.UpdateAsync(deposit);
-            await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
-            if (_logger.IsError) _logger.Error($"Deposit has been rejected - transaction with hash: '{deposit.TransactionHash}' for deposit: '{deposit.Id}' was not found in block number: {block.Number}, 'hash: {block.Hash}'.");
-            return (true, false);
         }
         
         private async Task TryClaimRefundsAsync(IEnumerable<DepositDetails> deposits)
