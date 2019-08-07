@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core.Specs;

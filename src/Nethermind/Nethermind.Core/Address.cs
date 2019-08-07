@@ -33,6 +33,7 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
         
         public static Address Zero { get; } = new Address(new byte[ByteLength]);
+        public static Address SystemUser { get; } = new Address("0xfffffffffffffffffffffffffffffffffffffffe");
         
         public byte[] Bytes { get; }
 
@@ -141,6 +142,11 @@ namespace Nethermind.Core
                 
             ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
             return new Address(in contractAddressKeccak);
+        }
+
+        public bool IsSystem()
+        {
+            return this == SystemUser;
         }
 
         public override string ToString()

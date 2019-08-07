@@ -162,10 +162,18 @@ namespace Nethermind.Core.Specs
         /// in chainspec as DifficultyBombDelays and BlockReward
         /// </summary>
         bool IsEip1234Enabled { get; }
-        
+
         /// <summary>
         /// Istanbul ChainID opcode
         /// </summary>
         bool IsEip1344Enabled { get; }
+
+        /// <summary>
+        /// Should EIP158 be ignored for this account.
+        /// </summary>
+        /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
+        /// <param name="address"></param>
+        /// <returns></returns>
+        bool IsEip158IgnoredAccount(Address address);
     }
 }

@@ -25,9 +25,9 @@ namespace Nethermind.AuRa.Rewards
 {
     public class AuRaRewardCalculator : IRewardCalculator
     {
-        private long _blockRewardContractTransition;
+        private readonly long _blockRewardContractTransition;
         private Address _blockRewardContractAddress;
-        private StaticRewardCalculator _blockRewardCalculator;
+        private readonly StaticRewardCalculator _blockRewardCalculator;
 
         public AuRaRewardCalculator(AuRaParameters auRaParameters)
         {
@@ -44,6 +44,7 @@ namespace Nethermind.AuRa.Rewards
             }
             else
             {
+                // TODO: Use RewardContract
                 return null;
             }
         }
