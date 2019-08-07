@@ -21,6 +21,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public enum DataRequestResult
     {
         ConsumerAccountLocked,
+        ProviderUnavailable,
         DepositNotFound,
         DepositUnconfirmed,
         DepositUnverified,
