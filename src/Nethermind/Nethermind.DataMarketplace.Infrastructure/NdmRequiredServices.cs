@@ -16,19 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -51,9 +50,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IBlockProcessor BlockProcessor { get; }
         public IBlockTree BlockTree { get; }
         public ITxPool TransactionPool { get; }
-        [Obsolete("Remove this - for now leaving it here to simplify the integration")]
-        public ITxPoolInfoProvider TransactionPoolInfoProvider { get; }
-        public ISpecProvider SpecProvider { get; }
+        public ITransactionProcessor TransactionProcessor { get; }
         public IReceiptStorage ReceiptStorage { get; }
         public IWallet Wallet { get; }
         public ITimestamper Timestamper { get; }
@@ -73,12 +70,11 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
             string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
             IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool transactionPool,
-            ITxPoolInfoProvider transactionPoolInfoProvider, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, ITimestamper timestamper, IEthereumEcdsa ecdsa,
-            IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider, IJsonSerializer jsonSerializer,
-            ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager ndmConsumerChannelManager,
-            INdmDataPublisher ndmDataPublisher, IGrpcServer grpcServer, IEthRequestService ethRequestService,
-            INdmNotifier notifier, bool enableUnsecuredDevWallet)
+            ITransactionProcessor transactionProcessor, IReceiptStorage receiptStorage, IWallet wallet,
+            ITimestamper timestamper, IEthereumEcdsa ecdsa, IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider,
+            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
+            INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
+            IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier, bool enableUnsecuredDevWallet)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -90,8 +86,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             BlockProcessor = blockProcessor;
             BlockTree = blockTree;
             TransactionPool = transactionPool;
-            TransactionPoolInfoProvider = transactionPoolInfoProvider;
-            SpecProvider = specProvider;
+            TransactionProcessor = transactionProcessor;
             ReceiptStorage = receiptStorage;
             Wallet = wallet;
             Timestamper = timestamper;

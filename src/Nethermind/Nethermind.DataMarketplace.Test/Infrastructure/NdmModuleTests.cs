@@ -31,6 +31,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -55,8 +56,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IBlockProcessor _blockProcessor;
         private IBlockTree _blockTree;
         private ITxPool _transactionPool;
-        private ITxPoolInfoProvider _transactionPoolInfoProvider;
-        private ISpecProvider _specProvider;
+        private ITransactionProcessor _transactionProcessor;
         private IReceiptStorage _receiptStorage;
         private IWallet _wallet;
         private ITimestamper _timestamper;
@@ -87,8 +87,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _blockTree = Substitute.For<IBlockTree>();
             _transactionPool = Substitute.For<ITxPool>();
-            _transactionPoolInfoProvider = Substitute.For<ITxPoolInfoProvider>();
-            _specProvider = Substitute.For<ISpecProvider>();
+            _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _wallet = Substitute.For<IWallet>();
             _timestamper = Substitute.For<ITimestamper>();
@@ -112,10 +111,9 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         {
             var services = _ndmModule.Init(new NdmRequiredServices(_configProvider, _configManager, _ndmConfig,
                 _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockProcessor, _blockTree,
-                _transactionPool, _transactionPoolInfoProvider, _specProvider, _receiptStorage,
-                _wallet, _timestamper, _ecdsa, _keyStore, _rpcModuleProvider, _jsonSerializer, _cryptoRandom,
-                _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer, _ethRequestService,
-                _notifier, _enableUnsecuredDevWallet));
+                _transactionPool, _transactionProcessor, _receiptStorage, _wallet, _timestamper, _ecdsa, _keyStore,
+                _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
+                _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();
             services.RequiredServices.Should().NotBeNull();

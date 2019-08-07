@@ -21,7 +21,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
@@ -53,19 +52,25 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var filterStore = new FilterStore();
             var filterManager = new FilterManager(filterStore, services.BlockProcessor, services.TransactionPool,
                 services.LogManager);
-            var state = new RpcState(services.BlockTree, services.SpecProvider, readOnlyDbProvider,
-                services.LogManager);
+
+            var logManager = services.LogManager;
+            var stateDb = readOnlyDbProvider.StateDb;
+            var codeDb = readOnlyDbProvider.CodeDb;
+            var stateReader = new StateReader(readOnlyDbProvider.StateDb, codeDb, logManager);
+            var stateProvider = new StateProvider(stateDb, codeDb, logManager);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            var blockTree = new ReadOnlyBlockTree(services.BlockTree);
             var blockchainBridge = new BlockchainBridge(
-                state.StateReader,
-                state.StateProvider,
-                state.StorageProvider,
-                state.BlockTree,
+                stateReader,
+                stateProvider,
+                storageProvider,
+                blockTree,
                 services.TransactionPool,
                 services.ReceiptStorage,
                 filterStore,
                 filterManager,
                 services.Wallet,
-                state.TransactionProcessor,
+                services.TransactionProcessor,
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
@@ -114,34 +119,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             consumerPassphrase.MakeReadOnly();
             wallet.UnlockAccount(consumerAddress, consumerPassphrase);
         }
-
-        private class RpcState
-        {
-            public readonly IStateReader StateReader;
-            public readonly IStateProvider StateProvider;
-            public readonly IStorageProvider StorageProvider;
-            public readonly IBlockhashProvider BlockhashProvider;
-            public readonly IVirtualMachine VirtualMachine;
-            public readonly TransactionProcessor TransactionProcessor;
-            public readonly IBlockTree BlockTree;
-
-            public RpcState(IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyDbProvider readOnlyDbProvider,
-                ILogManager logManager)
-            {
-                var stateDb = readOnlyDbProvider.StateDb;
-                var codeDb = readOnlyDbProvider.CodeDb;
-                StateReader = new StateReader(readOnlyDbProvider.StateDb, codeDb, logManager);
-                StateProvider = new StateProvider(stateDb, codeDb, logManager);
-                StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
-                BlockTree = new ReadOnlyBlockTree(blockTree);
-                BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
-                VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider,
-                    logManager);
-                TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider,
-                    VirtualMachine, logManager);
-            }
-        }
-
+        
         private class Services : INdmServices
         {
             public NdmRequiredServices RequiredServices { get; }

@@ -27,6 +27,7 @@ using Nethermind.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -42,9 +43,9 @@ namespace Nethermind.DataMarketplace.Initializers
     {
         Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider, IDbProvider dbProvider,
             string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool txPool,
-            ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IReceiptStorage receiptStorage,
-            IWallet wallet, ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
-            IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
+            ITransactionProcessor transactionProcessor, IReceiptStorage receiptStorage, IWallet wallet,
+            ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore,
+            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
             INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
             IGrpcServer grpcServer, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,

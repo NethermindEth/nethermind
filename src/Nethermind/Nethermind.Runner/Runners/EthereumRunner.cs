@@ -139,6 +139,7 @@ namespace Nethermind.Runner.Runners
         private IHeaderValidator _headerValidator;
         private IBlockDataRecoveryStep _recoveryStep;
         private IBlockProcessor _blockProcessor;
+        private ITransactionProcessor _transactionProcessor;
         private IRewardCalculator _rewardCalculator;
         private ISpecProvider _specProvider;
         private ISealer _sealer;
@@ -511,7 +512,7 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _logManager);
 
-            var transactionProcessor = new TransactionProcessor(
+            _transactionProcessor = new TransactionProcessor(
                 _specProvider,
                 stateProvider,
                 storageProvider,
@@ -522,7 +523,7 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _blockValidator,
                 _rewardCalculator,
-                transactionProcessor,
+                _transactionProcessor,
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _dbProvider.TraceDb,
@@ -822,7 +823,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
                 var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
-                    _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
+                    _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _transactionProcessor,
                     _receiptStorage, _wallet, _timestamper, _ethereumEcdsa, _rpcModuleProvider, _keyStore,
                     _ethereumJsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher,
                     _grpcServer, _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
