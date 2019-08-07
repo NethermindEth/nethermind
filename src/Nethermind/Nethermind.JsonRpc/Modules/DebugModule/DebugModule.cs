@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -27,23 +26,18 @@ using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public class DebugModule : ModuleBase, IDebugModule
+    public class DebugModule : IDebugModule
     {
         private readonly IDebugBridge _debugBridge;
+        private readonly ILogger _logger;
 
         public DebugModule(ILogManager logManager, IDebugBridge debugBridge)
-            : base(logManager)
         {
-            _debugBridge = debugBridge;
-        }
-
-        public override IReadOnlyCollection<JsonConverter> GetConverters()
-        {
-            return new[] {new GethLikeTxTraceConverter()};
+            _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
+            _logger = logManager.GetClassLogger();
         }
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)
@@ -54,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorType.NotFound);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
@@ -66,7 +60,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorType.NotFound);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: trace");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: trace");
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
@@ -84,7 +78,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
         }
 
@@ -107,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockNumber}", ErrorType.NotFound);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: blockTrace");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: blockTrace");
             return ResultWrapper<GethLikeTxTrace[]>.Success(blockTrace);
         }
 
@@ -119,7 +113,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
                 return ResultWrapper<GethLikeTxTrace[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: blockTrace");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash}, result: blockTrace");
             return ResultWrapper<GethLikeTxTrace[]>.Success(gethLikeBlockTrace);
         }
 
@@ -186,7 +180,5 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             var configValue = _debugBridge.GetConfigValue(category, name);
             return ResultWrapper<string>.Success(configValue);
         }
-
-        public override ModuleType ModuleType => ModuleType.Debug;
     }
 }

@@ -39,17 +39,17 @@ namespace Nethermind.Facade
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly ITxPool _txPool;
+        
         private readonly IWallet _wallet;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
         private readonly IStateReader _stateReader;
+        private readonly IEthereumEcdsa _ecdsa;
         private readonly IFilterManager _filterManager;
         private readonly IStateProvider _stateProvider;
         private readonly IReceiptStorage _receiptStorage;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IEthereumEcdsa _ecdsa;
-        private readonly ITxPoolInfoProvider _transactionPoolInfoProvider;
 
         public BlockchainBridge(
             IStateReader stateReader,
@@ -57,7 +57,6 @@ namespace Nethermind.Facade
             IStorageProvider storageProvider,
             IBlockTree blockTree,
             ITxPool txPool,
-            ITxPoolInfoProvider txPoolInfoProvider,
             IReceiptStorage receiptStorage,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -70,7 +69,6 @@ namespace Nethermind.Facade
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
-            _transactionPoolInfoProvider = txPoolInfoProvider ?? throw new ArgumentNullException(nameof(txPoolInfoProvider));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
@@ -257,9 +255,6 @@ namespace Nethermind.Facade
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
             return new FilterLog[0];
         }
-
-        public TxPoolInfo GetTxPoolInfo()
-            => _transactionPoolInfoProvider.GetInfo(_txPool.GetPendingTransactions());
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)

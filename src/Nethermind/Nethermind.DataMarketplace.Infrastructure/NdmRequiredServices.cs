@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -50,6 +51,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IBlockProcessor BlockProcessor { get; }
         public IBlockTree BlockTree { get; }
         public ITxPool TransactionPool { get; }
+        [Obsolete("Remove this - for now leaving it here to simplify the integration")]
         public ITxPoolInfoProvider TransactionPoolInfoProvider { get; }
         public ISpecProvider SpecProvider { get; }
         public IReceiptStorage ReceiptStorage { get; }

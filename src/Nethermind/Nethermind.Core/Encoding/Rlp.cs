@@ -321,6 +321,18 @@ namespace Nethermind.Core.Encoding
                 }
             }
         }
+        
+        public static void Encode(MemoryStream stream, string value)
+        {
+            if (value == null)
+            {
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                Encode(stream, System.Text.Encoding.ASCII.GetBytes(value));
+            }
+        }
 
         public static Rlp Encode(UInt256? value)
         {
@@ -2160,6 +2172,43 @@ namespace Nethermind.Core.Encoding
             }
 
             return LengthOfLength(array.Length) + 1 + array.Length;
+        }
+
+        public static int LengthOf(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return 1;
+            }
+            
+            var spanString = value.AsSpan();
+            
+            if (spanString.Length == 1 && spanString[0] < 128)
+            {
+                return 1;
+            }
+            
+            if (spanString.Length < 56)
+            {
+                return spanString.Length + 1;
+            }
+            
+            return LengthOfLength(spanString.Length) + 1 + spanString.Length;
+        }
+
+        public static int LengthOf(byte value)
+        {
+            return 1;
+        }
+        
+        public static int LengthOf(LogEntry item) 
+        {
+            if (Decoders.ContainsKey(typeof(LogEntry)))
+            {
+                return ((IRlpDecoder<LogEntry>) Decoders[typeof(LogEntry)]).GetLength(item, RlpBehaviors.None);
+            }
+
+            throw new RlpException($"{nameof(Rlp)} does not support length of {typeof(LogEntry).Name}");
         }
     }
 }

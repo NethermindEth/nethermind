@@ -29,13 +29,13 @@ using Nethermind.Store;
 namespace Nethermind.Runner.Runners
 {
     [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
-    internal class AlternativeChain
+    internal class ReadOnlyChain
     {
         public IBlockchainProcessor Processor { get; }
-        public IStateProvider StateProvider { get; }
+        public IStateProvider ReadOnlyStateProvider { get; }
 
-        public AlternativeChain(
-            IBlockTree blockTree,
+        public ReadOnlyChain(
+            ReadOnlyBlockTree readOnlyTree,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ISpecProvider specProvider,
@@ -45,15 +45,14 @@ namespace Nethermind.Runner.Runners
             ITxPool customTxPool,
             IReceiptStorage receiptStorage)
         {
-            StateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
-            StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, StateProvider, logManager);
-            IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
+            ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
+            StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, ReadOnlyStateProvider, logManager);
             BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree, logManager);
-            VirtualMachine virtualMachine = new VirtualMachine(StateProvider, storageProvider, blockhashProvider, specProvider, logManager);
-            ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, StateProvider, storageProvider, virtualMachine, logManager);
+            VirtualMachine virtualMachine = new VirtualMachine(ReadOnlyStateProvider, storageProvider, blockhashProvider, specProvider, logManager);
+            ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, ReadOnlyStateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, storageProvider, txPool, receiptStorage, logManager);
-            Processor = new OneTimeProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false));
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager);
+            Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false));
         }
     }
 }

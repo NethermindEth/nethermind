@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -45,6 +46,23 @@ namespace Nethermind.Core.Test.Encoding
             Rlp rlp = Rlp.Encode((LogEntry)null);
             LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
             Assert.Null(decoded);
+        }
+        
+        [Test]
+        public void Can_do_roundtrip_memory_stream()
+        {
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new [] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntryDecoder decoder = new LogEntryDecoder();
+            
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                decoder.Encode(stream, logEntry);
+                LogEntry deserialized = Rlp.Decode<LogEntry>(stream.ToArray());
+                
+                Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
+                Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
+                Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
+            }
         }
     }
 }

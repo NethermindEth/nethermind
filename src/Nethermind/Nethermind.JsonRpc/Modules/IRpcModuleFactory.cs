@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,29 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
-using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.Logging;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public abstract class ModuleBase : IModule
+    public interface IRpcModuleFactory<out T> where T : IModule
     {
-        protected readonly ILogger Logger;
-
-        protected ModuleBase(ILogManager logManager)
-        {
-            Logger = logManager.GetClassLogger();
-        }
+        T Create();
         
-        public abstract ModuleType ModuleType { get; }
-
-        public virtual IReadOnlyCollection<JsonConverter> GetConverters()
-        {
-            return Array.Empty<JsonConverter>();   
-        }
+        IReadOnlyCollection<JsonConverter> GetConverters();
     }
 }

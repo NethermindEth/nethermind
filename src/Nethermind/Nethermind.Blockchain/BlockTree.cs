@@ -696,7 +696,7 @@ namespace Nethermind.Blockchain
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
                     nameof(blockNumber));
             }
-
+            
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level == null)
             {

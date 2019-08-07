@@ -60,12 +60,64 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(MemoryStream stream, LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                stream.Write(Rlp.OfEmptySequence.Bytes);
+                return;
+            }
+
+            var (total, topics) = GetContentLength(item);
+            Rlp.StartSequence(stream, total);
+            
+            Rlp.Encode(stream, item.LoggersAddress);
+            Rlp.StartSequence(stream, topics);
+
+            for (var i = 0; i < item.Topics.Length; i++)
+            {
+                Rlp.Encode(stream, item.Topics[i]);
+            }
+            
+            Rlp.Encode(stream, item.Data);
         }
 
-        public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors)
+        public int GetLength(LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotImplementedException();
+            if (item == null)
+            {
+                return 1;
+            }
+            
+            return Rlp.LengthOfSequence(GetContentLength(item).Total);
         }
+        
+        private (int Total, int Topics) GetContentLength(LogEntry item)
+        {
+            var contentLength = 0;
+            if (item == null)
+            {
+                return (contentLength, 0);
+            }
+
+            contentLength += Rlp.LengthOf(item.LoggersAddress);
+            
+            int topicsLength = GetTopicsLength(item);
+            contentLength += Rlp.GetSequenceRlpLength(topicsLength);
+            contentLength += Rlp.LengthOf(item.Data);
+            
+            return (contentLength, topicsLength);
+        }
+        
+        private int GetTopicsLength(LogEntry item)
+        {
+            int topicsLength = 0;
+            for (int i = 0; i < item.Topics.Length; i++)
+            {
+                topicsLength += Rlp.LengthOf(item.Topics[i]);
+            }
+            
+            return topicsLength;
+        }
+        
+        
     }
 }

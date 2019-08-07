@@ -16,15 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Store;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.Blockchain
 {
-    internal class RpcState
+    public class ReadOnlyTxProcessingEnv
     {
         public IStateReader StateReader;
         public IStateProvider StateProvider;
@@ -34,7 +33,7 @@ namespace Nethermind.Runner.Runners
         public TransactionProcessor TransactionProcessor;
         public IBlockTree BlockTree;
 
-        public RpcState(IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyDbProvider readOnlyDbProvider, ILogManager logManager)
+        public ReadOnlyTxProcessingEnv(IReadOnlyDbProvider readOnlyDbProvider, ReadOnlyBlockTree readOnlyBlockTree, ISpecProvider specProvider, ILogManager logManager)
         {
             ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
             IDb codeDb = readOnlyDbProvider.CodeDb;
@@ -43,11 +42,17 @@ namespace Nethermind.Runner.Runners
             StateProvider = new StateProvider(stateDb, codeDb, logManager);
             StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
 
-            BlockTree = new ReadOnlyBlockTree(blockTree);
+            BlockTree = readOnlyBlockTree;
             BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
             VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, VirtualMachine, logManager);
+        }
+
+        public void Reset()
+        {
+            StateProvider.Reset();
+            StorageProvider.Reset();
         }
     }
 }

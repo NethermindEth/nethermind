@@ -22,6 +22,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
+    [RpcModule(ModuleType.Personal)]
     public interface IPersonalModule : IModule
     {   
         [JsonRpcMethod(Description = "", IsImplemented = false)]

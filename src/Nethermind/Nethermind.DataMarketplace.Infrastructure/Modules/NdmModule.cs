@@ -61,7 +61,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 state.StorageProvider,
                 state.BlockTree,
                 services.TransactionPool,
-                services.TransactionPoolInfoProvider,
                 services.ReceiptStorage,
                 filterStore,
                 filterManager,

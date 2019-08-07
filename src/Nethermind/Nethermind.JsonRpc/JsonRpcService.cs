@@ -61,15 +61,12 @@ namespace Nethermind.JsonRpc
             _rpcModuleProvider = rpcModuleProvider;
             _serializer = new JsonSerializer();
 
-            foreach (ModuleInfo module in _rpcModuleProvider.GetEnabledModules())
+            foreach (JsonConverter converter in rpcModuleProvider.Converters)
             {
-                foreach (JsonConverter converter in module.Converters)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} ({module.ModuleType} module)");
-                    _serializer.Converters.Add(converter);
-                    _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
-                    Converters.Add(converter);
-                }
+                if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} inside {nameof(JsonRpcService)}");
+                _serializer.Converters.Add(converter);
+                _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
+                Converters.Add(converter);
             }
 
             foreach (JsonConverter converter in EthereumJsonSerializer.BasicConverters)
@@ -83,8 +80,6 @@ namespace Nethermind.JsonRpc
 
         public async Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest rpcRequest)
         {
-            if (_logger.IsInfo) _logger.Info($"Handling JSON RPC request {rpcRequest.Id} {rpcRequest.Method}");
-
             try
             {
                 (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
@@ -119,19 +114,17 @@ namespace Nethermind.JsonRpc
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
 
-            var module = _rpcModuleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
-            if (module != null)
+            var result = _rpcModuleProvider.Resolve(methodName);
+            if (result != null)
             {
-                return await ExecuteAsync(rpcRequest, methodName, module.MethodDictionary[methodName], module.ModuleObject);
+                return await ExecuteAsync(rpcRequest, methodName, result);
             }
 
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
-        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method, object module)
+        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method)
         {
-            Console.WriteLine($"{methodName}");
-
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
             int missingParamsCount = expectedParameters.Length - (providedParameters?.Length ?? 0) + providedParameters?.Count(string.IsNullOrWhiteSpace) ?? 0;
@@ -172,15 +165,23 @@ namespace Nethermind.JsonRpc
 
             //execute method
             IResultWrapper resultWrapper = null;
-            var invocationResult = method.Invoke(module, parameters);
-            if (invocationResult is IResultWrapper wrapper)
+            IModule module = _rpcModuleProvider.Rent(methodName);
+            try
             {
-                resultWrapper = wrapper;
+                var invocationResult = method.Invoke(module, parameters);
+                if (invocationResult is IResultWrapper wrapper)
+                {
+                    resultWrapper = wrapper;
+                }
+                else if (invocationResult is Task task)
+                {
+                    await task;
+                    resultWrapper = task.GetType().GetProperty("Result").GetValue(task) as IResultWrapper;
+                }
             }
-            else if (invocationResult is Task task)
+            finally
             {
-                await task;
-                resultWrapper = task.GetType().GetProperty("Result").GetValue(task) as IResultWrapper;
+                _rpcModuleProvider.Return(methodName, module);
             }
 
             if (resultWrapper is null)
@@ -311,15 +312,15 @@ namespace Nethermind.JsonRpc
 
             methodName = methodName.Trim().ToLower();
 
-            var module = _rpcModuleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
-            if (module == null)
+            var result = _rpcModuleProvider.Check(methodName);
+            if (result == ModuleResolution.Unknown)
             {
                 return (ErrorType.MethodNotFound, $"Method {methodName} is not supported");
             }
 
-            if (_rpcModuleProvider.GetEnabledModules().All(x => x.ModuleType != module.ModuleType))
+            if (result == ModuleResolution.Disabled)
             {
-                return (ErrorType.InvalidRequest, $"{module.ModuleType} module is disabled");
+                return (ErrorType.InvalidRequest, $"{methodName} found but the containing module is disabled");
             }
 
             return (null, null);

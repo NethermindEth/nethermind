@@ -24,11 +24,11 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Net
 {
-    public class NetModule : ModuleBase, INetModule
+    public class NetModule : INetModule
     {
         private readonly INetBridge _netBridge;
 
-        public NetModule(ILogManager logManager, INetBridge netBridge) : base(logManager)
+        public NetModule(ILogManager logManager, INetBridge netBridge)
         {
             _netBridge = netBridge ?? throw new ArgumentNullException(nameof(netBridge));
         }
@@ -64,7 +64,5 @@ namespace Nethermind.JsonRpc.Modules.Net
             var result = _netBridge.LogPeerConnectionDetails();
             return ResultWrapper<bool>.Success(result);
         }
-
-        public override ModuleType ModuleType => ModuleType.Net;
     }
 }

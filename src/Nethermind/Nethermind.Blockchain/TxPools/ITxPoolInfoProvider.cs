@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-
 namespace Nethermind.Blockchain.TxPools
 {
     public interface ITxPoolInfoProvider
     {
-        TxPoolInfo GetInfo(Transaction[] transactions);
+        TxPoolInfo GetInfo();
     }
 }

@@ -22,26 +22,22 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Web3
 {
-    public class Web3Module : ModuleBase, IWeb3Module
+    public class Web3Module : IWeb3Module
     {
-        public Web3Module(ILogManager logManager) : base(logManager)
+        public Web3Module(ILogManager logManager)
         {
         }
 
         public ResultWrapper<string> web3_clientVersion()
         {
             var clientVersion = ClientVersion.Description;
-            if(Logger.IsDebug) Logger.Debug($"web3_clientVersion request, result: {clientVersion}");
             return ResultWrapper<string>.Success(clientVersion);
         }
 
         public ResultWrapper<Keccak> web3_sha3(byte[] data)
         {
             Keccak keccak = Keccak.Compute(data);
-            if(Logger.IsDebug) Logger.Debug($"web3_sha3 request, result: {keccak}");
             return ResultWrapper<Keccak>.Success(keccak);
         }
-        
-        public override ModuleType ModuleType => ModuleType.Web3;
     }
 }
