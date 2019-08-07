@@ -48,29 +48,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
             UnlockHardcodedAccounts(providerAddress, consumerAddress, services.Wallet);
-            var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
-            var filterStore = new FilterStore();
-            var filterManager = new FilterManager(filterStore, services.BlockProcessor, services.TransactionPool,
-                services.LogManager);
-
+            
             var logManager = services.LogManager;
-            var stateDb = readOnlyDbProvider.StateDb;
-            var codeDb = readOnlyDbProvider.CodeDb;
-            var stateReader = new StateReader(readOnlyDbProvider.StateDb, codeDb, logManager);
-            var stateProvider = new StateProvider(stateDb, codeDb, logManager);
-            var storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
-            var blockTree = new ReadOnlyBlockTree(services.BlockTree);
+            var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
+            var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
+            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
+                services.SpecProvider, logManager);
             var blockchainBridge = new BlockchainBridge(
-                stateReader,
-                stateProvider,
-                storageProvider,
-                blockTree,
+                readOnlyTxProcessingEnv.StateReader,
+                readOnlyTxProcessingEnv.StateProvider,
+                readOnlyTxProcessingEnv.StorageProvider,
+                readOnlyTxProcessingEnv.BlockTree,
                 services.TransactionPool,
                 services.ReceiptStorage,
-                filterStore,
-                filterManager,
+                services.FilterStore,
+                services.FilterManager,
                 services.Wallet,
-                services.TransactionProcessor,
+                readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();

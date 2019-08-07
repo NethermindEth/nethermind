@@ -18,6 +18,7 @@
 
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
@@ -53,11 +54,12 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IDbProvider _rocksProvider;
         private IMongoProvider _mongoProvider;
         private ILogManager _logManager;
-        private IBlockProcessor _blockProcessor;
         private IBlockTree _blockTree;
+        private ISpecProvider _specProvider;
         private ITxPool _transactionPool;
-        private ITransactionProcessor _transactionProcessor;
         private IReceiptStorage _receiptStorage;
+        private IFilterStore _filterStore;
+        private IFilterManager _filterManager;
         private IWallet _wallet;
         private ITimestamper _timestamper;
         private IEthereumEcdsa _ecdsa;
@@ -72,6 +74,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private IEthRequestService _ethRequestService;
         private INdmNotifier _notifier;
         private bool _enableUnsecuredDevWallet;
+        private IBlockProcessor _blockProcessor;
         private INdmModule _ndmModule;
 
         [SetUp]
@@ -84,11 +87,12 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _rocksProvider = Substitute.For<IDbProvider>();
             _mongoProvider = Substitute.For<IMongoProvider>();
             _logManager = Substitute.For<ILogManager>();
-            _blockProcessor = Substitute.For<IBlockProcessor>();
             _blockTree = Substitute.For<IBlockTree>();
+            _specProvider = Substitute.For<ISpecProvider>();
             _transactionPool = Substitute.For<ITxPool>();
-            _transactionProcessor = Substitute.For<ITransactionProcessor>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
+            _filterStore = Substitute.For<IFilterStore>();
+            _filterManager = Substitute.For<IFilterManager>();
             _wallet = Substitute.For<IWallet>();
             _timestamper = Substitute.For<ITimestamper>();
             _ecdsa = Substitute.For<IEthereumEcdsa>();
@@ -103,6 +107,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _ethRequestService = Substitute.For<IEthRequestService>();
             _notifier = Substitute.For<INdmNotifier>();
             _enableUnsecuredDevWallet = false;
+            _blockProcessor = Substitute.For<IBlockProcessor>();
             _ndmModule = new NdmModule();
         }
 
@@ -110,10 +115,11 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         public void init_should_return_services()
         {
             var services = _ndmModule.Init(new NdmRequiredServices(_configProvider, _configManager, _ndmConfig,
-                _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockProcessor, _blockTree,
-                _transactionPool, _transactionProcessor, _receiptStorage, _wallet, _timestamper, _ecdsa, _keyStore,
+                _baseDbPath, _rocksProvider, _mongoProvider, _logManager, _blockTree, _transactionPool, _specProvider,
+                _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
                 _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
-                _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet));
+                _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,
+                _blockProcessor));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();
             services.RequiredServices.Should().NotBeNull();

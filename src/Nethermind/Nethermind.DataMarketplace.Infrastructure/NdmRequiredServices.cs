@@ -17,17 +17,18 @@
  */
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
-using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -47,11 +48,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IDbProvider RocksProvider { get; }
         public IMongoProvider MongoProvider { get; }
         public ILogManager LogManager { get; }
-        public IBlockProcessor BlockProcessor { get; }
         public IBlockTree BlockTree { get; }
         public ITxPool TransactionPool { get; }
-        public ITransactionProcessor TransactionProcessor { get; }
+        public ISpecProvider SpecProvider { get; }
         public IReceiptStorage ReceiptStorage { get; }
+        public IFilterStore FilterStore { get; }
+        public IFilterManager FilterManager { get; }
         public IWallet Wallet { get; }
         public ITimestamper Timestamper { get; }
         public IEthereumEcdsa Ecdsa { get; }
@@ -66,15 +68,17 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IEthRequestService EthRequestService { get; }
         public INdmNotifier Notifier { get; }
         public bool EnableUnsecuredDevWallet { get; }
+        public IBlockProcessor BlockProcessor { get; }
 
         public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
             string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
-            IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool transactionPool,
-            ITransactionProcessor transactionProcessor, IReceiptStorage receiptStorage, IWallet wallet,
-            ITimestamper timestamper, IEthereumEcdsa ecdsa, IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider,
+            IBlockTree blockTree, ITxPool transactionPool, ISpecProvider specProvider, IReceiptStorage receiptStorage,
+            IFilterStore filterStore, IFilterManager filterManager, IWallet wallet, ITimestamper timestamper,
+            IEthereumEcdsa ecdsa, IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider,
             IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
-            IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier, bool enableUnsecuredDevWallet)
+            IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier,
+            bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -83,11 +87,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             RocksProvider = rocksProvider;
             MongoProvider = mongoProvider;
             LogManager = logManager;
-            BlockProcessor = blockProcessor;
             BlockTree = blockTree;
             TransactionPool = transactionPool;
-            TransactionProcessor = transactionProcessor;
+            SpecProvider = specProvider;
             ReceiptStorage = receiptStorage;
+            FilterStore = filterStore;
+            FilterManager = filterManager;
             Wallet = wallet;
             Timestamper = timestamper;
             Ecdsa = ecdsa;
@@ -102,6 +107,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             EthRequestService = ethRequestService;
             Notifier = notifier;
             EnableUnsecuredDevWallet = enableUnsecuredDevWallet;
+            BlockProcessor = blockProcessor;
         }
     }
 }

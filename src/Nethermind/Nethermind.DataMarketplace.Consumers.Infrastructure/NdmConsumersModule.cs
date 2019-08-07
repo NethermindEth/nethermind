@@ -76,6 +76,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     depositRepository = new DepositDetailsRocksRepository(rocksDbProvider.DepositsDb,
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
+                    
                         rocksDbProvider.ConsumerDepositApprovalsDb, depositApprovalRlpDecoder);
                     providerRepository = new ProviderRocksRepository(rocksDbProvider.DepositsDb,
                         depositDetailsRlpDecoder);
@@ -95,7 +96,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
                 services.CreatedServices.BlockchainBridge, services.RequiredServices.BlockProcessor,
                 services.CreatedServices.ConsumerAddress, services.RequiredServices.Enode.PublicKey,
-                services.RequiredServices.Timestamper, consumerNotifier, ndmConfig.BlockConfirmations, logManager);
+                services.RequiredServices.Timestamper, consumerNotifier,
+                ndmConfig.BlockConfirmations, logManager);
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Timestamper);
 
