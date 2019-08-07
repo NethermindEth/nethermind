@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService, reportService,
                     services.CreatedServices.JsonRpcNdmConsumerChannel, services.RequiredServices.EthRequestService,
-                    personalBridge, logManager)));
+                    personalBridge)));
 
             return new NdmConsumerServices(consumerService);
         }

@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _ethRequestService = Substitute.For<IEthRequestService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
             _rpc = new NdmRpcConsumerModule(_consumerService, _reportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge, LimboLogs.Instance);
+                _ethRequestService, _personalBridge);
         }
 
         [Test]
@@ -90,7 +90,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _reportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge, LimboLogs.Instance);
+                _ethRequestService, _personalBridge);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }

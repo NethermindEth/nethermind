@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IReportService reportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IPersonalBridge personalBridge, ILogManager logManager)
+            IPersonalBridge personalBridge)
         {
             _consumerService = consumerService;
             _reportService = reportService;
