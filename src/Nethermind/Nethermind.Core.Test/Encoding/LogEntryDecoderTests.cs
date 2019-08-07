@@ -41,6 +41,14 @@ namespace Nethermind.Core.Test.Encoding
         }
         
         [Test]
+        public void Can_handle_nulls()
+        {
+            Rlp rlp = Rlp.Encode((LogEntry)null);
+            LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
+            Assert.Null(decoded);
+        }
+        
+        [Test]
         public void Can_do_roundtrip_memory_stream()
         {
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new [] {TestItem.KeccakA, TestItem.KeccakB});
@@ -55,14 +63,6 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
                 Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
             }
-        }
-        
-        [Test]
-        public void Can_handle_nulls()
-        {
-            Rlp rlp = Rlp.Encode((LogEntry)null);
-            LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
-            Assert.Null(decoded);
         }
     }
 }

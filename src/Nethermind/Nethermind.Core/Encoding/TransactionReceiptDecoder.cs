@@ -108,7 +108,9 @@ namespace Nethermind.Core.Encoding
                 return;
             }
             
-            Rlp.StartSequence(stream, GetLength(item, rlpBehaviors));
+            var (totalLength, logsLength) = GetContentLength(item, rlpBehaviors);
+            
+            Rlp.StartSequence(stream, totalLength);
             if (rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts))
             {
                 Rlp.Encode(stream, item.StatusCode);
@@ -129,23 +131,37 @@ namespace Nethermind.Core.Encoding
                 Rlp.Encode(stream, item.GasUsed);
                 Rlp.Encode(stream, item.GasUsedTotal);
                 Rlp.Encode(stream, item.Bloom);
-                Rlp.Encode(stream, item.Logs);
+                
+                Rlp.StartSequence(stream, logsLength);
+
+                for (var i = 0; i < item.Logs.Length; i++)
+                {
+                    Rlp.Encode(stream, item.Logs[i]);
+                }
+                
                 Rlp.Encode(stream, item.Error);
             }
             else
             {
                 Rlp.Encode(stream, item.GasUsedTotal);
                 Rlp.Encode(stream, item.Bloom);
-                Rlp.Encode(stream, item.Logs);
+                
+                Rlp.StartSequence(stream, logsLength);
+
+                for (var i = 0; i < item.Logs.Length; i++)
+                {
+                    Rlp.Encode(stream, item.Logs[i]);
+                }
             }
         }
         
-        private int GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Logs) GetContentLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
             var contentLength = 0;
+            var logsLength = 0;
             if (item == null)
             {
-                return contentLength;
+                return (contentLength, 0);
             }
             
             if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
@@ -159,16 +175,12 @@ namespace Nethermind.Core.Encoding
                 contentLength += Rlp.LengthOf(item.GasUsed);
                 contentLength += Rlp.LengthOf(item.Error);
             }
-            else
-            {
-                contentLength += Rlp.LengthOf(item.GasUsedTotal);
-                contentLength += Rlp.LengthOf(item.Bloom);
-                
-                for (var i = 0; i < item.Logs.Length; i++)
-                {
-                    contentLength += Rlp.LengthOf(item.Logs[i]);
-                }
-            }
+            
+            contentLength += Rlp.LengthOf(item.GasUsedTotal);
+            contentLength += Rlp.LengthOf(item.Bloom);
+
+            logsLength = GetLogsLength(item);
+            contentLength += Rlp.GetSequenceRlpLength(logsLength);
 
             
             if (rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts))
@@ -180,12 +192,23 @@ namespace Nethermind.Core.Encoding
                 contentLength += Rlp.LengthOf(item.PostTransactionState);
             }
 
-            return contentLength;
+            return (contentLength, logsLength);
+        }
+        
+        private int GetLogsLength(TxReceipt item)
+        {
+            int logsLength = 0;
+            for (var i = 0; i < item.Logs.Length; i++)
+            {
+                logsLength += Rlp.LengthOf(item.Logs[i]);
+            }
+            
+            return logsLength;
         }
 
         public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
         {
-            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
         }
     }
 }

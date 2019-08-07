@@ -321,6 +321,18 @@ namespace Nethermind.Core.Encoding
                 }
             }
         }
+        
+        public static void Encode(MemoryStream stream, string value)
+        {
+            if (value == null)
+            {
+                stream.WriteByte(OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                Encode(stream, System.Text.Encoding.ASCII.GetBytes(value));
+            }
+        }
 
         public static Rlp Encode(UInt256? value)
         {

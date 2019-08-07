@@ -100,12 +100,6 @@ namespace Nethermind.Core.Encoding
 
             contentLength += Rlp.LengthOf(item.LoggersAddress);
             
-            for (var i = 0; i < item.Topics.Length; i++)
-            {
-                contentLength += Rlp.LengthOf(item.Topics[i]);
-            }
-            
-            
             int topicsLength = GetTopicsLength(item);
             contentLength += Rlp.GetSequenceRlpLength(topicsLength);
             contentLength += Rlp.LengthOf(item.Data);
