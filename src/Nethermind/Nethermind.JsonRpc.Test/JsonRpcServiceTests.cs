@@ -73,6 +73,15 @@ namespace Nethermind.JsonRpc.Test
         }
         
         [Test]
+        public void Eth_module_populates_size_when_returning_block_data()
+        {
+            IEthModule ethModule = Substitute.For<IEthModule>();
+            ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
+            JsonRpcResponse response = TestRequest(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
+            Assert.AreEqual(513L, (response.Result as BlockForRpc)?.Size);
+        }
+        
+        [Test]
         public void CanHandleOptionalArguments()
         {
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
