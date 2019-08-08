@@ -45,6 +45,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 {
     public class ConsumerService : IConsumerService
     {
+        private const int TryClaimRefundsIntervalSeconds = 60;
         private readonly ConcurrentDictionary<Keccak, ConsumerSession> _sessions =
             new ConcurrentDictionary<Keccak, ConsumerSession>();
 
@@ -97,6 +98,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly IEcdsa _ecdsa;
         private bool _accountLocked;
         private readonly Timer _timer;
+        private ulong _currentBlockTimestamp;
 
         public ConsumerService(IConfigManager configManager, string configId,
             IDepositDetailsRepository depositRepository, IConsumerDepositApprovalRepository depositApprovalRepository,
@@ -134,22 +136,25 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _wallet.AccountUnlocked += OnAccountUnlocked;
             _accountLocked = !_wallet.IsUnlocked(_consumerAddress);
             _blockProcessor.BlockProcessed += OnBlockProcessed;
-            _timer = new Timer(5000);
+            _timer = new Timer(TryClaimRefundsIntervalSeconds * 1000);
             _timer.Elapsed += TimerOnElapsed;
             _timer.Start();
         }
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
+            if (_logger.IsInfo) _logger.Info("Verifying whether any refunds might be claimed...");
             _depositRepository.BrowseAsync(new GetDeposits
                 {
-                    Results = int.MaxValue
+                    Results = int.MaxValue,
+                    EligibleToRefund = true,
+                    CurrentBlockTimestamp = _currentBlockTimestamp
                 })
                 .ContinueWith(async t =>
                 {
                     if (t.IsFaulted && _logger.IsError)
                     {
-                        _logger.Error($"Fetching deposits has failed.", t.Exception);
+                        _logger.Error($"Fetching the deposits has failed.", t.Exception);
                         return;
                     }
 
@@ -159,6 +164,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
+            _currentBlockTimestamp = (ulong) e.Block.Timestamp;
             _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);
             _depositRepository.BrowseAsync(new GetDeposits
             {
@@ -169,7 +175,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             {
                 if (t.IsFaulted && _logger.IsError)
                 {
-                    _logger.Error($"Fetching deposits has failed.", t.Exception);
+                    _logger.Error($"Fetching the deposits has failed.", t.Exception);
                     return;
                 }
 
@@ -200,7 +206,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             _accountLocked = false;
-            if (_logger.IsInfo) _logger.Info($"Unlocked consumer account: '{e.Address}', data streams can be enabled.");
+            if (_logger.IsInfo) _logger.Info($"Unlocked a consumer account: '{e.Address}', data streams can be enabled.");
         }
 
         private void OnAccountLocked(object sender, AccountLockedEventArgs e)
@@ -212,7 +218,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             
             _accountLocked = true;
             _consumerNotifier.SendConsumerAccountLockedAsync(e.Address);
-            if (_logger.IsInfo) _logger.Info($"Locked consumer account: '{e.Address}', all of the existing data streams will be disabled.");
+            if (_logger.IsInfo) _logger.Info($"Locked a consumer account: '{e.Address}', all of the existing data streams will be disabled.");
 
             var disableStreamTasks = from session in _sessions.Values
                 from client in session.Clients
@@ -222,7 +228,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             {
                 if (t.IsFaulted && _logger.IsError)
                 {
-                    _logger.Error("Disabling data stream has failed.", t.Exception);
+                    _logger.Error("Disabling the data stream has failed.", t.Exception);
                 }
             });
         }
@@ -256,14 +262,42 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var confirmations = 0;
+            var (confirmations, rejected) = VerifyDepositConfirmations(deposit, receipt);
+            if (rejected)
+            {
+                deposit.Reject();
+                await _depositRepository.UpdateAsync(deposit);
+                await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
+                return;
+            }
+            
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
+            var confirmed = confirmations >= _requiredBlockConfirmations;
+            if (confirmed)
+            {
+                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has been confirmed.");
+            }
+            
+            if (confirmations != deposit.Confirmations || confirmed)
+            {
+                deposit.SetConfirmations(confirmations);
+                await _depositRepository.UpdateAsync(deposit);
+            }
+
+            await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
+                confirmations, _requiredBlockConfirmations, deposit.ConfirmationTimestamp, confirmed);
+        }
+
+        private (uint confirmations, bool rejected) VerifyDepositConfirmations(DepositDetails deposit, TxReceipt receipt)
+        {
+            var confirmations = 0u;
             var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
             while (confirmations < _requiredBlockConfirmations)
             {
                 if (block is null)
                 {
                     if (_logger.IsWarn) _logger.Warn("Block was not found.");
-                    return;
+                    return (0, false);
                 }
                 
                 if (_depositService.VerifyDeposit(deposit.Consumer, deposit.Id, block.Header) > 0)
@@ -288,28 +322,11 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var blocksDifference = _blockchainBridge.Head.Number - receipt.BlockNumber;
             if (blocksDifference >= _requiredBlockConfirmations && confirmations < _requiredBlockConfirmations)
             {
-                deposit.Reject();
-                await _depositRepository.UpdateAsync(deposit);
-                await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
                 if (_logger.IsError) _logger.Error($"Deposit: '{deposit.Id}' has been rejected - missing confirmation in block number: {block.Number}, hash: {block.Hash}' (transaction hash: '{deposit.TransactionHash}').");
-                return;
+                return (confirmations, true);
             }
 
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
-            var confirmed = confirmations >= _requiredBlockConfirmations;
-            if (confirmed)
-            {
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has been confirmed.");
-            }
-            
-            if (confirmations != deposit.Confirmations || confirmed)
-            {
-                deposit.SetConfirmations((uint) confirmations);
-                await _depositRepository.UpdateAsync(deposit);
-            }
-
-            await _consumerNotifier.SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
-                (uint) confirmations, _requiredBlockConfirmations, deposit.ConfirmationTimestamp, confirmed);
+            return (confirmations, false);
         }
         
         private async Task TryClaimRefundsAsync(IEnumerable<DepositDetails> deposits)

@@ -78,6 +78,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 filteredDeposits = filteredDeposits.Where(d => !d.Rejected);
             }
+            
+            if (query.EligibleToRefund)
+            {
+                filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed &&
+                                                               (!(d.EarlyRefundTicket is null) ||
+                                                                query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime
+                                                               ));
+            }
 
             return Task.FromResult(filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query));
         }

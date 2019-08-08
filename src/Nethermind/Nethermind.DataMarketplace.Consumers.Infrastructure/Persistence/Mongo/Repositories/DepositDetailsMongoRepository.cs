@@ -50,7 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             }
 
             var deposits = Deposits.AsQueryable();
-            if (query.OnlyUnconfirmed || query.OnlyNotRejected)
+            if (query.OnlyUnconfirmed || query.OnlyNotRejected || query.EligibleToRefund)
             {
                 //MongoDB unsupported predicate: (d.Confirmations < d.RequiredConfirmations) - maybe due to uint type?
                 var allDeposits = await deposits.ToListAsync();
@@ -64,6 +64,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                 if (query.OnlyNotRejected)
                 {
                     filteredDeposits = filteredDeposits.Where(d => !d.Rejected);
+                }
+
+                if (query.EligibleToRefund)
+                {
+                    filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed &&
+                                                                   (!(d.EarlyRefundTicket is null) ||
+                                                                    query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime
+                                                                   ));
                 }
 
                 return filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query);
