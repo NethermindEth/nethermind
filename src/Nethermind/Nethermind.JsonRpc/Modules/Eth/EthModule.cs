@@ -30,6 +30,7 @@ using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Eth

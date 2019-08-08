@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Eip1186;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {

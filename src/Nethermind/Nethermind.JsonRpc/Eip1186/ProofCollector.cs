@@ -21,11 +21,9 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
-namespace Nethermind.JsonRpc
+namespace Nethermind.JsonRpc.Eip1186
 {
     /// <summary>
     ///{
@@ -148,27 +146,5 @@ namespace Nethermind.JsonRpc
         {
             throw new InvalidOperationException($"{nameof(ProofCollector)} does never expect to visit code");
         }
-    }
-
-    public class AccountProof
-    {
-        public byte[][] Proof { get; set; }
-        
-        public UInt256 Balance { get; set; }
-        
-        public Keccak CodeHash { get; set; }
-        
-        public UInt256 Nonce { get; set; }
-        
-        public Keccak StorageRoot { get; set; }
-        
-        public StorageProof[] StorageProofs { get; set; }
-    }
-
-    public class StorageProof
-    {
-        public byte[][] Proof { get; set; }
-        public Keccak Key { get; set; }
-        public byte[] Value { get; set; }
     }
 }
