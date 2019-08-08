@@ -312,7 +312,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     break;
                 }
 
-                if (receipt.BlockHash == block.Hash)
+                if (receipt.BlockHash == block.Hash || block.Number <= receipt.BlockNumber)
                 {
                     break;
                 }
