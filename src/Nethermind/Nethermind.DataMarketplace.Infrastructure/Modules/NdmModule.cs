@@ -21,7 +21,6 @@ using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
@@ -49,25 +48,25 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
             UnlockHardcodedAccounts(providerAddress, consumerAddress, services.Wallet);
+            
+            var logManager = services.LogManager;
+            var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
-            var filterStore = new FilterStore();
-            var filterManager = new FilterManager(filterStore, services.BlockProcessor, services.TransactionPool,
-                services.LogManager);
-            var state = new RpcState(services.BlockTree, services.SpecProvider, readOnlyDbProvider,
-                services.LogManager);
+            var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
+                services.SpecProvider, logManager);
             var blockchainBridge = new BlockchainBridge(
-                state.StateReader,
-                state.StateProvider,
-                state.StorageProvider,
-                state.BlockTree,
+                readOnlyTxProcessingEnv.StateReader,
+                readOnlyTxProcessingEnv.StateProvider,
+                readOnlyTxProcessingEnv.StorageProvider,
+                readOnlyTxProcessingEnv.BlockTree,
                 services.TransactionPool,
                 services.ReceiptStorage,
-                filterStore,
-                filterManager,
+                services.FilterStore,
+                services.FilterManager,
                 services.Wallet,
-                state.TransactionProcessor,
+                readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa);
-            var dataHeaderRlpDecoder = new DataHeaderDecoder();
+            var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
             var depositService = new DepositService(blockchainBridge, encoder, services.Wallet, contractAddress,
                 LimboLogs.Instance);
@@ -76,7 +75,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
 //            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
 
-            return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataHeaderRlpDecoder,
+            return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
                 depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
                 blockchainBridge));
         }
@@ -87,10 +86,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             DataDeliveryReceiptRequestDecoder.Init();
             DataDeliveryReceiptToMergeDecoder.Init();
             DataDeliveryReceiptDetailsDecoder.Init();
-            DataHeaderDecoder.Init();
-            DataHeaderRuleDecoder.Init();
-            DataHeaderRulesDecoder.Init();
-            DataHeaderProviderDecoder.Init();
+            DataAssetDecoder.Init();
+            DataAssetRuleDecoder.Init();
+            DataAssetRulesDecoder.Init();
+            DataAssetProviderDecoder.Init();
             DataRequestDecoder.Init();
             DepositDecoder.Init();
             DepositApprovalDecoder.Init();
@@ -114,34 +113,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             consumerPassphrase.MakeReadOnly();
             wallet.UnlockAccount(consumerAddress, consumerPassphrase);
         }
-
-        private class RpcState
-        {
-            public readonly IStateReader StateReader;
-            public readonly IStateProvider StateProvider;
-            public readonly IStorageProvider StorageProvider;
-            public readonly IBlockhashProvider BlockhashProvider;
-            public readonly IVirtualMachine VirtualMachine;
-            public readonly TransactionProcessor TransactionProcessor;
-            public readonly IBlockTree BlockTree;
-
-            public RpcState(IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyDbProvider readOnlyDbProvider,
-                ILogManager logManager)
-            {
-                var stateDb = readOnlyDbProvider.StateDb;
-                var codeDb = readOnlyDbProvider.CodeDb;
-                StateReader = new StateReader(readOnlyDbProvider.StateDb, codeDb, logManager);
-                StateProvider = new StateProvider(stateDb, codeDb, logManager);
-                StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
-                BlockTree = new ReadOnlyBlockTree(blockTree);
-                BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
-                VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, specProvider,
-                    logManager);
-                TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider,
-                    VirtualMachine, logManager);
-            }
-        }
-
+        
         private class Services : INdmServices
         {
             public NdmRequiredServices RequiredServices { get; }

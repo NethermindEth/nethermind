@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _bridge.NextBlockPlease(timestamp);
             
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Keccak headerId = Keccak.Compute("data header");
+            Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = timestamp + 4;
             UInt256 value = 1.Ether();
             uint units = 10U;
@@ -61,7 +61,7 @@ namespace Nethermind.DataMarketplace.Test.Services
                 new AbiBytes(16),
                 AbiType.Address,
                 AbiType.Address);
-            byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, headerId.Bytes, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
+            byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, assetId.Bytes, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             Keccak depositId = Keccak.Compute(depositData);
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
@@ -78,7 +78,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
             _bridge.NextBlockPlease(expiryTime + 1);
-            RefundClaim refundClaim = new RefundClaim(depositId, headerId, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
+            RefundClaim refundClaim = new RefundClaim(depositId, assetId, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             UInt256 balanceBefore = _state.GetBalance(_consumerAccount);
             Keccak refundTxHash = refundService.ClaimRefund(_consumerAccount, refundClaim);
             TxReceipt refundReceipt = _bridge.GetReceipt(refundTxHash);
@@ -95,7 +95,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _bridge.NextBlockPlease(timestamp);
             
             DepositService depositService = new DepositService(_bridge, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
-            Keccak headerId = Keccak.Compute("data header");
+            Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = timestamp + (uint)TimeSpan.FromDays(4).TotalSeconds;
             UInt256 value = 1.Ether();
             uint units = 10U;
@@ -110,7 +110,7 @@ namespace Nethermind.DataMarketplace.Test.Services
                 AbiType.Address,
                 AbiType.Address);
             
-            byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, headerId.Bytes, units, value, expiryTime, pepper, _providerAccount, _consumerAccount);
+            byte[] depositData = _abiEncoder.Encode(AbiEncodingStyle.Packed, depositAbiDef, assetId.Bytes, units, value, expiryTime, pepper, _providerAccount, _consumerAccount);
             Keccak depositId = Keccak.Compute(depositData);
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
@@ -133,7 +133,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _bridge.NextBlockPlease(newTimestamp);
             
             Signature earlySig = _wallet.Sign(Keccak.Compute(earlyRefundData), _providerAccount);
-            EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(depositId, headerId, units, value, expiryTime, pepper, _providerAccount, claimableAfter, earlySig,_consumerAccount);
+            EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(depositId, assetId, units, value, expiryTime, pepper, _providerAccount, claimableAfter, earlySig,_consumerAccount);
             UInt256 balanceBefore = _state.GetBalance(_consumerAccount);
             
             Keccak refundTxHash = refundService.ClaimEarlyRefund(_consumerAccount, earlyRefundClaim);

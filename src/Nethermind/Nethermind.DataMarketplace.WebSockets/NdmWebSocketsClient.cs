@@ -47,18 +47,18 @@ namespace Nethermind.DataMarketplace.WebSockets
                 return Task.CompletedTask;
             }
 
-            var (dataHeaderId, headerData) = GetDataInfo(data);
-            if (dataHeaderId is null || string.IsNullOrWhiteSpace(headerData))
+            var (dataAssetId, headerData) = GetDataInfo(data);
+            if (dataAssetId is null || string.IsNullOrWhiteSpace(headerData))
             {
                 return Task.CompletedTask;
             }
 
-            _dataPublisher.Publish(new DataAssetData(dataHeaderId, headerData));
+            _dataPublisher.Publish(new DataAssetData(dataAssetId, headerData));
 
             return Task.CompletedTask;
         }
 
-        private static (Keccak dataHeaderId, string data) GetDataInfo(byte[] bytes)
+        private static (Keccak dataAssetId, string data) GetDataInfo(byte[] bytes)
         {
             var request = Encoding.UTF8.GetString(bytes);
             var parts = request.Split('|');
@@ -68,11 +68,11 @@ namespace Nethermind.DataMarketplace.WebSockets
                 return (null, null);
             }
 
-            var dataHeaderId = parts[0];
+            var dataAssetId = parts[0];
             var extension = parts[1];
             var data = parts[2];
 
-            return string.IsNullOrWhiteSpace(dataHeaderId) ? (null, null) : (new Keccak(dataHeaderId), data);
+            return string.IsNullOrWhiteSpace(dataAssetId) ? (null, null) : (new Keccak(dataAssetId), data);
         }
 
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);

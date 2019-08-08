@@ -47,9 +47,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             }
             
             var depositApprovals = DepositApprovals.AsQueryable();
-            if (!(query.DataHeaderId is null))
+            if (!(query.DataAssetId is null))
             {
-                depositApprovals = depositApprovals.Where(a => a.HeaderId == query.DataHeaderId);
+                depositApprovals = depositApprovals.Where(a => a.AssetId == query.DataAssetId);
             }
 
             if (!(query.Provider is null))

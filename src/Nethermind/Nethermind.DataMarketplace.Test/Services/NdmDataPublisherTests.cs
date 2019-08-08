@@ -40,9 +40,9 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             object sender = null;
             NdmDataEventArgs eventArgs = null;
-            var headerId = Keccak.Zero;
-            var headerData = string.Empty;
-            var data = new DataAssetData(headerId, headerData);
+            var assetId = Keccak.Zero;
+            var assetData = string.Empty;
+            var data = new DataAssetData(assetId, assetData);
             _dataPublisher.DataPublished += (s, e) =>
             {
                 sender = s;
@@ -51,8 +51,8 @@ namespace Nethermind.DataMarketplace.Test.Services
             _dataPublisher.Publish(data);
             sender.Should().Be(_dataPublisher);
             eventArgs.DataAssetData.Should().Be(data);
-            data.AssetId.Should().Be(headerId);
-            data.Data.Should().BeEquivalentTo(headerData);
+            data.AssetId.Should().Be(assetId);
+            data.Data.Should().BeEquivalentTo(assetData);
         }
     }
 }

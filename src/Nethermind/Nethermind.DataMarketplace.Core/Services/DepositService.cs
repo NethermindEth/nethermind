@@ -99,6 +99,9 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
         public uint VerifyDeposit(Address onBehalfOf, Keccak depositId)
+            => VerifyDeposit(onBehalfOf, depositId, _blockchainBridge.Head);
+        
+        public uint VerifyDeposit(Address onBehalfOf, Keccak depositId, BlockHeader head)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.VerifyDepositAbiSig, depositId.Bytes);
             Transaction transaction = new Transaction();
@@ -109,7 +112,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             transaction.GasLimit = 100000;
             transaction.GasPrice = 0.GWei();
             transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
-            BlockchainBridge.CallOutput callOutput = _blockchainBridge.Call(_blockchainBridge.Head, transaction);
+            BlockchainBridge.CallOutput callOutput = _blockchainBridge.Call(head, transaction);
             return (callOutput.OutputData ?? new byte[] {0}).ToUInt32();
         }
     }

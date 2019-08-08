@@ -62,9 +62,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             }
 
             var filteredDepositApprovals = depositApprovals.AsEnumerable();
-            if (!(query.DataHeaderId is null))
+            if (!(query.DataAssetId is null))
             {
-                filteredDepositApprovals = filteredDepositApprovals.Where(a => a.HeaderId == query.DataHeaderId);
+                filteredDepositApprovals = filteredDepositApprovals.Where(a => a.AssetId == query.DataAssetId);
             }
 
             if (!(query.Provider is null))

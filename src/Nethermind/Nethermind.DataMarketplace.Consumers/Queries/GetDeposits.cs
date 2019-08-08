@@ -22,6 +22,9 @@ namespace Nethermind.DataMarketplace.Consumers.Queries
 {
     public class GetDeposits : PagedQueryBase
     {
-        public bool OnlyUnverified { get; set; }
+        public bool OnlyUnconfirmed { get; set; }
+        public bool OnlyNotRejected { get; set; }
+        public bool EligibleToRefund { get; set; }
+        public ulong CurrentBlockTimestamp { get; set; }
     }
 }

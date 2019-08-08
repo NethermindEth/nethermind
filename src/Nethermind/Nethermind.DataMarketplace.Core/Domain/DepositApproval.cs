@@ -24,20 +24,20 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public class DepositApproval
     {
         public Keccak Id { get; private set; }
-        public Keccak HeaderId { get; private set; }
-        public string HeaderName { get; private set; }
+        public Keccak AssetId { get; private set; }
+        public string AssetName { get; private set; }
         public string Kyc { get; private set; }
         public Address Consumer { get; private set; }
         public Address Provider { get; private set; }
         public ulong Timestamp { get; private set; }
         public DepositApprovalState State { get; private set; }
 
-        public DepositApproval(Keccak id, Keccak headerId, string headerName, string kyc, Address consumer,
+        public DepositApproval(Keccak id, Keccak assetId, string assetName, string kyc, Address consumer,
             Address provider, ulong timestamp, DepositApprovalState state = DepositApprovalState.Pending)
         {
             Id = id;
-            HeaderId = headerId;
-            HeaderName = headerName;
+            AssetId = assetId;
+            AssetName = assetName;
             Kyc = kyc;
             Consumer = consumer;
             Provider = provider;

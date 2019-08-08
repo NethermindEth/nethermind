@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 
             var id = context.DecodeKeccak();
             var depositId = context.DecodeKeccak();
-            var dataHeaderId = context.DecodeKeccak();
+            var dataAssetId = context.DecodeKeccak();
             var consumerAddress = context.DecodeAddress();
             var consumerNodeId = new PublicKey(context.DecodeByteArray());
             var providerAddress = context.DecodeAddress();
@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             var consumedUnitsFromProvider = context.DecodeUInt();
             var dataAvailability = (DataAvailability) context.DecodeInt();
 
-            return new ConsumerSession(id, depositId, dataHeaderId, consumerAddress, consumerNodeId, providerAddress,
+            return new ConsumerSession(id, depositId, dataAssetId, consumerAddress, consumerNodeId, providerAddress,
                 providerNodeId, state, startUnitsFromProvider, startUnitsFromConsumer, startTimestamp, finishTimestamp,
                 consumedUnits, unpaidUnits, paidUnits, settledUnits, consumedUnitsFromProvider, dataAvailability);
         }
@@ -79,7 +79,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             return Nethermind.Core.Encoding.Rlp.Encode(
                 Nethermind.Core.Encoding.Rlp.Encode(item.Id),
                 Nethermind.Core.Encoding.Rlp.Encode(item.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DataHeaderId),
+                Nethermind.Core.Encoding.Rlp.Encode(item.DataAssetId),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerAddress),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerNodeId.Bytes),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ProviderAddress),

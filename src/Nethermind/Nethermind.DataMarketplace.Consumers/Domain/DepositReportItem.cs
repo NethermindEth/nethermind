@@ -28,19 +28,23 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
     public class DepositReportItem
     {
         public Keccak Id { get; }
-        public Keccak HeaderId { get; }
-        public string HeaderName { get; }
+        public Keccak AssetId { get; }
+        public string AssetName { get; }
         public Address Provider { get; }
         public string ProviderName { get; }
         public UInt256 Value { get; }
         public uint Units { get; }
+        public Address Consumer { get; set; }
         public bool Completed { get; }
         public uint Timestamp { get; set; }
         public uint ExpiryTime { get; }
         public bool Expired { get; }
         public Keccak TransactionHash { get; }
-        public uint VerificationTimestamp { get; }
-        public bool Verified { get; }
+        public uint ConfirmationTimestamp { get; }
+        public uint Confirmations { get; }
+        public uint RequiredConfirmations { get; }
+        public bool Confirmed { get; }
+        public bool Rejected { get; }
         public Keccak ClaimedRefundTransactionHash { get; }
         public bool RefundClaimed { get; }
         public uint ConsumedUnits { get; }
@@ -52,24 +56,29 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public UInt256 RemainingValue { get; }
         public IEnumerable<DataDeliveryReceiptReportItem> Receipts { get; }
 
-        public DepositReportItem(Keccak id, Keccak headerId, string headerName, Address provider, string providerName,
-            UInt256 value, uint units, uint timestamp, uint expiryTime, bool expired, Keccak transactionHash,
-            uint verificationTimestamp, Keccak claimedRefundTransactionHash, uint consumedUnits,
+        public DepositReportItem(Keccak id, Keccak assetId, string assetName, Address provider, string providerName,
+            UInt256 value, uint units, Address consumer, uint timestamp, uint expiryTime, bool expired,
+            Keccak transactionHash, uint confirmationTimestamp, uint confirmations, uint requiredConfirmations,
+            bool confirmed, bool rejected, Keccak claimedRefundTransactionHash, uint consumedUnits,
             IEnumerable<DataDeliveryReceiptReportItem> receipts)
         {
             Id = id;
-            HeaderId = headerId;
-            HeaderName = headerName;
+            AssetId = assetId;
+            AssetName = assetName;
             Provider = provider;
             ProviderName = providerName;
             Value = value;
             Units = units;
+            Consumer = consumer;
             Timestamp = timestamp;
             ExpiryTime = expiryTime;
             Expired = expired;
             TransactionHash = transactionHash;
-            VerificationTimestamp = verificationTimestamp;
-            Verified = verificationTimestamp > 0;
+            ConfirmationTimestamp = confirmationTimestamp;
+            Confirmations = confirmations;
+            RequiredConfirmations = requiredConfirmations;
+            Confirmed = confirmed;
+            Rejected = rejected;
             ClaimedRefundTransactionHash = claimedRefundTransactionHash;
             RefundClaimed = !(claimedRefundTransactionHash is null);
             ConsumedUnits = consumedUnits;

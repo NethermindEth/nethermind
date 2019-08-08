@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Repositories
 {
     public interface IProviderRepository
     {
-        Task<IReadOnlyList<DataHeaderInfo>> GetDataHeadersAsync();
+        Task<IReadOnlyList<DataAssetInfo>> GetDataAssetsAsync();
         Task<IReadOnlyList<ProviderInfo>> GetProvidersAsync();
     }
 }

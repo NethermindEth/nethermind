@@ -20,7 +20,7 @@ namespace Nethermind.DataMarketplace.Integration.Test.JsonRpc.Dto
 {
     public class DataAssetDataDto
     {
-        public string DataHeaderId { get; set; }
+        public string DataAssetId { get; set; }
         public string Subscription { get; set; }
         public string Data { get; set; }
     }

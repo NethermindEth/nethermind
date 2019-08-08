@@ -23,7 +23,7 @@ namespace Nethermind.DataMarketplace.TestRunner.JsonRpc.Dto
         public DepositDto Deposit { get; set; }
         public bool Verified { get; set; }
         public string TransactionHash { get; set; }
-        public DataHeaderDto DataHeader { get; set; }
+        public DataAssetDto DataAsset { get; set; }
         public DataRequestDto DataRequest { get; set; }
         public string[] Subscriptions { get; set; }
         public bool StreamEnabled { get; set; }

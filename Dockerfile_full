@@ -2,7 +2,7 @@ FROM ubuntu:18.04 AS clone
 WORKDIR /src
 RUN apt-get update -y && apt-get install -y git && \ 
     git clone https://github.com/NethermindEth/nethermind && \
-    cd nethermind && git submodule update --init
+    cd nethermind && git -c submodule."src/tests".update=none submodule update --init
     
 FROM microsoft/dotnet:2.2-sdk AS build
 COPY --from=clone /src .

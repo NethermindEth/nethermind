@@ -25,7 +25,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public class RefundClaim
     {
         public Keccak DepositId { get; }
-        public Keccak HeaderId { get; }
+        public Keccak AssetId { get; }
         public uint Units { get; }
         public UInt256 Value { get; }
         public uint ExpiryTime { get; }
@@ -33,11 +33,11 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public Address Provider { get; }
         public Address RefundTo { get; }
 
-        public RefundClaim(Keccak depositId, Keccak headerId, uint units, UInt256 value,
+        public RefundClaim(Keccak depositId, Keccak assetId, uint units, UInt256 value,
             uint expiryTime, byte[] pepper, Address provider, Address refundTo)
         {
             DepositId = depositId;
-            HeaderId = headerId;
+            AssetId = assetId;
             Units = units;
             Value = value;
             ExpiryTime = expiryTime;

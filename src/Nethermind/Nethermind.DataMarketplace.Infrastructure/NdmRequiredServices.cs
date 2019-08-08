@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
@@ -48,13 +48,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IDbProvider RocksProvider { get; }
         public IMongoProvider MongoProvider { get; }
         public ILogManager LogManager { get; }
-        public IBlockProcessor BlockProcessor { get; }
         public IBlockTree BlockTree { get; }
         public ITxPool TransactionPool { get; }
-        [Obsolete("Remove this - for now leaving it here to simplify the integration")]
-        public ITxPoolInfoProvider TransactionPoolInfoProvider { get; }
         public ISpecProvider SpecProvider { get; }
         public IReceiptStorage ReceiptStorage { get; }
+        public IFilterStore FilterStore { get; }
+        public IFilterManager FilterManager { get; }
         public IWallet Wallet { get; }
         public ITimestamper Timestamper { get; }
         public IEthereumEcdsa Ecdsa { get; }
@@ -69,16 +68,17 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IEthRequestService EthRequestService { get; }
         public INdmNotifier Notifier { get; }
         public bool EnableUnsecuredDevWallet { get; }
+        public IBlockProcessor BlockProcessor { get; }
 
         public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
             string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
-            IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool transactionPool,
-            ITxPoolInfoProvider transactionPoolInfoProvider, ISpecProvider specProvider,
-            IReceiptStorage receiptStorage, IWallet wallet, ITimestamper timestamper, IEthereumEcdsa ecdsa,
-            IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider, IJsonSerializer jsonSerializer,
-            ICryptoRandom cryptoRandom, IEnode enode, INdmConsumerChannelManager ndmConsumerChannelManager,
-            INdmDataPublisher ndmDataPublisher, IGrpcServer grpcServer, IEthRequestService ethRequestService,
-            INdmNotifier notifier, bool enableUnsecuredDevWallet)
+            IBlockTree blockTree, ITxPool transactionPool, ISpecProvider specProvider, IReceiptStorage receiptStorage,
+            IFilterStore filterStore, IFilterManager filterManager, IWallet wallet, ITimestamper timestamper,
+            IEthereumEcdsa ecdsa, IKeyStore keyStore, IRpcModuleProvider rpcModuleProvider,
+            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
+            INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
+            IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier,
+            bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -87,12 +87,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
             RocksProvider = rocksProvider;
             MongoProvider = mongoProvider;
             LogManager = logManager;
-            BlockProcessor = blockProcessor;
             BlockTree = blockTree;
             TransactionPool = transactionPool;
-            TransactionPoolInfoProvider = transactionPoolInfoProvider;
             SpecProvider = specProvider;
             ReceiptStorage = receiptStorage;
+            FilterStore = filterStore;
+            FilterManager = filterManager;
             Wallet = wallet;
             Timestamper = timestamper;
             Ecdsa = ecdsa;
@@ -107,6 +107,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             EthRequestService = ethRequestService;
             Notifier = notifier;
             EnableUnsecuredDevWallet = enableUnsecuredDevWallet;
+            BlockProcessor = blockProcessor;
         }
     }
 }

@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
@@ -41,13 +43,14 @@ namespace Nethermind.DataMarketplace.Initializers
     public interface INdmInitializer
     {
         Task<INdmCapabilityConnector> InitAsync(IConfigProvider configProvider, IDbProvider dbProvider,
-            string baseDbPath, IBlockProcessor blockProcessor, IBlockTree blockTree, ITxPool txPool,
-            ITxPoolInfoProvider txPoolInfoProvider, ISpecProvider specProvider, IReceiptStorage receiptStorage,
-            IWallet wallet, ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider,
-            IKeyStore keyStore, IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
+            string baseDbPath, IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
+            IReceiptStorage receiptStorage, IWallet wallet, IFilterStore filterStore, IFilterManager filterManager,
+            ITimestamper timestamper, IEthereumEcdsa ecdsa, IRpcModuleProvider rpcModuleProvider, IKeyStore keyStore,
+            IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
             INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
             IGrpcServer grpcServer, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
-            bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager);
+            bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
+            IBlockProcessor blockProcessor);
     }
 }

@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
     {
         public Keccak Id { get; set; }
         public Keccak DepositId { get; set; }
-        public Keccak DataHeaderId { get; set; }
+        public Keccak DataAssetId { get; set; }
         public Address ConsumerAddress { get; set; }
         public PublicKey ConsumerNodeId { get; set; }
         public Address ProviderAddress { get; set; }
@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         {
             Id = session.Id;
             DepositId = session.DepositId;
-            DataHeaderId = session.DataHeaderId;
+            DataAssetId = session.DataAssetId;
             ConsumerAddress = session.ConsumerAddress;
             ConsumerNodeId = session.ConsumerNodeId;
             ProviderAddress = session.ProviderAddress;

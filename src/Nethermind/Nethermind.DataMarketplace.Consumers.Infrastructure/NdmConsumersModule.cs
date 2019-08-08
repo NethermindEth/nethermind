@@ -76,6 +76,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     depositRepository = new DepositDetailsRocksRepository(rocksDbProvider.DepositsDb,
                         depositDetailsRlpDecoder);
                     depositApprovalRepository = new ConsumerDepositApprovalRocksRepository(
+                    
                         rocksDbProvider.ConsumerDepositApprovalsDb, depositApprovalRlpDecoder);
                     providerRepository = new ProviderRocksRepository(rocksDbProvider.DepositsDb,
                         depositDetailsRlpDecoder);
@@ -93,9 +94,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder, services.RequiredServices.Ecdsa,
                 services.RequiredServices.CryptoRandom, depositService, receiptRequestValidator, refundService,
-                services.CreatedServices.BlockchainBridge, services.CreatedServices.ConsumerAddress,
-                services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamper,
-                consumerNotifier, ndmConfig.BlockConfirmations, logManager);
+                services.CreatedServices.BlockchainBridge, services.RequiredServices.BlockProcessor,
+                services.CreatedServices.ConsumerAddress, services.RequiredServices.Enode.PublicKey,
+                services.RequiredServices.Timestamper, consumerNotifier,
+                ndmConfig.BlockConfirmations, logManager);
             var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
                 services.RequiredServices.Timestamper);
 
@@ -105,7 +107,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService, reportService,
                     services.CreatedServices.JsonRpcNdmConsumerChannel, services.RequiredServices.EthRequestService,
-                    personalBridge, logManager)));
+                    personalBridge)));
 
             return new NdmConsumerServices(consumerService);
         }

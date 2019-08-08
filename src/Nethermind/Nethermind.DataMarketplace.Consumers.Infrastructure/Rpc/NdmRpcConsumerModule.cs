@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IReportService reportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IPersonalBridge personalBridge, ILogManager logManager)
+            IPersonalBridge personalBridge)
         {
             _consumerService = consumerService;
             _reportService = reportService;
@@ -84,16 +84,16 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<Address>.Success(address);
         }
 
-        public ResultWrapper<DataHeaderForRpc[]> ndm_getDiscoveredDataHeaders()
-            => ResultWrapper<DataHeaderForRpc[]>.Success(_consumerService.GetDiscoveredDataHeaders()
-                .Select(d => new DataHeaderForRpc(d)).ToArray());
+        public ResultWrapper<DataAssetForRpc[]> ndm_getDiscoveredDataAssets()
+            => ResultWrapper<DataAssetForRpc[]>.Success(_consumerService.GetDiscoveredDataAssets()
+                .Select(d => new DataAssetForRpc(d)).ToArray());
 
-        public async Task<ResultWrapper<DataHeaderInfoForRpc[]>> ndm_getKnownDataHeaders()
+        public async Task<ResultWrapper<DataAssetInfoForRpc[]>> ndm_getKnownDataAssets()
         {
-            var dataHeaders = await _consumerService.GetKnownDataHeadersAsync();
+            var dataAssets = await _consumerService.GetKnownDataAssetsAsync();
 
-            return ResultWrapper<DataHeaderInfoForRpc[]>.Success(dataHeaders
-                .Select(d => new DataHeaderInfoForRpc(d)).ToArray());
+            return ResultWrapper<DataAssetInfoForRpc[]>.Success(dataAssets
+                .Select(d => new DataAssetInfoForRpc(d)).ToArray());
         }
 
         public async Task<ResultWrapper<ProviderInfoForRpc[]>> ndm_getKnownProviders()
@@ -133,17 +133,18 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit)
         {
-            var depositId = await _consumerService.MakeDepositAsync(deposit.DataHeaderId, deposit.Units, deposit.Value);
+            var depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value);
 
             return depositId is null
                 ? ResultWrapper<Keccak>.Fail("Deposit couldn't be made.")
                 : ResultWrapper<Keccak>.Success(depositId);
         }
 
-        public async Task<ResultWrapper<Keccak>> ndm_sendDataRequest(Keccak depositId)
-            => await _consumerService.SendDataRequestAsync(depositId) is null
-                ? ResultWrapper<Keccak>.Fail($"Couldn't send data request for deposit: '{depositId}'.")
-                : ResultWrapper<Keccak>.Success(depositId);
+        public async Task<ResultWrapper<string>> ndm_sendDataRequest(Keccak depositId)
+        {
+            var result = await _consumerService.SendDataRequestAsync(depositId);
+            return ResultWrapper<string>.Success(result.ToString());
+        }
 
         public async Task<ResultWrapper<Keccak>> ndm_finishSession(Keccak depositId)
             => await _consumerService.SendFinishSessionAsync(depositId) is null
@@ -186,12 +187,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         }
 
 
-        public async Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak headerId, string kyc)
+        public async Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak assetId, string kyc)
         {
-            var id = await _consumerService.RequestDepositApprovalAsync(headerId, kyc);
+            var id = await _consumerService.RequestDepositApprovalAsync(assetId, kyc);
 
             return id is null
-                ? ResultWrapper<Keccak>.Fail($"Deposit approval for data header: '{headerId}' couldn't be requested.")
+                ? ResultWrapper<Keccak>.Fail($"Deposit approval for data asset: '{assetId}' couldn't be requested.")
                 : ResultWrapper<Keccak>.Success(id);
         }
 

@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 
@@ -26,12 +27,14 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
     {
         public Keccak Id { get; private set; }
         public Deposit Deposit { get; private set; }
-        public DataHeader DataHeader { get; private set; }
+        public DataAsset DataAsset { get; private set; }
+        public Address Consumer { get; private set; }
         public byte[] Pepper { get; private set; }
         public uint Timestamp { get; private set; }
         public Keccak TransactionHash { get; private set; }
-        public uint VerificationTimestamp { get; private set; }
-        public bool Verified => VerificationTimestamp > 0 && Confirmations >= RequiredConfirmations;
+        public uint ConfirmationTimestamp { get; private set; }
+        public bool Confirmed => ConfirmationTimestamp > 0 && Confirmations >= RequiredConfirmations;
+        public bool Rejected { get; private set; }
         public EarlyRefundTicket EarlyRefundTicket { get; private set; }
         public Keccak ClaimedRefundTransactionHash { get; private set; }
         public bool RefundClaimed => !(ClaimedRefundTransactionHash is null);
@@ -40,18 +43,20 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public uint Confirmations { get; private set; }
         public uint RequiredConfirmations { get; private set; }
 
-        public DepositDetails(Deposit deposit, DataHeader dataHeader, byte[] pepper, uint timestamp, 
-            Keccak transactionHash, uint verificationTimestamp = 0, EarlyRefundTicket earlyRefundTicket = null,
-            Keccak claimedRefundTransactionHash = null, string kyc = null, uint confirmations = 0,
-            uint requiredConfirmations = 0)
+        public DepositDetails(Deposit deposit, DataAsset dataAsset, Address consumer, byte[] pepper, uint timestamp, 
+            Keccak transactionHash, uint confirmationTimestamp = 0, bool rejected = false,
+            EarlyRefundTicket earlyRefundTicket = null, Keccak claimedRefundTransactionHash = null, string kyc = null,
+            uint confirmations = 0, uint requiredConfirmations = 0)
         {
             Id = deposit.Id;
             Deposit = deposit;
-            DataHeader = dataHeader;
+            DataAsset = dataAsset;
+            Consumer = consumer;
             Pepper = pepper;
             Timestamp = timestamp;
             TransactionHash = transactionHash;
-            SetVerificationTimestamp(verificationTimestamp);
+            SetConfirmationTimestamp(confirmationTimestamp);
+            Rejected = rejected;
             EarlyRefundTicket = earlyRefundTicket;
             SetRefundClaimed(claimedRefundTransactionHash);
             Kyc = kyc;
@@ -59,9 +64,14 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             RequiredConfirmations = requiredConfirmations;
         }
 
-        public void SetVerificationTimestamp(uint timestamp)
+        public void SetConfirmationTimestamp(uint timestamp)
         {
-            VerificationTimestamp = timestamp;
+            ConfirmationTimestamp = timestamp;
+        }
+
+        public void Reject()
+        {
+            Rejected = true;
         }
 
         public void SetEarlyRefundTicket(EarlyRefundTicket earlyRefundTicket)
@@ -85,7 +95,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
 
         public bool CanClaimRefund(ulong currentBlockTimestamp, uint depositUnits)
             => !RefundClaimed && currentBlockTimestamp >= Deposit.ExpiryTime &&
-               VerificationTimestamp + depositUnits + DataHeader.Rules.Expiry.Value <=
+               ConfirmationTimestamp + depositUnits + DataAsset.Rules.Expiry.Value <=
                currentBlockTimestamp;
 
         public void SetConfirmations(uint confirmations)

@@ -25,6 +25,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
@@ -821,12 +822,14 @@ namespace Nethermind.Runner.Runners
             if (!(_ndmInitializer is null))
             {
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
+                var filterStore = new FilterStore();
+                var filterManager = new FilterManager(filterStore, _blockProcessor, _txPool, _logManager);
                 var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
-                    _initConfig.BaseDbPath, _blockProcessor, _blockTree, _txPool, _txPoolInfoProvider, _specProvider,
-                    _receiptStorage, _wallet, _timestamper, _ethereumEcdsa, _rpcModuleProvider, _keyStore,
-                    _ethereumJsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher,
-                    _grpcServer, _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
-                    _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager);
+                    _initConfig.BaseDbPath, _blockTree, _txPool, _specProvider, _receiptStorage, _wallet, filterStore,
+                    filterManager, _timestamper, _ethereumEcdsa, _rpcModuleProvider, _keyStore, _ethereumJsonSerializer,
+                    _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer,
+                    _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
+                    _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager, _blockProcessor);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }

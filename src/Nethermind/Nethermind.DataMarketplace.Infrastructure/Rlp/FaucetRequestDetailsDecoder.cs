@@ -53,7 +53,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var value = context.DecodeUInt256();
             var date = DateTimeOffset.FromUnixTimeSeconds(context.DecodeLong()).UtcDateTime;
             var transactionHash = context.DecodeKeccak();
-            Console.WriteLine(transactionHash);
 
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
         }

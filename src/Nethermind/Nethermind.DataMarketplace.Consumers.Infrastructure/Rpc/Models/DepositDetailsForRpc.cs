@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
@@ -26,11 +27,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
     {
         public Keccak Id { get; set; }
         public DepositForRpc Deposit { get; set; }
-        public DataHeaderForRpc DataHeader { get; set; }
+        public DataAssetForRpc DataAsset { get; set; }
+        public Address Consumer { get; set; }
         public uint Timestamp { get; set; }
         public Keccak TransactionHash { get; set; }
-        public uint VerificationTimestamp { get; set; }
-        public bool Verified { get; set; }
+        public uint ConfirmationTimestamp { get; set; }
+        public bool Confirmed { get; set; }
+        public bool Rejected { get; set; }
         public bool RefundClaimed { get; set; }
         public Keccak ClaimedRefundTransactionHash { get; set; }
         public uint ConsumedUnits { get; set; }
@@ -46,11 +49,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         {
             Id = deposit.Id;
             Deposit = new DepositForRpc(deposit.Deposit);
-            DataHeader = new DataHeaderForRpc(deposit.DataHeader);
+            DataAsset = new DataAssetForRpc(deposit.DataAsset);
+            Consumer = deposit.Consumer;
             Timestamp = deposit.Timestamp;
             TransactionHash = deposit.TransactionHash;
-            VerificationTimestamp = deposit.VerificationTimestamp;
-            Verified = deposit.Verified;
+            ConfirmationTimestamp = deposit.ConfirmationTimestamp;
+            Confirmed = deposit.Confirmed;
+            Rejected = deposit.Rejected;
             RefundClaimed = deposit.RefundClaimed;
             ClaimedRefundTransactionHash = deposit.ClaimedRefundTransactionHash;
             ConsumedUnits = deposit.ConsumedUnits;

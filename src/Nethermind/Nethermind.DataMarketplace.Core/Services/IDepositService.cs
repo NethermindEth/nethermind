@@ -27,6 +27,7 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         Keccak MakeDeposit(Address onBehalfOf, Deposit deposit);
         uint VerifyDeposit(Address onBehalfOf, Keccak depositId);
+        uint VerifyDeposit(Address onBehalfOf, Keccak depositId, BlockHeader head);
         UInt256 ReadDepositBalance(Address onBehalfOf, Keccak depositId);
     }
 }

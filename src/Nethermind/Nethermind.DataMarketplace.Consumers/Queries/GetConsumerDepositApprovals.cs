@@ -24,7 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Queries
 {
     public class GetConsumerDepositApprovals : PagedQueryBase
     {
-        public Keccak DataHeaderId { get; set; }
+        public Keccak DataAssetId { get; set; }
         public Address Provider { get; set; }
         public bool OnlyPending { get; set; }
     }

@@ -50,14 +50,31 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
             }
 
             var deposits = Deposits.AsQueryable();
-            if (query.OnlyUnverified)
+            if (query.OnlyUnconfirmed || query.OnlyNotRejected || query.EligibleToRefund)
             {
                 //MongoDB unsupported predicate: (d.Confirmations < d.RequiredConfirmations) - maybe due to uint type?
                 var allDeposits = await deposits.ToListAsync();
-                var unverified = allDeposits.Where(d => d.VerificationTimestamp == 0 ||
-                                                        d.Confirmations < d.RequiredConfirmations);
+                var filteredDeposits = allDeposits.AsEnumerable();
+                if (query.OnlyUnconfirmed)
+                {
+                    filteredDeposits = filteredDeposits.Where(d => d.ConfirmationTimestamp == 0 ||
+                                                                   d.Confirmations < d.RequiredConfirmations);
+                }
 
-                return unverified.OrderByDescending(d => d.Timestamp).Paginate(query);
+                if (query.OnlyNotRejected)
+                {
+                    filteredDeposits = filteredDeposits.Where(d => !d.Rejected);
+                }
+
+                if (query.EligibleToRefund)
+                {
+                    filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed &&
+                                                                   (!(d.EarlyRefundTicket is null) ||
+                                                                    query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime
+                                                                   ));
+                }
+
+                return filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query);
             }
 
             return await deposits.OrderByDescending(d => d.Timestamp).PaginateAsync(query);

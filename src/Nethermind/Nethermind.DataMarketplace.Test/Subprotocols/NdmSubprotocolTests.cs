@@ -116,16 +116,16 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
             _subprotocol.ProviderAddress.Should().Be(hiMessage.ProviderAddress);
             _subprotocol.ConsumerAddress.Should().Be(hiMessage.ConsumerAddress);
             _consumerService.Received().AddProviderPeer(_subprotocol);
-            var getDataHeadersMessage = new GetDataHeadersMessage();
-            _messageSerializationService.Serialize(getDataHeadersMessage).Returns(Array.Empty<byte>());
-            var getDataHeadersPacket = new Packet(getDataHeadersMessage.Protocol, getDataHeadersMessage.PacketType,
-                _messageSerializationService.Serialize(getDataHeadersMessage));
-            _messageSerializationService.Deserialize<GetDataHeadersMessage>(getDataHeadersPacket.Data)
-                .Returns(getDataHeadersMessage);
+            var getDataAssetsMessage = new GetDataAssetsMessage();
+            _messageSerializationService.Serialize(getDataAssetsMessage).Returns(Array.Empty<byte>());
+            var getDataAssetsPacket = new Packet(getDataAssetsMessage.Protocol, getDataAssetsMessage.PacketType,
+                _messageSerializationService.Serialize(getDataAssetsMessage));
+            _messageSerializationService.Deserialize<GetDataAssetsMessage>(getDataAssetsPacket.Data)
+                .Returns(getDataAssetsMessage);
             
             Received.InOrder(() =>
             {
-                _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDataHeaders));
+                _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDataAssets));
                 _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDepositApprovals));
             });
         }
