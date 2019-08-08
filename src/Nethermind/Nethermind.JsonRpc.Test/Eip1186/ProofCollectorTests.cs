@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -24,7 +25,7 @@ using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.JsonRpc.Test.Eip1186
 {
     public class ProofCollectorTests
     {
@@ -135,6 +136,42 @@ namespace Nethermind.JsonRpc.Test
             tree.Accept(proofCollector, new MemDb());
             AccountProof proof = proofCollector.BuildResult();
             Assert.AreEqual(3, proof.Proof.Length);
+        }
+        
+        [Test]
+        public void Storage_proofs_length_is_as_expected()
+        {
+            StateTree tree = new StateTree();
+
+            byte[] code = new byte[] {1, 2, 3};
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA, UInt256.One, UInt256.Zero);
+            tree.Accept(proofCollector, new MemDb());
+            AccountProof proof = proofCollector.BuildResult();
+            Assert.AreEqual(2, proof.StorageProofs.Length);
+        }
+        
+        [Test]
+        public void Storage_proofs_are_filled()
+        {
+            StateTree tree = new StateTree();
+
+            byte[] code = new byte[] {1, 2, 3};
+            Account account1 = Build.An.Account.WithBalance(1).WithStorageRoot(TestItem.KeccakA).TestObject;
+            Account account2 = Build.An.Account.WithBalance(2).TestObject;
+            tree.Set(TestItem.AddressA, account1);
+            tree.Set(TestItem.AddressB, account2);
+            tree.Commit();
+
+            ProofCollector proofCollector = new ProofCollector(TestItem.AddressA, UInt256.One, UInt256.Zero);
+            tree.Accept(proofCollector, new MemDb());
+            AccountProof proof = proofCollector.BuildResult();
+            throw new NotImplementedException();
         }
     }
 }
