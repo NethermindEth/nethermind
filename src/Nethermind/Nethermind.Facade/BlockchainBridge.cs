@@ -123,7 +123,7 @@ namespace Nethermind.Facade
             if (txReceipt?.BlockHash == null) return (null, null);
 
             Block block = _blockTree.FindBlock(txReceipt.BlockHash, BlockTreeLookupOptions.RequireCanonical);
-            return (txReceipt, block.Transactions[txReceipt.Index]);
+            return (txReceipt, block?.Transactions[txReceipt.Index]);
         }
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;

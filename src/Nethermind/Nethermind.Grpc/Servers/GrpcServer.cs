@@ -1,3 +1,21 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
@@ -9,7 +27,7 @@ namespace Nethermind.Grpc.Servers
 {
     public class GrpcServer : NethermindService.NethermindServiceBase, IGrpcServer
     {
-        private const int MaxCapacity = 100000;
+        private const int MaxCapacity = 1000;
         private readonly IJsonSerializer _jsonSerializer;
         private static readonly QueryResponse EmptyQueryResponse = new QueryResponse();
 
@@ -35,6 +53,7 @@ namespace Nethermind.Grpc.Servers
                 (_) => new BlockingCollection<string>(MaxCapacity),
                 (_, r) => r);
 
+            if (_logger.IsInfo) _logger.Info($"Starting the data stream for client: '{client}', args: {string.Join(", ", request.Args)}.");
             try
             {
                 while (true)
@@ -51,6 +70,11 @@ namespace Nethermind.Grpc.Servers
             {
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
             }
+            finally
+            {
+                _clientResults.TryRemove(client, out _);
+                if (_logger.IsInfo) _logger.Info($"Finished the data stream for client: '{client}'.");
+            }
         }
 
         public Task PublishAsync<T>(T data, string client) where T : class
@@ -61,18 +85,29 @@ namespace Nethermind.Grpc.Servers
             }
 
             var payload = _jsonSerializer.Serialize(data);
-            _clientResults.AddOrUpdate(client ?? string.Empty, (_) =>
+            if (string.IsNullOrWhiteSpace(client))
             {
-                var results = new BlockingCollection<string>(MaxCapacity);
-                results.TryAdd(payload);
+                foreach (var (_, results) in _clientResults)
+                {
+                    try
+                    {
+                        results.TryAdd(payload);
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
 
-                return results;
-            }, (c, results) =>
+                return Task.CompletedTask;
+            }
+
+            if (!_clientResults.TryGetValue(client, out var clientResult))
             {
-                results.TryAdd(payload);
+                return Task.CompletedTask;
+            }
 
-                return results;
-            });
+            clientResult.Add(payload);
 
             return Task.CompletedTask;
         }

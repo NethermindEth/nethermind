@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Abi;
@@ -40,6 +41,7 @@ using Nethermind.Facade;
 using Nethermind.Wallet;
 using Session = Nethermind.DataMarketplace.Core.Domain.Session;
 using SessionState = Nethermind.DataMarketplace.Core.Domain.SessionState;
+using Timer = System.Timers.Timer;
 
 namespace Nethermind.DataMarketplace.Consumers.Services
 {
@@ -98,7 +100,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly IEcdsa _ecdsa;
         private bool _accountLocked;
         private readonly Timer _timer;
-        private ulong _currentBlockTimestamp;
+        private long _currentBlockTimestamp;
 
         public ConsumerService(IConfigManager configManager, string configId,
             IDepositDetailsRepository depositRepository, IConsumerDepositApprovalRepository depositApprovalRepository,
@@ -164,7 +166,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            _currentBlockTimestamp = (ulong) e.Block.Timestamp;
+            Interlocked.Exchange(ref _currentBlockTimestamp, (long) e.Block.Timestamp);
             _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);
             _depositRepository.BrowseAsync(new GetDeposits
             {
@@ -240,20 +242,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            if (deposit.ConfirmationTimestamp == 0)
-            {
-                var confirmationTimestamp = _depositService.VerifyDeposit(_consumerAddress, deposit.Id);
-                if (confirmationTimestamp == 0)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Id}' has not returned confirmation timestamp from contract call yet.'");
-                    return;
-                }
-                
-                if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has confirmation timestamp (from contract call): {confirmationTimestamp}.");
-                deposit.SetConfirmationTimestamp(confirmationTimestamp);
-                await _depositRepository.UpdateAsync(deposit);
-            }
-            
+            var head = _blockchainBridge.Head;
             var transactionHash = deposit.TransactionHash;
             var (receipt, transaction) = _blockchainBridge.GetTransaction(deposit.TransactionHash);                        
             if (transaction is null)
@@ -262,7 +251,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return;
             }
 
-            var (confirmations, rejected) = VerifyDepositConfirmations(deposit, receipt);
+            var (confirmations, rejected) = await VerifyDepositConfirmationsAsync(deposit, receipt, head.Hash);
             if (rejected)
             {
                 deposit.Reject();
@@ -288,10 +277,11 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 confirmations, _requiredBlockConfirmations, deposit.ConfirmationTimestamp, confirmed);
         }
 
-        private (uint confirmations, bool rejected) VerifyDepositConfirmations(DepositDetails deposit, TxReceipt receipt)
+        private async Task<(uint confirmations, bool rejected)> VerifyDepositConfirmationsAsync(DepositDetails deposit,
+            TxReceipt receipt, Keccak headHash)
         {
             var confirmations = 0u;
-            var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
+            var block = _blockchainBridge.FindBlock(headHash);
             while (confirmations < _requiredBlockConfirmations)
             {
                 if (block is null)
@@ -299,11 +289,22 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     if (_logger.IsWarn) _logger.Warn("Block was not found.");
                     return (0, false);
                 }
-                
-                if (_depositService.VerifyDeposit(deposit.Consumer, deposit.Id, block.Header) > 0)
+
+                var confirmationTimestamp = _depositService.VerifyDeposit(deposit.Consumer, deposit.Id, block.Header);
+                if (confirmationTimestamp > 0)
                 {
                     confirmations++;
-                    if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}' (transaction hash: '{deposit.TransactionHash}'.");
+                    if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}', transaction hash: '{deposit.TransactionHash}', timestamp: {confirmationTimestamp}.");
+                    if (deposit.ConfirmationTimestamp == 0)
+                    {
+                        deposit.SetConfirmationTimestamp(confirmationTimestamp);
+                        await _depositRepository.UpdateAsync(deposit);
+                    }
+                }
+                else
+                {
+                    if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Id}' has not returned confirmation timestamp from the contract call yet.'");
+                    return (0, false);
                 }
                 
                 if (confirmations == _requiredBlockConfirmations)
