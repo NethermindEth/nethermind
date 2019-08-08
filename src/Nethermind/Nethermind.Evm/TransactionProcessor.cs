@@ -146,7 +146,7 @@ namespace Nethermind.Evm
                 return;
             }
 
-            if (!transaction.IsConstructorTransaction && !transaction.IsSystem())
+            if (!transaction.IsSystem())
             {
                 _stateProvider.IncrementNonce(sender);
             }
@@ -171,7 +171,7 @@ namespace Nethermind.Evm
                 if (transaction.IsContractCreation)
                 {
                     recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
-                    if (transaction.IsConstructorTransaction)
+                    if (transaction.IsSystem())
                     {
                         recipient = transaction.SenderAddress;
                     }
@@ -262,7 +262,7 @@ namespace Nethermind.Evm
             Address gasBeneficiary = block.GasBeneficiary;
             if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(gasBeneficiary) ?? false))
             {
-                if (!transaction.IsConstructorTransaction && !transaction.IsSystem())
+                if (!transaction.IsSystem())
                 {
                     if (!_stateProvider.AccountExists(gasBeneficiary))
                     {
@@ -286,7 +286,7 @@ namespace Nethermind.Evm
                 _stateProvider.Reset();
             }
 
-            if (!readOnly && !transaction.IsConstructorTransaction && !transaction.IsSystem())
+            if (!readOnly && !transaction.IsSystem())
             {
                 block.GasUsed += spentGas;
             }

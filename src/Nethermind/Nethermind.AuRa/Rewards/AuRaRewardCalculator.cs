@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
@@ -45,7 +46,7 @@ namespace Nethermind.AuRa.Rewards
             else
             {
                 // TODO: Use RewardContract
-                return null;
+                throw  new NotImplementedException();
             }
         }
     }

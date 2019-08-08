@@ -768,11 +768,12 @@ namespace Nethermind.Runner.Runners
 
                 if (allocation.Constructor != null)
                 {
-                    Transaction constructorTransaction = new Transaction();
-                    constructorTransaction.IsConstructorTransaction = true;
-                    constructorTransaction.SenderAddress = address;
-                    constructorTransaction.Init = allocation.Constructor;
-                    constructorTransaction.GasLimit = genesis.GasLimit;
+                    Transaction constructorTransaction = new Transaction(true)
+                    {
+                        SenderAddress = address,
+                        Init = allocation.Constructor,
+                        GasLimit = genesis.GasLimit
+                    };
                     _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
                 }
             }

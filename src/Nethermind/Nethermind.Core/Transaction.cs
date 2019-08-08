@@ -29,10 +29,19 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
+        private readonly bool _isSystem = false;
+
+        public Transaction() { }
+
         /// <summary>
-        /// <value>True</value> if this is a transaction used for ctor based genesis allocations 
+        /// 
         /// </summary>
-        public bool IsConstructorTransaction { get; set; }
+        /// <param name="isSystem"></param>
+        /// <remarks>ctor based genesis allocations are treated as system transactions.</remarks>
+        public Transaction(bool isSystem)
+        {
+            _isSystem = isSystem;
+        }
 
         public UInt256 Nonce { get; set; }
         public UInt256 GasPrice { get; set; }
@@ -68,6 +77,6 @@ namespace Nethermind.Core
 
         public override string ToString() => ToString(string.Empty);
 
-        public bool IsSystem() => SenderAddress.IsSystem();
+        public bool IsSystem() => SenderAddress == Address.SystemUser || _isSystem;
     }
 }

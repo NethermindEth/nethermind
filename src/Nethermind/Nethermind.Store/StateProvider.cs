@@ -592,10 +592,8 @@ namespace Nethermind.Store
 
         private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
-            if (!isZero || !releaseSpec.IsEip158IgnoredAccount(address))
-            {
-                Push(ChangeType.Touch, address, account);
-            }
+            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
+            Push(ChangeType.Touch, address, account);
         }
 
         private void PushDelete(Address address)

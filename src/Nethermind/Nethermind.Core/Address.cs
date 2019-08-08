@@ -144,11 +144,6 @@ namespace Nethermind.Core
             return new Address(in contractAddressKeccak);
         }
 
-        public bool IsSystem()
-        {
-            return this == SystemUser;
-        }
-
         public override string ToString()
         {
             return ToString(true, false);

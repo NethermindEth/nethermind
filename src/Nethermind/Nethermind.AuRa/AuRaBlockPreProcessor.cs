@@ -45,7 +45,7 @@ namespace Nethermind.AuRa
             _validatorContract = new ValidatorContract(abiEncoder, auRaParameters);
         }
         
-        public Transaction[] InjectTransactions(Block block)
+        public Transaction[] GetAdditionalBlockTransactions(Block block)
         {
             if (block.Number == 1)
             {
