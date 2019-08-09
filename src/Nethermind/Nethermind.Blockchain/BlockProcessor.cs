@@ -159,21 +159,9 @@ namespace Nethermind.Blockchain
             return _receiptsTracer.TxReceipts;
         }
 
-        private void SetReceiptsRootAndBloom(Block block, TxReceipt[] txReceipts)
+        private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
         {
             block.Header.ReceiptsRoot = block.CalculateReceiptRoot(_specProvider, txReceipts);
-            block.Header.Bloom = txReceipts.Length > 0 ? BuildBloom(txReceipts) : Bloom.Empty;
-        }
-
-        private Bloom BuildBloom(TxReceipt[] txReceipts)
-        {
-            Bloom bloom = new Bloom();
-            for (int i = 0; i < txReceipts.Length; i++)
-            {
-                bloom.Add(txReceipts[i].Logs);
-            }
-
-            return bloom;
         }
 
         private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)
@@ -199,7 +187,7 @@ namespace Nethermind.Blockchain
 
             Block block = PrepareBlockForProcessing(suggestedBlock);
             var receipts = ProcessTransactions(block, options, blockTracer);
-            SetReceiptsRootAndBloom(block, receipts);
+            SetReceiptsRoot(block, receipts);
             ApplyMinerRewards(block, blockTracer);
             
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
@@ -281,6 +269,7 @@ namespace Nethermind.Blockchain
             BlockHeader s = suggestedBlock.Header;
             BlockHeader header = new BlockHeader(s.ParentHash, s.OmmersHash, s.Beneficiary, s.Difficulty, s.Number, s.GasLimit, s.Timestamp, s.ExtraData);
             Block processedBlock = new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            header.Bloom = Bloom.Empty;
             header.Author = suggestedBlock.Header.Author;
             header.Hash = s.Hash;
             header.MixHash = s.MixHash;

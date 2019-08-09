@@ -72,7 +72,15 @@ namespace Nethermind.Evm.Tracing
             Transaction transaction = _block.Transactions[_currentIndex];
             TxReceipt txReceipt = new TxReceipt();
             txReceipt.Logs = logEntries;
-            txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries);
+            if (logEntries.Length > 0)
+            {
+                if (_block.Bloom == Bloom.Empty)
+                {
+                    _block.Bloom = new Bloom();
+                }
+            }
+            
+            txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block.Bloom);
             txReceipt.GasUsedTotal = _block.GasUsed;
             if (!_specProvider.GetSpec(_block.Number).IsEip658Enabled)
             {
