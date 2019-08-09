@@ -93,9 +93,9 @@ namespace Nethermind.Grpc.Servers
                     {
                         results.TryAdd(payload);
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // ignored
+                        if (_logger.IsError) _logger.Error(ex.Message, ex);
                     }
                 }
 

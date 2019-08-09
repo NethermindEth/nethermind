@@ -58,7 +58,6 @@ namespace Nethermind.Runner
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
-        private IRunner _grpcClientRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
         private IMonitoringService _monitoringService;
         
@@ -242,6 +241,7 @@ namespace Nethermind.Runner
 
         protected async Task StopAsync()
         {
+            _grpcRunner?.StopAsync();
             _monitoringService?.StopAsync();
             _jsonRpcRunner?.StopAsync(); // do not await
             var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
