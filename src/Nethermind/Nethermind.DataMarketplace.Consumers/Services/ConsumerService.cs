@@ -282,7 +282,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         {
             var confirmations = 0u;
             var block = _blockchainBridge.FindBlock(headHash);
-            while (confirmations < _requiredBlockConfirmations)
+            do
             {
                 if (block is null)
                 {
@@ -312,14 +312,14 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                     break;
                 }
 
-                if (receipt.BlockHash == block.Hash)
+                if (receipt.BlockHash == block.Hash || block.Number <= receipt.BlockNumber)
                 {
                     break;
                 }
 
                 block = _blockchainBridge.FindBlock(block.ParentHash);
-            }
-
+            } while (confirmations < _requiredBlockConfirmations);
+            
             var blocksDifference = _blockchainBridge.Head.Number - receipt.BlockNumber;
             if (blocksDifference >= _requiredBlockConfirmations && confirmations < _requiredBlockConfirmations)
             {
@@ -898,7 +898,15 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (enabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                if (dataAsset.QueryType == QueryType.Stream)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                }
+                else if (dataAsset.QueryType == QueryType.Query)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
+                }
+                
                 providerPeer.SendEnableDataStream(depositId, client, args);
             }
             else

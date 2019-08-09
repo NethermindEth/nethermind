@@ -20,6 +20,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Core;
 using Nethermind.Logging;
@@ -50,10 +51,13 @@ namespace Nethermind.Grpc.Clients
 
             if (reconnectionInterval < 0)
             {
-                throw new ArgumentException($"Invalid reconnection interval: {reconnectionInterval} ms.", nameof(reconnectionInterval));
+                throw new ArgumentException($"Invalid reconnection interval: {reconnectionInterval} ms.",
+                    nameof(reconnectionInterval));
             }
 
-            _address = string.IsNullOrWhiteSpace(host) ? throw new ArgumentException("Missing gRPC host", nameof(host)) : $"{host}:{port}";
+            _address = string.IsNullOrWhiteSpace(host)
+                ? throw new ArgumentException("Missing gRPC host", nameof(host))
+                : $"{host}:{port}";
             _reconnectionInterval = reconnectionInterval;
             _logger = logManager.GetClassLogger();
         }
@@ -111,12 +115,14 @@ namespace Nethermind.Grpc.Clients
             {
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
                 await TryReconnectAsync();
-                return string.Empty;;
+                return string.Empty;
             }
         }
 
-        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args)
+        public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args,
+            CancellationToken? token = null)
         {
+            var cancellationToken = token ?? CancellationToken.None;
             try
             {
                 if (!_connected)
@@ -129,7 +135,8 @@ namespace Nethermind.Grpc.Clients
                     Args = {args ?? Enumerable.Empty<string>()}
                 }))
                 {
-                    while (enabled() && _connected && await stream.ResponseStream.MoveNext())
+                    while (enabled() && _connected && !cancellationToken.IsCancellationRequested &&
+                           await stream.ResponseStream.MoveNext(cancellationToken))
                     {
                         callback(stream.ResponseStream.Current.Data);
                     }
@@ -137,6 +144,11 @@ namespace Nethermind.Grpc.Clients
             }
             catch (Exception ex)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
                 await TryReconnectAsync();
             }
@@ -146,7 +158,8 @@ namespace Nethermind.Grpc.Clients
         {
             _connected = false;
             _retry++;
-            if (_logger.IsWarn) _logger.Warn($"Retrying ({_retry}) gRPC connection to: '{_address}' in {_reconnectionInterval} ms.");
+            if (_logger.IsWarn)
+                _logger.Warn($"Retrying ({_retry}) gRPC connection to: '{_address}' in {_reconnectionInterval} ms.");
             await Task.Delay(_reconnectionInterval);
             await StartAsync();
         }
