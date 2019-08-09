@@ -282,7 +282,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         {
             var confirmations = 0u;
             var block = _blockchainBridge.FindBlock(headHash);
-            while (confirmations < _requiredBlockConfirmations)
+            do
             {
                 if (block is null)
                 {
@@ -318,8 +318,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 }
 
                 block = _blockchainBridge.FindBlock(block.ParentHash);
-            }
-
+            } while (confirmations < _requiredBlockConfirmations);
+            
             var blocksDifference = _blockchainBridge.Head.Number - receipt.BlockNumber;
             if (blocksDifference >= _requiredBlockConfirmations && confirmations < _requiredBlockConfirmations)
             {
