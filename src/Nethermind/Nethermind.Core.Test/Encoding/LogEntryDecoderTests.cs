@@ -64,5 +64,20 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
             }
         }
+        
+        [Test]
+        public void Memory_stream_and_standard_have_same_results()
+        {
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new [] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntryDecoder decoder = new LogEntryDecoder();
+            
+            using (MemoryStream stream = Rlp.BorrowStream())
+            {
+                decoder.Encode(stream, logEntry);
+
+                Rlp rlp = decoder.Encode(logEntry);
+                Assert.AreEqual(rlp.Bytes.ToHexString(), stream.ToArray().ToHexString());
+            }
+        }
     }
 }
