@@ -274,6 +274,7 @@ namespace Nethermind.Store
             Span<byte> resultSpan = result.AsSpan();
             int position = Rlp.StartSequence(result, 0, contentLength);
             WriteChildrenRlp(resultSpan.Slice(position, contentLength - valueRlpLength));
+            WriteChildrenRlp(resultSpan.Slice(position, contentLength - valueRlpLength));
             position = sequenceLength - valueRlpLength;
             Rlp.Encode(result, position, Value);
             return new Rlp(result);
@@ -403,6 +404,9 @@ namespace Nethermind.Store
 
             if (NodeType == NodeType.Extension)
             {
+                context.Position = 0;
+                context.ReadSequenceLength();
+                context.DecodeByteArraySpan();
                 return context.DecodeKeccak();
             }
 
@@ -552,13 +556,17 @@ namespace Nethermind.Store
                     throw new NotImplementedException();
                 case NodeType.Branch:
                 {
-                    visitor.VisitBranch(Keccak?.Bytes ?? FullRlp?.Bytes, context);
+                    BuildLookupTable();
+                    visitor.VisitBranch(this, context);
                     context.Level++;
                     for (int i = 0; i < 16; i++)
                     {
                         TrieNode child = GetChild(i);
-                        context.BranchChildIndex = i;
-                        child?.Accept(visitor, tree, codeDb, context);
+                        if (child != null && visitor.ShouldVisit(child.Keccak))
+                        {
+                            context.BranchChildIndex = i;
+                            child.Accept(visitor, tree, codeDb, context);
+                        }
                     }
 
                     context.Level--;
@@ -567,21 +575,25 @@ namespace Nethermind.Store
                 }
                 case NodeType.Extension:
                 {
-                    visitor.VisitExtension(Keccak?.Bytes ?? FullRlp?.Bytes, context);
-                    context.Level++;
+                    visitor.VisitExtension(this, context);
                     TrieNode child = GetChild(0);
-                    context.BranchChildIndex = null;
-                    child?.Accept(visitor, tree, codeDb, context);
-                    context.Level--;
+                    if (child != null && visitor.ShouldVisit(child.Keccak))
+                    {
+                        context.Level++;
+                        context.BranchChildIndex = null;
+                        child.Accept(visitor, tree, codeDb, context);
+                        context.Level--;
+                    }
+
                     break;
                 }
                 case NodeType.Leaf:
                 {
-                    visitor.VisitLeaf(Keccak?.Bytes ?? FullRlp?.Bytes, context);
+                    visitor.VisitLeaf(this, context);
                     if (!context.IsStorage)
                     {
                         Account account = _decoder.Decode(Value.AsRlpContext());
-                        if (account.HasCode)
+                        if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
                         {
                             context.Level++;
                             context.BranchChildIndex = null;
@@ -589,7 +601,7 @@ namespace Nethermind.Store
                             context.Level--;
                         }
 
-                        if (account.HasStorage)
+                        if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
                             context.IsStorage = true;
                             TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);

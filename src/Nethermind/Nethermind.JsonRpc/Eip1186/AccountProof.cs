@@ -16,34 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Store
+namespace Nethermind.JsonRpc.Eip1186
 {
-    public interface IStateReader
+    public class AccountProof
     {
-        bool AccountExists(Keccak stateRoot, Address address);
-
-        bool IsDeadAccount(Keccak stateRoot, Address address);
-
-        bool IsEmptyAccount(Keccak stateRoot, Address address);
-
-        Account GetAccount(Keccak stateRoot, Address address);
+        public byte[][] Proof { get; set; }
         
-        UInt256 GetNonce(Keccak stateRoot, Address address);
-
-        UInt256 GetBalance(Keccak stateRoot, Address address);
+        public UInt256 Balance { get; set; }
         
-        Keccak GetStorageRoot(Keccak stateRoot, Address address);
-
-        Keccak GetCodeHash(Keccak stateRoot, Address address);
+        public Keccak CodeHash { get; set; }
         
-        byte[] GetCode(Keccak stateRoot, Address address);
-
-        byte[] GetCode(Keccak codeHash);
+        public UInt256 Nonce { get; set; }
         
-        void RunTreeVisitor(Keccak stateRoot, ITreeVisitor treeVisitor);
+        public Keccak StorageRoot { get; set; }
+        
+        public StorageProof[] StorageProofs { get; set; }
     }
 }
