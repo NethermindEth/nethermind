@@ -23,12 +23,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class BlockForRpc
     {
+        private BlockDecoder _blockDecoder = new BlockDecoder();
+        
         public BlockForRpc(Block block, bool includeFullTransactionData)
         {
             Number = block.Number;
@@ -45,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Difficulty = block.Difficulty;
             TotalDifficulty = block.TotalDifficulty ?? 0;
             ExtraData = block.ExtraData;
-            Size = BigInteger.Zero;
+            Size = Size =  _blockDecoder.GetLength(block, RlpBehaviors.None);
             GasLimit = block.GasLimit;
             GasUsed = block.GasUsed;
             Timestamp = block.Timestamp;
@@ -64,13 +67,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public Keccak StateRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }
         public Address Miner { get; set; }
-        public BigInteger Difficulty { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
+        public UInt256 Difficulty { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
         public byte[] ExtraData { get; set; }
-        public BigInteger Size { get; set; }
-        public BigInteger GasLimit { get; set; }
-        public BigInteger GasUsed { get; set; }
-        public BigInteger Timestamp { get; set; }
+        public long Size { get; set; }
+        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
+        public UInt256 Timestamp { get; set; }
         public IEnumerable<object> Transactions { get; set; }
         public IEnumerable<Keccak> Uncles { get; set; }
     }

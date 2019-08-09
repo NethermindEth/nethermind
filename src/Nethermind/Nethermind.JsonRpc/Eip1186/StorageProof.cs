@@ -18,31 +18,12 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Store
+namespace Nethermind.JsonRpc.Eip1186
 {
-    public class VisitContext
+    public class StorageProof
     {
-        public int Level { get; set; }
-
-        public bool IsStorage { get; set; }
-
-        public int? BranchChildIndex { get; set; }
-    }
-    
-    public interface ITreeVisitor
-    {
-        bool ShouldVisit(Keccak nextNode);
-        
-        void VisitTree(Keccak rootHash, VisitContext context);
-        
-        void VisitMissingNode(Keccak nodeHash, VisitContext context);
-        
-        void VisitBranch(TrieNode node, VisitContext context);
-        
-        void VisitExtension(TrieNode node, VisitContext context);
-        
-        void VisitLeaf(TrieNode node, VisitContext context);
-        
-        void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
+        public byte[][] Proof { get; set; }
+        public Keccak Key { get; set; }
+        public byte[] Value { get; set; }
     }
 }

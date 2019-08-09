@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Numerics;
 using Jint.Native;
 using Nethermind.Core;
@@ -52,6 +53,12 @@ namespace Nethermind.Cli.Modules
             return NodeManager.Post<object>("eth_getBlockByHash", CliParseHash(hash), returnFullTransactionObjects).Result;
         }
         
+        [CliFunction("eth", "getProof")]
+        public object GetProof(string address, string[] storage, string blockParameter)
+        {
+            return NodeManager.Post<object>("eth_getProof", CliParseAddress(address), storage, blockParameter).Result;
+        }
+
         [CliFunction("eth", "getStorageAt")]
         public object GetStorageAt(string address, string positionIndex, string blockParameter)
         {
