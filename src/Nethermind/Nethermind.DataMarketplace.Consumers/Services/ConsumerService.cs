@@ -898,7 +898,15 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (enabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                if (dataAsset.QueryType == QueryType.Stream)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                }
+                else if (dataAsset.QueryType == QueryType.Query)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
+                }
+                
                 providerPeer.SendEnableDataStream(depositId, client, args);
             }
             else

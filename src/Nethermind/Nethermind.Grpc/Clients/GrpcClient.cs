@@ -122,6 +122,7 @@ namespace Nethermind.Grpc.Clients
         public async Task SubscribeAsync(Action<string> callback, Func<bool> enabled, IEnumerable<string> args,
             CancellationToken? token = null)
         {
+            var cancellationToken = token ?? CancellationToken.None;
             try
             {
                 if (!_connected)
@@ -134,8 +135,8 @@ namespace Nethermind.Grpc.Clients
                     Args = {args ?? Enumerable.Empty<string>()}
                 }))
                 {
-                    while (enabled() && _connected &&
-                           await stream.ResponseStream.MoveNext(token ?? CancellationToken.None))
+                    while (enabled() && _connected && !cancellationToken.IsCancellationRequested &&
+                           await stream.ResponseStream.MoveNext(cancellationToken))
                     {
                         callback(stream.ResponseStream.Current.Data);
                     }
@@ -143,6 +144,11 @@ namespace Nethermind.Grpc.Clients
             }
             catch (Exception ex)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
                 await TryReconnectAsync();
             }
