@@ -45,7 +45,7 @@ namespace Nethermind.AuRa
             _validatorContract = new ValidatorContract(abiEncoder, auRaParameters);
         }
         
-        public Transaction[] GetAdditionalBlockTransactions(Block block)
+        public Transaction[] GetAdditionalPreBlockTransactions(Block block)
         {
             if (block.Number == 1)
             {
@@ -63,6 +63,11 @@ namespace Nethermind.AuRa
                 }
             }
 
+            return Array.Empty<Transaction>();
+        }
+
+        public Transaction[] GetAdditionalPostBlockTransactions(Block block, TxReceipt[] receipts)
+        {
             return Array.Empty<Transaction>();
         }
 

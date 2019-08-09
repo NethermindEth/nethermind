@@ -22,6 +22,8 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockPreProcessor
     {
-        Transaction[] GetAdditionalBlockTransactions(Block block);
+        Transaction[] GetAdditionalPreBlockTransactions(Block block);
+        
+        Transaction[] GetAdditionalPostBlockTransactions(Block block, TxReceipt[] receipts);
     }
 }

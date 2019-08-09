@@ -57,14 +57,18 @@ namespace Nethermind.Core
 
         public void Set(byte[] sequence)
         {
-            Span<byte> keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
-            for (int i = 0; i < 6; i += 2)
-            {
-                int index = 2047 - ((keccakBytes[i] << 8) + keccakBytes[i + 1]) % 2048;
-                _bits.Set(index, true);
-            }
+            var indexes = GetIndexes(sequence);
+            _bits.Set(indexes.Index1, true);
+            _bits.Set(indexes.Index2, true);
+            _bits.Set(indexes.Index3, true);
         }
-
+        
+        public bool IsMatch(byte[] sequence)
+        {
+            var indexes = GetIndexes(sequence);
+            return _bits[indexes.Index1] && _bits[indexes.Index2] && _bits[indexes.Index3];
+        }
+        
         public override string ToString()
         {
             StringBuilder stringBuilder = new StringBuilder();
@@ -127,7 +131,7 @@ namespace Nethermind.Core
             return _bits != null ? _bits.GetHashCode() : 0;
         }
         
-        public void Add(LogEntry[] logEntries)
+        public void Add(params LogEntry[] logEntries)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
@@ -140,6 +144,37 @@ namespace Nethermind.Core
                     Set(topic.Bytes);
                 }
             }
+        }
+        
+        public bool IsMatch(LogEntry logEntry)
+        {
+            if (!IsMatch(logEntry.LoggersAddress.Bytes))
+            {
+                return false;
+            }
+            
+            for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+            {
+                Keccak topic = logEntry.Topics[topicIndex];
+                if (!IsMatch(topic.Bytes))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+
+        }
+        
+        private (int Index1, int Index2, int Index3) GetIndexes(byte[] sequence)
+        {
+            int GetIndex(Span<byte> bytes, int index1, int index2)
+            {
+                return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
+            }
+
+            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
+            return (GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
         }
     }
 }
