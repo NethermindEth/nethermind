@@ -610,10 +610,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
         }
 
         // https://github.com/ethereum/EIPs/issues/1186
-        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, Keccak[] hashRate, BlockParameter blockParameter)
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys, BlockParameter blockParameter)
         {
-            ProofCollector proofCollector = new ProofCollector(accountAddress);
-            _blockchainBridge.RunTreeVisitor(proofCollector);
+            Block block;
+            try
+            {
+                block = _blockchainBridge.GetBlock(blockParameter);
+            }
+            catch (JsonRpcException ex)
+            {
+                return ResultWrapper<AccountProof>.Fail(ex.Message, ex.ErrorType, null);
+            }
+            
+            ProofCollector proofCollector = new ProofCollector(accountAddress, storageKeys);
+            _blockchainBridge.RunTreeVisitor(proofCollector, block.StateRoot);
 
             return ResultWrapper<AccountProof>.Success(proofCollector.BuildResult());
         }

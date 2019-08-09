@@ -22,86 +22,70 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Extensions;
 using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Eip1186
 {
-    /// <summary>
-    ///{
-    ///  "id": 1,
-    ///  "jsonrpc": "2.0",
-    ///  "method": "eth_getProof",
-    ///  "params": [
-    ///    "0x7F0d15C7FAae65896648C8273B6d7E43f58Fa842",
-    ///    [  "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421" ],
-    ///    "latest"
-    ///  ]
-    ///}
-    ///  
-    ///{
-    ///  "id": 1,
-    ///  "jsonrpc": "2.0",
-    ///  "result": {
-    ///    "accountProof": [
-    ///    "0xf90211a...0701bc80",
-    ///    "0xf90211a...0d832380",
-    ///    "0xf90211a...5fb20c80",
-    ///    "0xf90211a...0675b80",
-    ///    "0xf90151a0...ca08080"
-    ///    ],
-    ///  "balance": "0x0",
-    ///  "codeHash": "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470",
-    ///  "nonce": "0x0",
-    ///  "storageHash": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-    ///  "storageProof": [
-    ///  {
-    ///    "key": "0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
-    ///    "proof": [
-    ///    "0xf90211a...0701bc80",
-    ///    "0xf90211a...0d832380"
-    ///    ],
-    ///    "value": "0x1"
-    ///  }
-    ///  ]
-    ///  }
-    ///}
-    /// </summary>
     public class ProofCollector : ITreeVisitor
     {
         private int _pathIndex;
 
         private readonly Address _address;
-        private readonly UInt256[] _storageKeys;
-        
+        private readonly Keccak[] _storageKeys;
+
         private Nibble[] _prefix => Nibbles.FromBytes(Keccak.Compute(_address.Bytes).Bytes);
         private Nibble[][] _storagePrefixes;
-        
-        private List<byte[]> _proofBits = new List<byte[]>();
-        private List<byte[][]> _storageProofBits = new List<byte[][]>();
 
-        public ProofCollector(Address address, params UInt256[] storageKeys)
+        private List<byte[]> _proofBits = new List<byte[]>();
+        private List<byte[]>[] _storageProofBits;
+
+        private Dictionary<Keccak, NodeInfo> _nodeInfos = new Dictionary<Keccak, NodeInfo>();
+        private HashSet<Keccak> _visitingFilter = new HashSet<Keccak>();
+
+        private class NodeInfo
+        {
+            public NodeInfo()
+            {
+                StorageIndices = new List<int>();
+            }
+
+            public int PathIndex { get; set; }
+            public List<int> StorageIndices { get; set; }
+        }
+
+        private static Keccak ToKey(byte[] index)
+        {
+            return Keccak.Compute(index);
+        }
+
+        public ProofCollector(Address address, params byte[][] storageKeys)
+            : this(address, storageKeys.Select(ToKey).ToArray())
+        {
+        }
+
+        public ProofCollector(Address address, Keccak[] storageKeys)
         {
             _address = address ?? throw new ArgumentNullException(nameof(address));
-            _storageKeys = storageKeys ?? new UInt256[0];
-            
+            _storageKeys = storageKeys ?? new Keccak[0];
+
             _accountProof = new AccountProof();
             _accountProof.StorageProofs = new StorageProof[_storageKeys.Length];
-            
+
             _storagePrefixes = new Nibble[_storageKeys.Length][];
+            _storageProofBits = new List<byte[]>[_storageKeys.Length];
+            for (int i = 0; i < _storageProofBits.Length; i++)
+            {
+                _storageProofBits[i] = new List<byte[]>();
+            }
+
             for (int i = 0; i < _storageKeys.Length; i++)
             {
-                Span<byte> span = stackalloc byte[32];
-                _storageKeys[i].ToBigEndian(span);
-                Keccak key = Keccak.Compute(span);
-                _storagePrefixes[i] = Nibbles.FromBytes(key.Bytes);
-                
-                _accountProof.StorageProofs[i] = new StorageProof();
-                _accountProof.StorageProofs[i].Key = key;
-            }
-            
-            
+                _storagePrefixes[i] = Nibbles.FromBytes(_storageKeys[i].Bytes);
 
+                _accountProof.StorageProofs[i] = new StorageProof();
+                _accountProof.StorageProofs[i].Key = _storageKeys[i];
+            }
         }
 
         private AccountProof _accountProof;
@@ -109,11 +93,21 @@ namespace Nethermind.JsonRpc.Eip1186
         public AccountProof BuildResult()
         {
             _accountProof.Proof = _proofBits.ToArray();
+            for (int i = 0; i < _storageProofBits.Length; i++)
+            {
+                _accountProof.StorageProofs[i].Proof = _storageProofBits[i].ToArray();
+            }
+
             return _accountProof;
         }
 
         public bool ShouldVisit(Keccak nextNode)
         {
+            if (_nodeInfos.ContainsKey(nextNode))
+            {
+                _pathIndex = _nodeInfos[nextNode].PathIndex;
+            }
+
             return _visitingFilter.Contains(nextNode);
         }
 
@@ -127,13 +121,34 @@ namespace Nethermind.JsonRpc.Eip1186
 
         public void VisitBranch(TrieNode node, VisitContext context)
         {
-            _visitingFilter.Clear();
-            _proofBits.Add(node.FullRlp.Bytes);
+            AddProofBits(node, context);
+            _visitingFilter.Remove(node.Keccak);
+
             if (context.IsStorage)
             {
-                for (int i = 0; i < _storagePrefixes.Length; i++)
+//                Console.WriteLine($"Visiting BRANCH {node.Keccak} at {_pathIndex}");
+                foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
-                    _visitingFilter.Add(node.GetChildHash((byte) _storagePrefixes[i][_pathIndex]));
+                    Keccak childHash = node.GetChildHash((byte) _storagePrefixes[storageIndex][_pathIndex]);
+                    if (childHash == null)
+                    {
+                        Console.WriteLine($"Empty at {storageIndex}");
+                        
+                        AddEmpty(node, context);
+                    }
+                    else
+                    {
+                        if (!_nodeInfos.ContainsKey(childHash))
+                        {
+                            _nodeInfos[childHash] = new NodeInfo();
+                        }
+
+                        _nodeInfos[childHash].PathIndex = _pathIndex + 1;
+                        _nodeInfos[childHash].StorageIndices.Add(storageIndex);
+//                        Console.WriteLine($"For BRANCH {storageIndex} will visit {childHash} at {_pathIndex + 1}");
+
+                        _visitingFilter.Add(childHash);
+                    }
                 }
             }
             else
@@ -144,23 +159,77 @@ namespace Nethermind.JsonRpc.Eip1186
             _pathIndex++;
         }
 
-        private HashSet<Keccak> _visitingFilter = new HashSet<Keccak>();
-
         public void VisitExtension(TrieNode node, VisitContext context)
         {
-            _visitingFilter.Clear();
-            _proofBits.Add(node.FullRlp.Bytes);
-            _visitingFilter.Add(node.GetChildHash(0)); // always accept so can optimize
+            AddProofBits(node, context);
+            _visitingFilter.Remove(node.Keccak);
+
+            Keccak childHash = node.GetChildHash(0);
+            if (context.IsStorage)
+            {
+//                Console.WriteLine($"Visiting EXT {node.Keccak} at {_pathIndex}");
+//                Console.WriteLine($"Node {node.Keccak} has storage indices {string.Join(';', _nodeInfos[node.Keccak].StorageIndices)} at {_pathIndex + node.Path.Length}");
+                _nodeInfos[childHash] = new NodeInfo();
+                _nodeInfos[childHash].PathIndex = _pathIndex + node.Path.Length;
+                _nodeInfos[childHash].StorageIndices.AddRange(_nodeInfos[node.Keccak].StorageIndices);
+
+//                Console.WriteLine($"For EXT {string.Join(';', _nodeInfos[node.Keccak].StorageIndices)} will visit {childHash} at {_pathIndex + node.Path.Length}");
+            }
+
+            _visitingFilter.Add(childHash); // always accept so can optimize
+
             _pathIndex += node.Path.Length;
+        }
+
+        private void AddProofBits(TrieNode node, VisitContext context)
+        {
+            if (context.IsStorage)
+            {
+                if (_nodeInfos.ContainsKey(node.Keccak))
+                {
+                    foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
+                    {
+                        _storageProofBits[storageIndex].Add(node.FullRlp.Bytes);
+                    }
+                }
+            }
+            else
+            {
+                _proofBits.Add(node.FullRlp.Bytes);
+            }
+        }
+
+        private void AddEmpty(TrieNode node, VisitContext context)
+        {
+            if (context.IsStorage)
+            {
+                if (_nodeInfos.ContainsKey(node.Keccak))
+                {
+                    foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
+                    {
+                        _storageProofBits[storageIndex].Add(Bytes.Empty);
+                    }
+                }
+            }
+            else
+            {
+                _proofBits.Add(Bytes.Empty);
+            }
         }
 
         public void VisitLeaf(TrieNode node, VisitContext context)
         {
-            _visitingFilter.Clear();
-            _proofBits.Add(node.FullRlp.Bytes);
+            AddProofBits(node, context);
+            _visitingFilter.Remove(node.Keccak);
+
             if (context.IsStorage)
             {
-                StorageProof storageProof = new StorageProof();
+//                Console.WriteLine($"Visiting LEAF {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
+                foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
+                {
+//                    Console.WriteLine($"Setting LEAF value for {storageIndex} {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
+                    _accountProof.StorageProofs[storageIndex].Value = new Rlp.DecoderContext(node.Value).DecodeByteArray();
+                }
             }
             else
             {
@@ -169,15 +238,20 @@ namespace Nethermind.JsonRpc.Eip1186
                 _accountProof.Balance = account.Balance;
                 _accountProof.StorageRoot = account.StorageRoot;
                 _accountProof.CodeHash = account.CodeHash;
+
+                if (_storagePrefixes.Length > 0)
+                {
+                    _visitingFilter.Add(_accountProof.StorageRoot);
+                    _nodeInfos[_accountProof.StorageRoot] = new NodeInfo();
+                    _nodeInfos[_accountProof.StorageRoot].PathIndex = 0;
+                    for (int i = 0; i < _storagePrefixes.Length; i++)
+                    {
+                        _nodeInfos[_accountProof.StorageRoot].StorageIndices.Add(i);
+                    }
+                }
             }
 
-            _pathIndex += node.Path.Length;
-
-            if (_storagePrefixes.Length > 0)
-            {
-                _pathIndex = 0;
-                _visitingFilter.Add(_accountProof.StorageRoot);
-            }
+            _pathIndex = 0;
         }
 
         private AccountDecoder _accountDecoder = new AccountDecoder();
