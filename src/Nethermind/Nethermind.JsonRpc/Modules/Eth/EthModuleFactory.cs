@@ -25,6 +25,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Wallet;
@@ -99,7 +100,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         public static List<JsonConverter> Converters = new List<JsonConverter>
         {
-            new SyncingResultConverter()
+            new SyncingResultConverter(),
+            new ProofConverter()
         };
 
         public override IReadOnlyCollection<JsonConverter> GetConverters() => Converters;

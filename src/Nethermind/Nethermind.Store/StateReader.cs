@@ -101,6 +101,12 @@ namespace Nethermind.Store
             return _codeDb[codeHash.Bytes];
         }
 
+        public void RunTreeVisitor(Keccak rootHash, ITreeVisitor treeVisitor)
+        {
+            _state.RootHash = rootHash;
+            _state.Accept(treeVisitor, _codeDb);
+        }
+
         public byte[] GetCode(Keccak rootHash, Address address)
         {
             Account account = GetState(rootHash, address);
@@ -114,7 +120,6 @@ namespace Nethermind.Store
 
         private Account GetState(Keccak rootHash, Address address)
         {
-            Metrics.StateTreeReads++;
             _state.RootHash = rootHash;
             Account account = _state.Get(address);
             return account;

@@ -256,6 +256,11 @@ namespace Nethermind.Facade
             return new FilterLog[0];
         }
 
+        public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
+        {
+            _stateReader.RunTreeVisitor(stateRoot, treeVisitor);
+        }
+        
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {

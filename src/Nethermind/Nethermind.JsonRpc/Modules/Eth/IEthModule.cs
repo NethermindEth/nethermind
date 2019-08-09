@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Eip1186;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -74,5 +75,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id);
+        
+        // https://github.com/ethereum/EIPs/issues/1186
+        ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate, BlockParameter blockParameter);
     }
 }
