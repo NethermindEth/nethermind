@@ -142,6 +142,7 @@ namespace Nethermind.Runner.Runners
         private IBlockProcessor _blockProcessor;
         private IRewardCalculator _rewardCalculator;
         private ISpecProvider _specProvider;
+        private IStateProvider _stateProvider;
         private ISealer _sealer;
         private ISealValidator _sealValidator;
         private IBlockProducer _blockProducer;
@@ -391,13 +392,18 @@ namespace Nethermind.Runner.Runners
                 ? (IDbProvider) new MemDbProvider()
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
 
+            _stateProvider = new StateProvider(
+                _dbProvider.StateDb,
+                _dbProvider.CodeDb,
+                _logManager);
+            
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
                 Timestamper.Default,
                 _ethereumEcdsa,
                 _specProvider,
-                _txPoolConfig, _logManager);
+                _txPoolConfig, _stateProvider, _logManager);
             var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance; 
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
 
@@ -489,24 +495,21 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _logManager);
 
-            var stateProvider = new StateProvider(
-                _dbProvider.StateDb,
-                _dbProvider.CodeDb,
-                _logManager);
+
 
             var storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
-                stateProvider,
+                _stateProvider,
                 _logManager);
 
-            _txPoolInfoProvider = new TxPoolInfoProvider(stateProvider, _txPool);
+            _txPoolInfoProvider = new TxPoolInfoProvider(_stateProvider, _txPool);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(
                 _blockTree, _logManager);
 
             var virtualMachine = new VirtualMachine(
-                stateProvider,
+                _stateProvider,
                 storageProvider,
                 blockhashProvider,
                 _specProvider,
@@ -514,7 +517,7 @@ namespace Nethermind.Runner.Runners
 
             var transactionProcessor = new TransactionProcessor(
                 _specProvider,
-                stateProvider,
+                _stateProvider,
                 storageProvider,
                 virtualMachine,
                 _logManager);
@@ -527,7 +530,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.StateDb,
                 _dbProvider.CodeDb,
                 _dbProvider.TraceDb,
-                stateProvider,
+                _stateProvider,
                 storageProvider,
                 _txPool,
                 _receiptStorage,
@@ -578,7 +581,7 @@ namespace Nethermind.Runner.Runners
             }
 
             _blockchainProcessor.Start();
-            LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, stateProvider, _specProvider);
+            LoadGenesisBlock(_chainSpec, string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash), _blockTree, _stateProvider, _specProvider);
             if (_initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014

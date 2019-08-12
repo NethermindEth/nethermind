@@ -63,6 +63,11 @@ namespace Nethermind.Blockchain.TxPools
             return false;
         }
 
+        public UInt256 GetNonce(Address address)
+        {
+            return UInt256.Zero;
+        }
+
         public event EventHandler<TxEventArgs> NewPending
         {
             add { }

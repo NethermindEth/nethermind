@@ -60,12 +60,18 @@ namespace Nethermind.Blockchain.Test
 
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
+            /* state & storage */
+            StateDb codeDb = new StateDb();
+            StateDb stateDb = new StateDb();
+            StateProvider stateProvider = new StateProvider(stateDb, codeDb, logManager);
+            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
+            
             /* store & validation */
 
             EthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, logManager);
             MemDb receiptsDb = new MemDb();
             MemDb traceDb = new MemDb();
-            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), logManager);
+            TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, NullDb.Instance, specProvider, logManager);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, txPool, logManager);
             Timestamper timestamper = new Timestamper();
@@ -74,12 +80,6 @@ namespace Nethermind.Blockchain.Test
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logManager);
             TxValidator txValidator = new TxValidator(ChainId.Ropsten);
             BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
-
-            /* state & storage */
-            StateDb codeDb = new StateDb();
-            StateDb stateDb = new StateDb();
-            StateProvider stateProvider = new StateProvider(stateDb, codeDb, logManager);
-            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logManager);
 
             TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
             generator.Start();

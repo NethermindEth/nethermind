@@ -39,7 +39,6 @@ namespace Nethermind.Facade
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly ITxPool _txPool;
-        
         private readonly IWallet _wallet;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
@@ -215,7 +214,7 @@ namespace Nethermind.Facade
 
         public BigInteger GetNonce(Address address)
         {
-            return _stateReader.GetNonce(_blockTree.Head.StateRoot, address);
+            return _txPool.GetNonce(address);
         }
 
         public BigInteger GetBalance(Address address)

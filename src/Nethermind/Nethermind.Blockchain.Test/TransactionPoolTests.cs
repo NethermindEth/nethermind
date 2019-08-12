@@ -48,6 +48,7 @@ namespace Nethermind.Blockchain.Test
         private ITxStorage _noTxStorage;
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
+        private IStateProvider _stateProvider;
 
         [SetUp]
         public void Setup()
@@ -60,6 +61,7 @@ namespace Nethermind.Blockchain.Test
             _noTxStorage = NullTxStorage.Instance;
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb(), _specProvider);
+            _stateProvider = new StateProvider(new StateDb(), new MemDb(), _logManager);
         }
 
         [Test]
@@ -258,7 +260,7 @@ namespace Nethermind.Blockchain.Test
 
         private TxPool CreatePool(ITxStorage txStorage)
             => new TxPool(txStorage,
-                Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _logManager);
+                Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
 
         private ISyncPeer GetPeer(PublicKey publicKey)
             => new SyncPeerMock(_remoteBlockTree, publicKey);

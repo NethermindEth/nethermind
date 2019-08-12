@@ -247,7 +247,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var (receipt, transaction) = _blockchainBridge.GetTransaction(deposit.TransactionHash);                        
             if (transaction is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
+                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
                 return;
             }
 

@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Store;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.TxPools
@@ -38,6 +39,9 @@ namespace Nethermind.Blockchain.TxPools
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
+        private long _latestBlockNumber = 0;
+        private readonly ConcurrentDictionary<Address, UInt256> _nonces = new ConcurrentDictionary<Address, UInt256>();
+        
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
         /// </summary>
@@ -55,6 +59,7 @@ namespace Nethermind.Blockchain.TxPools
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
         
         private readonly ISpecProvider _specProvider;
+        private readonly IStateProvider _stateProvider;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
 
@@ -124,6 +129,7 @@ namespace Nethermind.Blockchain.TxPools
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="txPoolConfig"></param>
+        /// <param name="stateProvider"></param>
         /// <param name="logManager"></param>
         public TxPool(
             ITxStorage txStorage,
@@ -131,6 +137,7 @@ namespace Nethermind.Blockchain.TxPools
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
+            IStateProvider stateProvider,
             ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -138,7 +145,8 @@ namespace Nethermind.Blockchain.TxPools
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
             
             _ownTimer = new Timer(500);
@@ -188,14 +196,15 @@ namespace Nethermind.Blockchain.TxPools
 
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false)
         {
-            if(_fadingOwnTransactions.ContainsKey(tx.Hash))
+            Interlocked.Exchange(ref _latestBlockNumber, blockNumber);
+            if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
                 _fadingOwnTransactions.TryRemove(tx.Hash, out (Transaction Tx, long _) fadingTxHolder);
                 _ownTransactions.TryAdd(fadingTxHolder.Tx.Hash, fadingTxHolder.Tx);
                 _ownTimer.Enabled = true;
                 return AddTxResult.Added;
             }
-            
+
             Metrics.PendingTransactionsReceived++;
 
             if (tx.Signature.GetChainId == null)
@@ -240,17 +249,24 @@ namespace Nethermind.Blockchain.TxPools
             
             if (isOwn)
             {
-                _ownTransactions.TryAdd(tx.Hash, tx);
-                _ownTimer.Enabled = true;
-
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
+                HandleOwnTransaction(tx);
             }
             
             NotifySelectedPeers(tx);
-
             FilterAndStoreTx(tx, blockNumber);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
+        }
+
+        private void HandleOwnTransaction(Transaction transaction)
+        {
+            var address = transaction.SenderAddress;
+            var nonce = GetNonce(address);
+            _ownTransactions.TryAdd(transaction.Hash, transaction);
+            _ownTimer.Enabled = true;
+            var incrementedNonce = nonce + 1;
+            _nonces.TryUpdate(address, incrementedNonce, nonce);
+            if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
         }
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
@@ -296,6 +312,9 @@ namespace Nethermind.Blockchain.TxPools
             sender = found ? transaction.SenderAddress : null;
             return found;
         }
+
+        public UInt256 GetNonce(Address address)
+            => _nonces.GetOrAdd(address, _stateProvider.GetNonce(address));
 
         public void Dispose()
         {
