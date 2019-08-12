@@ -37,10 +37,10 @@ namespace Nethermind.Core
             _bits = new BitArray(2048);
         }
         
-        public Bloom(LogEntry[] logEntries)
+        public Bloom(LogEntry[] logEntries, Bloom blockBloom)
         {
             _bits = new BitArray(2048);
-            Add(logEntries);
+            Add(logEntries, blockBloom);
         }
 
         public Bloom(BitArray bitArray)
@@ -57,11 +57,20 @@ namespace Nethermind.Core
 
         public void Set(byte[] sequence)
         {
+            Set(sequence, null);
+        }
+        
+        private void Set(byte[] sequence, Bloom masterBloom)
+        {
             Span<byte> keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
             for (int i = 0; i < 6; i += 2)
             {
                 int index = 2047 - ((keccakBytes[i] << 8) + keccakBytes[i + 1]) % 2048;
                 _bits.Set(index, true);
+                if (masterBloom != null)
+                {
+                    masterBloom._bits.Set(index, true);
+                }
             }
         }
 
@@ -127,17 +136,17 @@ namespace Nethermind.Core
             return _bits != null ? _bits.GetHashCode() : 0;
         }
         
-        public void Add(LogEntry[] logEntries)
+        private void Add(LogEntry[] logEntries, Bloom blockBloom)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
                 LogEntry logEntry = logEntries[entryIndex];
                 byte[] addressBytes = logEntry.LoggersAddress.Bytes;
-                Set(addressBytes);
+                Set(addressBytes, blockBloom);
                 for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
                     Keccak topic = logEntry.Topics[topicIndex];
-                    Set(topic.Bytes);
+                    Set(topic.Bytes, blockBloom);
                 }
             }
         }

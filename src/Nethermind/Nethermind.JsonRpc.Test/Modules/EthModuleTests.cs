@@ -344,7 +344,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Build.A.LogEntry.TestObject,
                 Build.A.LogEntry.TestObject
             };
-            bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries)).WithAllFieldsFilled.WithLogs(entries).TestObject);
+            bridge.GetReceipt(Arg.Any<Keccak>()).Returns(Build.A.Receipt.WithBloom(new Bloom(entries, new Bloom())).WithAllFieldsFilled.WithLogs(entries).TestObject);
 
             IEthModule module = new EthModule(NullLogManager.Instance, bridge);
 
