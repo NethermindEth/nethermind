@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.TxPools
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        private long _latestBlockNumber = 0;
+        private static readonly object Locker = new object();
         private readonly ConcurrentDictionary<Address, UInt256> _nonces = new ConcurrentDictionary<Address, UInt256>();
         
         /// <summary>
@@ -196,7 +196,6 @@ namespace Nethermind.Blockchain.TxPools
 
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false)
         {
-            Interlocked.Exchange(ref _latestBlockNumber, blockNumber);
             if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
                 _fadingOwnTransactions.TryRemove(tx.Hash, out (Transaction Tx, long _) fadingTxHolder);
@@ -260,12 +259,8 @@ namespace Nethermind.Blockchain.TxPools
 
         private void HandleOwnTransaction(Transaction transaction)
         {
-            var address = transaction.SenderAddress;
-            var nonce = GetNonce(address);
             _ownTransactions.TryAdd(transaction.Hash, transaction);
             _ownTimer.Enabled = true;
-            var incrementedNonce = nonce + 1;
-            _nonces.TryUpdate(address, incrementedNonce, nonce);
             if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
         }
 
@@ -313,8 +308,25 @@ namespace Nethermind.Blockchain.TxPools
             return found;
         }
 
-        public UInt256 GetNonce(Address address)
-            => _nonces.GetOrAdd(address, _stateProvider.GetNonce(address));
+        // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
+        public UInt256 ReserveOwnTransactionNonce(Address address)
+        {
+            lock (Locker)
+            {
+                if (!_nonces.TryGetValue(address, out var nonce))
+                {
+                    nonce = _stateProvider.GetNonce(address);
+                    _nonces.TryAdd(address, nonce);
+
+                    return nonce;
+                }
+
+                var incrementedNonce = nonce + 1;
+                _nonces.TryUpdate(address, incrementedNonce, nonce);
+
+                return incrementedNonce;
+            }
+        }
 
         public void Dispose()
         {

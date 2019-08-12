@@ -214,7 +214,7 @@ namespace Nethermind.Facade
 
         public BigInteger GetNonce(Address address)
         {
-            return _txPool.GetNonce(address);
+            return _stateReader.GetNonce(_blockTree.Head.StateRoot, address);
         }
 
         public BigInteger GetBalance(Address address)

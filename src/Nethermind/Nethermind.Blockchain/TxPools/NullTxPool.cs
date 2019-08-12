@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.TxPools
             return false;
         }
 
-        public UInt256 GetNonce(Address address)
+        public UInt256 ReserveOwnTransactionNonce(Address address)
         {
             return UInt256.Zero;
         }

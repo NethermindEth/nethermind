@@ -55,7 +55,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var sessionRlpDecoder = new ConsumerSessionDecoder();
             var receiptRequestValidator = new ReceiptRequestValidator(logManager);
             var refundService = new RefundService(services.CreatedServices.BlockchainBridge,
-                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, contractAddress, logManager);
+                services.RequiredServices.TransactionPool, services.CreatedServices.AbiEncoder,
+                services.RequiredServices.Wallet, contractAddress, logManager);
 
             IDepositDetailsRepository depositRepository;
             IConsumerDepositApprovalRepository depositApprovalRepository;
@@ -88,7 +89,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             }
 
             var depositService = new DepositService(services.CreatedServices.BlockchainBridge,
-                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, contractAddress, logManager);
+                services.RequiredServices.TransactionPool, services.CreatedServices.AbiEncoder,
+                services.RequiredServices.Wallet, contractAddress, logManager);
             var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
             var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
                 depositRepository, depositApprovalRepository, providerRepository, receiptRepository, sessionRepository,

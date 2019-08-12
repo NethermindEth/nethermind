@@ -18,6 +18,7 @@
 
 using System;
 using Nethermind.Abi;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,15 +34,17 @@ namespace Nethermind.DataMarketplace.Consumers.Services
     public class RefundService : IRefundService
     {
         private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxPool _txPool;
         private readonly IAbiEncoder _abiEncoder;
         private readonly IWallet _wallet;
         private readonly Address _contractAddress;
         private readonly ILogger _logger;
 
-        public RefundService(IBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
+        public RefundService(IBlockchainBridge blockchainBridge, ITxPool txPool, IAbiEncoder abiEncoder, IWallet wallet,
             Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPool = txPool;
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
@@ -58,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
+            transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
             _wallet.Sign(transaction, _blockchainBridge.GetNetworkId());
             
             if (_logger.IsInfo)
@@ -79,7 +82,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
+            transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
             
             if (_logger.IsInfo)
             {
