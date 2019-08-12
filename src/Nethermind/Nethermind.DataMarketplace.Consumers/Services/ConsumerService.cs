@@ -247,7 +247,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var (receipt, transaction) = _blockchainBridge.GetTransaction(deposit.TransactionHash);                        
             if (transaction is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
+                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
                 return;
             }
 
@@ -898,15 +898,30 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
             if (enabled)
             {
-                if (dataAsset.QueryType == QueryType.Stream)
+                switch (dataAsset.QueryType)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                    case QueryType.Stream:
+                    {
+                        if (session.GetClient(client)?.StreamEnabled == true)
+                        {
+                            if (_logger.IsInfo) _logger.Info($"Disabling an existing data stream for deposit: '{depositId}', client: '{client}'.");
+                            providerPeer.SendDisableDataStream(depositId, client);
+                        }
+                    
+                        if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
+                        break;
+                    }
+                    case QueryType.Query:
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
+                        break;
+                    }
+                    default:
+                    {
+                        throw new InvalidOperationException($"Not supported data asset type: {dataAsset.QueryType}.");
+                    }
                 }
-                else if (dataAsset.QueryType == QueryType.Query)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
-                }
-                
+
                 providerPeer.SendEnableDataStream(depositId, client, args);
             }
             else
@@ -1333,7 +1348,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
             if (transaction is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to claim an early refund.");
+                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to claim an early refund.");
                 return;
             }
 
@@ -1368,7 +1383,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
             if (transaction is null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to claim a refund.");
+                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to claim a refund.");
                 return;
             }
             

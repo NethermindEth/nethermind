@@ -192,7 +192,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 }
                 else
                 {
-                    latestRequest.UpdateRequestDate(requestedAt);
+                    latestRequest.UpdateRequestDetails(address, value, requestedAt, transactionHash);
                     await _requestRepository.UpdateAsync(latestRequest);
                 }
 
