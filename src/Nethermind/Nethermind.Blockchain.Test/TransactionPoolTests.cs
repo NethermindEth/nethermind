@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
@@ -194,6 +195,41 @@ namespace Nethermind.Blockchain.Test
         {
             var transactions = AddAndFilterTransactions(_persistentTxStorage);
             transactions.Pending.Count().Should().Be(transactions.Filtered.Count());
+        }
+
+        [Test]
+        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            var nonceA1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
+            var nonceA2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
+            var nonceA3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
+            var nonceB1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+            var nonceB2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+            var nonceB3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+
+            nonceA1.Should().Be(0);
+            nonceA2.Should().Be(1);
+            nonceA3.Should().Be(2);
+            nonceB1.Should().Be(0);
+            nonceB2.Should().Be(1);
+            nonceB3.Should().Be(2);
+        }
+        
+        [Test]
+        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
+        {
+            var address = TestItem.AddressA;
+            const int reservationsCount = 1000;
+            _txPool = CreatePool(_noTxStorage);
+            var result = Parallel.For(0, reservationsCount, i =>
+            {
+                _txPool.ReserveOwnTransactionNonce(address);
+            });
+
+            result.IsCompleted.Should().BeTrue();
+            var nonce = _txPool.ReserveOwnTransactionNonce(address);
+            nonce.Should().Be(new UInt256(reservationsCount));
         }
 
         [Test]

@@ -315,10 +315,10 @@ namespace Nethermind.Blockchain.TxPools
             {
                 if (!_nonces.TryGetValue(address, out var nonce))
                 {
-                    nonce = _stateProvider.GetNonce(address);
-                    _nonces.TryAdd(address, nonce);
+                    var currentNonce = _stateProvider.GetNonce(address);
+                    _nonces.TryAdd(address, currentNonce);
 
-                    return nonce;
+                    return currentNonce;
                 }
 
                 var incrementedNonce = nonce + 1;
