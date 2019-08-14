@@ -58,13 +58,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 var rejected = context.DecodeBool();
                 var earlyRefundTicket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(context);
                 var claimedRefundTransactionHash = context.DecodeKeccak();
+                var refundClaimed = context.DecodeBool();
                 var kyc = context.DecodeString();
                 var confirmations = context.DecodeUInt();
                 var requiredConfirmations = context.DecodeUInt();
 
                 return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactionHash,
-                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransactionHash, kyc,
-                    confirmations, requiredConfirmations);
+                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransactionHash, refundClaimed,
+                    kyc, confirmations, requiredConfirmations);
             }
             catch (Exception)
             {
@@ -84,6 +85,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 var rejected = context.DecodeBool();
                 var earlyRefundTicket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(context);
                 var claimedRefundTransactionHash = context.DecodeKeccak();
+                var refundClaimed = context.DecodeBool();
                 var kyc = context.DecodeString();
                 var confirmations = context.DecodeUInt();
                 var requiredConfirmations = context.DecodeUInt();
@@ -94,8 +96,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 }
 
                 return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactionHash,
-                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransactionHash, kyc,
-                    confirmations, requiredConfirmations);
+                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransactionHash, refundClaimed,
+                    kyc, confirmations, requiredConfirmations);
             }
         }
 
@@ -117,6 +119,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.Rejected),
                 Nethermind.Core.Encoding.Rlp.Encode(item.EarlyRefundTicket),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ClaimedRefundTransactionHash),
+                Nethermind.Core.Encoding.Rlp.Encode(item.RefundClaimed),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Kyc),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Confirmations),
                 Nethermind.Core.Encoding.Rlp.Encode(item.RequiredConfirmations));
