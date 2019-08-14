@@ -190,6 +190,7 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     }
                     
+                    receipt.BlockNumber = block.Number;
                     blockReceipts[receiptIndex] = receipt;
                 }
 
