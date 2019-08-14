@@ -1207,21 +1207,13 @@ namespace Nethermind.Blockchain
 
         private long LoadNumberOnly(Keccak blockHash)
         {
-            BlockHeader header = _headerCache.Get(blockHash);
-            if (header != null)
-            {
-                return header.Number;
-            }
-
-            byte[] headerData = _headerDb.Get(blockHash);
-            if (headerData == null)
+            BlockHeader header = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header == null)
             {
                 throw new InvalidOperationException(
                     $"Not able to retrieve block number for an unknown block {blockHash}");
             }
-
-            header = _headerDecoder.Decode(headerData.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
-            _headerCache.Set(blockHash, header);
+            
             return header.Number;
         }
 
