@@ -708,7 +708,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _startNumber = lowestInserted?.Number ?? _pivotNumber;
             _startBodyHash = lowestInsertedBody?.Hash ?? _pivotHash;
             _startHeaderHash = lowestInserted?.Hash ?? _pivotHash;
-            _startReceiptsHash = _blockTree.FindBlock(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue)?.Hash ?? _pivotHash;
+            _startReceiptsHash = _blockTree.FindHash(_receiptStorage.LowestInsertedReceiptBlock ?? long.MaxValue) ?? _pivotHash;
             _startTotalDifficulty = lowestInserted?.TotalDifficulty ?? _pivotDifficulty;
 
             _nextHeaderHash = _startHeaderHash;

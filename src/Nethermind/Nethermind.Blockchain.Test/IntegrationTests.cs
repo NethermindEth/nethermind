@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Test
             int totalTx = 0;
             for (int i = 0; i < 6; i++)
             {
-                Block block = blockTree.FindBlock(i);
+                Block block = blockTree.FindBlock(i, BlockTreeLookupOptions.None);
                 logger.Info($"Block {i} with {block.Transactions.Length} txs");
 
                 ManualResetEventSlim blockProcessedEvent = new ManualResetEventSlim(false);

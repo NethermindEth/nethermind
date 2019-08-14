@@ -104,9 +104,9 @@ namespace Nethermind.Blockchain
             return _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public Block FindBlock(long blockNumber)
+        public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
         {
-            return _wrapped.FindBlock(blockNumber);
+            return _wrapped.FindBlock(blockNumber, options);
         }
 
         public void DeleteInvalidBlock(Block invalidBlock)

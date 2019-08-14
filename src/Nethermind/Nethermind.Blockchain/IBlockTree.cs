@@ -136,7 +136,7 @@ namespace Nethermind.Blockchain
         
         BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
         
-        Block FindBlock(long blockNumber);
+        Block FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
         BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
         

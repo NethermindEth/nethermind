@@ -39,15 +39,6 @@ using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    [Flags]
-    public enum BlockTreeLookupOptions
-    {
-        None = 0,
-        TotalDifficultyNotNeeded = 1,
-        RequireCanonical = 2,
-        All = 3
-    }
-
     [Todo(Improve.Refactor, "After the fast sync work there are some duplicated code parts for the 'by header' and 'by block' approaches.")]
     public class BlockTree : IBlockTree
     {
@@ -268,7 +259,7 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
+                    Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1, BlockTreeLookupOptions.RequireCanonical)?.Header;
                 }
 
                 long blocksToLoad = Math.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
@@ -682,7 +673,7 @@ namespace Nethermind.Blockchain
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
 
             Block[] result = new Block[numberOfBlocks];
-            Block startBlock = FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
+            Block startBlock = FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (startBlock == null)
             {
                 return result;
@@ -691,7 +682,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < numberOfBlocks; i++)
             {
                 int blockNumber = (int) startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
-                Block ithBlock = FindBlock(blockNumber);
+                Block ithBlock = FindBlock(blockNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 result[i] = ithBlock;
             }
 
@@ -756,10 +747,10 @@ namespace Nethermind.Blockchain
             return level.BlockInfos[0].BlockHash;
         }
 
-        public Block FindBlock(long blockNumber)
+        public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
         {
             Keccak hash = GetBlockHashOnMainOrOnlyHash(blockNumber);
-            return FindBlock(hash, BlockTreeLookupOptions.None);
+            return FindBlock(hash, options);
         }
 
         public void DeleteInvalidBlock(Block invalidBlock)

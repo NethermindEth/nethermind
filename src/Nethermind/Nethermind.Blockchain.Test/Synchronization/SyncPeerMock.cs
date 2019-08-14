@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }
                 else
                 {
-                    result[i] = _remoteTree.FindBlock(blockNumber).Header;
+                    result[i] = _remoteTree.FindBlock(blockNumber, BlockTreeLookupOptions.None).Header;
                 }
             }
             
