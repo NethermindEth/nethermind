@@ -1003,9 +1003,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             var abiHash = _abiEncoder.Encode(AbiEncodingStyle.Packed, _dataDeliveryReceiptAbiSig,
                 depositId.Bytes, new[] {request.UnitsRange.From, request.UnitsRange.To});
             var receiptHash = Keccak.Compute(abiHash);
-            var signature = _wallet.Sign(receiptHash, _consumerAddress);
+            var signature = _wallet.Sign(receiptHash, deposit.Consumer);
             var recoveredAddress = _ecdsa.RecoverPublicKey(signature, receiptHash)?.Address;
-            if (_consumerAddress != recoveredAddress)
+            if (deposit.Consumer != recoveredAddress)
             {
                 if (_logger.IsError) _logger.Error($"Signature failure when signing the receipt from provider: '{providerPeer.NodeId}', invalid recovered address.");
                 var receipt = new DataDeliveryReceipt(StatusCodes.InvalidReceiptAddress,
