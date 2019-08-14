@@ -341,6 +341,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockBodiesMessage request)
         {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace($"Received bodies request of length {request.BlockHashes.Length} from {Session.Node:c}:");
+            }
+            
             Stopwatch stopwatch = Stopwatch.StartNew();
             Keccak[] hashes = request.BlockHashes;
             Block[] blocks = new Block[hashes.Length];
@@ -361,11 +366,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Stopwatch stopwatch = Stopwatch.StartNew();
             if (Logger.IsTrace)
             {
-                Logger.Trace($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
-                Logger.Trace($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
-                Logger.Trace($"GetBlockHeaders.Skip: {getBlockHeadersMessage.Skip}");
-                Logger.Trace($"GetBlockHeaders.StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
-                Logger.Trace($"GetBlockHeaders.StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+                Logger.Trace($"Received headers request from {Session.Node:c}:");
+                Logger.Trace($"  MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
+                Logger.Trace($"  Reverse: {getBlockHeadersMessage.Reverse}");
+                Logger.Trace($"  Skip: {getBlockHeadersMessage.Skip}");
+                Logger.Trace($"  StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
+                Logger.Trace($"  StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
             }
 
             Interlocked.Increment(ref _counter);
@@ -458,12 +464,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (Logger.IsTrace)
             {
-                Logger.Trace("Sending headers request:");
-                Logger.Trace($"Starting blockhash: {message.StartingBlockHash}");
-                Logger.Trace($"Starting number: {message.StartingBlockNumber}");
-                Logger.Trace($"Skip: {message.Skip}");
-                Logger.Trace($"Reverse: {message.Reverse}");
-                Logger.Trace($"Max headers: {message.MaxHeaders}");
+                Logger.Trace($"Sending headers request to {Session.Node:c}:");
+                Logger.Trace($"  Starting blockhash: {message.StartingBlockHash}");
+                Logger.Trace($"  Starting number: {message.StartingBlockNumber}");
+                Logger.Trace($"  Skip: {message.Skip}");
+                Logger.Trace($"  Reverse: {message.Reverse}");
+                Logger.Trace($"  Max headers: {message.MaxHeaders}");
             }
 
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
