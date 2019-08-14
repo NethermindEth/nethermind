@@ -34,5 +34,7 @@ namespace Nethermind.Core
 
         public Transaction[] Transactions { get; set; }
         public BlockHeader[] Ommers { get; set; }
+        
+        public static BlockBody Empty = new BlockBody(); 
     }
 }
