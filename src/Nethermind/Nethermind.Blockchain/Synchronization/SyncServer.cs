@@ -190,6 +190,7 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     }
                     
+                    receipt.BlockNumber = block.Number;
                     blockReceipts[receiptIndex] = receipt;
                 }
 
@@ -217,7 +218,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public Block Find(Keccak hash)
         {
-            return _blockTree.FindBlock(hash, BlockTreeLookupOptions.None);
+            return _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
         public Keccak FindHash(long number)

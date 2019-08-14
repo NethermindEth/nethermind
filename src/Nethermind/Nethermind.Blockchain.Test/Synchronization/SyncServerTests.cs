@@ -55,5 +55,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _blockTree.DidNotReceive().FindBlock(Arg.Any<Keccak>(), Arg.Any<BlockTreeLookupOptions>());
             Assert.AreEqual(TestItem.KeccakA, result);
         }
+        
+        [Test]
+        public void When_finding_by_hash_block_info_is_not_loaded()
+        {
+            _syncServer.Find(TestItem.KeccakA);
+            _blockTree.Received().FindBlock(Arg.Any<Keccak>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
     }
 }

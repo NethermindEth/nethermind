@@ -79,6 +79,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
@@ -791,6 +792,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            _messageSerializationService.Register(new ReceiptsMessageSerializer(_specProvider));
 
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
