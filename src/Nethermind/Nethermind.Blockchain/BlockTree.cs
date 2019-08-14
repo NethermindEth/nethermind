@@ -681,7 +681,12 @@ namespace Nethermind.Blockchain
             {
                 return new BlockHeader[numberOfBlocks];
             }
-            
+
+            if (numberOfBlocks == 1)
+            {
+                return new[] {startHeader};
+            }
+
             if (skip == 0)
             {
                 /* if we do not skip and we have the last block then we can assume that all the blocks are there
@@ -713,22 +718,27 @@ namespace Nethermind.Blockchain
 
             return result;
         }
-        
+
         private BlockHeader[] FindHeadersReversedFull(BlockHeader startHeader, int numberOfBlocks)
         {
             if (startHeader == null) throw new ArgumentNullException(nameof(startHeader));
+            if (numberOfBlocks == 1)
+            {
+                return new[] {startHeader};
+            }
+
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
-            
+
             BlockHeader current = startHeader;
             int responseIndex = numberOfBlocks - 1;
             do
             {
                 result[responseIndex] = current;
                 responseIndex--;
-                
+
                 current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current != null && responseIndex < numberOfBlocks);
-            
+
             return result;
         }
 
@@ -1217,7 +1227,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException(
                     $"Not able to retrieve block number for an unknown block {blockHash}");
             }
-            
+
             return header.Number;
         }
 

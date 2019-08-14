@@ -410,6 +410,21 @@ namespace Nethermind.Blockchain.Test
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
             Assert.AreEqual(0, blocks.Length);
         }
+        
+        [Test]
+        public void Find_sequence_one_block()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 1, 0, false);
+            Assert.AreEqual(1, blocks.Length);
+        }
 
         [Test]
         public void Find_sequence_basic_skip()
