@@ -668,33 +668,12 @@ namespace Nethermind.Blockchain
             return GetBlockHashOnMainOrOnlyHash(number);
         }
 
-        public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
-        {
-            if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
-
-            Block[] result = new Block[numberOfBlocks];
-            Block startBlock = FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (startBlock == null)
-            {
-                return result;
-            }
-
-            for (int i = 0; i < numberOfBlocks; i++)
-            {
-                int blockNumber = (int) startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
-                Block ithBlock = FindBlock(blockNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                result[i] = ithBlock;
-            }
-
-            return result;
-        }
-
         public BlockHeader[] FindHeaders(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
 
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
-            BlockHeader startBlock = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
+            BlockHeader startBlock = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (startBlock == null)
             {
                 return result;
@@ -713,7 +692,7 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
+                current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current != null && responseIndex < numberOfBlocks);
 
             return result;

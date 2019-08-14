@@ -16,10 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -31,7 +29,6 @@ namespace Nethermind.Blockchain.Synchronization
         TxReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
         Keccak FindHash(long number);
-        Block[] FindBlocks(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(Keccak[] keys);
         int GetPeerCount();

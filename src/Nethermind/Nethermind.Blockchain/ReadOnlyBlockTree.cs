@@ -93,12 +93,7 @@ namespace Nethermind.Blockchain
         {
             return _wrapped.FindHash(blockNumber);
         }
-
-        public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
-        {
-            return _wrapped.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
-        }
-
+        
         public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _wrapped.FindHeaders(hash, numberOfBlocks, skip, reverse);

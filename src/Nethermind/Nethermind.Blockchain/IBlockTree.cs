@@ -141,9 +141,7 @@ namespace Nethermind.Blockchain
         BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
         
         Keccak FindHash(long blockNumber);
-        
-        Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
-        
+
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         
         void DeleteInvalidBlock(Block invalidBlock);

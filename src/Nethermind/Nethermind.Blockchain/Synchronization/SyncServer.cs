@@ -225,11 +225,6 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindHash(number);
         }
 
-        public Block[] FindBlocks(Keccak hash, int numberOfBlocks, int skip, bool reverse)
-        {
-            return _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
-        }
-
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
