@@ -670,10 +670,14 @@ namespace Nethermind.Blockchain
 
         public BlockHeader[] FindHeaders(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
-            if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
             if (numberOfBlocks == 0)
             {
                 return Array.Empty<BlockHeader>();
+            }
+            
+            if (blockHash == null)
+            {
+                return new BlockHeader[numberOfBlocks]; 
             }
 
             BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
