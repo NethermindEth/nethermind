@@ -739,7 +739,11 @@ namespace Nethermind.Blockchain
             {
                 result[responseIndex] = current;
                 responseIndex--;
-
+                if (responseIndex < 0)
+                {
+                    break;
+                }
+                
                 current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current != null && responseIndex < numberOfBlocks);
 

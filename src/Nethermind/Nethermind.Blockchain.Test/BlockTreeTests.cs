@@ -361,6 +361,43 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void Find_sequence_basic_longer()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            int length = 256;
+            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
+            Assert.AreEqual(length, blocks.Length);
+            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
+            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[1]));
+            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2]));
+        }
+        
+        [Test]
+        public void Find_sequence_basic_shorter()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            int length = 2;
+            BlockHeader[] blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
+            Assert.AreEqual(length, blocks.Length);
+            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[0]));
+            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[1]));
+        }
+        
+        [Test]
         public void Find_sequence_basic()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -371,9 +408,11 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 3, 0, false);
-            Assert.AreEqual(3, blocks.Length);
+            int length = 3;
+            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
+            Assert.AreEqual(length, blocks.Length);
             Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
+            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[1]));
             Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2]));
         }
 
