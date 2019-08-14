@@ -671,13 +671,23 @@ namespace Nethermind.Blockchain
         public BlockHeader[] FindHeaders(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
+            if (numberOfBlocks == 0)
+            {
+                return Array.Empty<BlockHeader>();
+            }
 
+            BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (startHeader == null)
+            {
+                return new BlockHeader[numberOfBlocks];
+            }
+            
             if (skip == 0)
             {
                 /* if we do not skip and we have the last block then we can assume that all the blocks are there
                    and we can use the fact that we can use parent hash and that searching by hash is much faster
                    as it does not require the step of resolving number -> hash */
-                BlockHeader endHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                BlockHeader endHeader = FindHeader(startHeader.Number + numberOfBlocks - 1, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (endHeader != null)
                 {
                     return FindHeadersReversedFull(endHeader, numberOfBlocks);
@@ -685,12 +695,6 @@ namespace Nethermind.Blockchain
             }
 
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
-            BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (startHeader == null)
-            {
-                return result;
-            }
-
             BlockHeader current = startHeader;
             int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
