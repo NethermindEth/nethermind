@@ -390,7 +390,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
             {
-                startingHash = SyncServer.FindHeader(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
+                startingHash = SyncServer.FindHash(getBlockHeadersMessage.StartingBlockNumber);
             }
 
             BlockHeader[] headers =

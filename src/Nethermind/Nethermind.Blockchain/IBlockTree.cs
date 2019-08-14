@@ -138,7 +138,9 @@ namespace Nethermind.Blockchain
         
         Block FindBlock(long blockNumber);
 
-        BlockHeader FindHeader(long blockNumber);
+        BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
+        
+        Keccak FindHash(long blockNumber);
         
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         

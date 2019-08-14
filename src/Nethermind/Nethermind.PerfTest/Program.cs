@@ -134,6 +134,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(number);
             }
 
+            public Keccak FindHash(long blockNumber)
+            {
+                return _blockTree.FindHash(blockNumber);
+            }
+
             public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
             {
                 return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);

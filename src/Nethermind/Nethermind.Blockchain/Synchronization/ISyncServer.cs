@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Synchronization
         void AddNewBlock(Block block, Node node);
         TxReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
-        BlockHeader FindHeader(long number);
+        Keccak FindHash(long number);
         Block[] FindBlocks(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         byte[][] GetNodeData(Keccak[] keys);

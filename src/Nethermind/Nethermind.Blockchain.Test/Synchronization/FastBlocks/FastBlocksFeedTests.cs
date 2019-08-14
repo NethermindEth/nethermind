@@ -931,7 +931,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND SHIFTED MESSAGES ({startNumber} INSTEAD OF {headersSyncBatch.StartNumber})");
                 }
 
-                Keccak hash = tree.FindHeader(startNumber)?.Hash;
+                Keccak hash = tree.FindHash(startNumber);
 
                 if (hash == null)
                 {

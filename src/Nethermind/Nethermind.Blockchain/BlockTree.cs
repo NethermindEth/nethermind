@@ -135,7 +135,7 @@ namespace Nethermind.Blockchain
 
                 if (genesisLevel.BlockInfos[0].WasProcessed)
                 {
-                    BlockHeader genesisHeader = LoadHeader(genesisLevel.BlockInfos[0].BlockHash);
+                    BlockHeader genesisHeader = FindHeader(genesisLevel.BlockInfos[0].BlockHash, BlockTreeLookupOptions.None);
                     Genesis = genesisHeader;
                     LoadHeadBlockAtStart();
                 }
@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain
             else
             {
                 BlockInfo blockInfo = lowestInsertedLevel.BlockInfos[0];
-                LowestInsertedHeader = FindHeader(blockInfo.BlockHash);
+                LowestInsertedHeader = FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
                 if (_logger.IsDebug) _logger.Debug($"Lowest inserted header is {LowestInsertedHeader?.ToString(BlockHeader.Format.Short)} {right} - L {left} | R {right}");
             }
         }
@@ -598,28 +598,24 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("Block tree should be initialized with genesis before suggesting other blocks.");
             }
-            
+
             return Suggest(block, block.Header, shouldProcess);
         }
 
-        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
+        public BlockHeader FindHeader(long number, BlockTreeLookupOptions options)
         {
-            return Load(blockHash, options);
+            Keccak blockHash = GetBlockHashOnMainOrOnlyHash(number);
+            return blockHash == null ? null : FindHeader(blockHash, options);
         }
 
         public BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options)
         {
-            return LoadHeader(blockHash, options);
-        }
-        
-        public BlockHeader FindHeader(long number)
-        {
-            Keccak hash = GetBlockHashOnMainOrOnlyHash(number);
-            return hash == null ? null : FindHeader(hash);
-        }
-        
-        public BlockHeader FindHeader(Keccak blockHash)
-        {
+            if (blockHash == null || blockHash == Keccak.Zero)
+            {
+                // TODO: would be great to check why this is still needed (maybe it is something archaic)
+                return null;
+            }
+
             BlockHeader header = _headerCache.Get(blockHash);
             if (header == null)
             {
@@ -629,13 +625,56 @@ namespace Nethermind.Blockchain
                     return null;
                 }
 
-                header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
+                header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+            }
+
+            bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
+            bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
+
+            if ((totalDifficultyNeeded && header.TotalDifficulty == null) || requiresCanonical)
+            {
+                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash);
+                if (level == null || blockInfo == null)
+                {
+                    // TODO: this is here because storing block data is not transactional
+                    // TODO: would be great to remove it, he?
+                    SetTotalDifficulty(header);
+                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty.Value);
+                    try
+                    {
+                        _blockInfoLock.EnterWriteLock();
+                        UpdateOrCreateLevel(header.Number, blockInfo);
+                    }
+                    finally
+                    {
+                        _blockInfoLock.ExitWriteLock();
+                    }
+
+                    (_, level) = LoadInfo(header.Number, header.Hash);
+                }
+                else
+                {
+                    header.TotalDifficulty = blockInfo.TotalDifficulty;
+                }
+
+                if (requiresCanonical)
+                {
+                    bool isMain = level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
+                    header = isMain ? header : null;
+                }
+            }
+
+            if (header != null && ShouldCache(header.Number))
+            {
                 _headerCache.Set(blockHash, header);
             }
 
-            BlockInfo blockInfo = LoadInfo(header.Number, header.Hash).Info;
-            header.TotalDifficulty = blockInfo.TotalDifficulty;
             return header;
+        }
+
+        public Keccak FindHash(long number)
+        {
+            return GetBlockHashOnMainOrOnlyHash(number);
         }
 
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
@@ -664,7 +703,7 @@ namespace Nethermind.Blockchain
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
 
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
-            BlockHeader startBlock = FindHeader(blockHash);
+            BlockHeader startBlock = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
             if (startBlock == null)
             {
                 return result;
@@ -683,7 +722,7 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                current = FindHeader(nextNumber);
+                current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.RequireCanonical);
             } while (current != null && responseIndex < numberOfBlocks);
 
             return result;
@@ -696,7 +735,7 @@ namespace Nethermind.Blockchain
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
                     nameof(blockNumber));
             }
-            
+
             ChainLevelInfo level = LoadLevel(blockNumber);
             if (level == null)
             {
@@ -720,7 +759,7 @@ namespace Nethermind.Blockchain
         public Block FindBlock(long blockNumber)
         {
             Keccak hash = GetBlockHashOnMainOrOnlyHash(blockNumber);
-            return Load(hash, BlockTreeLookupOptions.None);
+            return FindBlock(hash, BlockTreeLookupOptions.None);
         }
 
         public void DeleteInvalidBlock(Block invalidBlock)
@@ -752,7 +791,7 @@ namespace Nethermind.Blockchain
 
         private void CleanInvalidBlocks(Keccak deletePointer)
         {
-            BlockHeader deleteHeader = FindHeader(deletePointer);
+            BlockHeader deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             long currentNumber = deleteHeader.Number;
             Keccak currentHash = deleteHeader.Hash;
             Keccak nextHash = null;
@@ -794,7 +833,7 @@ namespace Nethermind.Blockchain
                     {
                         for (int i = 0; i < nextLevel.BlockInfos.Length; i++)
                         {
-                            BlockHeader potentialDescendant = FindHeader(nextLevel.BlockInfos[i].BlockHash);
+                            BlockHeader potentialDescendant = FindHeader(nextLevel.BlockInfos[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (potentialDescendant.ParentHash == currentHash)
                             {
                                 nextHash = potentialDescendant.Hash;
@@ -1185,7 +1224,7 @@ namespace Nethermind.Blockchain
             _headerCache.Set(blockHash, header);
             return header.Number;
         }
-        
+
         /// <summary>
         /// To make cache useful even when we handle sync requests
         /// </summary>
@@ -1196,85 +1235,7 @@ namespace Nethermind.Blockchain
             return number == 0L || Head == null || number > Head.Number - CacheSize && number <= Head.Number + 1;
         }
 
-        private BlockHeader LoadHeader(Keccak blockHash, BlockTreeLookupOptions options = BlockTreeLookupOptions.None)
-        {
-            if (blockHash == null || blockHash == Keccak.Zero)
-            {
-                return null;
-            }
-
-            BlockHeader header = _headerCache.Get(blockHash);
-            if (header == null)
-            {
-                IDbWithSpan headerDb = _headerDb as IDbWithSpan;
-                if (headerDb != null)
-                {
-                    Span<byte> data = headerDb.GetSpan(blockHash);
-                    if (data.IsEmpty)
-                    {
-                        return null;
-                    }
-
-                    header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
-                    headerDb.DangerousReleaseMemory(in data);
-                }
-                else
-                {
-                    byte[] data = _headerDb.Get(blockHash);
-                    if (data == null)
-                    {
-                        return null;
-                    }
-
-                    header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
-                }
-            }
-
-            bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
-            bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
-            
-            if ((totalDifficultyNeeded && header.TotalDifficulty == null) || requiresCanonical)
-            {
-                (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(header.Number, header.Hash);
-                if (level == null || blockInfo == null)
-                {
-                    // TODO: this is here because storing block data is not transactional
-                    // TODO: would be great to remove it, he?
-                    SetTotalDifficulty(header);
-                    blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty.Value);
-                    try
-                    {
-                        _blockInfoLock.EnterWriteLock();
-                        UpdateOrCreateLevel(header.Number, blockInfo);
-                    }
-                    finally
-                    {
-                        _blockInfoLock.ExitWriteLock();
-                    }
-
-                    (_, level) = LoadInfo(header.Number, header.Hash);
-                }
-                else
-                {
-                    header.TotalDifficulty = blockInfo.TotalDifficulty;
-                }
-
-                if (requiresCanonical)
-                {
-                    bool isMain = level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
-                    header = isMain ? header : null;
-                }
-            }
-            
-            if (header != null && ShouldCache(header.Number))
-            {
-                _headerCache.Set(blockHash, header);
-            }
-
-            return header;
-        }
-
-        private Block Load(Keccak blockHash, BlockTreeLookupOptions options)
+        public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash == null || blockHash == Keccak.Zero)
             {
@@ -1295,7 +1256,7 @@ namespace Nethermind.Blockchain
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
             bool requiresCanonical = (options & BlockTreeLookupOptions.RequireCanonical) == BlockTreeLookupOptions.RequireCanonical;
-            
+
             if ((totalDifficultyNeeded && block.TotalDifficulty == null) || requiresCanonical)
             {
                 (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
@@ -1328,7 +1289,7 @@ namespace Nethermind.Blockchain
                     block = isMain ? block : null;
                 }
             }
-            
+
             if (block != null && ShouldCache(block.Number))
             {
                 _blockCache.Set(blockHash, block);

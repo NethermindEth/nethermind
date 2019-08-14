@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -221,9 +220,9 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindBlock(hash, BlockTreeLookupOptions.None);
         }
 
-        public BlockHeader FindHeader(long number)
+        public Keccak FindHash(long number)
         {
-            return _blockTree.FindHeader(number);
+            return _blockTree.FindHash(number);
         }
 
         public Block[] FindBlocks(Keccak hash, int numberOfBlocks, int skip, bool reverse)
