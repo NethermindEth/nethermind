@@ -114,7 +114,12 @@ namespace Nethermind.Core.Test.Builders
             Block current;
             if (_receiptStorage != null && i % 3 == 0)
             {
-                Transaction[] transactions = new[] {Build.A.Transaction.WithData(Rlp.Encode(i).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject};
+                Transaction[] transactions = new[]
+                {
+                    Build.A.Transaction.WithData(Rlp.Encode(i).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject,
+                    Build.A.Transaction.WithData(Rlp.Encode(i + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject
+                };
+                
                 current = Build.A.Block
                     .WithNumber(i + 1)
                     .WithParent(parent)
