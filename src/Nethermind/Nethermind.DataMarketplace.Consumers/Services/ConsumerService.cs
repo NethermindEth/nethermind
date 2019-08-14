@@ -78,6 +78,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         private readonly IConfigManager _configManager;
         private readonly string _configId;
+        private readonly IDataRequestFactory _dataRequestFactory;
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly IConsumerDepositApprovalRepository _depositApprovalRepository;
         private readonly IProviderRepository _providerRepository;
@@ -88,7 +89,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IDepositService _depositService;
         private readonly IReceiptRequestValidator _receiptRequestValidator;
-        private readonly IRefundService _refundService;
+        private readonly IRefundClaimant _refundClaimant;
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IBlockProcessor _blockProcessor;
         private Address _consumerAddress;
@@ -102,18 +103,18 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         private readonly Timer _timer;
         private long _currentBlockTimestamp;
 
-        public ConsumerService(IConfigManager configManager, string configId,
+        public ConsumerService(IConfigManager configManager, string configId, IDataRequestFactory dataRequestFactory,
             IDepositDetailsRepository depositRepository, IConsumerDepositApprovalRepository depositApprovalRepository,
-            IProviderRepository providerRepository, IReceiptRepository receiptRepository,
+            IProviderRepository providerRepository, IReceiptRepository receiptRepository, 
             IConsumerSessionRepository sessionRepository, IWallet wallet, IAbiEncoder abiEncoder, IEcdsa ecdsa,
-            ICryptoRandom cryptoRandom, IDepositService depositService,
-            IReceiptRequestValidator receiptRequestValidator, IRefundService refundService,
-            IBlockchainBridge blockchainBridge, IBlockProcessor blockProcessor, Address consumerAddress,
-            PublicKey nodePublicKey, ITimestamper timestamper, IConsumerNotifier consumerNotifier,
-            uint requiredBlockConfirmations, ILogManager logManager)
+            ICryptoRandom cryptoRandom, IDepositService depositService,IReceiptRequestValidator receiptRequestValidator,
+            IRefundClaimant refundClaimant, IBlockchainBridge blockchainBridge, IBlockProcessor blockProcessor,
+            Address consumerAddress, PublicKey nodePublicKey, ITimestamper timestamper,
+            IConsumerNotifier consumerNotifier, uint requiredBlockConfirmations, ILogManager logManager)
         {
             _configManager = configManager;
             _configId = configId;
+            _dataRequestFactory = dataRequestFactory;
             _depositRepository = depositRepository;
             _depositApprovalRepository = depositApprovalRepository;
             _providerRepository = providerRepository;
@@ -125,7 +126,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             _cryptoRandom = cryptoRandom;
             _depositService = depositService;
             _receiptRequestValidator = receiptRequestValidator;
-            _refundService = refundService;
+            _refundClaimant = refundClaimant;
             _blockchainBridge = blockchainBridge;
             _blockProcessor = blockProcessor;
             _consumerAddress = consumerAddress ?? Address.Zero;
@@ -160,7 +161,12 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                         return;
                     }
 
-                    await TryClaimRefundsAsync(t.Result.Items);
+                    foreach (var deposit in t.Result.Items)
+                    {
+                        var refundTo = _consumerAddress;
+                        await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
+                        await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
+                    }
                 });
         }
 
@@ -328,29 +334,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             return (confirmations, false);
-        }
-        
-        private async Task TryClaimRefundsAsync(IEnumerable<DepositDetails> deposits)
-        {
-            foreach (var deposit in deposits)
-            {
-                await TryClaimRefundAsync(deposit);
-            }
-        }
-
-        private async Task TryClaimRefundAsync(DepositDetails depositDetails)
-        {
-            var now = (ulong) _blockchainBridge.Head.Timestamp;
-            if (depositDetails.CanClaimEarlyRefund(now))
-            {
-                await ClaimEarlyRefundAsync(depositDetails);
-                return;
-            }
-
-            if (depositDetails.CanClaimRefund(now, depositDetails.Deposit.Units))
-            {
-                await ClaimRefundAsync(depositDetails);
-            }
         }
 
         public event EventHandler<AddressChangedEventArgs> AddressChanged;
@@ -1335,105 +1318,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return providerPeer;
         }
 
-        private async Task ClaimEarlyRefundAsync(DepositDetails depositDetails)
-        {
-            var depositId = depositDetails.Deposit.Id;
-            var dataRequest = CreateDataRequest(depositDetails);
-            var ticket = depositDetails.EarlyRefundTicket;
-            var earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, depositDetails.DataAsset.Id,
-                dataRequest.Units, dataRequest.Value, dataRequest.ExpiryTime, dataRequest.Pepper,
-                depositDetails.DataAsset.Provider.Address,
-                ticket.ClaimableAfter, ticket.Signature, _consumerAddress);
-            var transactionHash = _refundService.ClaimEarlyRefund(_consumerAddress, earlyRefundClaim);
-            var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
-            if (transaction is null)
-            {
-                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to claim an early refund.");
-                return;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Trying to claim an early refund (transaction hash: '{transactionHash}') for deposit: '{depositId}'.");
-            var (confirmations, blockFound) = GetTransactionConfirmations(receipt);
-            if (!blockFound)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block number: {receipt.BlockNumber}, hash: '{receipt.BlockHash}' was not found for transaction hash: '{receipt.TxHash}' - an early refund for deposit: '{depositId}' will not be claimed.");
-                return;
-            }
-            
-            if (_logger.IsInfo) _logger.Info($"An early refund claim (transaction hash: '{transactionHash}') for deposit: '{depositId}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}).");
-            if (confirmations < _requiredBlockConfirmations)
-            {
-                return;
-            }
-            
-            depositDetails.SetRefundClaimed(transactionHash);
-            await _depositRepository.UpdateAsync(depositDetails);
-            await _consumerNotifier.SendClaimedEarlyRefundAsync(depositId, depositDetails.DataAsset.Name, transactionHash);
-            if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
-        }
-
-        private async Task ClaimRefundAsync(DepositDetails depositDetails)
-        {
-            var depositId = depositDetails.Deposit.Id;
-            var dataRequest = CreateDataRequest(depositDetails);
-            var provider = depositDetails.DataAsset.Provider.Address;
-            var refundClaim = new RefundClaim(depositId, depositDetails.DataAsset.Id, dataRequest.Units,
-                dataRequest.Value, dataRequest.ExpiryTime, dataRequest.Pepper, provider, _consumerAddress);
-            var transactionHash = _refundService.ClaimRefund(_consumerAddress, refundClaim);
-            var (receipt, transaction) = _blockchainBridge.GetTransaction(depositDetails.TransactionHash);                        
-            if (transaction is null)
-            {
-                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositDetails.Id}' to claim a refund.");
-                return;
-            }
-            
-            if (_logger.IsInfo) _logger.Info($"Trying to claim a refund (transaction hash: '{transactionHash}') for deposit: '{depositId}'.");
-            var (confirmations, blockFound) = GetTransactionConfirmations(receipt);
-            if (!blockFound)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Block number: {receipt.BlockNumber}, hash: '{receipt.BlockHash}' was not found for transaction hash: '{receipt.TxHash}' - a refund for deposit: '{depositId}' will not be claimed.");
-                return;
-            }
-            
-            if (_logger.IsInfo) _logger.Info($"A refund claim (transaction hash: '{transactionHash}') for deposit: '{depositId}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}).");
-            if (confirmations < _requiredBlockConfirmations)
-            {
-                return;
-            }
-            
-            depositDetails.SetRefundClaimed(transactionHash);
-            await _depositRepository.UpdateAsync(depositDetails);
-            await _consumerNotifier.SendClaimedRefundAsync(depositId, depositDetails.DataAsset.Name, transactionHash);
-            if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', transaction hash: '{transactionHash}'.");
-        }
-
-        private (long confirmations, bool blockFound) GetTransactionConfirmations(TxReceipt receipt)
-        {
-            var confirmations = 0;
-            var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
-            if (block is null)
-            {
-                return (0, false);
-            }
-
-            while (block.Number >= receipt.BlockNumber)
-            {
-                confirmations++;
-                if (block.Hash == receipt.BlockHash)
-                {
-                    return (confirmations, true);
-                }
-
-                block = _blockchainBridge.FindBlock(block.ParentHash);
-                if (block is null)
-                {
-                    return (confirmations, false);
-                }
-            }
-
-            return (confirmations, false);
-        }
-
         private (DepositDetails deposit, ConsumerSession session) TryGetDepositAndSession(Keccak depositId)
         {
             if (!_deposits.TryGetValue(depositId, out var depositDetails))
@@ -1463,14 +1347,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             => dataAsset.State == DataAssetState.Published || dataAsset.State == DataAssetState.UnderMaintenance;
 
         private DataRequest CreateDataRequest(DepositDetails deposit)
-        {
-            var hash = Keccak.Compute(_nodePublicKey.Bytes);
-            var signature = _wallet.Sign(hash, _consumerAddress);
-
-            return new DataRequest(deposit.DataAsset.Id, deposit.Deposit.Units, deposit.Deposit.Value,
-                deposit.Deposit.ExpiryTime, deposit.Pepper, deposit.DataAsset.Provider.Address, deposit.Consumer,
-                signature);
-        }
+            => _dataRequestFactory.Create(deposit.Deposit, deposit.DataAsset.Id, deposit.DataAsset.Provider.Address,
+                deposit.Consumer, deposit.Pepper);
 
         private void SetActiveSession(ConsumerSession session)
         {
