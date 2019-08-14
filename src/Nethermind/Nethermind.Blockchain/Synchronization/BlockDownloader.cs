@@ -145,9 +145,6 @@ namespace Nethermind.Blockchain.Synchronization
             return headersSynced;
         }
 
-        public static int emptyRequested = 0;
-        public static int allRequested = 0;
-
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, bool shouldProcess = true)
         {
             if (bestPeer == null)
