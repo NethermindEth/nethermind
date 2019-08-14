@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip);
+                result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip, BlockTreeLookupOptions.RequireCanonical);
             }
             
             return Task.FromResult(result);
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             BlockHeader[] result = new BlockHeader[maxBlocks];
-            long? firstNumber = _remoteTree.FindHeader(number)?.Number;
+            long? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
                 return Task.FromResult(result);
@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 }
                 else
                 {
-                    result[i] = _remoteTree.FindBlock(blockNumber).Header;
+                    result[i] = _remoteTree.FindBlock(blockNumber, BlockTreeLookupOptions.None).Header;
                 }
             }
             

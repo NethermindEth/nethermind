@@ -49,7 +49,7 @@ namespace Nethermind.Core.Test
         public OmmersValidatorTests()
         {
             _blockTree = Build.A.BlockTree().OfChainLength(1).TestObject;
-            _grandgrandparent = _blockTree.FindBlock(0);
+            _grandgrandparent = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
             _grandparent = Build.A.Block.WithParent(_grandgrandparent).TestObject;
             _duplicateOmmer = Build.A.Block.WithParent(_grandgrandparent).TestObject;
             _parent = Build.A.Block.WithParent(_grandparent).WithOmmers(_duplicateOmmer).TestObject;

@@ -129,24 +129,24 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockHash, options);
             }
 
-            public BlockHeader FindHeader(long number)
+            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
             {
-                return _blockTree.FindHeader(number);
+                return _blockTree.FindBlock(blockNumber, options);
             }
 
-            public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
+            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
             {
-                return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
+                return _blockTree.FindHeader(blockNumber, options);
+            }
+
+            public Keccak FindHash(long blockNumber)
+            {
+                return _blockTree.FindHash(blockNumber);
             }
 
             public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
             {
                 return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-            }
-
-            public Block FindBlock(long blockNumber)
-            {
-                return _blockTree.FindBlock(blockNumber);
             }
 
             public void DeleteInvalidBlock(Block invalidBlock)
