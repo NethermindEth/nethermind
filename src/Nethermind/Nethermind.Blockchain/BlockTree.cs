@@ -672,21 +672,33 @@ namespace Nethermind.Blockchain
         {
             if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
 
+            if (skip == 0)
+            {
+                /* if we do not skip and we have the last block then we can assume that all the blocks are there
+                   and we can use the fact that we can use parent hash and that searching by hash is much faster
+                   as it does not require the step of resolving number -> hash */
+                BlockHeader endHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (endHeader != null)
+                {
+                    return FindHeadersReversedFull(endHeader, numberOfBlocks);
+                }
+            }
+
             BlockHeader[] result = new BlockHeader[numberOfBlocks];
-            BlockHeader startBlock = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (startBlock == null)
+            BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (startHeader == null)
             {
                 return result;
             }
 
-            BlockHeader current = startBlock;
+            BlockHeader current = startHeader;
             int directionMultiplier = reverse ? -1 : 1;
             int responseIndex = 0;
             do
             {
                 result[responseIndex] = current;
                 responseIndex++;
-                long nextNumber = startBlock.Number + directionMultiplier * (responseIndex * skip + responseIndex);
+                long nextNumber = startHeader.Number + directionMultiplier * (responseIndex * skip + responseIndex);
                 if (nextNumber < 0)
                 {
                     break;
@@ -695,6 +707,24 @@ namespace Nethermind.Blockchain
                 current = FindHeader(nextNumber, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current != null && responseIndex < numberOfBlocks);
 
+            return result;
+        }
+        
+        private BlockHeader[] FindHeadersReversedFull(BlockHeader startHeader, int numberOfBlocks)
+        {
+            if (startHeader == null) throw new ArgumentNullException(nameof(startHeader));
+            BlockHeader[] result = new BlockHeader[numberOfBlocks];
+            
+            BlockHeader current = startHeader;
+            int responseIndex = numberOfBlocks - 1;
+            do
+            {
+                result[responseIndex] = current;
+                responseIndex--;
+                
+                current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            } while (current != null && responseIndex < numberOfBlocks);
+            
             return result;
         }
 

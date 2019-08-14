@@ -352,7 +352,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block[] headers = blockTree.FindBlocks(block0.Hash, 100, 0, false);
+            BlockHeader[] headers = blockTree.FindHeaders(block0.Hash, 100, 0, false);
             Assert.AreEqual(100, headers.Length);
             Assert.AreEqual(block0.Hash, headers[0].Hash);
             Assert.Null(headers[3]);
@@ -371,10 +371,10 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block[] blocks = blockTree.FindBlocks(block0.Hash, 3, 0, false);
+            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 3, 0, false);
             Assert.AreEqual(3, blocks.Length);
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0].Header));
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2].Header));
+            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
+            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2]));
         }
 
         [Test]
@@ -388,12 +388,13 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block[] blocks = blockTree.FindBlocks(block2.Hash, 3, 0, true);
+            BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
             Assert.AreEqual(3, blocks.Length);
 
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[0].Header));
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[2].Header));
+            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[0]));
+            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[2]));
         }
+
 
         [Test]
         public void Find_sequence_zero_blocks()
@@ -406,7 +407,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block[] blocks = blockTree.FindBlocks(block0.Hash, 0, 0, false);
+            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
             Assert.AreEqual(0, blocks.Length);
         }
 
@@ -421,10 +422,10 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block[] blocks = blockTree.FindBlocks(block0.Hash, 2, 1, false);
+            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
             Assert.AreEqual(2, blocks.Length, "length");
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0].Header));
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[1].Header));
+            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
+            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[1]));
         }
 
         [Test]
@@ -438,7 +439,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block1);
             AddToMain(blockTree, block2);
 
-            Block[] blocks = blockTree.FindBlocks(block0.Hash, 4, 0, false);
+            BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 4, 0, false);
             Assert.AreEqual(4, blocks.Length);
             Assert.IsNull(blocks[3]);
         }
