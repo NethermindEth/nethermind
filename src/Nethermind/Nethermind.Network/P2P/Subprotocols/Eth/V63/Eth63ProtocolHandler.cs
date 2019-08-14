@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -90,10 +91,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         
         private void Handle(GetReceiptsMessage msg)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.BlockHashes);
             Interlocked.Increment(ref _counter);
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} Receipts to {Node:s}");
             Send(new ReceiptsMessage(txReceipts));
+            stopwatch.Stop();
+            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} Receipts to {Node:s} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(ReceiptsMessage msg)
@@ -107,10 +110,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetNodeDataMessage msg)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
             Interlocked.Increment(ref _counter);
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NodeData to {Node:s}");
             Send(new NodeDataMessage(nodeData));
+            stopwatch.Stop();
+            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NodeData to {Node:s} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(NodeDataMessage msg)
