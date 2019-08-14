@@ -87,8 +87,6 @@ namespace Nethermind.Blockchain.Test
                                 notYet = true;
                                 break;
                             }
-
-                            _allowed.Remove(hash);
                         }
 
                         if (notYet)
