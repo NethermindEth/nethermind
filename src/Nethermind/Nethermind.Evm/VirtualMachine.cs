@@ -43,15 +43,16 @@ namespace Nethermind.Evm
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
 
-        private readonly BigInteger P255Int = BigInteger.Pow(2, 255);
-        private readonly BigInteger P256Int = BigInteger.Pow(2, 256);
+        private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
+        private BigInteger P255Int = BigInteger.Pow(2, 255);
+        private BigInteger P256Int = BigInteger.Pow(2, 256);
         private BigInteger P255 => P255Int;
-        private readonly BigInteger BigInt256 = 256;
-        public readonly BigInteger BigInt32 = 32;
+        private BigInteger BigInt256 = 256;
+        public BigInteger BigInt32 = 32;
 
-        internal readonly byte[] BytesZero = {0};
+        internal byte[] BytesZero = {0};
 
-        internal readonly byte[] BytesZero32 =
+        internal byte[] BytesZero32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -59,7 +60,7 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0
         };
         
-        internal readonly byte[] BytesMax32 =
+        internal byte[] BytesMax32 =
         {
             255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255,
@@ -376,6 +377,11 @@ namespace Nethermind.Evm
             }
 
             return cachedCodeInfo;
+        }
+
+        public void DisableSimdInstructions()
+        {
+            _simdOperationsEnabled = false;
         }
 
         private void InitializePrecompiledContracts()
@@ -1270,7 +1276,7 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
         
-                        if (Vector<byte>.Count == 32)
+                        if (_simdOperationsEnabled)
                         {
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
@@ -1299,7 +1305,7 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
         
-                        if (Vector<byte>.Count == 32)
+                        if (_simdOperationsEnabled)
                         {
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
@@ -1328,7 +1334,7 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
 
-                        if (Vector<byte>.Count == 32)
+                        if (_simdOperationsEnabled)
                         {
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
@@ -1356,7 +1362,7 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
 
-                        if (Vector<byte>.Count == 32)
+                        if (_simdOperationsEnabled)
                         {
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));

@@ -28,5 +28,7 @@ namespace Nethermind.Evm
         
         [Todo(Improve.Refactor, "Remove this responsibility from VM")]
         CodeInfo GetCachedCodeInfo(Address codeSource);
+
+        void DisableSimdInstructions();
     }
 }

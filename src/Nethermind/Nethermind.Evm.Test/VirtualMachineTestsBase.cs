@@ -34,24 +34,27 @@ namespace Nethermind.Evm.Test
 {
     public class VirtualMachineTestsBase
     {
-        private readonly IEthereumEcdsa _ethereumEcdsa;
-        private readonly ITransactionProcessor _processor;
-        private readonly ISnapshotableDb _stateDb;
-        protected internal IStateProvider TestState { get; }
-        protected internal IStorageProvider Storage { get; }
+        private IEthereumEcdsa _ethereumEcdsa;
+        private ITransactionProcessor _processor;
+        private ISnapshotableDb _stateDb;
+        private int _stateDbSnapshot;
+        private Keccak _stateRoot;
+        
+        protected IVirtualMachine Machine { get; private set; }
+        protected IStateProvider TestState { get; private set; }
+        protected IStorageProvider Storage { get; private set; }
 
-        protected internal static Address Contract { get; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
-        protected internal static Address Sender { get; } = TestItem.AddressA;
-        protected internal static Address Recipient { get; } = TestItem.AddressB;
-        protected internal static Address Miner { get; } = TestItem.AddressD;
+        protected static Address Contract { get; private set; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
+        protected static Address Sender { get; private set; } = TestItem.AddressA;
+        protected static Address Recipient { get; private set; } = TestItem.AddressB;
+        protected static Address Miner { get; private set; } = TestItem.AddressD;
 
         protected virtual long BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
-        
         protected virtual ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
-
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
-        public VirtualMachineTestsBase()
+        [SetUp]
+        public virtual void Setup()
         {
             ILogManager logger = LimboLogs.Instance;;
             IDb codeDb = new StateDb();
@@ -60,29 +63,8 @@ namespace Nethermind.Evm.Test
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IVirtualMachine virtualMachine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
-
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, virtualMachine, logger);
-        }
-
-        [SetUp]
-        public virtual void Setup()
-        {
-            _stateDbSnapshot = _stateDb.TakeSnapshot();
-            _stateRoot = TestState.StateRoot;
-        }
-
-        private int _stateDbSnapshot;
-        private Keccak _stateRoot;
-
-        [TearDown]
-        public void TearDown()
-        {
-            Storage.Reset();
-            TestState.Reset();
-            TestState.StateRoot = _stateRoot;
-
-            _stateDb.Restore(_stateDbSnapshot);
+            Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, Machine, logger);
         }
 
         protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
