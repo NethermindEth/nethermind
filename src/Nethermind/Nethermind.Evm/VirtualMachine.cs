@@ -1270,10 +1270,17 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
         
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> bVec = new Vector<byte>(b);
-                        
-                        Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
+                        if (Vector<byte>.Count == 32)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> bVec = new Vector<byte>(b);
+
+                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            new BitArray(a.ToArray()).And(new BitArray(b.ToArray())).CopyTo(wordBufferArray, 0);
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1289,10 +1296,17 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
         
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> bVec = new Vector<byte>(b);
-                        
-                        Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
+                        if (Vector<byte>.Count == 32)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> bVec = new Vector<byte>(b);
+
+                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            new BitArray(a.ToArray()).Or(new BitArray(b.ToArray())).CopyTo(wordBufferArray, 0);
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1307,11 +1321,18 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-        
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> bVec = new Vector<byte>(b);
-                        
-                        Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
+
+                        if (Vector<byte>.Count == 32)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> bVec = new Vector<byte>(b);
+
+                            Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            new BitArray(a.ToArray()).Xor(new BitArray(b.ToArray())).CopyTo(wordBufferArray, 0);
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1326,10 +1347,17 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
 
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
+                        if (Vector<byte>.Count == 32)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
-                        negVec.CopyTo(wordBufferArray);
+                            negVec.CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            new BitArray(a.ToArray()).Not().CopyTo(wordBufferArray, 0);
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
