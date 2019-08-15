@@ -16,25 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
-{
-    public class BlockBody
-    {
-        public BlockBody()
-        {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
-        }
-        
-        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
-        {
-            Transactions = transactions;
-            Ommers = ommers;
-        }
 
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
-        
-        public static BlockBody Empty = new BlockBody(); 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Core.Domain;
+
+namespace Nethermind.DataMarketplace.Consumers.Services
+{
+    public interface IDataRequestFactory
+    {
+        DataRequest Create(Deposit deposit, Keccak dataAssetId, Address provider, Address consumer, byte[] pepper);
     }
 }

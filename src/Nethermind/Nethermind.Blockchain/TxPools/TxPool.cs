@@ -40,7 +40,9 @@ namespace Nethermind.Blockchain.TxPools
     public class TxPool : ITxPool, IDisposable
     {
         private static readonly object Locker = new object();
-        private readonly ConcurrentDictionary<Address, UInt256> _nonces = new ConcurrentDictionary<Address, UInt256>();
+
+        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces =
+            new ConcurrentDictionary<Address, AddressNonces>();
         
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
@@ -259,6 +261,10 @@ namespace Nethermind.Blockchain.TxPools
 
         private void HandleOwnTransaction(Transaction transaction)
         {
+            if (_nonces.TryGetValue(transaction.SenderAddress, out var addressNonces))
+            {
+            }
+            
             _ownTransactions.TryAdd(transaction.Hash, transaction);
             _ownTimer.Enabled = true;
             if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
@@ -313,18 +319,18 @@ namespace Nethermind.Blockchain.TxPools
         {
             lock (Locker)
             {
-                if (!_nonces.TryGetValue(address, out var nonce))
+                if (!_nonces.TryGetValue(address, out var addressNonces))
                 {
                     var currentNonce = _stateProvider.GetNonce(address);
-                    _nonces.TryAdd(address, currentNonce);
+                    addressNonces = new AddressNonces(currentNonce);
+                    _nonces.TryAdd(address, addressNonces);
 
                     return currentNonce;
                 }
 
-                var incrementedNonce = nonce + 1;
-                _nonces.TryUpdate(address, incrementedNonce, nonce);
+                var incrementedNonce = addressNonces.ReserveNonce();
 
-                return incrementedNonce;
+                return incrementedNonce.Value;
             }
         }
 
@@ -440,6 +446,46 @@ namespace Nethermind.Blockchain.TxPools
                     RemovedPending?.Invoke(this, new TxEventArgs(tx));
                 }
             }
+        }
+
+        private class AddressNonces
+        {
+            private Nonce _currentNonce;
+            
+            public ConcurrentDictionary<UInt256, Nonce> Nonces { get; } = new ConcurrentDictionary<UInt256, Nonce>();
+
+            public AddressNonces(UInt256 startNonce)
+            {
+                _currentNonce = new Nonce(startNonce);
+                Nonces.TryAdd(_currentNonce.Value, _currentNonce);
+            }
+
+            public Nonce ReserveNonce()
+            {
+                var nonce = _currentNonce.Increment();
+                Interlocked.Exchange(ref _currentNonce, nonce);
+                Nonces.TryAdd(nonce.Value, nonce);
+
+                return nonce;
+            }
+        }
+
+        private class Nonce
+        {
+            public UInt256 Value { get; }
+            public Keccak TransactionHash { get; private set; }
+
+            public Nonce(UInt256 value)
+            {
+                Value = value;
+            }
+
+            public void SetTransactionHash(Keccak transactionHash)
+            {
+                TransactionHash = transactionHash;
+            }
+            
+            public Nonce Increment() => new Nonce(Value+1);
         }
     }
 }

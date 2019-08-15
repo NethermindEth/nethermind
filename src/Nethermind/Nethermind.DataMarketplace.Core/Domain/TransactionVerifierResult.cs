@@ -16,25 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
+namespace Nethermind.DataMarketplace.Core.Domain
 {
-    public class BlockBody
+    public class TransactionVerifierResult
     {
-        public BlockBody()
-        {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
-        }
-        
-        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
-        {
-            Transactions = transactions;
-            Ommers = ommers;
-        }
+        public bool BlockFound { get; }
+        public long Confirmations { get; }
+        public long RequiredConfirmations { get; }
+        public bool Confirmed { get; private set; }
 
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
-        
-        public static BlockBody Empty = new BlockBody(); 
+        public TransactionVerifierResult(bool blockFound, long confirmations, long requiredConfirmations)
+        {
+            BlockFound = blockFound;
+            Confirmations = confirmations;
+            RequiredConfirmations = requiredConfirmations;
+            Confirmed = blockFound && confirmations >= requiredConfirmations;
+        }
     }
 }

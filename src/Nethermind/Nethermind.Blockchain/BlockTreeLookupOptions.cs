@@ -16,25 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
-{
-    public class BlockBody
-    {
-        public BlockBody()
-        {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
-        }
-        
-        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
-        {
-            Transactions = transactions;
-            Ommers = ommers;
-        }
+using System;
 
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
-        
-        public static BlockBody Empty = new BlockBody(); 
+namespace Nethermind.Blockchain
+{
+    /// <summary>
+    /// This class has been introduced for performance reasons only (in order to minimize expensive DB lookups where not necessary).
+    /// </summary>
+    [Flags]
+    public enum BlockTreeLookupOptions
+    {
+        None = 0,
+        TotalDifficultyNotNeeded = 1,
+        RequireCanonical = 2,
+        All = 3
     }
 }

@@ -16,25 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
-{
-    public class BlockBody
-    {
-        public BlockBody()
-        {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
-        }
-        
-        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
-        {
-            Transactions = transactions;
-            Ommers = ommers;
-        }
+using Nethermind.Core;
+using Nethermind.DataMarketplace.Core.Domain;
 
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
-        
-        public static BlockBody Empty = new BlockBody(); 
+namespace Nethermind.DataMarketplace.Core.Services
+{
+    public interface ITransactionVerifier
+    {
+        TransactionVerifierResult Verify(TxReceipt receipt);
     }
 }

@@ -291,7 +291,7 @@ namespace Nethermind.Clique.Test
             public On AssertHeadBlockTimestamp(PrivateKey nodeKey)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK TIMESTAMP ON {nodeKey.Address}");
-                Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
+                Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1, BlockTreeLookupOptions.None).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
                 return this;
             }
 
@@ -299,8 +299,8 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {vote} VOTE ON {address} AT BLOCK {number}");
-                Assert.AreEqual(vote ? Clique.NonceAuthVote : Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number).Header.Nonce, nodeKey + " vote nonce");
-                Assert.AreEqual(address, _blockTrees[nodeKey].FindBlock(number).Beneficiary, nodeKey.Address + " vote nonce");
+                Assert.AreEqual(vote ? Clique.NonceAuthVote : Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header.Nonce, nodeKey + " vote nonce");
+                Assert.AreEqual(address, _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Beneficiary, nodeKey.Address + " vote nonce");
                 return this;
             }
 
@@ -308,7 +308,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {count} SIGNERS AT BLOCK {number}");
-                var header = _blockTrees[nodeKey].FindBlock(number).Header;
+                var header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
                 Assert.AreEqual(count, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, nodeKey + " signers count");
                 return this;
             }
@@ -318,7 +318,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING EMPTY TALLY FOR {privateKeyB.Address} EMPTY AT {number}");
-                var header = _blockTrees[nodeKey].FindBlock(number).Header;
+                var header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
                 Assert.AreEqual(false, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), nodeKey + " tally empty");
                 return this;
             }
@@ -357,7 +357,7 @@ namespace Nethermind.Clique.Test
 
             public Block GetBlock(PrivateKey privateKey, long number)
             {
-                Block block = _blockTrees[privateKey].FindBlock(number);
+                Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     throw new InvalidOperationException($"Cannot find block {number}");

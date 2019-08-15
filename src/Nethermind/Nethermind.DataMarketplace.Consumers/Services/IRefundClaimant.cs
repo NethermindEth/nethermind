@@ -16,25 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
-{
-    public class BlockBody
-    {
-        public BlockBody()
-        {
-            Transactions = new Transaction[0];
-            Ommers = new BlockHeader[0];
-        }
-        
-        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
-        {
-            Transactions = transactions;
-            Ommers = ommers;
-        }
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.DataMarketplace.Consumers.Domain;
 
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
-        
-        public static BlockBody Empty = new BlockBody(); 
+namespace Nethermind.DataMarketplace.Consumers.Services
+{
+    public interface IRefundClaimant
+    {
+        Task TryClaimRefundAsync(DepositDetails deposit, Address refundTo);
+        Task TryClaimEarlyRefundAsync(DepositDetails deposit, Address refundTo);
     }
 }

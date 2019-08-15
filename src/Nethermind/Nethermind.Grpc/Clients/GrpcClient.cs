@@ -158,8 +158,7 @@ namespace Nethermind.Grpc.Clients
         {
             _connected = false;
             _retry++;
-            if (_logger.IsWarn)
-                _logger.Warn($"Retrying ({_retry}) gRPC connection to: '{_address}' in {_reconnectionInterval} ms.");
+            if (_logger.IsWarn) _logger.Warn($"Retrying ({_retry}) gRPC connection to: '{_address}' in {_reconnectionInterval} ms.");
             await Task.Delay(_reconnectionInterval);
             await StartAsync();
         }

@@ -1,5 +1,5 @@
 #!/bin/bash
-GIT_TAG=$(git describe --tags --always)
+GIT_TAG=$(git describe --tags --always | cut -d- -f1)
 DOCKER_TAGS="latest $GIT_TAG"
 DOCKER_IMAGE_NAME=nethermind
 
@@ -7,7 +7,7 @@ if [ "$TRAVIS_BRANCH" != "master" ]; then
     exit 0
 fi
 
-if [[ ! $TAG =~ ^v\d* ]] && [[ ! $TAG =~ ^stable_* ]]; then
+if [[ !$GIT_TAG =~ ^v\d* ]] || [[ !$GIT_TAG =~ ^stable_* ]] || [[ !$GIT_TAG =~ ^1.0rc\d* ]]; then
     exit 0
 fi
 

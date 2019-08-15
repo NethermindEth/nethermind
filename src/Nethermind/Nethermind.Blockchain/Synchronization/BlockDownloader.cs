@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly ISyncReport _syncReport;
         private readonly ILogger _logger;
-        
+
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
 
@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Received {currentHeader} from {bestPeer:s}");
-                    bool isValid = i > 1 ? _blockValidator.ValidateHeader(currentHeader, headers[i - 1], false) : _blockValidator.ValidateHeader(currentHeader, false); 
+                    bool isValid = i > 1 ? _blockValidator.ValidateHeader(currentHeader, headers[i - 1], false) : _blockValidator.ValidateHeader(currentHeader, false);
                     if (!isValid)
                     {
                         throw new EthSynchronizationException($"{bestPeer} sent a block {currentHeader.ToString(BlockHeader.Format.Short)} with an invalid header");
@@ -176,9 +176,11 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{blocksToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
                 var headers = await RequestHeaders(bestPeer, cancellation, currentNumber, blocksToRequest);
+                Block[] blocks = new Block[headers.Length - 1];
 
                 List<Keccak> hashes = new List<Keccak>();
-                Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
+                Dictionary<int, int> indexMapping = new Dictionary<int, int>();
+                int currentBodyIndex = 0;
                 for (int i = 1; i < headers.Length; i++)
                 {
                     if (headers[i] == null)
@@ -186,11 +188,20 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     }
 
-                    hashes.Add(headers[i].Hash);
-                    headersByHash[headers[i].Hash] = headers[i];
+                    if (headers[i].HasBody)
+                    {
+                        blocks[i - 1] = new Block(headers[i], (BlockBody) null);
+                        indexMapping.Add(currentBodyIndex, i - 1);
+                        currentBodyIndex++;
+                        hashes.Add(headers[i].Hash);
+                    }
+                    else
+                    {
+                        blocks[i - 1] = new Block(headers[i], BlockBody.Empty);
+                    }
                 }
-
-                Task<BlockBody[]> bodiesTask = bestPeer.SyncPeer.GetBlocks(hashes.ToArray(), cancellation);
+                
+                Task<BlockBody[]> bodiesTask = hashes.Count == 0 ? Task.FromResult(new BlockBody[0]) : bestPeer.SyncPeer.GetBlocks(hashes.ToArray(), cancellation);
                 await bodiesTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -218,7 +229,6 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 BlockBody[] bodies = bodiesTask.Result;
-                Block[] blocks = new Block[bodies.Length];
                 for (int i = 0; i < bodies.Length; i++)
                 {
                     BlockBody body = bodies[i];
@@ -227,8 +237,14 @@ namespace Nethermind.Blockchain.Synchronization
                         // TODO: this is how it used to be... I do not want to touch it without extensive testing 
                         throw new EthSynchronizationException($"{bestPeer} sent an empty body for {blocks[i].ToString(Block.Format.Short)}.");
                     }
-                    
-                    blocks[i] = new Block(null, body);
+
+                    Block block = blocks[indexMapping[i]];
+                    if (block == null || block.Body != null)
+                    {
+                        throw new InvalidOperationException("Invalid state of blocks placeholders during sync");
+                    }
+
+                    blocks[indexMapping[i]].Body = body;
                 }
 
                 _sinceLastTimeout++;
@@ -237,12 +253,20 @@ namespace Nethermind.Blockchain.Synchronization
                     _syncBatchSize.Expand();
                 }
 
+                int fullDataBlocksCount = 0;
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    blocks[i].Header = headersByHash[hashes[i]];
+                    if (blocks[i]?.Body != null)
+                    {
+                        fullDataBlocksCount++;
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
 
-                if (blocks.Length > 0)
+                if (fullDataBlocksCount > 0)
                 {
                     bool parentIsKnown = _blockTree.IsKnownBlock(blocks[0].Number - 1, blocks[0].ParentHash);
                     if (!parentIsKnown)
@@ -253,7 +277,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
-                for (int i = 0; i < blocks.Length; i++)
+                for (int i = 0; i < fullDataBlocksCount; i++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -396,6 +420,7 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException(message);
                     }
                 }
+
                 case AddBlockResult.CannotAccept:
                     throw new EthSynchronizationException("Block tree rejected block/header");
                 case AddBlockResult.InvalidBlock:

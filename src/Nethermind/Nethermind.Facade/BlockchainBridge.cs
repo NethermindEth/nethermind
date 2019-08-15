@@ -101,7 +101,7 @@ namespace Nethermind.Facade
         
         public Block FindBlock(Keccak blockHash) => _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
         
-        public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber);
+        public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
         
         public Block FindGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
         

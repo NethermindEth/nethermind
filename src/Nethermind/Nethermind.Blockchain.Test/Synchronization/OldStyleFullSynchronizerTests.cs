@@ -341,8 +341,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Can_retrieve_empty_receipts()
         {
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(2).TestObject;
-            Block block0 = _blockTree.FindBlock(0);
-            Block block1 = _blockTree.FindBlock(1);
+            Block block0 = _blockTree.FindBlock(0, BlockTreeLookupOptions.None);
+            Block block1 = _blockTree.FindBlock(1, BlockTreeLookupOptions.None);
 
             TxReceipt[][] txReceipts = _syncServer.GetReceipts(new[] {block0.Hash, block1.Hash, TestItem.KeccakA});
 

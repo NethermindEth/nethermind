@@ -7,7 +7,7 @@
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * The Nethermind library is distributed in the hope that it will be useful,
+ * The Nethermind library is distributed in the hope that it willhttps://github.com/NethermindEth/nethermind/pull/750 be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Lesser General Public License for more details.
@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Synchronization;
 using Nethermind.Blockchain.TxPools;
@@ -231,6 +230,23 @@ namespace Nethermind.Blockchain.Test
             var nonce = _txPool.ReserveOwnTransactionNonce(address);
             nonce.Should().Be(new UInt256(reservationsCount));
         }
+        
+//        [Test]
+//        public void foo()
+//        {
+//            var address = TestItem.PrivateKeyA.Address;
+//            var transactions = new List<Transaction>
+//            {
+//                GetTransaction(TestItem.PrivateKeyA),
+//                GetTransaction(TestItem.PrivateKeyA),
+//                GetTransaction(TestItem.PrivateKeyA),
+//            };
+//            
+//            foreach (var transaction in transactions)
+//            {
+//                _txPool.AddTransaction(transaction, 1, true);
+//            }
+//        }
 
         [Test]
         public void should_add_all_transactions_to_storage_when_using_accept_all_filter()

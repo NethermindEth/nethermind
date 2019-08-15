@@ -238,7 +238,10 @@ namespace Nethermind.DataMarketplace.Test
 
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
             {
-                throw new System.NotImplementedException();
+                return (new TxReceipt(), new Transaction
+                {
+                    Hash = transactionHash
+                });
             }
 
             public Keccak GetBlockHash(Keccak transactionHash)

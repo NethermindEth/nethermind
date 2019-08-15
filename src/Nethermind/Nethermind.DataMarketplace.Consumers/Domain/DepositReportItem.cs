@@ -59,7 +59,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
         public DepositReportItem(Keccak id, Keccak assetId, string assetName, Address provider, string providerName,
             UInt256 value, uint units, Address consumer, uint timestamp, uint expiryTime, bool expired,
             Keccak transactionHash, uint confirmationTimestamp, uint confirmations, uint requiredConfirmations,
-            bool confirmed, bool rejected, Keccak claimedRefundTransactionHash, uint consumedUnits,
+            bool confirmed, bool rejected, Keccak claimedRefundTransactionHash, bool refundClaimed, uint consumedUnits,
             IEnumerable<DataDeliveryReceiptReportItem> receipts)
         {
             Id = id;
@@ -80,7 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Domain
             Confirmed = confirmed;
             Rejected = rejected;
             ClaimedRefundTransactionHash = claimedRefundTransactionHash;
-            RefundClaimed = !(claimedRefundTransactionHash is null);
+            RefundClaimed = refundClaimed;
             ConsumedUnits = consumedUnits;
             Receipts = receipts ?? Enumerable.Empty<DataDeliveryReceiptReportItem>();
             if (Receipts.Any())

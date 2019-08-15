@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -31,7 +32,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         private static void Test(TxReceipt[][] txReceipts)
         {
             ReceiptsMessage message = new ReceiptsMessage(txReceipts);
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer();
+            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
@@ -68,9 +69,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
                                 Assert.Null(deserialized.TxReceipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
                                 Assert.AreEqual(0L, deserialized.TxReceipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
-                                Assert.AreEqual(txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
+                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? 0 : txReceipts[i][j].StatusCode, deserialized.TxReceipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
                                 Assert.AreEqual(txReceipts[i][j].GasUsedTotal, deserialized.TxReceipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
-                                Assert.AreEqual(txReceipts[i][j].PostTransactionState, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
+                                Assert.AreEqual(txReceipts[i][j].BlockNumber < RopstenSpecProvider.ByzantiumBlockNumber ? txReceipts[i][j].PostTransactionState : null, deserialized.TxReceipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
                             }
                         }
                     }
@@ -81,7 +82,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {            
-            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
+            Test(data);
+        }
+        
+        [Test]
+        public void Roundtrip_with_eip658()
+        {            
+            TxReceipt[][] data = {new[] {Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}, new[] {Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(RopstenSpecProvider.ConstantinopleBlockNumber).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject}};
             Test(data);
         }
 
@@ -102,7 +110,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Roundtrip_mainnet_sample()
         {
             byte[] bytes = Bytes.FromHexString("f9012ef9012bf90128a08ccc6709a5df7acef07f97c5681356b6c37cfac15b554aff68e986f57116df2e825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0");
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer();
+            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer(RopstenSpecProvider.Instance);
             ReceiptsMessage message = serializer.Deserialize(bytes);
             byte[] serialized = serializer.Serialize(message);
             Assert.AreEqual(bytes,  serialized);

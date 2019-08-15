@@ -40,5 +40,10 @@ namespace Nethermind.Network.Rlpx
         public int PacketType { get; set; }
 
         public string Protocol { get; set; }
+
+        public override string ToString()
+        {
+            return $"{Protocol ?? "???"}.{PacketType}";
+        }
     }
 }

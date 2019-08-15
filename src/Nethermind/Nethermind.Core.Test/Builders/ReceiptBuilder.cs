@@ -41,7 +41,8 @@ namespace Nethermind.Core.Test.Builders
             .WithBlockHash(Builders.TestItem.KeccakC)
             .WithBlockNumber(2)
             .WithBloom(Bloom.Empty)
-            .WithGasUsedTotal(1000);
+            .WithGasUsedTotal(1000)
+            .WithStatusCode(1);
 
         public ReceiptBuilder WithState(Keccak state)
         {
@@ -118,6 +119,12 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithRecipient(Address recipient)
         {
             TestObjectInternal.Recipient = recipient;
+            return this;
+        }
+        
+        public ReceiptBuilder WithStatusCode(byte statusCode)
+        {
+            TestObjectInternal.StatusCode = statusCode;
             return this;
         }
     }
