@@ -32,7 +32,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -246,23 +245,6 @@ namespace Nethermind.Blockchain.Test
             _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
             _txPool.GetPendingTransactions().Length.Should().Be(1);
         }
-
-//        [Test]
-//        public void foo()
-//        {
-//            var address = TestItem.PrivateKeyA.Address;
-//            var transactions = new List<Transaction>
-//            {
-//                GetTransaction(TestItem.PrivateKeyA),
-//                GetTransaction(TestItem.PrivateKeyA),
-//                GetTransaction(TestItem.PrivateKeyA),
-//            };
-//            
-//            foreach (var transaction in transactions)
-//            {
-//                _txPool.AddTransaction(transaction, 1, true);
-//            }
-//        }
 
         [Test]
         public void should_add_all_transactions_to_storage_when_using_accept_all_filter()
