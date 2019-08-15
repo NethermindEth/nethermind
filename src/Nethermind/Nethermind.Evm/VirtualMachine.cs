@@ -1279,7 +1279,10 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            new BitArray(a.ToArray()).And(new BitArray(b.ToArray())).CopyTo(wordBufferArray, 0);
+                            for (int i = 0; i < 32; i++)
+                            {
+                                wordBuffer[i] = (byte)(a[i] & b[i]);
+                            }
                         }
 
                         PushBytes(wordBufferArray, bytesOnStack);
@@ -1305,7 +1308,10 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            new BitArray(a.ToArray()).Or(new BitArray(b.ToArray())).CopyTo(wordBufferArray, 0);
+                            for (int i = 0; i < 32; i++)
+                            {
+                                wordBuffer[i] = (byte)(a[i] | b[i]);
+                            }
                         }
 
                         PushBytes(wordBufferArray, bytesOnStack);
@@ -1331,7 +1337,10 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            new BitArray(a.ToArray()).Xor(new BitArray(b.ToArray())).CopyTo(wordBufferArray, 0);
+                            for (int i = 0; i < 32; i++)
+                            {
+                                wordBuffer[i] = (byte)(a[i] ^ b[i]);
+                            }
                         }
 
                         PushBytes(wordBufferArray, bytesOnStack);
@@ -1356,7 +1365,10 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            new BitArray(a.ToArray()).Not().CopyTo(wordBufferArray, 0);
+                            for (int i = 0; i < 32; ++i)
+                            {
+                                wordBufferArray[i] = (byte)~a[i];
+                            }
                         }
 
                         PushBytes(wordBufferArray, bytesOnStack);
