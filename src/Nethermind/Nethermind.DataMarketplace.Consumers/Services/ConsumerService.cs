@@ -696,13 +696,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         public async Task<DataRequestResult> SendDataRequestAsync(Keccak depositId)
         {
-            if (_accountLocked)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Account: '{_consumerAddress}' is locked, can't send a data request.");
-
-                return DataRequestResult.ConsumerAccountLocked;
-            }
-            
             if (!_deposits.TryGetValue(depositId, out var depositDetails))
             {
                 depositDetails = await GetDepositAsync(depositId);
@@ -713,6 +706,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 }
 
                 _deposits.TryAdd(depositId, depositDetails);
+            }
+
+            if (!_wallet.IsUnlocked(depositDetails.Consumer))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Account: '{depositDetails.Consumer}' is locked, can't send a data request.");
+
+                return DataRequestResult.ConsumerAccountLocked;
             }
 
             if (!(await VerifyKycAsync(depositDetails.DataAsset)))
@@ -808,16 +808,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         }
 
         public Task<Keccak> EnableDataStreamAsync(Keccak depositId, string client, string[] args)
-        {
-            if (_accountLocked)
-            {
-                if (_logger.IsWarn) _logger.Warn($"Account: '{_consumerAddress}' is locked, can't enable data stream.");
-
-                return Task.FromResult<Keccak>(null);
-            }
-            
-            return ToggleDataStreamAsync(depositId, true, client, args);
-        }
+            => ToggleDataStreamAsync(depositId, true, client, args);
 
         public Task<Keccak> DisableDataStreamAsync(Keccak depositId, string client)
             => ToggleDataStreamAsync(depositId, false, client);
@@ -831,7 +822,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             }
 
             if (_logger.IsInfo) _logger.Info($"Disabling all data streams for deposit: '{depositId}'.");
-
             var disableStreamTasks = from client in session.Clients
                 select DisableDataStreamAsync(session.DepositId, client.Id);
             await Task.WhenAll(disableStreamTasks);
@@ -840,7 +830,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
             return depositId;
         }
 
-        private async Task<Keccak> ToggleDataStreamAsync(Keccak depositId, bool enabled, string client,
+        private async Task<Keccak> ToggleDataStreamAsync(Keccak depositId, bool enable, string client,
             string[] args = null)
         {
             var session = GetActiveSession(depositId);
@@ -864,6 +854,13 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
             
+            if (enable && !_wallet.IsUnlocked(depositDetails.Consumer))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Account: '{depositDetails.Consumer}' is locked, can't enable data stream.");
+
+                return null;
+            }
+            
             var dataAssetId = depositDetails.DataAsset.Id;
             if (!_discoveredDataAssets.TryGetValue(dataAssetId, out var dataAsset))
             {
@@ -879,7 +876,7 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 return null;
             }
 
-            if (enabled)
+            if (enable)
             {
                 switch (dataAsset.QueryType)
                 {
