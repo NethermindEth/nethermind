@@ -89,6 +89,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             _notAcceptedTxsSinceLastCheck = 0;
+
+            if (Session.IsClosing)
+            {
+                DisposeTimer();
+            }
         }
 
         public virtual byte ProtocolVersion => 62;
@@ -610,12 +615,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return;
             }
 
-            _headersRequests.CompleteAdding();
-            _bodiesRequests.CompleteAdding();
+            DisposeTimer();
 
-            _txFloodCheckTimer.Elapsed -= CheckTxFlooding;
-            _txFloodCheckTimer?.Dispose();
+            try
+            {
+                _headersRequests?.CompleteAdding();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            
+            try
+            {
+                _bodiesRequests?.CompleteAdding();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            
             _isDisposed = true;
+        }
+
+        private void DisposeTimer()
+        {
+            try
+            {
+                _txFloodCheckTimer.Elapsed -= CheckTxFlooding;
+                _txFloodCheckTimer.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (NullReferenceException)
+            {
+            }
         }
     }
 }
