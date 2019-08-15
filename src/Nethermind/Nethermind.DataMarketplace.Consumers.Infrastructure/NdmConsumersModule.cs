@@ -55,7 +55,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var sessionRlpDecoder = new ConsumerSessionDecoder();
             var receiptRequestValidator = new ReceiptRequestValidator(logManager);
             var refundService = new RefundService(services.CreatedServices.BlockchainBridge,
-                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, contractAddress, logManager);
+                services.RequiredServices.TransactionPool, services.CreatedServices.AbiEncoder,
+                services.RequiredServices.Wallet, contractAddress, logManager);
             var dataRequestFactory = new DataRequestFactory(services.RequiredServices.Wallet,
                 services.RequiredServices.Enode.PublicKey);
             var transactionVerifier = new TransactionVerifier(services.CreatedServices.BlockchainBridge,
@@ -94,7 +95,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var refundClaimant = new RefundClaimant(refundService, services.CreatedServices.BlockchainBridge,
                 depositRepository, transactionVerifier, logManager);
             var depositService = new DepositService(services.CreatedServices.BlockchainBridge,
-                services.CreatedServices.AbiEncoder, services.RequiredServices.Wallet, contractAddress, logManager);
+                services.RequiredServices.TransactionPool, services.CreatedServices.AbiEncoder,
+                services.RequiredServices.Wallet, contractAddress, logManager);
             var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
             var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
                 dataRequestFactory, depositRepository, depositApprovalRepository, providerRepository, receiptRepository,

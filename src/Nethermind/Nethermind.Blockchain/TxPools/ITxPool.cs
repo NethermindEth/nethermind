@@ -20,6 +20,7 @@ using System;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.TxPools
 {
@@ -33,6 +34,7 @@ namespace Nethermind.Blockchain.TxPools
         AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false);
         void RemoveTransaction(Keccak hash, long blockNumber);
         bool TryGetSender(Keccak hash, out Address sender);
+        UInt256 ReserveOwnTransactionNonce(Address address);
         event EventHandler<TxEventArgs> NewPending;
         event EventHandler<TxEventArgs> RemovedPending;
     }

@@ -87,8 +87,18 @@ namespace Nethermind.Clique.Test
                 MemDb blocksDb = new MemDb();
                 MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
+                
+                ISnapshotableDb stateDb = new StateDb();
+                ISnapshotableDb codeDb = new StateDb();
+                IDb traceDb = new MemDb();
+                
+                ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), _logManager);
+                StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
+                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
+                stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
+
+                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, nodeLogManager);
@@ -102,15 +112,7 @@ namespace Nethermind.Clique.Test
                 _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new CliqueSealer(wallet, _cliqueConfig, snapshotManager, privateKey.Address, nodeLogManager);
 
-                ISnapshotableDb stateDb = new StateDb();
-                ISnapshotableDb codeDb = new StateDb();
-                IDb traceDb = new MemDb();
-                
-                ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
-                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-                stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
 
                 _genesis.StateRoot = _genesis3Validators.StateRoot = stateProvider.StateRoot;
                 _genesis.Hash = BlockHeader.CalculateHash(_genesis.Header);

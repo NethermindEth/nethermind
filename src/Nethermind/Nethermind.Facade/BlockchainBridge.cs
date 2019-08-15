@@ -39,7 +39,6 @@ namespace Nethermind.Facade
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly ITxPool _txPool;
-        
         private readonly IWallet _wallet;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
@@ -137,7 +136,14 @@ namespace Nethermind.Facade
             transaction.Hash = Transaction.CalculateHash(transaction);
             transaction.Timestamp = _timestamper.EpochSeconds;
 
-            _txPool.AddTransaction(transaction, _blockTree.Head.Number, isOwn);
+            var result = _txPool.AddTransaction(transaction, _blockTree.Head.Number, isOwn);
+            if (isOwn && result == AddTxResult.OwnNonceAlreadyUsed)
+            {
+                transaction.Nonce = _txPool.ReserveOwnTransactionNonce(transaction.SenderAddress);
+                Sign(transaction);
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                _txPool.AddTransaction(transaction, _blockTree.Head.Number, true);
+            }
 
             _stateProvider.Reset();
             return transaction.Hash;

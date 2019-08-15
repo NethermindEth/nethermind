@@ -26,5 +26,6 @@ namespace Nethermind.Blockchain.TxPools
         OldNonce,
         PotentiallyUseless,
         Added,
+        OwnNonceAlreadyUsed
     }
 }

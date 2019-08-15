@@ -231,9 +231,14 @@ namespace Nethermind.PerfTest
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
             
+            /* state & storage */
+
+            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+            
             var transactionPool = new TxPool(NullTxStorage.Instance,
                 Timestamper.Default,
-                NullEthereumEcdsa.Instance, specProvider, new TxPoolConfig(), _logManager);
+                NullEthereumEcdsa.Instance, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
 
@@ -261,10 +266,7 @@ namespace Nethermind.PerfTest
             var transactionValidator = new TxValidator(chainSpec.ChainId);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
 
-            /* state & storage */
 
-            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
-            var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

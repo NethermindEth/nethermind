@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Store;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Blockchain.TxPools
@@ -38,6 +39,11 @@ namespace Nethermind.Blockchain.TxPools
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
+        private static readonly object Locker = new object();
+
+        private readonly ConcurrentDictionary<Address, AddressNonces> _nonces =
+            new ConcurrentDictionary<Address, AddressNonces>();
+        
         /// <summary>
         /// Number of blocks after which own transaction will not be resurrected any more
         /// </summary>
@@ -55,6 +61,7 @@ namespace Nethermind.Blockchain.TxPools
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
         
         private readonly ISpecProvider _specProvider;
+        private readonly IStateProvider _stateProvider;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
 
@@ -124,6 +131,7 @@ namespace Nethermind.Blockchain.TxPools
         /// <param name="ecdsa">Used to recover sender addresses from transaction signatures.</param>
         /// <param name="specProvider">Used for retrieving information on EIPs that may affect tx signature scheme.</param>
         /// <param name="txPoolConfig"></param>
+        /// <param name="stateProvider"></param>
         /// <param name="logManager"></param>
         public TxPool(
             ITxStorage txStorage,
@@ -131,6 +139,7 @@ namespace Nethermind.Blockchain.TxPools
             IEthereumEcdsa ecdsa,
             ISpecProvider specProvider,
             ITxPoolConfig txPoolConfig,
+            IStateProvider stateProvider,
             ILogManager logManager)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
@@ -138,7 +147,8 @@ namespace Nethermind.Blockchain.TxPools
             _txStorage = txStorage ?? throw new ArgumentNullException(nameof(txStorage));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+
             _peerNotificationThreshold = txPoolConfig.PeerNotificationThreshold;
             
             _ownTimer = new Timer(500);
@@ -188,14 +198,14 @@ namespace Nethermind.Blockchain.TxPools
 
         public AddTxResult AddTransaction(Transaction tx, long blockNumber, bool isOwn = false)
         {
-            if(_fadingOwnTransactions.ContainsKey(tx.Hash))
+            if (_fadingOwnTransactions.ContainsKey(tx.Hash))
             {
                 _fadingOwnTransactions.TryRemove(tx.Hash, out (Transaction Tx, long _) fadingTxHolder);
                 _ownTransactions.TryAdd(fadingTxHolder.Tx.Hash, fadingTxHolder.Tx);
                 _ownTimer.Enabled = true;
                 return AddTxResult.Added;
             }
-            
+
             Metrics.PendingTransactionsReceived++;
 
             if (tx.Signature.GetChainId == null)
@@ -238,19 +248,52 @@ namespace Nethermind.Blockchain.TxPools
              * if we leave it for block production only.
              * */
             
-            if (isOwn)
+            if (isOwn && !HandleOwnTransaction(tx))
             {
-                _ownTransactions.TryAdd(tx.Hash, tx);
-                _ownTimer.Enabled = true;
-
-                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {tx.Hash} to {_peers.Count} peers");
+                _pendingTxs.TryRemove(tx.Hash, out _);
+                return AddTxResult.OwnNonceAlreadyUsed;
             }
             
             NotifySelectedPeers(tx);
-
             FilterAndStoreTx(tx, blockNumber);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
+        }
+
+        private bool HandleOwnTransaction(Transaction transaction)
+        {
+            var address = transaction.SenderAddress;
+            lock (Locker)
+            {
+                if (!_nonces.TryGetValue(address, out var addressNonces))
+                {
+                    var currentNonce = _stateProvider.GetNonce(address);
+                    addressNonces = new AddressNonces(currentNonce);
+                    _nonces.TryAdd(address, addressNonces);
+                }
+                
+                if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
+                {
+                    nonce = new Nonce(transaction.Nonce);
+                    addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
+                }
+
+                if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
+                {
+                    // Nonce conflict
+                    if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
+
+                    return false;
+                }
+                    
+                nonce.SetTransactionHash(transaction.Hash);
+            }
+            
+            _ownTransactions.TryAdd(transaction.Hash, transaction);
+            _ownTimer.Enabled = true;
+            if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+
+            return true;
         }
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
@@ -264,9 +307,27 @@ namespace Nethermind.Blockchain.TxPools
                  */
                 foreach ((Keccak fadingHash, (Transaction Tx, long BlockNumber) fadingHolder) in _fadingOwnTransactions)
                 {
-                    if (fadingHolder.BlockNumber < blockNumber - FadingTimeInBlocks)
+                    if (fadingHolder.BlockNumber >= blockNumber - FadingTimeInBlocks)
                     {
-                        _fadingOwnTransactions.TryRemove(fadingHash, out _);
+                        continue;
+                    }
+                    
+                    _fadingOwnTransactions.TryRemove(fadingHash, out _);
+                    
+                    // Nonce was correct and will never be used again
+                    lock (Locker)
+                    {
+                        var address = fadingHolder.Tx.SenderAddress;
+                        if (!_nonces.TryGetValue(address, out var addressNonces))
+                        {
+                            continue;
+                        }
+
+                        addressNonces.Nonces.TryRemove(fadingHolder.Tx.Nonce, out _);
+                        if (addressNonces.Nonces.IsEmpty)
+                        {
+                            _nonces.TryRemove(address, out _);
+                        }
                     }
                 }
             }
@@ -295,6 +356,26 @@ namespace Nethermind.Blockchain.TxPools
             bool found = _pendingTxs.TryGetValue(hash, out Transaction transaction);
             sender = found ? transaction.SenderAddress : null;
             return found;
+        }
+
+        // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
+        public UInt256 ReserveOwnTransactionNonce(Address address)
+        {
+            lock (Locker)
+            {
+                if (!_nonces.TryGetValue(address, out var addressNonces))
+                {
+                    var currentNonce = _stateProvider.GetNonce(address);
+                    addressNonces = new AddressNonces(currentNonce);
+                    _nonces.TryAdd(address, addressNonces);
+
+                    return currentNonce;
+                }
+
+                var incrementedNonce = addressNonces.ReserveNonce();
+
+                return incrementedNonce.Value;
+            }
         }
 
         public void Dispose()
@@ -409,6 +490,46 @@ namespace Nethermind.Blockchain.TxPools
                     RemovedPending?.Invoke(this, new TxEventArgs(tx));
                 }
             }
+        }
+
+        private class AddressNonces
+        {
+            private Nonce _currentNonce;
+            
+            public ConcurrentDictionary<UInt256, Nonce> Nonces { get; } = new ConcurrentDictionary<UInt256, Nonce>();
+
+            public AddressNonces(UInt256 startNonce)
+            {
+                _currentNonce = new Nonce(startNonce);
+                Nonces.TryAdd(_currentNonce.Value, _currentNonce);
+            }
+
+            public Nonce ReserveNonce()
+            {
+                var nonce = _currentNonce.Increment();
+                Interlocked.Exchange(ref _currentNonce, nonce);
+                Nonces.TryAdd(nonce.Value, nonce);
+
+                return nonce;
+            }
+        }
+
+        private class Nonce
+        {
+            public UInt256 Value { get; }
+            public Keccak TransactionHash { get; private set; }
+
+            public Nonce(UInt256 value)
+            {
+                Value = value;
+            }
+
+            public void SetTransactionHash(Keccak transactionHash)
+            {
+                TransactionHash = transactionHash;
+            }
+            
+            public Nonce Increment() => new Nonce(Value+1);
         }
     }
 }

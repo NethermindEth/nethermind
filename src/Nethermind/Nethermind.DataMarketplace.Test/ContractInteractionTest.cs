@@ -23,6 +23,7 @@ using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -90,6 +91,7 @@ namespace Nethermind.DataMarketplace.Test
         protected AbiEncoder _abiEncoder = new AbiEncoder();
         protected ILogManager _logManager = new OneLoggerLogManager(new TestLogger());
         protected Address _contractAddress;
+        protected ITxPool _txPool;
 
         protected void Prepare()
         {
@@ -117,6 +119,8 @@ namespace Nethermind.DataMarketplace.Test
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
+            _txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(),
+                new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -295,7 +299,13 @@ namespace Nethermind.DataMarketplace.Test
                     _nonces[address] = 0;
                 }
 
-                return _nonces[address]++;
+                return _nonces[address];
+            }
+            
+            public void IncrementNonce(Address address)
+            {
+                var nonce = GetNonce(address);
+                _nonces[address] = nonce + 1;
             }
 
             public BigInteger GetBalance(Address address)
