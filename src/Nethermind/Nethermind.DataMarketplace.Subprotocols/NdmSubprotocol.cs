@@ -663,8 +663,15 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 return;
             }
 
-            DepositApprovalsRequests?.CompleteAdding();
-            DepositApprovalsRequests?.Dispose();
+            try
+            {
+                DepositApprovalsRequests?.CompleteAdding();
+                DepositApprovalsRequests?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+     
             ConsumerService.FinishSessionsAsync(this).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)
