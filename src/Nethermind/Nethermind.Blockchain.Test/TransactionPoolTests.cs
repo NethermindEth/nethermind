@@ -32,6 +32,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -230,7 +231,22 @@ namespace Nethermind.Blockchain.Test
             var nonce = _txPool.ReserveOwnTransactionNonce(address);
             nonce.Should().Be(new UInt256(reservationsCount));
         }
-        
+
+        [Test]
+        public void should_return_own_nonce_already_used_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
+        {
+            var blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
+            _txPool = CreatePool(_noTxStorage);
+            var result1 = _txPool.AddTransaction(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressA), blockNumber, true);
+            result1.Should().Be(AddTxResult.Added);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            var result2 = _txPool.AddTransaction(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressB), blockNumber, true);
+            result2.Should().Be(AddTxResult.OwnNonceAlreadyUsed);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+        }
+
 //        [Test]
 //        public void foo()
 //        {

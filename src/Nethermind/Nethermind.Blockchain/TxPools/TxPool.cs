@@ -248,9 +248,10 @@ namespace Nethermind.Blockchain.TxPools
              * if we leave it for block production only.
              * */
             
-            if (isOwn)
+            if (isOwn && !HandleOwnTransaction(tx))
             {
-                HandleOwnTransaction(tx);
+                _pendingTxs.TryRemove(tx.Hash, out _);
+                return AddTxResult.OwnNonceAlreadyUsed;
             }
             
             NotifySelectedPeers(tx);
@@ -259,15 +260,40 @@ namespace Nethermind.Blockchain.TxPools
             return AddTxResult.Added;
         }
 
-        private void HandleOwnTransaction(Transaction transaction)
+        private bool HandleOwnTransaction(Transaction transaction)
         {
-            if (_nonces.TryGetValue(transaction.SenderAddress, out var addressNonces))
+            var address = transaction.SenderAddress;
+            lock (Locker)
             {
+                if (!_nonces.TryGetValue(address, out var addressNonces))
+                {
+                    var currentNonce = _stateProvider.GetNonce(address);
+                    addressNonces = new AddressNonces(currentNonce);
+                    _nonces.TryAdd(address, addressNonces);
+                }
+                
+                if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
+                {
+                    nonce = new Nonce(transaction.Nonce);
+                    addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
+                }
+
+                if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
+                {
+                    // Nonce conflict
+                    if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
+
+                    return false;
+                }
+                    
+                nonce.SetTransactionHash(transaction.Hash);
             }
             
             _ownTransactions.TryAdd(transaction.Hash, transaction);
             _ownTimer.Enabled = true;
             if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+
+            return true;
         }
 
         public void RemoveTransaction(Keccak hash, long blockNumber)
@@ -281,9 +307,27 @@ namespace Nethermind.Blockchain.TxPools
                  */
                 foreach ((Keccak fadingHash, (Transaction Tx, long BlockNumber) fadingHolder) in _fadingOwnTransactions)
                 {
-                    if (fadingHolder.BlockNumber < blockNumber - FadingTimeInBlocks)
+                    if (fadingHolder.BlockNumber >= blockNumber - FadingTimeInBlocks)
                     {
-                        _fadingOwnTransactions.TryRemove(fadingHash, out _);
+                        continue;
+                    }
+                    
+                    _fadingOwnTransactions.TryRemove(fadingHash, out _);
+                    
+                    // Nonce was correct and will never be used again
+                    lock (Locker)
+                    {
+                        var address = fadingHolder.Tx.SenderAddress;
+                        if (!_nonces.TryGetValue(address, out var addressNonces))
+                        {
+                            continue;
+                        }
+
+                        addressNonces.Nonces.TryRemove(fadingHolder.Tx.Nonce, out _);
+                        if (addressNonces.Nonces.IsEmpty)
+                        {
+                            _nonces.TryRemove(address, out _);
+                        }
                     }
                 }
             }
