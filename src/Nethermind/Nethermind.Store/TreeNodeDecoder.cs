@@ -18,7 +18,7 @@
 
 using System;
 using Nethermind.Core.Encoding;
-using Newtonsoft.Json;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
@@ -40,12 +40,12 @@ namespace Nethermind.Store
 
         public Rlp Encode(TrieNode item)
         {
+            Metrics.TreeNodeRlpEncodings++;
             if (item == null)
             {
                 return Rlp.OfEmptySequence;
             }
-
-            Metrics.TreeNodeRlpEncodings++;
+            
             if (item.IsLeaf)
             {
                 return EncodeLeaf(item);
@@ -108,12 +108,13 @@ namespace Nethermind.Store
         {
             int totalLength = 0;
             item.InitData();
-
+            item.PositionContextOnItem(0);
             for (int i = 0; i < 16; i++)
             {
                 if (item.DecoderContext != null && item._data[i] == null)
                 {
-                    totalLength += item._lookupTable[i * 2 + 1];
+                    (int prefixLength, int contentLength) = item.DecoderContext.PeekPrefixAndContentLength();
+                    totalLength += prefixLength + contentLength;
                 }
                 else
                 {
@@ -128,6 +129,8 @@ namespace Nethermind.Store
                         totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                     }
                 }
+                
+                item.DecoderContext?.SkipItem();
             }
 
             return totalLength;
@@ -136,20 +139,22 @@ namespace Nethermind.Store
         private void WriteChildrenRlp(TrieNode item, Span<byte> destination)
         {
             int position = 0;
-            Rlp.DecoderContext context = item.DecoderContext;
+            var context = item.DecoderContext;
             item.InitData();
-
+            item.PositionContextOnItem(0);
             for (int i = 0; i < 16; i++)
             {
                 if (context != null && item._data[i] == null)
                 {
-                    context.Position = item._lookupTable[i * 2];
-                    Span<byte> nextItem = context.Read(item._lookupTable[i * 2 + 1]);
+                    int length = context.PeekNextRlpLength();
+                    Span<byte> nextItem = context.Data.Slice(context.Position, length);
                     nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                     position += nextItem.Length;
+                    context.SkipItem();
                 }
                 else
                 {
+                    context?.SkipItem();
                     if (ReferenceEquals(item._data[i], TrieNode.NullNode) || item._data[i] == null)
                     {
                         destination[position++] = 128;

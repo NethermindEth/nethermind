@@ -38,8 +38,6 @@ namespace Nethermind.Store
         internal object[] _data;
         private bool _isDirty;
 
-        internal short[] _lookupTable;
-
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
@@ -56,7 +54,6 @@ namespace Nethermind.Store
             NodeType = nodeType;
             FullRlp = rlp;
             DecoderContext = rlp.Bytes.AsRlpContext();
-            BuildLookupTable();
         }
 
         public bool IsValidWithOneNodeLess
@@ -142,7 +139,7 @@ namespace Nethermind.Store
                     }
                     else
                     {
-                        DecoderContext.Position = _lookupTable[32];
+                        PositionContextOnItem(16);
                         _data[16] = DecoderContext.DecodeByteArray();
                     }
                 }
@@ -233,7 +230,7 @@ namespace Nethermind.Store
                 throw new StateException($"Unable to resolve node {Keccak.ToString(true)}", e);
             }
         }
-        
+
         public void ResolveNode(PatriciaTree tree)
         {
             ResolveNode(tree, true);
@@ -250,7 +247,6 @@ namespace Nethermind.Store
             {
                 FullRlp = RlpEncode();
                 DecoderContext = FullRlp.Bytes.AsRlpContext();
-                BuildLookupTable();
             }
 
             if (FullRlp.Length < 32)
@@ -268,11 +264,9 @@ namespace Nethermind.Store
             Keccak = Keccak.Compute(FullRlp);
         }
 
-      
 
         internal Rlp RlpEncode()
         {
-            Metrics.TreeNodeRlpEncodings++;
             return _nodeDecoder.Encode(this);
         }
 
@@ -291,38 +285,21 @@ namespace Nethermind.Store
                         _data = new object[2];
                         break;
                 }
-
-                if (_lookupTable == null)
-                {
-                    BuildLookupTable();
-                }
             }
         }
 
-        public void BuildLookupTable()
+        internal void PositionContextOnItem(int itemToSetOn)
         {
-            if (IsBranch && DecoderContext != null)
+            if (DecoderContext == null)
             {
-                if (_lookupTable == null)
-                {
-                    _lookupTable = new short[34];
-                }
-                else
-                {
-                    Array.Clear(_lookupTable, 0, _lookupTable.Length);
-                }
-
-                DecoderContext.Reset();
-                DecoderContext.SkipLength();
-                short offset = (short) DecoderContext.Position;
-                for (int i = 0; i < 17; i++)
-                {
-                    short nextLength = (short) DecoderContext.PeekNextRlpLength();
-                    _lookupTable[i * 2] = offset;
-                    _lookupTable[i * 2 + 1] = nextLength;
-                    offset += nextLength;
-                    DecoderContext.Position += nextLength;
-                }
+                return;
+            }
+            
+            DecoderContext.Reset();
+            DecoderContext.SkipLength();
+            for (int i = 0; i < itemToSetOn; i++)
+            {
+                DecoderContext.SkipItem();
             }
         }
 
@@ -337,9 +314,13 @@ namespace Nethermind.Store
 
             if (_data[i] == null)
             {
-                context.Position = _lookupTable[i * 2];
+                PositionContextOnItem(i);
                 int prefix = context.ReadByte();
-                if (prefix == 128)
+                if (prefix == 0)
+                {
+                    _data[i] = NullNode;
+                }
+                else if (prefix == 128)
                 {
                     _data[i] = NullNode;
                 }
@@ -368,21 +349,17 @@ namespace Nethermind.Store
 
             if (NodeType == NodeType.Extension)
             {
-                context.Position = 0;
+                context.Reset();
                 context.ReadSequenceLength();
                 context.DecodeByteArraySpan();
+
+                // TODO: looks like this never supports short extensions? (try the example with the minimal branch)
                 return context.DecodeKeccak();
             }
 
-            context.Position = _lookupTable[i * 2];
-            int prefix = context.ReadByte();
-            if (prefix == 160)
-            {
-                context.Position--;
-                return context.DecodeKeccak();
-            }
-
-            return null;
+            PositionContextOnItem(i);
+            (int _, int length) = context.PeekPrefixAndContentLength();
+            return length == 32 ? context.DecodeKeccak() : null;
         }
 
         public bool IsChildNull(int i)
@@ -396,7 +373,8 @@ namespace Nethermind.Store
 
             if (context != null && _data[i] == null)
             {
-                return _lookupTable[i * 2 + 1] == 1;
+                PositionContextOnItem(i);
+                return context.PeekNextRlpLength() == 1;
             }
 
             return ReferenceEquals(_data[i], NullNode) || _data[i] == null;
@@ -449,7 +427,6 @@ namespace Nethermind.Store
                     throw new NotImplementedException();
                 case NodeType.Branch:
                 {
-                    BuildLookupTable();
                     visitor.VisitBranch(this, context);
                     context.Level++;
                     for (int i = 0; i < 16; i++)
@@ -466,6 +443,7 @@ namespace Nethermind.Store
                     context.BranchChildIndex = null;
                     break;
                 }
+
                 case NodeType.Extension:
                 {
                     visitor.VisitExtension(this, context);
@@ -480,6 +458,7 @@ namespace Nethermind.Store
 
                     break;
                 }
+
                 case NodeType.Leaf:
                 {
                     visitor.VisitLeaf(this, context);
@@ -508,6 +487,7 @@ namespace Nethermind.Store
 
                     break;
                 }
+
                 default:
                     throw new ArgumentOutOfRangeException();
             }
