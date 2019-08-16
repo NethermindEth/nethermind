@@ -68,23 +68,16 @@ namespace Nethermind.Core
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
-        
+
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
-        private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);
+        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
 
         public static Keccak CalculateHash(BlockHeader header)
         {
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                Rlp.Encode(stream, header);
-                byte[] buffer = _rlpBuffer.Value;
-                stream.Seek(0, SeekOrigin.Begin);
-                stream.Read(buffer, 0, (int) stream.Length);
-                Keccak newOne = Keccak.Compute(buffer.AsSpan().Slice(0, (int) stream.Length));
-                return newOne;
-            }
+            Rlp buffer = _headerDecoder.Encode(header);
+            return Keccak.Compute(buffer.Bytes);
         }
 
         public static Keccak CalculateHash(Block block)
@@ -110,7 +103,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
-            
+
             return builder.ToString();
         }
 

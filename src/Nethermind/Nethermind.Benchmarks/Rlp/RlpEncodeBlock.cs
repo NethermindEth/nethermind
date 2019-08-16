@@ -24,6 +24,7 @@ using BenchmarkDotNet.Mathematics.StatisticalTesting;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -36,6 +37,8 @@ namespace Nethermind.Benchmarks.Rlp
     [CoreJob(baseline: true)]
     public class RlpEncodeBlock
     {
+        private static BlockDecoder _blockDecoder = new BlockDecoder();
+        
         private static Block _block;
 
         private Block[] _scenarios;
@@ -74,6 +77,7 @@ namespace Nethermind.Benchmarks.Rlp
         {
             _block = _scenarios[ScenarioIndex];
             Check(Current(), Improved());
+            Check(Current(), Improved2());
         }
 
         private RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
@@ -87,8 +91,14 @@ namespace Nethermind.Benchmarks.Rlp
                 return stream.ToArray();
             }
         }
-
+        
         [Benchmark]
+        public byte[] Improved2()
+        {
+            return _blockDecoder.Encode(_block).Bytes;
+        }
+
+        [Benchmark(Baseline = true)]
         public byte[] Current()
         {
             return Nethermind.Core.Encoding.Rlp.Encode(_block).Bytes;

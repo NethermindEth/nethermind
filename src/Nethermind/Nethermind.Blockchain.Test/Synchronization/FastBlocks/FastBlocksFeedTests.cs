@@ -859,6 +859,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     if (i < 10 && j == 0 && _maliciousByInvalidReceipts.Contains(syncPeer))
                     {
                         receiptSyncBatch.Response[i][j] = new TxReceipt();
+                        receiptSyncBatch.Response[i][j].Logs = new LogEntry[0];
                         receiptSyncBatch.Response[i][j].StatusCode = (byte) (1 - receiptSyncBatch.Response[i][j].StatusCode);
                         receiptSyncBatch.Response[i][j].PostTransactionState = Keccak.Compute(receiptSyncBatch.Response[i][j].PostTransactionState?.Bytes ?? new byte[] {1});
                     }

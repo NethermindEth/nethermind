@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -66,19 +67,11 @@ namespace Nethermind.Core.Encoding
             return new Block(header, transactions, ommerHeaders);
         }
 
-        public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public void Encode(MemoryStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
-            {
-                return Rlp.OfEmptySequence;
-            }
-            
-            return Rlp.Encode(
-                Rlp.Encode(item.Header),
-                Rlp.Encode(item.Transactions),
-                Rlp.Encode(item.Ommers));
+            throw new NotSupportedException("Use RlpStream instead");
         }
-        
+
         private (int Total, int Txs, int Ommers) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {   
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
@@ -114,30 +107,6 @@ namespace Nethermind.Core.Encoding
             return txLength;
         }
 
-        public void Encode(MemoryStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            if (item == null)
-            {
-                stream.Write(Rlp.OfEmptySequence.Bytes);
-                return;
-            }
-            
-            (int contentLength, int txsLength, int ommersLength) = GetContentLength(item, rlpBehaviors);
-            Rlp.StartSequence(stream, contentLength);
-            _headerDecoder.Encode(stream, item.Header);
-            Rlp.StartSequence(stream, txsLength);
-            for (int i = 0; i < item.Transactions.Length; i++)
-            {
-                _txDecoder.Encode(stream, item.Transactions[i]);
-            }
-            
-            Rlp.StartSequence(stream, ommersLength);
-            for (int i = 0; i < item.Ommers.Length; i++)
-            {
-                _headerDecoder.Encode(stream, item.Ommers[i]);
-            }
-        }
-
         public int GetLength(Block item, RlpBehaviors rlpBehaviors)
         {
             if (item == null)
@@ -146,6 +115,42 @@ namespace Nethermind.Core.Encoding
             }
             
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+        }
+
+        public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
+            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            Encode(rlpStream, item, rlpBehaviors);
+            return new Rlp(rlpStream.Data);
+        }
+        
+        public void Encode(RlpStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item == null)
+            {
+                stream.EncodeNullObject();
+                return;
+            }
+            
+            (int contentLength, int txsLength, int ommersLength) = GetContentLength(item, rlpBehaviors);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.Header);
+            stream.StartSequence(txsLength);
+            for (int i = 0; i < item.Transactions.Length; i++)
+            {
+                stream.Encode(item.Transactions[i]);
+            }
+            
+            stream.StartSequence(ommersLength);
+            for (int i = 0; i < item.Ommers.Length; i++)
+            {
+                stream.Encode(item.Ommers[i]);
+            }
         }
     }
 }

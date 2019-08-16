@@ -249,15 +249,7 @@ namespace Nethermind.Store
         [DebuggerStepThrough]
         public void Set(Span<byte> rawKey, Rlp value)
         {
-//            ValueCache.Delete(rawKey);
-            int nibblesCount = 2 * rawKey.Length;
-            byte[] array = null;
-            Span<byte> nibbles = rawKey.Length <= 64
-                ? stackalloc byte[nibblesCount]
-                : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
-            Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            Run(nibbles, nibblesCount, value == null ? new byte[0] : value.Bytes, true);
-            if (array != null) ArrayPool<byte>.Shared.Return(array);
+            Set(rawKey, value == null ? new byte[0] : value.Bytes);
         }
 
         internal Rlp GetNode(Keccak keccak, bool allowCaching)

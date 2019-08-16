@@ -40,19 +40,19 @@ namespace Nethermind.Core.Encoding
         public const int LengthOfEmptyArrayRlp = 1;
         public const int LengthOfEmptySequenceRlp = 1;
 
-        private const int DebugMessageContentLength = 2048;
+        internal const int DebugMessageContentLength = 2048;
 
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
         
-        private static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptyTreeHash = Encode(Keccak.EmptyTreeHash.Bytes); // use bytes to avoid stack overflow
         
-        private static readonly Rlp OfEmptySequenceRlpHash = Encode(Keccak.OfAnEmptySequenceRlp.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptySequenceRlpHash = Encode(Keccak.OfAnEmptySequenceRlp.Bytes); // use bytes to avoid stack overflow
         
-        private static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp OfEmptyStringHash = Encode(Keccak.OfAnEmptyString.Bytes); // use bytes to avoid stack overflow
         
-        private static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
+        internal static readonly Rlp EmptyBloom = Encode(Bloom.Empty.Bytes); // use bytes to avoid stack overflow
 
         static Rlp()
         {
@@ -648,7 +648,7 @@ namespace Nethermind.Core.Encoding
             return position + 4;
         }
 
-        private static int LengthOfLength(int value)
+        internal static int LengthOfLength(int value)
         {
             if (value < 1 << 8)
             {
@@ -819,11 +819,6 @@ namespace Nethermind.Core.Encoding
             return Encode(rlpSequence);
         }
 
-        public static MemoryStream BorrowStream()
-        {
-            return StreamManager.GetStream();
-        }
-
         public static int GetSequenceRlpLength(int contentLength)
         {
             int totalLength = contentLength + 1;
@@ -908,8 +903,6 @@ namespace Nethermind.Core.Encoding
 
             return new Rlp(allBytes);
         }
-
-        private static readonly RecyclableMemoryStreamManager StreamManager = new RecyclableMemoryStreamManager();
 
         public ref struct ValueDecoderContext
         {
