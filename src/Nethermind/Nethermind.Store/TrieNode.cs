@@ -30,12 +30,15 @@ namespace Nethermind.Store
 {
     public class TrieNode
     {
-        private static readonly object NullNode = new object();
+        private static TreeNodeDecoder _nodeDecoder = new TreeNodeDecoder();
+        private static AccountDecoder _accountDecoder = new AccountDecoder();
 
-        private object[] _data;
+        public static object NullNode = new object();
+
+        internal object[] _data;
         private bool _isDirty;
 
-        private short[] _lookupTable;
+        internal short[] _lookupTable;
 
         public TrieNode(NodeType nodeType)
         {
@@ -93,7 +96,7 @@ namespace Nethermind.Store
         }
 
         public Keccak Keccak { get; set; }
-        private Rlp.DecoderContext DecoderContext { get; set; }
+        internal Rlp.DecoderContext DecoderContext { get; set; }
         public Rlp FullRlp { get; private set; }
         public NodeType NodeType { get; set; }
 
@@ -265,54 +268,15 @@ namespace Nethermind.Store
             Keccak = Keccak.Compute(FullRlp);
         }
 
-        private Rlp RlpEncodeBranch()
-        {
-            int valueRlpLength = Rlp.LengthOf(Value);
-            int contentLength = valueRlpLength + GetChildrenRlpLength();
-            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
-            byte[] result = new byte[sequenceLength];
-            Span<byte> resultSpan = result.AsSpan();
-            int position = Rlp.StartSequence(result, 0, contentLength);
-            WriteChildrenRlp(resultSpan.Slice(position, contentLength - valueRlpLength));
-            WriteChildrenRlp(resultSpan.Slice(position, contentLength - valueRlpLength));
-            position = sequenceLength - valueRlpLength;
-            Rlp.Encode(result, position, Value);
-            return new Rlp(result);
-        }
+      
 
         internal Rlp RlpEncode()
         {
             Metrics.TreeNodeRlpEncodings++;
-            if (IsLeaf)
-            {
-                return Rlp.Encode(Rlp.Encode(Key.ToBytes()), Rlp.Encode(Value));
-            }
-
-            if (IsBranch)
-            {
-                return RlpEncodeBranch();
-            }
-
-            if (IsExtension)
-            {
-                return Rlp.Encode(Rlp.Encode(Key.ToBytes()), RlpEncodeRef(GetChild(0)));
-            }
-
-            throw new InvalidOperationException($"Unknown node type {NodeType}");
+            return _nodeDecoder.Encode(this);
         }
 
-        private static Rlp RlpEncodeRef(TrieNode nodeRef)
-        {
-            if (nodeRef == null)
-            {
-                return Rlp.OfEmptyByteArray;
-            }
-
-            nodeRef.ResolveKey(false);
-            return nodeRef.Keccak == null ? nodeRef.FullRlp : Rlp.Encode(nodeRef.Keccak);
-        }
-
-        private void InitData()
+        internal void InitData()
         {
             if (_data == null)
             {
@@ -453,75 +417,6 @@ namespace Nethermind.Store
             return ((TrieNode) _data[i]).IsDirty;
         }
 
-        public int GetChildrenRlpLength()
-        {
-            int totalLength = 0;
-            InitData();
-
-            for (int i = 0; i < 16; i++)
-            {
-                if (DecoderContext != null && _data[i] == null)
-                {
-                    totalLength += _lookupTable[i * 2 + 1];
-                }
-                else
-                {
-                    if (ReferenceEquals(_data[i], NullNode) || _data[i] == null)
-                    {
-                        totalLength++;
-                    }
-                    else
-                    {
-                        TrieNode childNode = (TrieNode) _data[i];
-                        childNode.ResolveKey(false);
-                        totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
-                    }
-                }
-            }
-
-            return totalLength;
-        }
-
-        private void WriteChildrenRlp(Span<byte> destination)
-        {
-            int position = 0;
-            Rlp.DecoderContext context = DecoderContext;
-            InitData();
-
-            for (int i = 0; i < 16; i++)
-            {
-                if (context != null && _data[i] == null)
-                {
-                    context.Position = _lookupTable[i * 2];
-                    Span<byte> nextItem = context.Read(_lookupTable[i * 2 + 1]);
-                    nextItem.CopyTo(destination.Slice(position, nextItem.Length));
-                    position += nextItem.Length;
-                }
-                else
-                {
-                    if (ReferenceEquals(_data[i], NullNode) || _data[i] == null)
-                    {
-                        destination[position++] = 128;
-                    }
-                    else
-                    {
-                        TrieNode childNode = (TrieNode) _data[i];
-                        childNode.ResolveKey(false);
-                        if (childNode.Keccak == null)
-                        {
-                            Span<byte> fullRlp = childNode.FullRlp.Bytes.AsSpan();
-                            fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
-                            position += fullRlp.Length;
-                        }
-                        else
-                        {
-                            position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
-                        }
-                    }
-                }
-            }
-        }
-
         public TrieNode GetChild(int i)
         {
             int index = IsExtension ? i + 1 : i;
@@ -535,8 +430,6 @@ namespace Nethermind.Store
             int index = IsExtension ? i + 1 : i;
             _data[index] = node ?? NullNode;
         }
-
-        private static AccountDecoder _decoder = new AccountDecoder();
 
         internal void Accept(ITreeVisitor visitor, PatriciaTree tree, IDb codeDb, VisitContext context)
         {
@@ -592,7 +485,7 @@ namespace Nethermind.Store
                     visitor.VisitLeaf(this, context);
                     if (!context.IsStorage)
                     {
-                        Account account = _decoder.Decode(Value.AsRlpContext());
+                        Account account = _accountDecoder.Decode(Value.AsRlpContext());
                         if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
                         {
                             context.Level++;

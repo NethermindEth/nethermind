@@ -152,6 +152,18 @@ namespace Nethermind.Core.Encoding
             }
         }
         
+        public void Encode(Rlp rlp)
+        {
+            if (rlp == null)
+            {
+                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+            }
+            else
+            {
+                Write(rlp.Bytes);
+            }
+        }
+        
         public void Encode(Bloom bloom)
         {
             if (bloom == null)
