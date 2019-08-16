@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -17,7 +18,7 @@ namespace Nethermind.AuRa.Test.Contract
     public class ValidatorContractTests
     {
         private Block _block;
-        private IStateProvider _stateProvider;
+        private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
 
         [SetUp]
         public void SetUp()
@@ -33,25 +34,17 @@ namespace Nethermind.AuRa.Test.Contract
                     UInt256.One
                     , new byte[0]),
                 new BlockBody());
-            
-            _stateProvider = Substitute.For<IStateProvider>();
         }
-
-        private static AuRaParameters GetAuRaParameters(params long[] blockNumbers) => new AuRaParameters()
-            {
-                Validators = blockNumbers.ToDictionary(b => b, b => Address.FromNumber(b))
-            };
 
         [TestCase(1, null, Description = "No validators.")]
         [TestCase(10, 11, Description = "Validators after current block.")]
-        public void finalize_change_should_return_empty_transaction_when_no_validator_available_for_block(int blockNumber, int? validatorAt)
+        public void finalize_change_should_return_empty_transaction_when_no_contract_address(int blockNumber, int? validatorAt)
         {
             _block.Number = blockNumber;
 
-            var auRaParameters = GetAuRaParameters(validatorAt.HasValue ? new long[] {validatorAt.Value} : new long[0]);
-            var contract = new ValidatorContract(new AbiEncoder(), auRaParameters);
+            var contract = new ValidatorContract(new AbiEncoder());
             
-            var transaction = contract.FinalizeChange(_block, _stateProvider);
+            var transaction = contract.FinalizeChange(null, _block);
             
             transaction.Should().BeNull();
         }
@@ -59,46 +52,23 @@ namespace Nethermind.AuRa.Test.Contract
         [Test]
         public void finalize_change_should_return_valid_transaction_when_validator_available()
         {
-            var auRaParameters = GetAuRaParameters(0);
-            
             var expectation = new Transaction()
             {
                 Value = 0, 
                 Data = new byte[] {0x75, 0x28, 0x62, 0x11},
-                Hash = new Keccak("0x69f34df2b26dbd72c18eefc0d1426ee1cbe53ab2765bfc76dd645e794d56454c"), 
-                To = auRaParameters.Validators.First().Value,
+                Hash = new Keccak("0x8a6718cf7896946b1a5e721f9f61f03f3a285e00f9a5341649fbfeb44b9dc2da"), 
+                To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = 1,
                 GasPrice = 0,
                 Nonce = 0
             };
             
-            var contract = new ValidatorContract(new AbiEncoder(), auRaParameters);
+            var contract = new ValidatorContract(new AbiEncoder());
             
-            var transaction = contract.FinalizeChange(_block, _stateProvider);
+            var transaction = contract.FinalizeChange(_contractAddress, _block);
             
             transaction.Should().BeEquivalentTo(expectation);
-        }
-        
-        [TestCase(40, new long[] {0, 12, 25, 36})]
-        public void finalize_change_should_return_transactions_with_valid_addresses_on_subsequent_calls(int blocksCount, long[] blockNumbersValidators)
-        {
-            var auRaParameters = GetAuRaParameters(blockNumbersValidators);
-            var contract = new ValidatorContract(new AbiEncoder(), auRaParameters);
-            
-            var blocks = Enumerable.Range(1, blocksCount).ToArray();
-            
-            var result = blocks
-                .Select(blockNumber =>
-                {
-                    _block.Number = blockNumber;
-                    var transaction = contract.FinalizeChange(_block, _stateProvider);
-                    return transaction.To;
-                });
-
-            var expectation = blocks.Select(blockNumber => Address.FromNumber(blockNumbersValidators.Where(n => n <= blockNumber).Max()));
-
-            result.Should().BeEquivalentTo(expectation);
         }
     }
 }

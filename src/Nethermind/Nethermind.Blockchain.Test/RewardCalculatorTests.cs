@@ -21,6 +21,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -35,7 +37,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer, ommer2).TestObject;
             
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<ITransactionProcessor>());
             
             Assert.AreEqual(3, rewards.Length);
             Assert.AreEqual(5312500000000000000, (long)rewards[0].Value, "miner");
@@ -50,7 +52,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer).TestObject;
             
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<ITransactionProcessor>());
             
             Assert.AreEqual(2, rewards.Length);
             Assert.AreEqual(5156250000000000000, (long)rewards[0].Value, "miner");
@@ -63,7 +65,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithNumber(3).TestObject;
             
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<ITransactionProcessor>());
             
             Assert.AreEqual(1, rewards.Length);
             Assert.AreEqual(5000000000000000000, (long)rewards[0].Value, "miner");
@@ -78,7 +80,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
             
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<ITransactionProcessor>());
             
             Assert.AreEqual(3, rewards.Length);
             Assert.AreEqual(3187500000000000000, (long)rewards[0].Value, "miner");
@@ -95,7 +97,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
             
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
-            BlockReward[] rewards = calculator.CalculateRewards(block);
+            BlockReward[] rewards = calculator.CalculateRewards(block, Substitute.For<ITransactionProcessor>());
             
             Assert.AreEqual(3, rewards.Length);
             Assert.AreEqual(2125000000000000000, (long)rewards[0].Value, "miner");

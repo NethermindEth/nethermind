@@ -27,6 +27,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AuRa;
 using Nethermind.AuRa.Rewards;
+using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
@@ -435,7 +436,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 _logManager);
             
-            IList<IBlockPreProcessor> blockPreProcessors = new List<IBlockPreProcessor>();
+            IList<IAdditionalBlockProcessor> blockPreProcessors = new List<IAdditionalBlockProcessor>();
             
             InitSealEngine(blockPreProcessors);
 
@@ -605,7 +606,7 @@ namespace Nethermind.Runner.Runners
             }
         }
 
-        private void InitSealEngine(IList<IBlockPreProcessor> blockPreProcessors)
+        private void InitSealEngine(IList<IAdditionalBlockProcessor> blockPreProcessors)
         {
             switch (_chainSpec.SealEngineType)
             {
@@ -652,10 +653,14 @@ namespace Nethermind.Runner.Runners
                     _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
                     break;
                 case SealEngineType.AuRa:
+                    var abiEncoder = new AbiEncoder();
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _logManager)
+                        .CreateAdditionalBlockProcessor(_chainSpec.AuRa.Validators);
+                        
                     _sealer = new AuRaSealer();
-                    _sealValidator = new AuRaSealValidator(_logManager);
-                    _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa);
-                    blockPreProcessors.Add(new AuRaBlockPreProcessor(_stateProvider, new AbiEncoder(), _chainSpec.AuRa));
+                    _sealValidator = new AuRaSealValidator(validatorProcessor, _logManager);
+                    _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder);
+                    blockPreProcessors.Add(validatorProcessor);
                     break;
                 default:
                     throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");

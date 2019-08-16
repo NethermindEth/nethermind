@@ -4,82 +4,131 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.AuRa.Contracts
 {
-    public class ValidatorContract
+    public class ValidatorContract : SystemContract
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly byte[] _finalizeChangeTransactionData;
-        private Address _currentAddress = null;
-        private int _nextValidator = 0;
-        private readonly KeyValuePair<long, Address>[] _validators;
+        private readonly byte[] _getValidatorsTransactionData;
         
+        private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
 
         [SuppressMessage("ReSharper", "InconsistentNaming")]
         private static class Definition
         {
+            /// <summary>
             /// Called when an initiated change reaches finality and is activated.
             /// Only valid when msg.sender == SUPER_USER (EIP96, 2**160 - 2)
             ///
             /// Also called when the contract is first enabled for consensus. In this case,
             /// the "change" finalized is the activation of the initial set.
-            public static readonly AbiSignature finalizeChange = new AbiSignature(nameof(finalizeChange));
+            /// function finalizeChange();
+            /// </summary>
+            public static readonly AbiEncodingInfo finalizeChange =
+                new AbiEncodingInfo(AbiEncodingStyle.IncludeSignature, new AbiSignature(nameof(finalizeChange)));
+
+            /// <summary>
+            /// Issue this log event to signal a desired change in validator set.
+            /// This will not lead to a change in active validator set until
+            /// finalizeChange is called.
+            ///
+            /// Only the last log event of any block can take effect.
+            /// If a signal is issued while another is being finalized it may never
+            /// take effect.
+            ///
+            /// _parent_hash here should be the parent block hash, or the
+            /// signal will not be recognized.
+            /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
+            /// </summary>
+            private const string initializeChangeEventSignature = "InitiateChange(bytes32,address[])";
+            public static Keccak initializeChangeEventHash = Keccak.Compute(initializeChangeEventSignature);
+
+            /// <summary>
+            /// Get current validator set (last enacted or initial if no changes ever made)
+            /// function getValidators() constant returns (address[] _validators);
+            /// </summary>
+            public static readonly AbiEncodingInfo getValidators =
+                new AbiEncodingInfo(AbiEncodingStyle.IncludeSignature, new AbiSignature(nameof(getValidators)));
+
+            public static readonly AbiEncodingInfo addressArrayResult = new AbiEncodingInfo(AbiEncodingStyle.None,
+                new AbiSignature(nameof(addressArrayResult), new AbiArray(AbiType.Address)));
         }
 
-        public ValidatorContract(IAbiEncoder abiEncoder, AuRaParameters auRaParameters)
+        public ValidatorContract(IAbiEncoder abiEncoder)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            _validators = auRaParameters?.Validators.OrderBy(v => v.Key).ToArray() ?? throw new ArgumentNullException(nameof(auRaParameters));
-            
-            GetContractAddress(0);
-            _abiEncoder = abiEncoder;
-            _finalizeChangeTransactionData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, Definition.finalizeChange);
+            _finalizeChangeTransactionData = _abiEncoder.Encode(Definition.finalizeChange);
+            _getValidatorsTransactionData = _abiEncoder.Encode(Definition.getValidators);
         }
 
-        public Transaction FinalizeChange(Block block, IStateProvider stateProvider)
-        {
-            return GenerateTransaction(_finalizeChangeTransactionData, block.Number, block.GasLimit - block.GasUsed, stateProvider.GetNonce(Address.SystemUser));
-        }
+        public Transaction FinalizeChange(Address contractAddress, Block block)
+            => GenerateTransaction(contractAddress,
+                _finalizeChangeTransactionData, 
+                block.Number, 
+                block.GasLimit - block.GasUsed, 
+                UInt256.Zero);
 
-        private Transaction GenerateTransaction(byte[] transactionData, long blockNumber, long gasLimit, UInt256 nonce)
+        public Transaction GetValidators(Address contractAddress, Block block)
+            => GenerateTransaction(contractAddress, 
+                _getValidatorsTransactionData, 
+                block.Number,
+                block.GasLimit - block.GasUsed, 
+                UInt256.Zero);
+
+        public bool CheckInitiateChangeEvent(Address contractAddress, Block block, TxReceipt[] receipts, out Address[] addresses)
         {
-            var contractAddress = GetContractAddress(blockNumber);
-            
-            if (contractAddress != null)
+            var logEntry = new LogEntry(contractAddress, 
+                Array.Empty<byte>(),
+                new[] {Definition.initializeChangeEventHash, block.ParentHash});
+
+            if (block.Bloom.IsMatch(logEntry))
             {
-                var transaction = new Transaction
+                 // iterating backwards, we are interested only in the last one
+                for (int i = receipts.Length - 1; i >= 0; i--)
                 {
-                    Value = 0,
-                    Data = transactionData,
-                    To = contractAddress,
-                    SenderAddress = Address.SystemUser,
-                    GasLimit = gasLimit,
-                    GasPrice = 0.GWei(),
-                    Nonce = nonce,
-                };
-                
-                transaction.Hash = Transaction.CalculateHash(transaction);
-
-                return transaction;
+                    var receipt = receipts[i];
+                    if (receipt.Bloom.IsMatch(logEntry))
+                    {
+                        for (int j = receipt.Logs.Length - 1; j >= 0; j--)
+                        {
+                            var receiptLog = receipt.Logs[j];
+                            if (LogEntryEqualityComparer.Equals(logEntry, receiptLog))
+                            {
+                                addresses = DecodeAddresses(receiptLog.Data);
+                                return true;                                
+                            }
+                        }
+                    }
+                }
             }
 
-            return null;
+            addresses = null;
+            return false;
         }
 
-        private Address GetContractAddress(long blockNumber)
+        public Address[] DecodeAddresses(byte[] data)
         {
-            while (_validators.Length > _nextValidator && blockNumber >= _validators[_nextValidator].Key)
-            {
-                _currentAddress = _validators[_nextValidator].Value;
-                _nextValidator++;
-            }
+            var objects = _abiEncoder.Decode(Definition.addressArrayResult, data);
+            return (Address[]) objects[0];
+        }
+    }
 
-            return _currentAddress;
+    public class LogEntryAddressAndTopicEqualityComparer : IEqualityComparer<LogEntry>
+    {
+        public bool Equals(LogEntry x, LogEntry y)
+        {
+            return ReferenceEquals(x, y) || (x != null && x.LoggersAddress == y?.LoggersAddress && x.Topics.SequenceEqual(y.Topics));
+        }
+
+        public int GetHashCode(LogEntry obj)
+        {
+            return obj.Topics.Aggregate(obj.LoggersAddress.GetHashCode(), (i, keccak) => i ^ keccak.GetHashCode());
         }
     }
 }

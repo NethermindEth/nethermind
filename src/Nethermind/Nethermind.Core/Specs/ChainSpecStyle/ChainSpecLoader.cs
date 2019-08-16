@@ -18,8 +18,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -114,6 +116,34 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
+            AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
+            {
+                var validatorType = validatorJson.GetValidatorType();
+                var validator = new AuRaParameters.Validator() {ValidatorType = validatorType};
+                switch (validator.ValidatorType)
+                {
+                    case AuRaParameters.ValidatorType.List:
+                        validator.Addresses = validatorJson.List;
+                        break;
+                    case AuRaParameters.ValidatorType.Contract:
+                        validator.Addresses = new[] {validatorJson.Contract};
+                        break;
+                    case AuRaParameters.ValidatorType.ReportingContract:
+                        validator.Addresses = new[] {validatorJson.SafeContract};
+                        break;
+                    case AuRaParameters.ValidatorType.Multi:
+                        if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
+                        validator.Validators = validatorJson.Multi
+                            .ToDictionary(kvp => kvp.Key, kvp => LoadValidator(kvp.Value, level + 1))
+                            .ToImmutableSortedDictionary();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                return validator;
+            }
+
             if (chainSpecJson.Engine?.AuthorityRound != null)
             {
                 chainSpec.SealEngineType = SealEngineType.AuRa;
@@ -125,12 +155,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                     BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
                     BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
                     BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
-                    Validators = new SortedList<long, Address>()
+                    Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator)
                 };
-                foreach ((long blockNumber, ChainSpecJson.AuRaValidatorJson validator) in chainSpecJson.Engine.AuthorityRound.Validators.Multi)
-                {
-                    chainSpec.AuRa.Validators.Add(blockNumber, validator.SafeContract);
-                }
             }
             else if (chainSpecJson.Engine?.Clique != null)
             {

@@ -17,6 +17,7 @@
  */
 
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
@@ -246,10 +247,10 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(4639000, chainSpec.AuRa.BlockRewardContractTransition, "rew tr");
             Assert.AreEqual(new Address("0x3145197AD50D7083D0222DE4fCCf67d9BD05C30D"), chainSpec.AuRa.BlockRewardContractAddress, "rew add");
             
-            Assert.AreEqual(new Address("0x8bf38d4764929064f2d4d3a56520a76ab3df415b"), chainSpec.AuRa.Validators[0], "val 0");
-            Assert.AreEqual(new Address("0xf5cE3f5D0366D6ec551C74CCb1F67e91c56F2e34"), chainSpec.AuRa.Validators[362296], "val 362296");
-            Assert.AreEqual(new Address("0x03048F666359CFD3C74a1A5b9a97848BF71d5038"), chainSpec.AuRa.Validators[509355], "val 509355");
-            Assert.AreEqual(new Address("0x4c6a159659CCcb033F4b2e2Be0C16ACC62b89DDB"), chainSpec.AuRa.Validators[4622420], "val 4622420");
+            Assert.AreEqual(new Address("0x8bf38d4764929064f2d4d3a56520a76ab3df415b"), chainSpec.AuRa.Validators.Validators[0].Addresses.First(), "val 0");
+            Assert.AreEqual(new Address("0xf5cE3f5D0366D6ec551C74CCb1F67e91c56F2e34"), chainSpec.AuRa.Validators.Validators[362296].Addresses.First(), "val 362296");
+            Assert.AreEqual(new Address("0x03048F666359CFD3C74a1A5b9a97848BF71d5038"), chainSpec.AuRa.Validators.Validators[509355].Addresses.First(), "val 509355");
+            Assert.AreEqual(new Address("0x4c6a159659CCcb033F4b2e2Be0C16ACC62b89DDB"), chainSpec.AuRa.Validators.Validators[4622420].Addresses.First(), "val 4622420");
             
             Assert.AreEqual(null, chainSpec.HomesteadBlockNumber, "homestead no");
             Assert.AreEqual(null, chainSpec.DaoForkBlockNumber, "dao no");

@@ -17,13 +17,13 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockPreProcessor
+    public interface IAdditionalBlockProcessor
     {
-        Transaction[] GetAdditionalPreBlockTransactions(Block block);
-        
-        Transaction[] GetAdditionalPostBlockTransactions(Block block, TxReceipt[] receipts);
+        void PreProcess(Block block, ITransactionProcessor transactionProcessor);
+        void PostProcess(Block block, TxReceipt[] receipts, ITransactionProcessor transactionProcessor);
     }
 }

@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Mining;
@@ -25,10 +26,12 @@ namespace Nethermind.AuRa
 {
     public class AuRaSealValidator : ISealValidator
     {
+        private readonly IAuRaValidator _validator;
         private ILogger _logger;
 
-        public AuRaSealValidator(ILogManager logManager)
+        public AuRaSealValidator(IAuRaValidator validator, ILogManager logManager)
         {
+            _validator = validator;
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 

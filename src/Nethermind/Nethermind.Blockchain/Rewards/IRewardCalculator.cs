@@ -17,11 +17,12 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Rewards
 {
     public interface IRewardCalculator
     {
-        BlockReward[] CalculateRewards(Block block);
+        BlockReward[] CalculateRewards(Block block, ITransactionProcessor transactionProcessor);
     }
 }

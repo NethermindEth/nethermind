@@ -65,9 +65,9 @@ namespace Nethermind.DataMarketplace.Consumers.Services
 
         private readonly AbiSignature _depositAbiSig = new AbiSignature("deposit",
             new AbiBytes(32),
-            new AbiUInt(32),
-            new AbiUInt(96),
-            new AbiUInt(32),
+            AbiType.UInt32,
+            AbiType.UInt96,
+            AbiType.UInt32,
             new AbiBytes(16),
             AbiType.Address,
             AbiType.Address);
