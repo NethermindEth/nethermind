@@ -50,5 +50,6 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public const int ProviderAddressChanged = 0x1B;
         public const int RequestEth = 0x1C;
         public const int EthRequested = 0x1D;
+        public const int GraceUnitsExceeded = 0x1E;
     }
 }

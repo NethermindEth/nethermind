@@ -68,5 +68,6 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task RejectDepositApprovalAsync(Keccak assetId);
         Task UpdateDepositApprovalsAsync(IReadOnlyList<DepositApproval> depositApprovals, Address provider);
         Task HandleInvalidDataAsync(Keccak depositId, InvalidDataReason reason);
+        Task HandleGraceUnitsExceededAsync(Keccak depositId, uint consumedUnitsFromProvider, uint graceUnits);
     }
 }
