@@ -23,6 +23,7 @@ using BenchmarkDotNet.Attributes;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -35,6 +36,8 @@ namespace Nethermind.Benchmarks.Rlp
     [CoreJob(baseline: true)]
     public class RlpEncodeHeader
     {
+        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
+        
         private static BlockHeader _header;
 
         private BlockHeader[] _scenarios;
@@ -63,7 +66,9 @@ namespace Nethermind.Benchmarks.Rlp
             
             Console.WriteLine($"Length current: {Current().Length}");
             Console.WriteLine($"Length improved: {Improved().Length}");
+            Console.WriteLine($"Length improved2: {Improved2().Length}");
             Check(Current(), Improved());
+            Check(Current(), Improved2());
         }
         
         private void Check(byte[] a, byte[] b)
@@ -78,6 +83,12 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         private RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
+
+        [Benchmark]
+        public byte[] Improved2()
+        {
+            return _headerDecoder.Encode(_header).Bytes;
+        }
         
         [Benchmark]
         public byte[] Improved()
@@ -89,7 +100,7 @@ namespace Nethermind.Benchmarks.Rlp
             }
         }
 
-        [Benchmark]
+        [Benchmark(Baseline = true)]
         public byte[] Current()
         {
             return Nethermind.Core.Encoding.Rlp.Encode(_header).Bytes;

@@ -69,14 +69,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         {   
             BlockDecoder decoder = new BlockDecoder();
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-            byte[] rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes;
-            debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp);
+            Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+            debugBridge.GetBlockRlp(Keccak.Zero).Returns(rlp.Bytes);
             
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}");
             
             Assert.IsNull(response.Error, response.Error?.Message);
-            Assert.AreEqual(rlp, (byte[])response.Result);
+            Assert.AreEqual(rlp.Bytes, (byte[])response.Result);
         }
         
         [Test]
@@ -84,22 +84,20 @@ namespace Nethermind.JsonRpc.Test.Modules
         {   
             BlockDecoder decoder = new BlockDecoder();
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-            byte[] rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes;
-            debugBridge.GetBlockRlp(1).Returns(rlp);
+            Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
+            debugBridge.GetBlockRlp(1).Returns(rlp.Bytes);
             
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getBlockRlp", "1");
             
             Assert.IsNull(response.Error, response.Error?.Message);
-            Assert.AreEqual(rlp, (byte[])response.Result);
+            Assert.AreEqual(rlp.Bytes, (byte[])response.Result);
         }
         
         [Test]
         public void Get_block_rlp_when_missing()
-        {   
-            BlockDecoder decoder = new BlockDecoder();
+        {
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-            byte[] rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes;
             debugBridge.GetBlockRlp(1).Returns((byte[])null);
             
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
@@ -113,7 +111,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {   
             BlockDecoder decoder = new BlockDecoder();
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-            byte[] rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes;
+            Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
             debugBridge.GetBlockRlp(Keccak.Zero).Returns((byte[])null);
             
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);

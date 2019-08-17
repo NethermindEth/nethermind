@@ -543,7 +543,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"Node {currentStateSyncItem.Hash} resolved to {nameof(NodeType.Unknown)}");
                     break;
                 case NodeType.Branch:
-                    trieNode.BuildLookupTable();
                     DependentItem dependentBranch = new DependentItem(currentStateSyncItem, currentResponseItem, 0);
 
                     // children may have the same hashes (e.g. a set of accounts with the same code at different addresses)

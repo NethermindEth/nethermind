@@ -392,16 +392,10 @@ namespace Nethermind.Blockchain
             }
 
             // validate hash here
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                Rlp.Encode(stream, header);
-                byte[] newRlp = stream.ToArray();
-
-                _headerDb.Set(header.Hash, newRlp);
-            }
+            Rlp newRlp = _headerDecoder.Encode(header);
+            _headerDb.Set(header.Hash, newRlp.Bytes);
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
-
             try
             {
                 _blockInfoLock.EnterWriteLock();
@@ -438,13 +432,8 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                Rlp.Encode(stream, block);
-                byte[] newRlp = stream.ToArray();
-
-                _blockDb.Set(block.Hash, newRlp);
-            }
+            Rlp newRlp = _blockDecoder.Encode(block);
+            _blockDb.Set(block.Hash, newRlp.Bytes);
 
             long expectedNumber = (LowestInsertedBody?.Number - 1 ?? LongConverter.FromString(_syncConfig.PivotNumber ?? "0"));
             if (block.Number != expectedNumber)
@@ -530,22 +519,14 @@ namespace Nethermind.Blockchain
 
             if (block != null && !isKnown)
             {
-                using (MemoryStream stream = Rlp.BorrowStream())
-                {
-                    Rlp.Encode(stream, block);
-                    byte[] newRlp = stream.ToArray();
-                    _blockDb.Set(block.Hash, newRlp);
-                }
+                Rlp newRlp = _blockDecoder.Encode(block);
+                _blockDb.Set(block.Hash, newRlp.Bytes);
             }
 
             if (!isKnown)
             {
-                using (MemoryStream stream = Rlp.BorrowStream())
-                {
-                    Rlp.Encode(stream, header);
-                    byte[] newRlp = stream.ToArray();
-                    _headerDb.Set(header.Hash, newRlp);
-                }
+                Rlp newRlp = _headerDecoder.Encode(header);
+                _headerDb.Set(header.Hash, newRlp.Bytes);
 
                 BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
 
@@ -610,13 +591,28 @@ namespace Nethermind.Blockchain
             BlockHeader header = _headerCache.Get(blockHash);
             if (header == null)
             {
-                byte[] data = _headerDb.Get(blockHash);
-                if (data == null)
+                IDbWithSpan spanHeaderDb = _headerDb as IDbWithSpan;
+                if (spanHeaderDb != null)
                 {
-                    return null;
+                    Span<byte> data = spanHeaderDb.GetSpan(blockHash);
+                    if (data == null)
+                    {
+                        return null;
+                    }
+                    
+                    header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
+                    spanHeaderDb.DangerousReleaseMemory(data);
                 }
+                else
+                {
+                    byte[] data = _headerDb.Get(blockHash);
+                    if (data == null)
+                    {
+                        return null;
+                    }
 
-                header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                    header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                }
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;
@@ -674,10 +670,10 @@ namespace Nethermind.Blockchain
             {
                 return Array.Empty<BlockHeader>();
             }
-            
+
             if (blockHash == null)
             {
-                return new BlockHeader[numberOfBlocks]; 
+                return new BlockHeader[numberOfBlocks];
             }
 
             BlockHeader startHeader = FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
@@ -743,7 +739,7 @@ namespace Nethermind.Blockchain
                 {
                     break;
                 }
-                
+
                 current = FindHeader(current.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             } while (current != null && responseIndex < numberOfBlocks);
 

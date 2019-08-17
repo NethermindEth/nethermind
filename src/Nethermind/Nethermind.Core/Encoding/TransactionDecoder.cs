@@ -85,7 +85,9 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Rlp.Encode(item, false);
+            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            Encode(rlpStream, item, rlpBehaviors);
+            return new Rlp(rlpStream.Data);
         }
 
         public void Encode(MemoryStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -101,6 +103,21 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.Signature?.V ?? 0);
             Rlp.Encode(stream, item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
             Rlp.Encode(stream, item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
+        }
+        
+        public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int contentLength = GetContentLength(item, false);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.Nonce);
+            stream.Encode(item.GasPrice);
+            stream.Encode(item.GasLimit);
+            stream.Encode(item.To);
+            stream.Encode(item.Value);
+            stream.Encode(item.To == null ? item.Init : item.Data);
+            stream.Encode(item.Signature?.V ?? 0);
+            stream.Encode(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
+            stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
         private int GetContentLength(Transaction item, bool forSigning , bool isEip155Enabled = false, int chainId = 0)

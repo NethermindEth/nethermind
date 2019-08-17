@@ -221,7 +221,7 @@ namespace Nethermind.Mining
                         _cacheCache.Set(i, BuildCache(i));
                     }
                 }
-                
+
                 return _cacheCache.Get(epoch).Result;
             }
         }
@@ -241,14 +241,13 @@ namespace Nethermind.Mining
             });
         }
 
+        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
+
         private static Keccak GetTruncatedHash(BlockHeader header)
         {
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                Rlp.Encode(stream, header, RlpBehaviors.ForSealing);
-                Keccak headerHashed = Keccak.Compute(stream.ToArray()); // sic! Keccak here not Keccak512
-                return headerHashed;
-            }
+            Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
+            Keccak headerHashed = Keccak.Compute(encoded); // sic! Keccak here not Keccak512
+            return headerHashed;
         }
 
         public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)

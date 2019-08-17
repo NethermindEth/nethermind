@@ -115,9 +115,9 @@ namespace Nethermind.Core.Extensions
             return (b & 2) == 2 ? 1 : 0;
         }
 
-        public static bool AreEqual(byte[] a1, byte[] a2)
+        public static bool AreEqual(Span<byte> a1, Span<byte> a2)
         {
-            return a1.AsSpan().SequenceEqual(a2);
+            return a1.SequenceEqual(a2);
         }
 
         public static bool IsZero(this byte[] bytes)
