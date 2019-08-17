@@ -36,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
-    [TestFixture, Explicit("Travis just cannot run it")]
+    [TestFixture]
     public class NodeDataDownloaderTests
     {
         private static readonly byte[] Code0 = {0, 0};
