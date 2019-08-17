@@ -63,7 +63,7 @@ namespace Nethermind.Store
                 int nonEmptyNodes = 0;
                 for (int i = 0; i < 16; i++)
                 {
-                    if (!IsChildNull(i)) // TODO: separate null check
+                    if (!IsChildNull(i))
                     {
                         nonEmptyNodes++;
                     }
@@ -215,7 +215,6 @@ namespace Nethermind.Store
                     if (isExtension)
                     {
                         NodeType = NodeType.Extension;
-                        SetChild(0, DecodeChildNode(context));
                         Key = key;
                     }
                     else
@@ -302,6 +301,7 @@ namespace Nethermind.Store
             if (IsExtension)
             {
                 DecoderContext.SkipItem();
+                itemToSetOn--;
             }
             
             for (int i = 0; i < itemToSetOn; i++)
