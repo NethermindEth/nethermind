@@ -484,7 +484,7 @@ namespace Nethermind.Store
                 position = sequenceLength - valueRlpLength;
                 if (AllowBranchValues)
                 {
-                    Rlp.Encode(result, position, Rlp.OfEmptyByteArray.Bytes);    
+                    Rlp.Encode(result, position, item.Value);    
                 }
                 else
                 {
