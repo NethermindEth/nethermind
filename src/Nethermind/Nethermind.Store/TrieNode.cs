@@ -30,6 +30,8 @@ namespace Nethermind.Store
 {
     public class TrieNode
     {
+        public static bool AllowBranchValues { private get; set; }
+        
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         private Rlp.DecoderContext _decoderContext;
@@ -117,8 +119,6 @@ namespace Nethermind.Store
             }
         }
 
-        public static bool AllowBranchValues { get; set; } = false;
-
         public byte[] Value
         {
             get
@@ -162,23 +162,6 @@ namespace Nethermind.Store
         {
             get => GetChild(i);
             set => SetChild(i, value);
-        }
-
-        private static TrieNode DecodeChildNode(Rlp.DecoderContext decoderContext)
-        {
-            if (decoderContext.IsSequenceNext())
-            {
-                Span<byte> sequenceBytes = decoderContext.PeekNextItem();
-                if (sequenceBytes.Length >= 32)
-                {
-                    throw new InvalidOperationException();
-                }
-
-                return new TrieNode(NodeType.Unknown, new Rlp(sequenceBytes.ToArray()));
-            }
-
-            Keccak keccak = decoderContext.DecodeKeccak();
-            return keccak == null ? null : new TrieNode(NodeType.Unknown, keccak);
         }
 
         private void ResolveNode(PatriciaTree tree, bool allowCaching)
@@ -491,7 +474,7 @@ namespace Nethermind.Store
         {
             private Rlp RlpEncodeBranch(TrieNode item)
             {
-                int valueRlpLength = Rlp.LengthOf(item.Value);
+                int valueRlpLength = AllowBranchValues ? Rlp.LengthOf(item.Value) : 1;
                 int contentLength = valueRlpLength + GetChildrenRlpLength(item);
                 int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
                 byte[] result = new byte[sequenceLength];
@@ -499,7 +482,15 @@ namespace Nethermind.Store
                 int position = Rlp.StartSequence(result, 0, contentLength);
                 WriteChildrenRlp(item, resultSpan.Slice(position, contentLength - valueRlpLength));
                 position = sequenceLength - valueRlpLength;
-                Rlp.Encode(result, position, item.Value);
+                if (AllowBranchValues)
+                {
+                    Rlp.Encode(result, position, Rlp.OfEmptyByteArray.Bytes);    
+                }
+                else
+                {
+                    result[position] = 128;
+                }
+                
                 return new Rlp(result);
             }
 

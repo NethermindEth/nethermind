@@ -591,13 +591,28 @@ namespace Nethermind.Blockchain
             BlockHeader header = _headerCache.Get(blockHash);
             if (header == null)
             {
-                byte[] data = _headerDb.Get(blockHash);
-                if (data == null)
+                IDbWithSpan spanHeaderDb = _headerDb as IDbWithSpan;
+                if (spanHeaderDb != null)
                 {
-                    return null;
+                    Span<byte> data = spanHeaderDb.GetSpan(blockHash);
+                    if (data == null)
+                    {
+                        return null;
+                    }
+                    
+                    header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
+                    spanHeaderDb.DangerousReleaseMemory(data);
                 }
+                else
+                {
+                    byte[] data = _headerDb.Get(blockHash);
+                    if (data == null)
+                    {
+                        return null;
+                    }
 
-                header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                    header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                }
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;

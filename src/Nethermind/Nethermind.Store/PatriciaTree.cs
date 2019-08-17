@@ -491,11 +491,20 @@ namespace Nethermind.Store
 
         private byte[] TraverseLeaf(TrieNode node, TraverseContext context)
         {
-            byte[] remaining = context.GetRemainingUpdatePath().ToArray();
-            (byte[] shorterPath, byte[] longerPath) = context.RemainingUpdatePathLength - node.Path.Length < 0
-                ? (remaining, node.Path)
-                : (node.Path, remaining);
-
+            Span<byte> remaining = context.GetRemainingUpdatePath();
+            Span<byte> shorterPath;
+            Span<byte> longerPath;
+            if (context.RemainingUpdatePathLength - node.Path.Length < 0)
+            {
+                shorterPath = remaining;
+                longerPath = node.Path;
+            }
+            else
+            {
+                shorterPath = node.Path;
+                longerPath = remaining;
+            }
+            
             byte[] shorterPathValue;
             byte[] longerPathValue;
 
@@ -556,8 +565,8 @@ namespace Nethermind.Store
 
             if (extensionLength != 0)
             {
-                byte[] extensionPath = longerPath.Slice(0, extensionLength);
-                TrieNode extension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath));
+                Span<byte> extensionPath = longerPath.Slice(0, extensionLength);
+                TrieNode extension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath.ToArray()));
                 extension.IsDirty = true;
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
@@ -570,17 +579,17 @@ namespace Nethermind.Store
             }
             else
             {
-                byte[] shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
-                TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath), shorterPathValue);
+                Span<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
+                TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath.ToArray()), shorterPathValue);
                 shortLeaf.IsDirty = true;
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
-            byte[] leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
+            Span<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
 
 
             node.IsDirty = true;
-            node.Key = new HexPrefix(true, leafPath);
+            node.Key = new HexPrefix(true, leafPath.ToArray());
             node.Value = longerPathValue;
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
