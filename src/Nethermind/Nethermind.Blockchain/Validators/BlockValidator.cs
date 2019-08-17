@@ -65,11 +65,6 @@ namespace Nethermind.Blockchain.Validators
         /// <returns><value>True</value> if the <paramref name="block"/> is valid, otherwise <value>False</value></returns>
         public bool ValidateSuggestedBlock(Block block)
         {
-            if (block.Number == 5644)
-            {
-                string hex = Rlp.Encode(block).Bytes.ToHexString();
-            }
-            
             Transaction[] txs = block.Transactions;
             for (int i = 0; i < txs.Length; i++)
             {
