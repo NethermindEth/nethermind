@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
@@ -33,6 +34,7 @@ namespace Nethermind.Network.Rlpx
         private readonly PublicKey _remoteNodeId;
         private readonly KeccakDigest _egressMac;
         private readonly KeccakDigest _ingressMac;
+        private readonly AesEngine _aesEngine;
         private readonly byte[] _macSecret;
 
         // TODO: three arguments in place of secrets
@@ -42,6 +44,14 @@ namespace Nethermind.Network.Rlpx
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
             _ingressMac = secrets.IngressMac;
+            _aesEngine = MakeMacCipher();
+        }
+        
+        private AesEngine MakeMacCipher()
+        {
+            AesEngine aesFastEngine = new AesEngine();
+            aesFastEngine.Init(true, new KeyParameter(_macSecret));
+            return aesFastEngine;
         }
 
         public void AddMac(byte[] input, int offset, int length, bool isHeader)
@@ -65,7 +75,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                UpdateMac(_ingressMac, input, offset, input, offset + length, false); // TODO: confirm header is seed 
+                UpdateMac(_ingressMac, input, offset, input, offset + length, false); 
             }
             else
             {
@@ -82,13 +92,12 @@ namespace Nethermind.Network.Rlpx
         /// <summary>
         /// adapted from ethereumJ
         /// </summary>
-        private byte[] UpdateMac(KeccakDigest mac, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
+        private void UpdateMac(KeccakDigest mac, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
         {
             byte[] aesBlock = new byte[mac.GetDigestSize()];
             DoFinalNoReset(mac, aesBlock, 0);
-
-            // TODO: check if need to make a new one each time
-            MakeMacCipher().ProcessBlock(aesBlock, 0, aesBlock, 0);
+            
+            _aesEngine.ProcessBlock(aesBlock, 0, aesBlock, 0);
 
             // Note that although the mac digest size is 32 bytes, we only use 16 bytes in the computation
             int length = 16;
@@ -123,20 +132,13 @@ namespace Nethermind.Network.Rlpx
                    throw new IOException($"MAC mismatch from {_remoteNodeId}");
                 }
             }
-
-            return result;
         }
 
+        [Todo(Improve.Performance, "Ideally we would use our own implementation of Keccak here")]
+        [Todo(Improve.Performance, "Can we avoid the copying that allocates a lot")]
         private void DoFinalNoReset(KeccakDigest mac, byte[] output, int offset)
         {
             new KeccakDigest(mac).DoFinal(output, offset);
-        }
-
-        private AesEngine MakeMacCipher()
-        {
-            AesEngine aesFastEngine = new AesEngine();
-            aesFastEngine.Init(true, new KeyParameter(_macSecret));
-            return aesFastEngine;
         }
     }
 }
