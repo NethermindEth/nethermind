@@ -34,6 +34,8 @@ namespace Nethermind.Network.Rlpx
         private readonly PublicKey _remoteNodeId;
         private readonly KeccakDigest _egressMac;
         private readonly KeccakDigest _ingressMac;
+        private readonly KeccakDigest _egressMacCopy;
+        private readonly KeccakDigest _ingressMacCopy;
         private readonly AesEngine _aesEngine;
         private readonly byte[] _macSecret;
 
@@ -43,7 +45,9 @@ namespace Nethermind.Network.Rlpx
             _remoteNodeId = remoteNodeId;
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
+            _egressMacCopy = (KeccakDigest)_egressMac.Copy();
             _ingressMac = secrets.IngressMac;
+            _ingressMacCopy = (KeccakDigest)_ingressMac.Copy();
             _aesEngine = MakeMacCipher();
         }
         
@@ -58,7 +62,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                UpdateMac(_egressMac, input, offset, input, offset + length, true); // TODO: confirm header is seed 
+                UpdateMac(_egressMac, _egressMacCopy,input, offset, input, offset + length, true); // TODO: confirm header is seed 
             }
             else
             {
@@ -66,8 +70,8 @@ namespace Nethermind.Network.Rlpx
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
                 byte[] buffer = new byte[_egressMac.GetDigestSize()];
-                DoFinalNoReset(_egressMac, buffer, 0); // frame MAC seed
-                UpdateMac(_egressMac, buffer, 0, input, offset + length, true);
+                DoFinalNoReset(_egressMac, _egressMacCopy, buffer, 0); // frame MAC seed
+                UpdateMac(_egressMac, _egressMacCopy,buffer, 0, input, offset + length, true);
             }
         }
 
@@ -75,7 +79,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (isHeader)
             {
-                UpdateMac(_ingressMac, input, offset, input, offset + length, false); 
+                UpdateMac(_ingressMac, _ingressMacCopy,input, offset, input, offset + length, false); 
             }
             else
             {
@@ -83,8 +87,8 @@ namespace Nethermind.Network.Rlpx
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
                 byte[] buffer = new byte[_ingressMac.GetDigestSize()];
-                DoFinalNoReset(_ingressMac, buffer, 0); // frame MAC seed
-                UpdateMac(_ingressMac, buffer, 0, input, offset + length, false);
+                DoFinalNoReset(_ingressMac, _ingressMacCopy, buffer, 0); // frame MAC seed
+                UpdateMac(_ingressMac, _ingressMacCopy, buffer, 0, input, offset + length, false);
             }
         }
 
@@ -92,10 +96,10 @@ namespace Nethermind.Network.Rlpx
         /// <summary>
         /// adapted from ethereumJ
         /// </summary>
-        private void UpdateMac(KeccakDigest mac, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
+        private void UpdateMac(KeccakDigest mac, KeccakDigest macCopy, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
         {
             byte[] aesBlock = new byte[mac.GetDigestSize()];
-            DoFinalNoReset(mac, aesBlock, 0);
+            DoFinalNoReset(mac, macCopy, aesBlock, 0);
             
             _aesEngine.ProcessBlock(aesBlock, 0, aesBlock, 0);
 
@@ -109,7 +113,7 @@ namespace Nethermind.Network.Rlpx
             mac.BlockUpdate(aesBlock, 0, length);
 
             byte[] result = new byte[mac.GetDigestSize()];
-            DoFinalNoReset(mac, result, 0);
+            DoFinalNoReset(mac, macCopy, result, 0);
 
             if (egress)
             {
@@ -135,10 +139,10 @@ namespace Nethermind.Network.Rlpx
         }
 
         [Todo(Improve.Performance, "Ideally we would use our own implementation of Keccak here")]
-        [Todo(Improve.Performance, "Can we avoid the copying that allocates a lot")]
-        private void DoFinalNoReset(KeccakDigest mac, byte[] output, int offset)
+        private void DoFinalNoReset(KeccakDigest mac, KeccakDigest macCopy, byte[] output, int offset)
         {
-            new KeccakDigest(mac).DoFinal(output, offset);
+            macCopy.Reset(mac);
+            macCopy.DoFinal(output, offset);
         }
     }
 }
