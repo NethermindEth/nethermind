@@ -99,10 +99,10 @@ namespace Nethermind.Network.Test.Rlpx
             Received.InOrder(
                 () =>
                 {
-                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, LongFrameSize, false);
-                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, LongFrameSize, Arg.Any<byte[]>(), 0);
-                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, ShortFrameSize, false);
-                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, ShortFrameSize, Arg.Any<byte[]>(), 0);
+                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 32, LongFrameSize, false);
+                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 32, LongFrameSize, Arg.Any<byte[]>(), 32);
+                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 32, ShortFrameSize, false);
+                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 32, ShortFrameSize, Arg.Any<byte[]>(), 32);
                 }
             );
         }
@@ -119,8 +119,8 @@ namespace Nethermind.Network.Test.Rlpx
             Received.InOrder(
                 () =>
                 {
-                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, LongFrameSize, false);
-                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, LongFrameSize, Arg.Any<byte[]>(), 0);
+                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 32, LongFrameSize, false);
+                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 32, LongFrameSize, Arg.Any<byte[]>(), 32);
                 }
             );
         }
