@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain
             PatriciaTree receiptTree = new PatriciaTree();
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                byte[] receiptRlp = _receiptDecoder.EncodeNew(txReceipts[i], specProvider.GetSpec(block.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                Rlp receiptRlp = _receiptDecoder.Encode(txReceipts[i], specProvider.GetSpec(block.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 

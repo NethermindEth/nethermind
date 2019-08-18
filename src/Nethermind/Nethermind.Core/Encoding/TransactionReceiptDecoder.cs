@@ -73,34 +73,6 @@ namespace Nethermind.Core.Encoding
             return txReceipt;
         }
 
-        public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
-
-            if (isStorage)
-            {
-                return Rlp.Encode(
-                    rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
-                    Rlp.Encode(item.BlockHash),
-                    Rlp.Encode(item.BlockNumber),
-                    Rlp.Encode(item.Index),
-                    Rlp.Encode(item.Sender),
-                    Rlp.Encode(item.Recipient),
-                    Rlp.Encode(item.ContractAddress),
-                    Rlp.Encode(item.GasUsed),
-                    Rlp.Encode(item.GasUsedTotal),
-                    Rlp.Encode(item.Bloom),
-                    Rlp.Encode(item.Logs),
-                    Rlp.Encode(item.Error));
-            }
-
-            return Rlp.Encode(
-                rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
-                Rlp.Encode(item.GasUsedTotal),
-                Rlp.Encode(item.Bloom),
-                Rlp.Encode(item.Logs));
-        }
-
         public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
@@ -159,17 +131,17 @@ namespace Nethermind.Core.Encoding
             }    
         }
         
-        public byte[] EncodeNew(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Rlp Encode(TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Rlp.OfEmptySequence.Bytes;
+                return Rlp.OfEmptySequence;
             }
             
             var length = GetLength(item, rlpBehaviors);
             RlpStream stream = new RlpStream(length);
             Encode(stream, item, rlpBehaviors);
-            return stream.Data;
+            return new Rlp(stream.Data);
         }
         
         public void Encode(MemoryStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
