@@ -38,8 +38,6 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public byte[] Serialize(NeighborsMessage message)
         {
-            byte[] typeBytes = {(byte) message.MessageType};
-
             Rlp[] nodes = null;
             if (message.Nodes != null && message.Nodes.Any())
             {
@@ -57,7 +55,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
-            byte[] serializedMsg = Serialize(typeBytes, data);
+            byte[] serializedMsg = Serialize((byte) message.MessageType, data);
             return serializedMsg;
         }
 

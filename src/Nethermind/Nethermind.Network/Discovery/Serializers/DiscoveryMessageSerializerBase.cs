@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Messages;
+using NLog;
 
 namespace Nethermind.Network.Discovery.Serializers
 {
@@ -46,14 +47,22 @@ namespace Nethermind.Network.Discovery.Serializers
             _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
         }
 
-        protected byte[] Serialize(byte[] type, byte[] data)
+        protected byte[] Serialize(byte type, Span<byte> data)
         {
-            byte[] payload = Bytes.Concat(type[0], data);
+            Span<byte> result = new byte[32 + 1 + data.Length + 64 + 1].AsSpan();
+            result[32 + 65] = type;
+            data.CopyTo(result.Slice(32 + 65 + 1, data.Length));
+
+            Span<byte> payload = result.Slice(32 + 65);
             Keccak toSign = Keccak.Compute(payload);
             Signature signature = _ecdsa.Sign(_privateKey, toSign);
-            byte[] signatureBytes = Bytes.Concat(signature.Bytes, signature.RecoveryId);
-            byte[] mdc = Keccak.Compute(Bytes.Concat(signatureBytes, type, data)).Bytes;
-            return Bytes.Concat(mdc, signatureBytes, type, data);
+            signature.Bytes.AsSpan().CopyTo(result.Slice(32, 64));
+            result[32 + 64] = signature.RecoveryId;
+            
+            Span<byte> forMdc = result.Slice(32);
+            Keccak mdc = Keccak.Compute(forMdc);
+            mdc.Bytes.AsSpan().CopyTo(result.Slice(0,32));
+            return result.ToArray();
         }
 
         protected (T Message, byte[] Mdc, byte[] Data) PrepareForDeserialization<T>(byte[] msg) where T : DiscoveryMessage
@@ -113,7 +122,7 @@ namespace Nethermind.Network.Discovery.Serializers
             {
                 ipAddress = IPAddress.Any;
             }
-            
+
             return new IPEndPoint(ipAddress, port);
         }
     }
