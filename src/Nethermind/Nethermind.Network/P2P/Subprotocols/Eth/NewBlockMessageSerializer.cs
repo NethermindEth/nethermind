@@ -24,10 +24,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class NewBlockMessageSerializer : IMessageSerializer<NewBlockMessage>
     {
+        private BlockDecoder _blockDecoder = new BlockDecoder();
+        
         public byte[] Serialize(NewBlockMessage message)
         {
             return Rlp.Encode(
-                Rlp.Encode(message.Block),
+                _blockDecoder.Encode(message.Block),
                 Rlp.Encode(message.TotalDifficulty)).Bytes;
         }
 

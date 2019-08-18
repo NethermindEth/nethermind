@@ -26,6 +26,9 @@ namespace Nethermind.Blockchain
 {
     public static class BlockExtensions
     {
+        private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
+        private static TransactionDecoder _txDecoder = new TransactionDecoder();
+        
         public static Keccak CalculateReceiptRoot(this Block block, ISpecProvider specProvider, TxReceipt[] txReceipts)
         {
             if (txReceipts.Length == 0)
@@ -36,7 +39,7 @@ namespace Nethermind.Blockchain
             PatriciaTree receiptTree = new PatriciaTree();
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(txReceipts[i], specProvider.GetSpec(block.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                byte[] receiptRlp = _receiptDecoder.EncodeNew(txReceipts[i], specProvider.GetSpec(block.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
@@ -54,8 +57,8 @@ namespace Nethermind.Blockchain
             PatriciaTree txTree = new PatriciaTree();
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                Rlp transactionRlp = Rlp.Encode(block.Transactions[i]);
-                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+                Rlp transactionRlp = _txDecoder.Encode(block.Transactions[i]);
+                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
 
             txTree.UpdateRootHash();

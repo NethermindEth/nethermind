@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.IO;
 using Nethermind.Core.Crypto;
 
@@ -51,13 +50,34 @@ namespace Nethermind.Core.Encoding
             {
                 return Rlp.OfEmptySequence;
             }
-            
-            return Rlp.Encode(
-                Rlp.Encode(item.LoggersAddress),
-                Rlp.Encode(item.Topics),
-                Rlp.Encode(item.Data));
+
+            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            Encode(rlpStream, item, rlpBehaviors);
+            return new Rlp(rlpStream.Data);
         }
 
+        public void Encode(RlpStream rlpStream, LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (item == null)
+            {
+                rlpStream.EncodeNullObject();
+                return;
+            }
+
+            var (total, topics) = GetContentLength(item);
+            rlpStream.StartSequence(total);
+            
+            rlpStream.Encode(item.LoggersAddress);
+            rlpStream.StartSequence(topics);
+
+            for (var i = 0; i < item.Topics.Length; i++)
+            {
+                rlpStream.Encode(item.Topics[i]);
+            }
+            
+            rlpStream.Encode(item.Data);   
+        }
+        
         public void Encode(MemoryStream stream, LogEntry item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
