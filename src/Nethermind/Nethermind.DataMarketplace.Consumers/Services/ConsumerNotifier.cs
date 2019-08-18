@@ -172,5 +172,17 @@ namespace Nethermind.DataMarketplace.Consumers.Services
                 {
                     blockNumber
                 }));
+
+        public Task SendGraceUnitsExceeded(Keccak depositId, string dataAssetName, uint consumedUnitsFromProvider,
+            uint consumedUnits, uint graceUnits)
+            => _notifier.NotifyAsync(new Notification("grace_units_exceeded",
+                new
+                {
+                    depositId,
+                    dataAssetName,
+                    consumedUnitsFromProvider,
+                    consumedUnits,
+                    graceUnits
+                }));
     }
 }

@@ -29,5 +29,8 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         Task SendClaimedEarlyRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash);
         Task SendClaimedRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash);
         Task SendBlockProcessedAsync(long blockNumber);
+
+        Task SendGraceUnitsExceeded(Keccak depositId, string dataAssetName, uint consumedUnitsFromProvider,
+            uint consumedUnits, uint graceUnits);
     }
 }

@@ -69,7 +69,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
         public byte ProtocolVersion { get; } = 1;
         public string ProtocolCode { get; } = Protocol.Ndm;
-        public int MessageIdSpaceSize { get; } = 0x1E;
+        public int MessageIdSpaceSize { get; } = 0x1F;
 
         public bool HasAvailableCapability(Capability capability) => false;
         public bool HasAgreedCapability(Capability capability) => false;
@@ -142,7 +142,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     message => Handle(Deserialize<DepositApprovalsMessage>(message.Data)),
                 [NdmMessageCode.ProviderAddressChanged] = message =>
                     Handle(Deserialize<ProviderAddressChangedMessage>(message.Data)),
-                [NdmMessageCode.EthRequested] = message => Handle(Deserialize<EthRequestedMessage>(message.Data))
+                [NdmMessageCode.EthRequested] = message => Handle(Deserialize<EthRequestedMessage>(message.Data)),
+                [NdmMessageCode.GraceUnitsExceeded] = message => Handle(Deserialize<GraceUnitsExceededMessage>(message.Data))
             };
 
         public void Init()
@@ -560,6 +561,19 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
             var request = RequestEthRequests.Take();
             request.CompletionSource.SetResult(message.Response);
+        }
+
+        private void Handle(GraceUnitsExceededMessage message)
+        {
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: graceunitsexceeded");
+            ConsumerService.HandleGraceUnitsExceededAsync(message.DepositId, message.ConsumedUnits, message.GraceUnits)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         private void Handle(DataAssetDataMessage message)

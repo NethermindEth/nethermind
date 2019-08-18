@@ -1151,6 +1151,29 @@ namespace Nethermind.DataMarketplace.Consumers.Services
         public Task HandleInvalidDataAsync(Keccak depositId, InvalidDataReason reason)
             => _consumerNotifier.SendDataInvalidAsync(depositId, reason);
 
+        public async Task HandleGraceUnitsExceededAsync(Keccak depositId, uint consumedUnitsFromProvider,
+            uint graceUnits)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Handling the exceeded grace units for deposit: {depositId} (consumed: {consumedUnitsFromProvider}, grace: {graceUnits}).");
+            var depositDetails = await GetDepositAsync(depositId);
+            if (depositDetails is null)
+            {
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was not found.'");
+                return;
+            }
+
+            var consumerSession = GetActiveSession(depositId);
+            if (consumerSession is null)
+            {
+                return;
+            }
+
+            var consumedUnits = consumerSession.ConsumedUnits;
+            if (_logger.IsWarn) _logger.Warn($"Exceeded the grace units for deposit: {depositId}, consumed: {consumedUnits} (provider claims: {consumedUnitsFromProvider}), grace: {graceUnits}.");
+            await _consumerNotifier.SendGraceUnitsExceeded(depositId, depositDetails.DataAsset.Name,
+                consumedUnitsFromProvider, consumedUnits, graceUnits);
+        }
+
         public async Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query)
             => await _depositApprovalRepository.BrowseAsync(query);
 
