@@ -1007,7 +1007,6 @@ namespace Nethermind.Network
         private void UpdateReputationAndMaxPeersCount()
         {
             var storedNodes = _peerStorage.GetPersistedNodes();
-            var nodesForUpdate = new List<NetworkNode>();
             foreach (var node in storedNodes)
             {
                 _activePeers.TryGetValue(node.NodeId, out Peer peer);
@@ -1025,14 +1024,8 @@ namespace Nethermind.Network
                 if (newRep != node.Reputation)
                 {
                     node.Reputation = newRep;
-                    nodesForUpdate.Add(node);
+                    _peerStorage.UpdateNode(node);
                 }
-            }
-
-            if (nodesForUpdate.Any())
-            {
-                //we need to update all stored notes to update reputation
-                _peerStorage.UpdateNodes(nodesForUpdate);
             }
 
             //if we have more persisted nodes then the threshold, we run cleanup process
