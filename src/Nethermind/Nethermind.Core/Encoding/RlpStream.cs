@@ -253,7 +253,7 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(string value)
         {
-            if (value == null)
+            if (string.IsNullOrEmpty(value))
             {
                 WriteByte(128);
             }
