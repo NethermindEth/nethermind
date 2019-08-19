@@ -31,7 +31,7 @@ namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public partial class OutFlow
+    public  class OutFlow
     {
         private NewBlockMessageSerializer _newBlockMessageSerializer;
         private Block _block;
@@ -58,7 +58,6 @@ namespace Nethermind.Network.Benchmarks
             FrameCipher frameCipher = new FrameCipher(secrets.AesSecret);
             FrameMacProcessor frameMacProcessor = new FrameMacProcessor(publicKey, secrets);
             _encoder = new TestEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
-            _nonEncryptingEncoder = new TestNonEncryptingEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
             _splitter = new TestSplitter();
             _splitter.DisableFraming();
             _snappyEncoder = new TestSnappy();
@@ -146,7 +145,7 @@ namespace Nethermind.Network.Benchmarks
             Packet ensnapped = _snappyEncoder.TestEncode(packet.Data);
             List<object> output = new List<object>();
             _splitter.Encode(ensnapped, output);
-            _nonEncryptingEncoder.Encode((byte[]) output[0], _byteBuffer);
+            _encoder.Encode((byte[]) output[0], _byteBuffer);
         }
 
         [Benchmark]
