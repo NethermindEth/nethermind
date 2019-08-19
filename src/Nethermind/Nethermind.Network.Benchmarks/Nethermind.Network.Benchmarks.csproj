@@ -11,6 +11,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
       <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
       <ProjectReference Include="..\Nethermind.Secp256k1\Nethermind.Secp256k1.csproj" />
     </ItemGroup>
