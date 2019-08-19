@@ -37,9 +37,7 @@ namespace Nethermind.Evm.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ITransactionProcessor _processor;
         private ISnapshotableDb _stateDb;
-        private int _stateDbSnapshot;
-        private Keccak _stateRoot;
-        
+
         protected IVirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }

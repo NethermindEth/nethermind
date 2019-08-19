@@ -64,13 +64,13 @@ namespace Nethermind.Facade
         public Address EcRecover(byte[] message, Signature signature)
         {
             throw new NotImplementedException();
-            return _ecdsa.RecoverAddress(signature, Keccak.Compute(message));
+//            return _ecdsa.RecoverAddress(signature, Keccak.Compute(message));
         }
 
         public Signature Sign(byte[] message, Address address)
         {
             throw new NotImplementedException();
-            return _wallet.Sign(Keccak.Compute(message), address);
+//            return _wallet.Sign(Keccak.Compute(message), address);
         }
     }
 }
