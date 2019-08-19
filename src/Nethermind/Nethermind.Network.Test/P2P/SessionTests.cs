@@ -538,10 +538,27 @@ namespace Nethermind.Network.Test.P2P
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
 
-            session.InitiateDisconnect(DisconnectReason.Other);
+            long beforeLocal = Network.Metrics.LocalOtherDisconnects;
+            long beforeRemote = Network.Metrics.OtherDisconnects;
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "");
+            long afterLocal = Network.Metrics.LocalOtherDisconnects;
+            long afterRemote = Network.Metrics.OtherDisconnects;
+            Assert.AreEqual(beforeLocal + 1, afterLocal);
+            Assert.AreEqual(beforeRemote, afterRemote);
+            
+            session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
 
-            session.DeliverMessage(new Packet("p2p", 3, Bytes.Empty));
-            _packetSender.DidNotReceive().Enqueue(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+            beforeLocal = Network.Metrics.LocalOtherDisconnects;
+            beforeRemote = Network.Metrics.OtherDisconnects;
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "");
+            afterLocal = Network.Metrics.LocalOtherDisconnects;
+            afterRemote = Network.Metrics.OtherDisconnects;
+            Assert.AreEqual(beforeLocal, afterLocal);
+            Assert.AreEqual(beforeRemote + 1, afterRemote);
         }
     }
 }
