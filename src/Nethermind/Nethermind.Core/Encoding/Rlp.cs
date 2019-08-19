@@ -483,7 +483,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(string s)
         {
-            if (s == null)
+            if (string.IsNullOrEmpty(s))
             {
                 return OfEmptyByteArray;
             }

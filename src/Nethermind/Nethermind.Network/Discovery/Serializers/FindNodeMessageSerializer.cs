@@ -32,14 +32,13 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public byte[] Serialize(FindNodeMessage message)
         {
-            byte[] typeBytes = { (byte)message.MessageType };
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.SearchedNodeId),
                 //verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
-            byte[] serializedMsg = Serialize(typeBytes, data);
+            byte[] serializedMsg = Serialize((byte) message.MessageType, data);
             return serializedMsg;
         }
 

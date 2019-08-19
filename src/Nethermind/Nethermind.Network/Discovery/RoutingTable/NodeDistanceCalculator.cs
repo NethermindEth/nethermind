@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery.RoutingTable
@@ -33,18 +34,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public int CalculateDistance(byte[] sourceId, byte[] destinationId)
         {
-            var hash = new byte[destinationId.Length < sourceId.Length ? destinationId.Length : sourceId.Length];
-
-            for (int i = 0; i < hash.Length; i++)
-            {
-                hash[i] = (byte)(destinationId[i] ^ sourceId[i]);
-            }
-
+            int lowerLength = Math.Min(sourceId.Length, destinationId.Length);
             int distance = _maxDistance;
 
-            for (int i = 0; i < hash.Length; i++)
+            for (int i = 0; i < lowerLength; i++)
             {
-                var b = hash[i];
+                var b = (byte)(destinationId[i] ^ sourceId[i]);
                 if (b == 0)
                 {
                     distance -= _bitsPerHoop;
