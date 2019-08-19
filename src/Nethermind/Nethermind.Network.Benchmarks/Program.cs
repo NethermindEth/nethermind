@@ -25,7 +25,8 @@ namespace Nethermind.Network.Benchmarks
         public static void Main(string[] args)
         {   
 //            BenchmarkRunner.Run<KdfDerivation>();
-            BenchmarkRunner.Run<EcdhAgreement>();
+//            BenchmarkRunner.Run<EcdhAgreement>();
+            BenchmarkRunner.Run<OutFlow>();
 //            BenchmarkRunner.Run<NettyFrameEncoder>();
 //            BenchmarkRunner.Run<NettyFrameMerger>();
 //            BenchmarkRunner.Run<NettyPacketSplitter>();
