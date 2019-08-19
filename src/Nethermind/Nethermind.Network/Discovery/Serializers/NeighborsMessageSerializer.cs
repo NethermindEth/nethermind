@@ -63,7 +63,7 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             var results = PrepareForDeserialization<NeighborsMessage>(msg);
 
-            var rlp = results.Data.AsRlpContext();
+            var rlp = results.Data.AsRlpStream();
             rlp.ReadSequenceLength();
             var nodes = DeserializeNodes(rlp);
 
@@ -75,9 +75,9 @@ namespace Nethermind.Network.Discovery.Serializers
             return message;
         }
 
-        private Node[] DeserializeNodes(Rlp.DecoderContext context)
+        private Node[] DeserializeNodes(RlpStream rlpStream)
         {
-            return context.DecodeArray(ctx =>
+            return rlpStream.DecodeArray(ctx =>
             {
                 int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
                 int count = ctx.ReadNumberOfItemsRemaining(lastPosition);

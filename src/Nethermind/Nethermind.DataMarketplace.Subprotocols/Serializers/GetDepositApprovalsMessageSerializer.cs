@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public GetDepositApprovalsMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var dataAssetId = context.DecodeKeccak();
             var onlyPending = context.DecodeBool();

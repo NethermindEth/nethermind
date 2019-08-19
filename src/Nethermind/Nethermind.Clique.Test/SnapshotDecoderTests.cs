@@ -48,7 +48,7 @@ namespace Nethermind.Clique.Test
             // Encode snapshot
             Rlp rlp = decoder.Encode(expected);
             // Decode snapshot
-            Snapshot actual = decoder.Decode(rlp.Bytes.AsRlpContext());
+            Snapshot actual = decoder.Decode(rlp.Bytes.AsRlpStream());
             // Validate fields
             Assert.AreEqual(expected.Number, actual.Number);
             Assert.AreEqual(expected.Hash, actual.Hash);

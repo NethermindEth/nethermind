@@ -114,24 +114,24 @@ namespace Nethermind.Core.Encoding
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Decode<T>(oldRlp.Bytes.AsRlpContext(), rlpBehaviors);
+            return Decode<T>(oldRlp.Bytes.AsRlpStream(), rlpBehaviors);
         }
 
         public static T Decode<T>(byte[] bytes, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Decode<T>(bytes.AsRlpContext(), rlpBehaviors);
+            return Decode<T>(bytes.AsRlpStream(), rlpBehaviors);
         }
 
-        public static T[] DecodeArray<T>(DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
                 IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];
-                int checkPosition = context.ReadSequenceLength() + context.Position;
-                T[] result = new T[context.ReadNumberOfItemsRemaining(checkPosition)];
+                int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
+                T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
                 for (int i = 0; i < result.Length; i++)
                 {
-                    result[i] = decoder.Decode(context, rlpBehaviors);
+                    result[i] = decoder.Decode(rlpStream, rlpBehaviors);
                 }
 
                 return result;
@@ -140,11 +140,11 @@ namespace Nethermind.Core.Encoding
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
-        public static T Decode<T>(DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
-                return ((IRlpDecoder<T>) Decoders[typeof(T)]).Decode(context, rlpBehaviors);
+                return ((IRlpDecoder<T>) Decoders[typeof(T)]).Decode(rlpStream, rlpBehaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
@@ -293,11 +293,21 @@ namespace Nethermind.Core.Encoding
             }
         }
 
+        /// <summary>
+        /// Watch out - this only works for positive values
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="value"></param>
         public static void Encode(MemoryStream stream, int value)
         {
             Encode(stream, (long) value);
         }
 
+        /// <summary>
+        /// Watch out - this only works for positive values
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="value"></param>
         public static void Encode(MemoryStream stream, long value)
         {
             if (value == 0L)
@@ -1266,576 +1276,6 @@ namespace Nethermind.Core.Encoding
                 }
 
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-            }
-
-            public delegate object Decoder(DecoderContext ctx);
-            
-//            public T[] DecodeArray<T>(Decoder decodeItem)
-//            {
-//                int positionCheck = ReadSequenceLength() + Position;
-//                int count = ReadNumberOfItemsRemaining(positionCheck);
-//                T[] result = new T[count];
-//                for (int i = 0; i < result.Length; i++)
-//                {
-//                    if (Data[Position] == OfEmptySequence[0])
-//                    {
-//                        result[i] = default;
-//                        Position++;
-//                    }
-//                    else
-//                    {
-//                        result[i] = (T)decodeItem(this);
-//                    }
-//                }
-//
-//                return result;
-//            }
-
-            public string DecodeString()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return System.Text.Encoding.UTF8.GetString(bytes);
-            }
-
-            public byte DecodeByte()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return bytes.Length == 0 ? (byte)0 :
-                    bytes.Length == 1 ? bytes[0] == (byte)128
-                        ? (byte)0
-                        : bytes[0]
-                    : bytes[1];
-            }
-
-            public int DecodeInt()
-            {
-                int prefix = ReadByte();
-                if (prefix < 128)
-                {
-                    return prefix;
-                }
-
-                if (prefix == 128)
-                {
-                    return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 4)
-                {
-                    throw new RlpException($"Unexpected length of int value: {length}");
-                }
-
-                int result = 0;
-                for (int i = 4; i > 0; i--)
-                {
-                    result = result << 8;
-                    if (i <= length)
-                    {
-                        result = result | Data[Position + length - i];
-                    }
-                }
-                
-                Position += length;
-
-                return result;
-            }
-
-            public uint DecodeUInt()
-            {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0 : bytes.ToUInt32();
-            }
-
-            public long DecodeLong()
-            {
-                int prefix = ReadByte();
-                if (prefix < 128)
-                {
-                    return prefix;
-                }
-
-                if (prefix == 128)
-                {
-                    return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 8)
-                {
-                    throw new RlpException($"Unexpected length of long value: {length}");
-                }
-
-                long result = 0;
-                for (int i = 8; i > 0; i--)
-                {
-                    result = result << 8;
-                    if (i <= length)
-                    {
-                        result = result | Data[Position + length - i];
-                    }
-                }
-
-                Position += length;
-
-                return result;
-            }
-
-            public ulong DecodeUlong()
-            {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0L : bytes.ToUInt64();
-            }
-            
-            public byte[] DecodeByteArray()
-            {
-                return DecodeByteArraySpan().ToArray();
-            }
-
-            public Span<byte> DecodeByteArraySpan()
-            {
-                int prefix = ReadByte();
-                if (prefix == 0)
-                {
-                    return new byte[] {0};
-                }
-
-                if (prefix < 128)
-                {
-                    return new[] {(byte) prefix};
-                }
-
-                if (prefix == 128)
-                {
-                    return Extensions.Bytes.Empty;
-                }
-
-                if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    Span<byte> buffer = Read(length);
-                    if (length == 1 && buffer[0] < 128)
-                    {
-                        throw new RlpException($"Unexpected byte value {buffer[0]}");
-                    }
-
-                    return buffer;
-                }
-
-                if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of lenth less or equal 4");
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
-                    {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
-                    }
-
-                    return Read(length);
-                }
-
-                throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
-            }
-
-            public void SkipItem()
-            {
-                (int prefix, int content) = PeekPrefixAndContentLength();
-                Position += prefix + content;
-            }
-
-            public void Reset()
-            {
-                Position = 0;
-            }
-        }
-        
-        public class DecoderContext
-        {
-            public DecoderContext(byte[] data)
-            {
-                Data = data;
-                Position = 0;
-            }
-
-            public byte[] Data { get; }
-
-            public int Position { get; set; }
-
-            public int Length => Data.Length;
-
-            public bool IsSequenceNext()
-            {
-                return Data[Position] >= 192;
-            }
-
-            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
-            {
-                int positionStored = Position;
-                int numberOfItems = 0;
-                while (Position < (beforePosition ?? Data.Length))
-                {
-                    int prefix = ReadByte();
-                    if (prefix <= 128)
-                    {
-                    }
-                    else if (prefix <= 183)
-                    {
-                        int length = prefix - 128;
-                        Position += length;
-                    }
-                    else if (prefix < 192)
-                    {
-                        int lengthOfLength = prefix - 183;
-                        int length = DeserializeLength(lengthOfLength);
-                        if (length < 56)
-                        {
-                            throw new RlpException("Expected length greater or equal 56 and was {length}");
-                        }
-
-                        Position += length;
-                    }
-                    else
-                    {
-                        Position--;
-                        int sequenceLength = ReadSequenceLength();
-                        Position += sequenceLength;
-                    }
-
-                    numberOfItems++;
-                }
-
-                Position = positionStored;
-                return numberOfItems;
-            }
-
-            public void SkipLength()
-            {
-                Position += PeekPrefixAndContentLength().PrefixLength;
-            }
-
-            public int PeekNextRlpLength()
-            {
-                (int a, int b) = PeekPrefixAndContentLength();
-                return a + b;
-            }
-
-            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
-            {
-                int memorizedPosition = Position;
-                (int prefixLength, int contentLengt) result;
-                int prefix = ReadByte();
-                if (prefix <= 128)
-                {
-                    result = (0, 1);
-                }
-                else if (prefix <= 183)
-                {
-                    result = (1, prefix - 128);
-                }
-                else if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of length less or equal 4");
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
-                    {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
-                    }
-
-                    result = (lengthOfLength + 1, length);
-                }
-                else if (prefix <= 247)
-                {
-                    result = (1, prefix - 192);
-                }
-                else
-                {
-                    int lengthOfContentLength = prefix - 247;
-                    int contentLength = DeserializeLength(lengthOfContentLength);
-                    if (contentLength < 56)
-                    {
-                        throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
-                    }
-
-
-                    result = (lengthOfContentLength + 1, contentLength);
-                }
-
-                Position = memorizedPosition;
-                return result;
-            }
-
-            public int ReadSequenceLength()
-            {
-                int prefix = ReadByte();
-                if (prefix < 192)
-                {
-                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-                }
-
-                if (prefix <= 247)
-                {
-                    return prefix - 192;
-                }
-
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
-                {
-                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
-                }
-
-                return contentLength;
-            }
-
-            private int DeserializeLength(int lengthOfLength)
-            {
-                int result;
-                if (Data[Position] == 0)
-                {
-                    throw new RlpException("Length starts with 0");
-                }
-
-                if (lengthOfLength == 1)
-                {
-                    result = Data[Position];
-                }
-                else if (lengthOfLength == 2)
-                {
-                    result = Data[Position + 1] | (Data[Position] << 8);
-                }
-                else if (lengthOfLength == 3)
-                {
-                    result = Data[Position + 2] | (Data[Position + 1] << 8) | (Data[Position] << 16);
-                }
-                else if (lengthOfLength == 4)
-                {
-                    result = Data[Position + 3] | (Data[Position + 2] << 8) | (Data[Position + 1] << 16) |
-                             (Data[Position] << 24);
-                }
-                else
-                {
-                    // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
-                }
-
-                Position += lengthOfLength;
-                return result;
-            }
-
-            public byte ReadByte()
-            {
-                return Data[Position++];
-            }
-
-            public Span<byte> Read(int length)
-            {
-                Span<byte> data = Data.AsSpan(Position, length);
-                Position += length;
-                return data;
-            }
-
-            public void Check(int nextCheck)
-            {
-                if (Position != nextCheck)
-                {
-                    throw new RlpException($"Data checkpoint failed. Expected {nextCheck} and is {Position}");
-                }
-            }
-
-            public Keccak DecodeKeccak()
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    return null;
-                }
-
-                if (prefix != 128 + 32)
-                {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-                }
-
-                Span<byte> keccakSpan = Read(32);
-                if (keccakSpan.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
-                {
-                    return Keccak.OfAnEmptyString;
-                }
-
-                if (keccakSpan.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                {
-                    return Keccak.EmptyTreeHash;
-                }
-
-                return new Keccak(keccakSpan.ToArray());
-            }
-
-            public Address DecodeAddress()
-            {
-                int prefix = ReadByte();
-                if (prefix == 128)
-                {
-                    return null;
-                }
-
-                if (prefix != 128 + 20)
-                {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-                }
-
-                byte[] buffer = Read(20).ToArray();
-                return new Address(buffer);
-            }
-
-            public UInt256 DecodeUInt256()
-            {
-                Span<byte> byteSpan = DecodeByteArraySpan();
-                if (byteSpan.Length > 32)
-                {
-                    throw new ArgumentException();
-                }
-
-                UInt256.CreateFromBigEndian(out UInt256 result, byteSpan);
-                return result;
-            }
-            
-            public UInt256? DecodeNullableUInt256()
-            {
-                if (Data[Position] == 0)
-                {
-                    Position++;
-                    return null;
-                }
-
-                return DecodeUInt256();
-            }
-
-            public BigInteger DecodeUBigInt()
-            {
-                Span<byte> bytes = DecodeByteArraySpan();
-                return bytes.ToUnsignedBigInteger();
-            }
-
-            public Bloom DecodeBloom()
-            {
-                Span<byte> bloomBytes;
-
-                // tks: not sure why but some nodes send us Blooms in a sequence form
-                // https://github.com/NethermindEth/nethermind/issues/113
-                if (Data[Position] == 249)
-                {
-                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
-                    bloomBytes = Read(256);
-                }
-                else
-                {
-                    bloomBytes = DecodeByteArraySpan();
-                    if (bloomBytes.Length == 0)
-                    {
-                        return null;
-                    }
-                }
-
-                if (bloomBytes.Length != 256)
-                {
-                    throw new InvalidOperationException("Incorrect bloom RLP");
-                }
-
-                if (bloomBytes.SequenceEqual(Extensions.Bytes.Zero256))
-                {
-                    return Bloom.Empty;
-                }
-
-                return new Bloom(bloomBytes.ToBigEndianBitArray2048());
-            }
-
-            public Span<byte> PeekNextItem()
-            {
-                int length = PeekNextRlpLength();
-                Span<byte> item = Read(length);
-                Position -= item.Length;
-                return item;
-            }
-
-            public bool IsNextItemNull()
-            {
-                return Data[Position] == 192;
-            }
-
-            public bool DecodeBool()
-            {
-                int prefix = ReadByte();
-                if (prefix <= 128)
-                {
-                    return prefix == 1;
-                }
-
-                if (prefix <= 183)
-                {
-                    int length = prefix - 128;
-                    if (length == 1 && Data[Position] < 128)
-                    {
-                        throw new RlpException($"Unexpected byte value {Data[Position]}");
-                    }
-
-                    bool result = Data[Position] == 1;
-                    Position += length;
-                    return result;
-                }
-
-                if (prefix < 192)
-                {
-                    int lengthOfLength = prefix - 183;
-                    if (lengthOfLength > 4)
-                    {
-                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                        throw new RlpException("Expected length of length less or equal 4");
-                    }
-
-                    int length = DeserializeLength(lengthOfLength);
-                    if (length < 56)
-                    {
-                        throw new RlpException("Expected length greater or equal 56 and was {length}");
-                    }
-
-                    bool result = Data[Position] == 1;
-                    Position += length;
-                    return result;
-                }
-
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(DebugMessageContentLength, Data.Length)).ToHexString()}");
-            }
-
-            public T[] DecodeArray<T>(Func<DecoderContext, T> decodeItem)
-            {
-                int positionCheck = ReadSequenceLength() + Position;
-                int count = ReadNumberOfItemsRemaining(positionCheck);
-                T[] result = new T[count];
-                for (int i = 0; i < result.Length; i++)
-                {
-                    if (Data[Position] == OfEmptySequence[0])
-                    {
-                        result[i] = default;
-                        Position++;
-                    }
-                    else
-                    {
-                        result[i] = (T)decodeItem(this);
-                    }
-                }
-
-                return result;
             }
 
             public string DecodeString()

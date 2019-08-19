@@ -69,13 +69,13 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public int Improved()
         {
-            return new Nethermind.Core.Encoding.Rlp.DecoderContext(_value).DecodeInt();
+            return new Nethermind.Core.Encoding.RlpStream(_value).DecodeInt();
         }
 
         [Benchmark]
         public int Current()
         {
-            return new Nethermind.Core.Encoding.Rlp.DecoderContext(_value).DecodeInt();
+            return new Nethermind.Core.Encoding.RlpStream(_value).DecodeInt();
         }
     }
 }

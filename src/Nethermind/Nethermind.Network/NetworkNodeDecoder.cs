@@ -31,15 +31,23 @@ namespace Nethermind.Network
             Rlp.Decoders[typeof(NetworkNode)] = new NetworkNodeDecoder();
         }
 
-        public NetworkNode Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public NetworkNode Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
 
-            var publicKey = new PublicKey(context.DecodeByteArray());
-            var ip = context.DecodeString();
-            var port = context.DecodeByteArraySpan().ToInt32();
-            context.SkipItem();
-            var reputation = context.DecodeByteArray().ToInt64();
+            PublicKey publicKey = new PublicKey(rlpStream.DecodeByteArray());
+            string ip = rlpStream.DecodeString();
+            int port = rlpStream.DecodeByteArraySpan().ToInt32();
+            rlpStream.SkipItem();
+            long reputation = 0L;
+            try
+            {
+                reputation = rlpStream.DecodeLong();
+            }
+            catch (RlpException)
+            {
+                // regression - old format
+            }
 
             var networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;

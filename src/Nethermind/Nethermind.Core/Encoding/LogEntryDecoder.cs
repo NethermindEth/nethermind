@@ -23,23 +23,23 @@ namespace Nethermind.Core.Encoding
 {
     public class LogEntryDecoder : IRlpDecoder<LogEntry>
     {
-        public LogEntry Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public LogEntry Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (context.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
             
-            context.ReadSequenceLength();
-            Address address = context.DecodeAddress();
-            long sequenceLength = context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
+            Address address = rlpStream.DecodeAddress();
+            long sequenceLength = rlpStream.ReadSequenceLength();
             Keccak[] topics = new Keccak[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
-                topics[i] = context.DecodeKeccak();
+                topics[i] = rlpStream.DecodeKeccak();
             }
 
-            byte[] data = context.DecodeByteArray();
+            byte[] data = rlpStream.DecodeByteArray();
 
             return new LogEntry(address, data, topics);
         }

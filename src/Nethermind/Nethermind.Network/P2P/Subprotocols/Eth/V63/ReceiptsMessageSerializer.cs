@@ -45,9 +45,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             if (bytes.Length == 0 && bytes[0] == Rlp.OfEmptySequence[0]) return new ReceiptsMessage(null);
 
-            Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
+            RlpStream rlpStream = bytes.AsRlpStream();
 
-            var data = decoderContext.DecodeArray(itemContext =>
+            var data = rlpStream.DecodeArray(itemContext =>
                 itemContext.DecodeArray(nestedContext => Rlp.Decode<TxReceipt>(nestedContext)) ?? new TxReceipt[0]);
             ReceiptsMessage message = new ReceiptsMessage(data);
             

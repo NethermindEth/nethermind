@@ -111,20 +111,20 @@ namespace Nethermind.JsonRpc.Eip1186
             return _visitingFilter.Contains(nextNode);
         }
 
-        public void VisitTree(Keccak rootHash, VisitContext context)
+        public void VisitTree(Keccak rootHash, VisitContext visitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, VisitContext context)
+        public void VisitMissingNode(Keccak nodeHash, VisitContext visitContext)
         {
         }
 
-        public void VisitBranch(TrieNode node, VisitContext context)
+        public void VisitBranch(TrieNode node, VisitContext visitContext)
         {
-            AddProofBits(node, context);
+            AddProofBits(node, visitContext);
             _visitingFilter.Remove(node.Keccak);
 
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
 //                Console.WriteLine($"Visiting BRANCH {node.Keccak} at {_pathIndex}");
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
@@ -134,7 +134,7 @@ namespace Nethermind.JsonRpc.Eip1186
                     {
                         Console.WriteLine($"Empty at {storageIndex}");
                         
-                        AddEmpty(node, context);
+                        AddEmpty(node, visitContext);
                     }
                     else
                     {
@@ -159,13 +159,13 @@ namespace Nethermind.JsonRpc.Eip1186
             _pathIndex++;
         }
 
-        public void VisitExtension(TrieNode node, VisitContext context)
+        public void VisitExtension(TrieNode node, VisitContext visitContext)
         {
-            AddProofBits(node, context);
+            AddProofBits(node, visitContext);
             _visitingFilter.Remove(node.Keccak);
 
             Keccak childHash = node.GetChildHash(0);
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
 //                Console.WriteLine($"Visiting EXT {node.Keccak} at {_pathIndex}");
 //                Console.WriteLine($"Node {node.Keccak} has storage indices {string.Join(';', _nodeInfos[node.Keccak].StorageIndices)} at {_pathIndex + node.Path.Length}");
@@ -181,9 +181,9 @@ namespace Nethermind.JsonRpc.Eip1186
             _pathIndex += node.Path.Length;
         }
 
-        private void AddProofBits(TrieNode node, VisitContext context)
+        private void AddProofBits(TrieNode node, VisitContext visitContext)
         {
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
                 if (_nodeInfos.ContainsKey(node.Keccak))
                 {
@@ -199,9 +199,9 @@ namespace Nethermind.JsonRpc.Eip1186
             }
         }
 
-        private void AddEmpty(TrieNode node, VisitContext context)
+        private void AddEmpty(TrieNode node, VisitContext visitContext)
         {
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
                 if (_nodeInfos.ContainsKey(node.Keccak))
                 {
@@ -217,23 +217,23 @@ namespace Nethermind.JsonRpc.Eip1186
             }
         }
 
-        public void VisitLeaf(TrieNode node, VisitContext context)
+        public void VisitLeaf(TrieNode node, VisitContext visitContext)
         {
-            AddProofBits(node, context);
+            AddProofBits(node, visitContext);
             _visitingFilter.Remove(node.Keccak);
 
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
 //                Console.WriteLine($"Visiting LEAF {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
                 foreach (int storageIndex in _nodeInfos[node.Keccak].StorageIndices)
                 {
 //                    Console.WriteLine($"Setting LEAF value for {storageIndex} {node.Keccak} at {_pathIndex} - node value is {node.Value.ToHexString()}");
-                    _accountProof.StorageProofs[storageIndex].Value = new Rlp.DecoderContext(node.Value).DecodeByteArray();
+                    _accountProof.StorageProofs[storageIndex].Value = new RlpStream(node.Value).DecodeByteArray();
                 }
             }
             else
             {
-                Account account = _accountDecoder.Decode(new Rlp.DecoderContext(node.Value));
+                Account account = _accountDecoder.Decode(new RlpStream(node.Value));
                 _accountProof.Nonce = account.Nonce;
                 _accountProof.Balance = account.Balance;
                 _accountProof.StorageRoot = account.StorageRoot;
@@ -256,7 +256,7 @@ namespace Nethermind.JsonRpc.Eip1186
 
         private AccountDecoder _accountDecoder = new AccountDecoder();
 
-        public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
+        public void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext)
         {
             throw new InvalidOperationException($"{nameof(ProofCollector)} does never expect to visit code");
         }

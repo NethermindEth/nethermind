@@ -40,11 +40,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public NewBlockMessage Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext context = bytes.AsRlpContext();
+            RlpStream rlpStream = bytes.AsRlpStream();
             NewBlockMessage message = new NewBlockMessage();
-            context.ReadSequenceLength();
-            message.Block = Rlp.Decode<Block>(context);
-            message.TotalDifficulty = context.DecodeUBigInt();
+            rlpStream.ReadSequenceLength();
+            message.Block = Rlp.Decode<Block>(rlpStream);
+            message.TotalDifficulty = rlpStream.DecodeUBigInt();
             return message;
         }
     }

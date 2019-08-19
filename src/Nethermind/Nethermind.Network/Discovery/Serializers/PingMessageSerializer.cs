@@ -51,7 +51,7 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             var results = PrepareForDeserialization<PingMessage>(msg);
             
-            var rlp = results.Data.AsRlpContext();
+            var rlp = results.Data.AsRlpStream();
             rlp.ReadSequenceLength();
             var version = rlp.DecodeInt();
 

@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataAssetMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var dataAsset = Nethermind.Core.Encoding.Rlp.Decode<DataAsset>(context);
 

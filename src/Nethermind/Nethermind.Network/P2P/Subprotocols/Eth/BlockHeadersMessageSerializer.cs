@@ -48,8 +48,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public BlockHeadersMessage Deserialize(byte[] bytes)
         {
             BlockHeadersMessage message = new BlockHeadersMessage();
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            message.BlockHeaders = Rlp.DecodeArray<BlockHeader>(context);
+            RlpStream rlpStream = bytes.AsRlpStream();
+            message.BlockHeaders = Rlp.DecodeArray<BlockHeader>(rlpStream);
             return message;
         }
     }

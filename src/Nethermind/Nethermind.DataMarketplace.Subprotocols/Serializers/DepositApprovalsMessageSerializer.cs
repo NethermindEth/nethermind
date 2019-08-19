@@ -30,6 +30,6 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DepositApprovalsMessage Deserialize(byte[] bytes)
             => new DepositApprovalsMessage(Nethermind.Core.Encoding.Rlp
-                .DecodeArray<DepositApproval>(bytes.AsRlpContext()));
+                .DecodeArray<DepositApproval>(bytes.AsRlpStream()));
     }
 }

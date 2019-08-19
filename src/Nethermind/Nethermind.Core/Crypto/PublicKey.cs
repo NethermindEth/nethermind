@@ -34,7 +34,7 @@ namespace Nethermind.Core.Crypto
             : this(Extensions.Bytes.FromHexString(hexString))
         {
         }
-
+        
         public PublicKey(byte[] bytes)
         {
             if (bytes == null)

@@ -26,32 +26,32 @@ namespace Nethermind.Core.Encoding
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {
-        public Transaction Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var transactionSequence = context.PeekNextItem();
+            var transactionSequence = rlpStream.PeekNextItem();
 
-            int transactionLength = context.ReadSequenceLength();
-            int lastCheck = context.Position + transactionLength;
+            int transactionLength = rlpStream.ReadSequenceLength();
+            int lastCheck = rlpStream.Position + transactionLength;
             Transaction transaction = new Transaction();
-            transaction.Nonce = context.DecodeUInt256();
-            transaction.GasPrice = context.DecodeUInt256();
-            transaction.GasLimit = context.DecodeUInt256();
-            transaction.To = context.DecodeAddress();
-            transaction.Value = context.DecodeUInt256();
+            transaction.Nonce = rlpStream.DecodeUInt256();
+            transaction.GasPrice = rlpStream.DecodeUInt256();
+            transaction.GasLimit = rlpStream.DecodeUInt256();
+            transaction.To = rlpStream.DecodeAddress();
+            transaction.Value = rlpStream.DecodeUInt256();
             if (transaction.To == null)
             {
-                transaction.Init = context.DecodeByteArray();
+                transaction.Init = rlpStream.DecodeByteArray();
             }
             else
             {
-                transaction.Data = context.DecodeByteArray();
+                transaction.Data = rlpStream.DecodeByteArray();
             }
 
-            if (context.Position < lastCheck)
+            if (rlpStream.Position < lastCheck)
             {
-                Span<byte> vBytes = context.DecodeByteArraySpan();
-                Span<byte> rBytes = context.DecodeByteArraySpan();
-                Span<byte> sBytes = context.DecodeByteArraySpan();
+                Span<byte> vBytes = rlpStream.DecodeByteArraySpan();
+                Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
+                Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
                 if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
                 {
@@ -77,7 +77,7 @@ namespace Nethermind.Core.Encoding
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
-                context.Check(lastCheck);
+                rlpStream.Check(lastCheck);
             }
 
             return transaction;

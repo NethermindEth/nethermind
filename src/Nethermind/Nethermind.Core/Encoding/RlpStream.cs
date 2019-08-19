@@ -13,7 +13,7 @@ namespace Nethermind.Core.Encoding
         private static TransactionDecoder _txDecoder = new TransactionDecoder();
         private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
-        
+
         public RlpStream(int length)
         {
             Data = new byte[length];
@@ -30,12 +30,12 @@ namespace Nethermind.Core.Encoding
         {
             _blockDecoder.Encode(this, value);
         }
-        
+
         public void Encode(BlockHeader value)
         {
             _headerDecoder.Encode(this, value);
         }
-        
+
         public void Encode(Transaction value)
         {
             _txDecoder.Encode(this, value);
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Encoding
         {
             _receiptDecoder.Encode(this, value);
         }
-        
+
         public void Encode(LogEntry value)
         {
             _logEntryDecoder.Encode(this, value);
@@ -100,7 +100,7 @@ namespace Nethermind.Core.Encoding
         {
             Data[Position++] = byteToWrite;
         }
-        
+
         private void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan().Slice(Position, bytesToWrite.Length));
@@ -138,7 +138,7 @@ namespace Nethermind.Core.Encoding
                 Write(keccak.Bytes);
             }
         }
-        
+
         public void Encode(Address address)
         {
             if (address == null)
@@ -151,7 +151,7 @@ namespace Nethermind.Core.Encoding
                 Write(address.Bytes);
             }
         }
-        
+
         public void Encode(Rlp rlp)
         {
             if (rlp == null)
@@ -163,7 +163,7 @@ namespace Nethermind.Core.Encoding
                 Write(rlp.Bytes);
             }
         }
-        
+
         public void Encode(Bloom bloom)
         {
             if (bloom == null)
@@ -178,7 +178,7 @@ namespace Nethermind.Core.Encoding
                 Write(bloom.Bytes);
             }
         }
-        
+
         public void Encode(byte value)
         {
             if (value == 0)
@@ -195,41 +195,132 @@ namespace Nethermind.Core.Encoding
                 WriteByte(value);
             }
         }
-        
+
         public void Encode(int value)
         {
             Encode((long) value);
         }
-        
+
+        public void Encode(BigInteger bigInteger, int outputLength = -1)
+        {
+            Rlp rlp = bigInteger == 0 ? Rlp.OfEmptyByteArray : Rlp.Encode(bigInteger.ToBigEndianByteArray(outputLength));
+            Write(rlp.Bytes);
+        }
+
         public void Encode(long value)
         {
             if (value == 0L)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                EncodeEmptyArray();
+                return;
             }
-            else
+
+            if (value > 0)
             {
-                if (value < 128L)
+                byte byte6 = (byte) (value >> 8);
+                byte byte5 = (byte) (value >> 16);
+                byte byte4 = (byte) (value >> 24);
+                byte byte3 = (byte) (value >> 32);
+                byte byte2 = (byte) (value >> 40);
+                byte byte1 = (byte) (value >> 48);
+                byte byte0 = (byte) (value >> 56);
+
+                if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
                 {
+                    if (value < 256L * 256L * 256L * 256L * 256L * 256L)
+                    {
+                        if (value < 256L * 256L * 256L * 256L * 256L)
+                        {
+                            if (value < 256L * 256L * 256L * 256L)
+                            {
+                                if (value < 256 * 256 * 256)
+                                {
+                                    if (value < 256 * 256)
+                                    {
+                                        if (value < 128)
+                                        {
+                                            WriteByte((byte) value);
+                                            return;
+                                        }
+
+                                        if (value < 256)
+                                        {
+                                            WriteByte(129);
+                                            WriteByte((byte) value);
+                                            return;
+                                        }
+
+                                        WriteByte(130);
+                                        WriteByte(byte6);
+                                        WriteByte((byte) value);
+                                        return;
+                                    }
+                                    
+                                    WriteByte(131);
+                                    WriteByte(byte5);
+                                    WriteByte(byte6);
+                                    WriteByte((byte) value);
+                                    return;
+                                }
+
+                                WriteByte(132);
+                                WriteByte(byte4);
+                                WriteByte(byte5);
+                                WriteByte(byte6);
+                                WriteByte((byte) value);
+                                return;
+                            }
+
+                            WriteByte(133);
+                            WriteByte(byte3);
+                            WriteByte(byte4);
+                            WriteByte(byte5);
+                            WriteByte(byte6);
+                            WriteByte((byte) value);
+                            return;
+                        }
+
+                        WriteByte(134);
+                        WriteByte(byte2);
+                        WriteByte(byte3);
+                        WriteByte(byte4);
+                        WriteByte(byte5);
+                        WriteByte(byte6);
+                        WriteByte((byte) value);
+                        return;
+                    }
+
+                    WriteByte(135);
+                    WriteByte(byte1);
+                    WriteByte(byte2);
+                    WriteByte(byte3);
+                    WriteByte(byte4);
+                    WriteByte(byte5);
+                    WriteByte(byte6);
                     WriteByte((byte) value);
+                    return;
                 }
-                else if (value <= byte.MaxValue)
-                {
-                    WriteByte(129);
-                    WriteByte((byte) value);
-                }
-                else
-                {
-                    Encode((UInt256) value);
-                }
+
+                WriteByte(136);
+                WriteByte(byte0);
+                WriteByte(byte1);
+                WriteByte(byte2);
+                WriteByte(byte3);
+                WriteByte(byte4);
+                WriteByte(byte5);
+                WriteByte(byte6);
+                WriteByte((byte) value);
+                return;
             }
+
+            Encode(new BigInteger(value), 8);
         }
-        
+
         public void Encode(ulong value)
         {
             Encode(value, 8);
         }
-        
+
         public void Encode(UInt256 value, int length = -1)
         {
             if (value.IsZero && length == -1)
@@ -263,7 +354,7 @@ namespace Nethermind.Core.Encoding
                 Encode(System.Text.Encoding.ASCII.GetBytes(value));
             }
         }
-        
+
         public void Encode(Span<byte> input)
         {
             if (input == null || input.Length == 0)
@@ -289,7 +380,7 @@ namespace Nethermind.Core.Encoding
                 Write(input);
             }
         }
-        
+
         public int ReadNumberOfItemsRemaining(int? beforePosition = null)
         {
             int positionStored = Position;
@@ -821,7 +912,14 @@ namespace Nethermind.Core.Encoding
         {
             WriteByte(EmptySequenceByte);
         }
+        
+        public void EncodeEmptyArray()
+        {
+            WriteByte(EmptyArrayByte);
+        }
 
+        private const byte EmptyArrayByte = 128;
+        
         private const byte EmptySequenceByte = 192;
     }
 }

@@ -34,18 +34,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public BlockBodiesMessage Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
+            RlpStream rlpStream = bytes.AsRlpStream();
             BlockBodiesMessage message = new BlockBodiesMessage();
-            message.Bodies = decoderContext.DecodeArray(ctx =>
+            message.Bodies = rlpStream.DecodeArray(ctx =>
             {
-                int sequenceLength = decoderContext.ReadSequenceLength();
+                int sequenceLength = rlpStream.ReadSequenceLength();
                 if (sequenceLength == 0)
                 {
                     return null;
                 }
                 
-                Transaction[] transactions = decoderContext.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
-                BlockHeader[] ommers = decoderContext.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
+                Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
+                BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
                 return new BlockBody(transactions, ommers);
             });
 

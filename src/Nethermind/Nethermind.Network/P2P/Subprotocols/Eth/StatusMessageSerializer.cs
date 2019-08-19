@@ -37,13 +37,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public StatusMessage Deserialize(byte[] bytes)
         {
             StatusMessage statusMessage = new StatusMessage();
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            context.ReadSequenceLength();
-            statusMessage.ProtocolVersion = context.DecodeByte();
-            statusMessage.ChainId = context.DecodeUInt256();
-            statusMessage.TotalDifficulty = context.DecodeUInt256();
-            statusMessage.BestHash = context.DecodeKeccak();
-            statusMessage.GenesisHash = context.DecodeKeccak();
+            RlpStream rlpStream = bytes.AsRlpStream();
+            rlpStream.ReadSequenceLength();
+            statusMessage.ProtocolVersion = rlpStream.DecodeByte();
+            statusMessage.ChainId = rlpStream.DecodeUInt256();
+            statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
+            statusMessage.BestHash = rlpStream.DecodeKeccak();
+            statusMessage.GenesisHash = rlpStream.DecodeKeccak();
             return statusMessage;
         }
     }

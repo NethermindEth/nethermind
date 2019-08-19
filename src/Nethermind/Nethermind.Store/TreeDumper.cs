@@ -36,7 +36,7 @@ namespace Nethermind.Store
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, VisitContext context)
+        public void VisitTree(Keccak rootHash, VisitContext visitContext)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
@@ -44,7 +44,7 @@ namespace Nethermind.Store
             }
             else
             {
-                _builder.AppendLine(context.IsStorage ? "STORAGE TREE" : "STATE TREE");
+                _builder.AppendLine(visitContext.IsStorage ? "STORAGE TREE" : "STATE TREE");
             }
         }
         
@@ -53,30 +53,30 @@ namespace Nethermind.Store
         private string GetIndent(int level) => new string('+', level * 2);
         private string GetChildIndex(VisitContext context) => context.BranchChildIndex == null ? string.Empty : $"{context.BranchChildIndex:00} ";
         
-        public void VisitMissingNode(Keccak nodeHash, VisitContext context)
+        public void VisitMissingNode(Keccak nodeHash, VisitContext visitContext)
         {
-            _builder.AppendLine($"{GetIndent(context.Level) }{GetChildIndex(context)}MISSING {nodeHash}");
+            _builder.AppendLine($"{GetIndent(visitContext.Level) }{GetChildIndex(visitContext)}MISSING {nodeHash}");
         }
 
-        public void VisitBranch(TrieNode node, VisitContext context)
+        public void VisitBranch(TrieNode node, VisitContext visitContext)
         {
-            _builder.AppendLine($"{GetPrefix(context)}BRANCH {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(visitContext)}BRANCH {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
-        public void VisitExtension(TrieNode node, VisitContext context)
+        public void VisitExtension(TrieNode node, VisitContext visitContext)
         {
-            _builder.AppendLine($"{GetPrefix(context)}EXTENSION {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            _builder.AppendLine($"{GetPrefix(visitContext)}EXTENSION {(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
-        public void VisitLeaf(TrieNode node, VisitContext context)
+        public void VisitLeaf(TrieNode node, VisitContext visitContext)
         {
-            string leafDescription = context.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(context)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
+            string leafDescription = visitContext.IsStorage ? "LEAF " : "ACCOUNT ";
+            _builder.AppendLine($"{GetPrefix(visitContext)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
         }
 
-        public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
+        public void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext)
         {
-            _builder.AppendLine($"{GetPrefix(context)}CODE {codeHash} LENGTH {code.Length}");
+            _builder.AppendLine($"{GetPrefix(visitContext)}CODE {codeHash} LENGTH {code.Length}");
         }
 
         public override string ToString()
