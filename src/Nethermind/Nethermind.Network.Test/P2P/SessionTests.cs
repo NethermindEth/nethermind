@@ -528,5 +528,20 @@ namespace Nethermind.Network.Test.P2P
 
             session.ReceiveMessage(new Packet("---", 100, Bytes.Empty));
         }
+        
+        [Test]
+        public void Updates_local_and_remote_metrics_on_disconnects()
+        {
+            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            IProtocolHandler p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
+
+            session.InitiateDisconnect(DisconnectReason.Other);
+
+            session.DeliverMessage(new Packet("p2p", 3, Bytes.Empty));
+            _packetSender.DidNotReceive().Enqueue(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+        }
     }
 }

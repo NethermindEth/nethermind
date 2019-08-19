@@ -17,9 +17,12 @@
  */
 
 
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -52,31 +55,34 @@ namespace Nethermind.Network.Test
         {
             ISession session = CreateSession();
 
-            SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
+            TestRandom testRandom = new TestRandom((i) => 1);
+            SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), testRandom, LimboLogs.Instance);
             sessionMonitor.AddSession(session);
             session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
         
-        [Test]
-        public void Will_keep_pinging()
+        [TestCase(0)]
+        [TestCase(1)]
+        public void Will_keep_pinging(int randomResult)
         {
             ISession session1 = CreateSession();
             ISession session2 = CreateUnresponsiveSession();
 
             NetworkConfig networkConfig = new NetworkConfig();
             networkConfig.P2PPingInterval = 50;
-            SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, LimboLogs.Instance);
+            TestRandom testRandom = new TestRandom((i) => randomResult);
+            SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, testRandom, LimboLogs.Instance);
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
             sessionMonitor.Start();
-            Thread.Sleep(200);
+            Thread.Sleep(300);
             sessionMonitor.Stop();
 
             _pingSender.Received().SendPing();
             _noPong.Received().SendPing();
             
             Assert.AreEqual(SessionState.Initialized, session1.State);
-            Assert.AreEqual(SessionState.Disconnected, session2.State);
+            Assert.AreEqual(randomResult == 0? SessionState.Disconnected : SessionState.Initialized, session2.State);
         }
 
         private ISession CreateSession()

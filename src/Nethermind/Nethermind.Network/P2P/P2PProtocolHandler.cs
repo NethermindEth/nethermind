@@ -298,50 +298,7 @@ namespace Nethermind.Network.P2P
             {
                 if (Logger.IsTrace) Logger.Trace($"{Session} P2P received disconnect [{disconnectReason}]");
             }
-                
-            switch (disconnectReason)
-            {
-                case DisconnectReason.BreachOfProtocol:
-                    Metrics.BreachOfProtocolDisconnects++;
-                    break;
-                case DisconnectReason.UselessPeer:
-                    Metrics.UselessPeerDisconnects++;
-                    break;
-                case DisconnectReason.TooManyPeers:
-                    Metrics.TooManyPeersDisconnects++;
-                    break;
-                case DisconnectReason.AlreadyConnected:
-                    Metrics.AlreadyConnectedDisconnects++;
-                    break;
-                case DisconnectReason.IncompatibleP2PVersion:
-                    Metrics.IncompatibleP2PDisconnects++;
-                    break;
-                case DisconnectReason.NullNodeIdentityReceived:
-                    Metrics.NullNodeIdentityDisconnects++;
-                    break;
-                case DisconnectReason.ClientQuitting:
-                    Metrics.ClientQuittingDisconnects++;
-                    break;
-                case DisconnectReason.UnexpectedIdentity:
-                    Metrics.UnexpectedIdentityDisconnects++;
-                    break;
-                case DisconnectReason.ReceiveMessageTimeout:
-                    Metrics.ReceiveMessageTimeoutDisconnects++;
-                    break;
-                case DisconnectReason.DisconnectRequested:
-                    Metrics.DisconnectRequestedDisconnects++;
-                    break;
-                case DisconnectReason.IdentitySameAsSelf:
-                    Metrics.SameAsSelfDisconnects++;
-                    break;
-                case DisconnectReason.TcpSubSystemError:
-                    Metrics.TcpSubsystemErrorDisconnects++;
-                    break;
-                default:
-                    Metrics.OtherDisconnects++;
-                    break;
-            }
-            
+
             // Received disconnect message, triggering direct TCP disconnection
             Session.Disconnect(disconnectReason, DisconnectType.Remote, "message");
         }
