@@ -20,7 +20,7 @@ namespace Nethermind.AuRa.Contracts
         private static readonly IEqualityComparer<LogEntry> LogEntryEqualityComparer = new LogEntryAddressAndTopicEqualityComparer();
 
         [SuppressMessage("ReSharper", "InconsistentNaming")]
-        private static class Definition
+        public static class Definition
         {
             /// <summary>
             /// Called when an initiated change reaches finality and is activated.
@@ -46,8 +46,8 @@ namespace Nethermind.AuRa.Contracts
             /// signal will not be recognized.
             /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
             /// </summary>
-            private const string initializeChangeEventSignature = "InitiateChange(bytes32,address[])";
-            public static Keccak initializeChangeEventHash = Keccak.Compute(initializeChangeEventSignature);
+            private const string initiateChangeEventSignature = "InitiateChange(bytes32,address[])";
+            public static Keccak initiateChangeEventHash = Keccak.Compute(initiateChangeEventSignature);
 
             /// <summary>
             /// Get current validator set (last enacted or initial if no changes ever made)
@@ -83,7 +83,7 @@ namespace Nethermind.AuRa.Contracts
         {
             var logEntry = new LogEntry(contractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.initializeChangeEventHash, block.ParentHash});
+                new[] {Definition.initiateChangeEventHash, block.ParentHash});
 
             if (block.Bloom.IsMatch(logEntry))
             {
