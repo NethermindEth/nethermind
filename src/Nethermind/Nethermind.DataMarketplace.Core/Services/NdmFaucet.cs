@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public class NdmFaucet : INdmFaucet
     {
-        private static readonly object Locker = new object();
+        private readonly object _locker = new object();
         private DateTime _today;
         private UInt256 _todayRequestsTotalValueWei = 0;
         private readonly ConcurrentDictionary<string, bool> _pendingRequests = new ConcurrentDictionary<string, bool>();
@@ -97,7 +97,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             
             if (_today.Date != _timestamper.UtcNow.Date)
             {
-                lock (Locker)
+                lock (_locker)
                 {
                     _today = _timestamper.UtcNow;
                     _todayRequestsTotalValueWei = 0;
@@ -157,7 +157,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return FaucetResponse.RequestError;
             }
             
-            lock (Locker)
+            lock (_locker)
             {
                 _todayRequestsTotalValueWei += value;
                 if (_logger.IsInfo) _logger.Info($"Increased NDM Faucet total value of today's ({_today.Date:d}) requests to {_todayRequestsTotalValueWei} wei.");
@@ -202,7 +202,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error(ex.Message, ex);
-                lock (Locker)
+                lock (_locker)
                 {
                     _todayRequestsTotalValueWei -= value;
                     if (_logger.IsInfo) _logger.Info($"Decreased NDM Faucet total value of today's ({_today.Date:d}) requests to {_todayRequestsTotalValueWei} wei.");

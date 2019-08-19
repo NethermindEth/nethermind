@@ -28,8 +28,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
+using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Infrastructure;
@@ -78,7 +79,7 @@ namespace Nethermind.DataMarketplace.Initializers
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
             IBlockProcessor blockProcessor)
         {
-            var (config, services, faucet, consumerService, consumerAddress, providerAddress) =
+            var (config, services, faucet, accountService, consumerService, consumerAddress, providerAddress) =
                 await PreInitAsync(configProvider, dbProvider, baseDbPath, blockTree, txPool, specProvider,
                     receiptStorage, wallet, filterStore, filterManager, timestamper, ecdsa, rpcModuleProvider, keyStore,
                     jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer,
@@ -89,17 +90,17 @@ namespace Nethermind.DataMarketplace.Initializers
             }
 
             var subprotocolFactory = new NdmSubprotocolFactory(messageSerializationService, nodeStatsManager,
-                logManager, consumerService, consumerChannelManager, ecdsa, wallet, faucet, enode.PublicKey,
-                providerAddress, consumerAddress, config.VerifyP2PSignature);
+                logManager, accountService, consumerService, consumerChannelManager, ecdsa, wallet, faucet,
+                enode.PublicKey, providerAddress, consumerAddress, config.VerifyP2PSignature);
             var protocolHandlerFactory = new ProtocolHandlerFactory(subprotocolFactory, protocolValidator,
                 services.RequiredServices.EthRequestService, logManager);
             var capabilityConnector = new NdmCapabilityConnector(protocolsManager, protocolHandlerFactory,
-                consumerService, logManager);
+                accountService, logManager);
 
             return capabilityConnector;
         }
 
-        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet,
+        protected async Task<(NdmConfig config, INdmServices services, INdmFaucet faucet, IAccountService accountService,
                 IConsumerService consumerService, Address consumerAddress, Address providerAddress)>
             PreInitAsync(IConfigProvider configProvider, IDbProvider dbProvider, string baseDbPath,
                 IBlockTree blockTree, ITxPool txPool, ISpecProvider specProvider,
@@ -178,7 +179,8 @@ namespace Nethermind.DataMarketplace.Initializers
                 : new Address(ndmConfig.ProviderAddress);
             var consumers = _ndmConsumersModule.Init(services);
 
-            return (ndmConfig, services, faucet, consumers.ConsumerService, consumerAddress, providerAddress);
+            return (ndmConfig, services, faucet, consumers.AccountService, consumers.ConsumerService, consumerAddress,
+                providerAddress);
         }
     }
 }

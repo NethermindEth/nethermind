@@ -17,13 +17,25 @@
  */
 
 using Nethermind.Core;
+using Nethermind.DataMarketplace.Consumers.DataAssets.Services;
+using Nethermind.DataMarketplace.Consumers.DataRequests.Factories;
+using Nethermind.DataMarketplace.Consumers.DataRequests.Services;
+using Nethermind.DataMarketplace.Consumers.DataStreams.Services;
+using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
+using Nethermind.DataMarketplace.Consumers.Deposits.Services;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc;
-using Nethermind.DataMarketplace.Consumers.Repositories;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
+using Nethermind.DataMarketplace.Consumers.Receipts.Services;
+using Nethermind.DataMarketplace.Consumers.Refunds.Services;
+using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
+using Nethermind.DataMarketplace.Consumers.Sessions.Services;
+using Nethermind.DataMarketplace.Consumers.Shared;
+using Nethermind.DataMarketplace.Consumers.Shared.Repositories;
+using Nethermind.DataMarketplace.Consumers.Shared.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositories;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositories;
@@ -54,13 +66,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var receiptRlpDecoder = new DataDeliveryReceiptDetailsDecoder();
             var sessionRlpDecoder = new ConsumerSessionDecoder();
             var receiptRequestValidator = new ReceiptRequestValidator(logManager);
-            var refundService = new RefundService(services.CreatedServices.BlockchainBridge,
-                services.RequiredServices.TransactionPool, services.CreatedServices.AbiEncoder,
-                services.RequiredServices.Wallet, contractAddress, logManager);
-            var dataRequestFactory = new DataRequestFactory(services.RequiredServices.Wallet,
-                services.RequiredServices.Enode.PublicKey);
-            var transactionVerifier = new TransactionVerifier(services.CreatedServices.BlockchainBridge,
-                ndmConfig.BlockConfirmations);
 
             IDepositDetailsRepository depositRepository;
             IConsumerDepositApprovalRepository depositApprovalRepository;
@@ -92,32 +97,76 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     break;
             }
 
-            var refundClaimant = new RefundClaimant(refundService, services.CreatedServices.BlockchainBridge,
-                depositRepository, transactionVerifier, logManager);
-            var depositService = new DepositService(services.CreatedServices.BlockchainBridge,
-                services.RequiredServices.TransactionPool, services.CreatedServices.AbiEncoder,
-                services.RequiredServices.Wallet, contractAddress, logManager);
-            var consumerNotifier = new ConsumerNotifier(services.RequiredServices.Notifier);
-            var consumerService = new ConsumerService(services.RequiredServices.ConfigManager, ndmConfig.Id,
-                dataRequestFactory, depositRepository, depositApprovalRepository, providerRepository, receiptRepository,
-                sessionRepository, services.RequiredServices.Wallet, services.CreatedServices.AbiEncoder,
-                services.RequiredServices.Ecdsa, services.RequiredServices.CryptoRandom, depositService,
-                receiptRequestValidator, refundClaimant, services.CreatedServices.BlockchainBridge,
-                services.RequiredServices.BlockProcessor, services.CreatedServices.ConsumerAddress,
-                services.RequiredServices.Enode.PublicKey, services.RequiredServices.Timestamper, consumerNotifier,
-                ndmConfig.BlockConfirmations, logManager);
-            var reportService = new ReportService(depositRepository, receiptRepository, sessionRepository,
-                services.RequiredServices.Timestamper);
+            var requiredBlockConfirmations = ndmConfig.BlockConfirmations;
+            var abiEncoder = services.CreatedServices.AbiEncoder;
+            var blockchainBridge = services.CreatedServices.BlockchainBridge;
+            var blockProcessor = services.RequiredServices.BlockProcessor;
+            var configManager = services.RequiredServices.ConfigManager;
+            var consumerAddress = services.CreatedServices.ConsumerAddress;
+            var cryptoRandom = services.RequiredServices.CryptoRandom;
+            var ecdsa = services.RequiredServices.Ecdsa;
+            var ethRequestService = services.RequiredServices.EthRequestService;
+            var jsonRpcNdmConsumerChannel = services.CreatedServices.JsonRpcNdmConsumerChannel;
+            var ndmNotifier = services.RequiredServices.Notifier;
+            var nodePublicKey = services.RequiredServices.Enode.PublicKey;
+            var timestamper = services.RequiredServices.Timestamper;
+            var txPool = services.RequiredServices.TransactionPool;
+            var wallet = services.RequiredServices.Wallet;
+
+            var dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
+            var transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
+            var depositProvider = new DepositProvider(depositRepository, sessionRepository, logManager);
+            var kycVerifier = new KycVerifier(depositApprovalRepository, logManager);
+            var consumerNotifier = new ConsumerNotifier(ndmNotifier);
+
+            var dataAssetService = new DataAssetService(providerRepository, consumerNotifier, logManager);
+            var providerService = new ProviderService(providerRepository, consumerNotifier, logManager);
+            var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider,
+                kycVerifier, wallet, providerService, sessionRepository, consumerNotifier, logManager);
+            var depositService = new DepositService(blockchainBridge, txPool, abiEncoder, wallet, contractAddress,
+                logManager);
+            var sessionService = new SessionService(providerService, depositProvider, dataAssetService,
+                sessionRepository, timestamper, consumerNotifier, logManager);
+            var dataConsumerService = new DataConsumerService(depositProvider, sessionService,
+                consumerNotifier, timestamper, sessionRepository, logManager);
+            var dataStreamService = new DataStreamService(dataAssetService, depositProvider,
+                providerService, sessionService, wallet, consumerNotifier, sessionRepository, logManager);
+            var depositApprovalService = new DepositApprovalService(dataAssetService, providerService,
+                depositApprovalRepository, timestamper, consumerNotifier, logManager);
+            var depositConfirmationService = new DepositConfirmationService(blockchainBridge, consumerNotifier,
+                depositRepository, depositService, logManager, requiredBlockConfirmations);
+            var depositManager = new DepositManager(depositService, dataAssetService, kycVerifier,
+                providerService, abiEncoder, cryptoRandom, wallet, depositRepository, sessionRepository,
+                timestamper, logManager, requiredBlockConfirmations);
+            var depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
+                timestamper);
+            var receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
+                sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
+                nodePublicKey, logManager);
+            var refundService = new RefundService(blockchainBridge, txPool, abiEncoder, wallet, depositRepository,
+                contractAddress, logManager);
+            var refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
+                transactionVerifier, logManager);
+            var accountService = new AccountService(configManager, dataStreamService, providerService,
+                sessionService, consumerNotifier, wallet, ndmConfig.Id, consumerAddress, logManager);
+            var consumerService = new ConsumerService(accountService, dataAssetService, dataRequestService,
+                dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
+                receiptService, refundService, sessionService);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
-                ? new PersonalBridge(services.RequiredServices.Ecdsa, services.RequiredServices.Wallet)
+                ? new PersonalBridge(ecdsa, wallet)
                 : null;
             services.RequiredServices.RpcModuleProvider.Register(
-                new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService, reportService,
-                    services.CreatedServices.JsonRpcNdmConsumerChannel, services.RequiredServices.EthRequestService,
-                    personalBridge)));
+                new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
+                    depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, personalBridge)));
 
-            return new NdmConsumerServices(consumerService);
+            var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
+                refundClaimant, depositConfirmationService, blockProcessor, depositRepository, consumerNotifier,
+                logManager);
+
+            consumerServicesBackgroundProcessor.Init();
+
+            return new NdmConsumerServices(accountService, consumerService);
         }
 
         private static void AddDecoders()
@@ -128,10 +177,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
         private class NdmConsumerServices : INdmConsumerServices
         {
+            public IAccountService AccountService { get; }
             public IConsumerService ConsumerService { get; }
 
-            public NdmConsumerServices(IConsumerService consumerService)
+            public NdmConsumerServices(IAccountService accountService, IConsumerService consumerService)
             {
+                AccountService = accountService;
                 ConsumerService = consumerService;
             }
         }

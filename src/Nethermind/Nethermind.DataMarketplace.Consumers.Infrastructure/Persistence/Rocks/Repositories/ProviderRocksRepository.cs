@@ -21,8 +21,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.DataMarketplace.Consumers.Domain;
-using Nethermind.DataMarketplace.Consumers.Repositories;
+using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.DataMarketplace.Consumers.Shared.Repositories;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories

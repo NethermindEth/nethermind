@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core;
-using Nethermind.DataMarketplace.Consumers.Domain;
+using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {

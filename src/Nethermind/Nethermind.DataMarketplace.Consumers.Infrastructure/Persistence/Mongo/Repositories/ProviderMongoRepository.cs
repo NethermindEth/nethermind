@@ -20,8 +20,8 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
-using Nethermind.DataMarketplace.Consumers.Domain;
-using Nethermind.DataMarketplace.Consumers.Repositories;
+using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.DataMarketplace.Consumers.Shared.Repositories;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.Repositories
 {

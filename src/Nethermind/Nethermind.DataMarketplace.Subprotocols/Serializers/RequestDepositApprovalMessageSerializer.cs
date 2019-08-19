@@ -26,7 +26,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     {
         public byte[] Serialize(RequestDepositApprovalMessage message)
             => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Kyc)).Bytes;
+                Nethermind.Core.Encoding.Rlp.Encode(message.Kyc),
+                Nethermind.Core.Encoding.Rlp.Encode(message.Consumer)).Bytes;
 
         public RequestDepositApprovalMessage Deserialize(byte[] bytes)
         {
@@ -34,8 +35,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
             context.ReadSequenceLength();
             var dataAssetId = context.DecodeKeccak();
             var kyc = context.DecodeString();
+            var consumer = context.DecodeAddress();
 
-            return new RequestDepositApprovalMessage(dataAssetId, kyc);
+            return new RequestDepositApprovalMessage(dataAssetId, kyc, consumer);
         }
     }
 }

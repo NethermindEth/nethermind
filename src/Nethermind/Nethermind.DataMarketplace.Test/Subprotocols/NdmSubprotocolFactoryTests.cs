@@ -21,7 +21,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Events;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Subprotocols;
@@ -41,6 +42,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
         private IMessageSerializationService _messageSerializationService;
         private INodeStatsManager _nodeStatsManager;
         private ILogManager _logManager;
+        private IAccountService _accountService;
         private IConsumerService _consumerService;
         private INdmConsumerChannelManager _ndmConsumerChannelManager;
         private IEcdsa _ecdsa;
@@ -58,6 +60,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
             _messageSerializationService = Substitute.For<IMessageSerializationService>();
             _nodeStatsManager = Substitute.For<INodeStatsManager>();
             _logManager = Substitute.For<ILogManager>();
+            _accountService = Substitute.For<IAccountService>();
             _consumerService = Substitute.For<IConsumerService>();
             _ndmConsumerChannelManager = Substitute.For<INdmConsumerChannelManager>();
             _ecdsa = Substitute.For<IEcdsa>();
@@ -68,7 +71,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
             _consumerAddress = TestItem.AddressB;
             _verifySignature = false;
             _factory = new NdmSubprotocolFactory(_messageSerializationService, _nodeStatsManager,
-                _logManager, _consumerService, _ndmConsumerChannelManager, _ecdsa, _wallet, _faucet,
+                _logManager, _accountService, _consumerService, _ndmConsumerChannelManager, _ecdsa, _wallet, _faucet,
                 _nodeId, _providerAddress, _consumerAddress, _verifySignature);
         }
 
@@ -78,7 +81,7 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
             var newConsumerAddress = TestItem.AddressC;
             var session = Substitute.For<ISession>();
             var eventArgs = new AddressChangedEventArgs(_consumerAddress, newConsumerAddress);
-            _consumerService.AddressChanged += Raise.EventWith(_consumerService, eventArgs);
+            _accountService.AddressChanged += Raise.EventWith(_consumerService, eventArgs);
             var subprotocol = _factory.Create(session);
             subprotocol.Should().NotBeNull();
         }

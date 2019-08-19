@@ -17,7 +17,7 @@
  */
 
 using System.Linq;
-using Nethermind.DataMarketplace.Consumers.Domain;
+using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
