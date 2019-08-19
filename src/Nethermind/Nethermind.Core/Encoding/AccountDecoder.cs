@@ -24,13 +24,13 @@ namespace Nethermind.Core.Encoding
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
-        public Account Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Account Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            context.ReadSequenceLength();
-            UInt256 nonce = context.DecodeUInt256();
-            UInt256 balance = context.DecodeUInt256();
-            Keccak storageRoot = context.DecodeKeccak();
-            Keccak codeHash = context.DecodeKeccak();
+            rlpStream.ReadSequenceLength();
+            UInt256 nonce = rlpStream.DecodeUInt256();
+            UInt256 balance = rlpStream.DecodeUInt256();
+            Keccak storageRoot = rlpStream.DecodeKeccak();
+            Keccak codeHash = rlpStream.DecodeKeccak();
             Account account = new Account(nonce, balance, storageRoot, codeHash);
             return account;
         }

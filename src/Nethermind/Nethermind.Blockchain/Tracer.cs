@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain
                 byte[] traceBytes = _traceDb.Get(block.Hash);
                 if (traceBytes != null)
                 {
-                    result.AddRange(Rlp.DecodeArray<ParityLikeTxTrace>(new Rlp.DecoderContext(traceBytes), RlpBehaviors.None));
+                    result.AddRange(Rlp.DecodeArray<ParityLikeTxTrace>(new RlpStream(traceBytes), RlpBehaviors.None));
                 }
             }
 

@@ -40,19 +40,19 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
         }
 
-        public DataDeliveryReceipt Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataDeliveryReceipt Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var statusCode = (StatusCodes) context.DecodeInt();
-            var consumedUnits = context.DecodeUInt();
-            var unpaidUnits = context.DecodeUInt();
-            var signature = SignatureDecoder.DecodeSignature(context);
+            var statusCode = (StatusCodes) rlpStream.DecodeInt();
+            var consumedUnits = rlpStream.DecodeUInt();
+            var unpaidUnits = rlpStream.DecodeUInt();
+            var signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataDeliveryReceipt(statusCode, consumedUnits, unpaidUnits, signature);
         }

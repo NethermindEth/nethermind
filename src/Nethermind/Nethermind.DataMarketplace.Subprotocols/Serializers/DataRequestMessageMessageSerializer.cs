@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataRequestMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var dataRequest = Nethermind.Core.Encoding.Rlp.Decode<DataRequest>(context);
             var consumedUnits = context.DecodeUInt();

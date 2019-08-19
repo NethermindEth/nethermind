@@ -27,20 +27,20 @@ namespace Nethermind.Clique
 {
     internal class SnapshotDecoder : IRlpDecoder<Snapshot>
     {
-        public Snapshot Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Snapshot Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
                        
             // Block number
-            long number = (long)context.DecodeUInt256();
+            long number = (long)rlpStream.DecodeUInt256();
             // Hash
-            Keccak hash = context.DecodeKeccak();
+            Keccak hash = rlpStream.DecodeKeccak();
             // Signers
-            SortedList<Address, long> signers = DecodeSigners(context);
+            SortedList<Address, long> signers = DecodeSigners(rlpStream);
             // Votes
-            List<Vote> votes = DecodeVotes(context);
+            List<Vote> votes = DecodeVotes(rlpStream);
             // Tally
-            Dictionary<Address, Tally> tally = DecodeTally(context);
+            Dictionary<Address, Tally> tally = DecodeTally(rlpStream);
             Snapshot snapshot = new Snapshot(number, hash, signers, tally);
             snapshot.Votes = votes;
 
@@ -68,48 +68,48 @@ namespace Nethermind.Clique
             throw new System.NotImplementedException();
         }
 
-        private SortedList<Address, long> DecodeSigners(Rlp.DecoderContext context)
+        private SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
             SortedList<Address, long> signers = new SortedList<Address, long>(AddressComparer.Instance);
-            int length = context.DecodeInt();
+            int length = rlpStream.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                Address signer = context.DecodeAddress();
-                long signedAt = (long)context.DecodeUInt256();
+                Address signer = rlpStream.DecodeAddress();
+                long signedAt = (long)rlpStream.DecodeUInt256();
                 signers.Add(signer, signedAt);
             }
             
             return signers;
         }
 
-        private List<Vote> DecodeVotes(Rlp.DecoderContext context)
+        private List<Vote> DecodeVotes(RlpStream rlpStream)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
             List<Vote> votes = new List<Vote>();
-            int length = context.DecodeInt();
+            int length = rlpStream.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                Address signer = context.DecodeAddress();
-                long block = (long)context.DecodeUInt256();
-                Address address = context.DecodeAddress();
-                bool authorize = context.DecodeBool();
+                Address signer = rlpStream.DecodeAddress();
+                long block = (long)rlpStream.DecodeUInt256();
+                Address address = rlpStream.DecodeAddress();
+                bool authorize = rlpStream.DecodeBool();
                 Vote vote = new Vote(signer, block, address, authorize);
                 votes.Add(vote);
             }
             return votes;
         }
 
-        private Dictionary<Address, Tally> DecodeTally(Rlp.DecoderContext context)
+        private Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
-            int length = context.DecodeInt();
+            int length = rlpStream.DecodeInt();
             for (int i = 0; i < length; i++)
             {
-                Address address = context.DecodeAddress();
-                int votes = context.DecodeInt();
-                bool authorize = context.DecodeBool();
+                Address address = rlpStream.DecodeAddress();
+                int votes = rlpStream.DecodeInt();
+                bool authorize = rlpStream.DecodeBool();
                 Tally tallyItem = new Tally(authorize);
                 tallyItem.Votes = votes;
                 tally[address] = tallyItem;

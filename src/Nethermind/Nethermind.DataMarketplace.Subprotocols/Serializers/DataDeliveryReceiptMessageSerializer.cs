@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataDeliveryReceiptMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
             var receipt = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceipt>(context);

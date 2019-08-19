@@ -29,7 +29,7 @@ namespace Nethermind.Benchmarks.Rlp
     [CoreJob(baseline: true)]
     public class RlpDecodeKeccak
     {
-        private Nethermind.Core.Encoding.Rlp.DecoderContext[] _scenariosContext;
+        private Nethermind.Core.Encoding.RlpStream[] _scenariosContext;
         private byte[][] _scenarios;
 
         [GlobalSetup]
@@ -49,7 +49,7 @@ namespace Nethermind.Benchmarks.Rlp
         [IterationSetup]
         public void Setup()
         {
-            _scenariosContext = _scenarios.Select(s => new Nethermind.Core.Encoding.Rlp.DecoderContext(s)).ToArray();
+            _scenariosContext = _scenarios.Select(s => new Nethermind.Core.Encoding.RlpStream(s)).ToArray();
         }
 
         [Params(0, 1, 2, 3)]

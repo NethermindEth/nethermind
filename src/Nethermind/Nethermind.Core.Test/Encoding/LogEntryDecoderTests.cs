@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test.Encoding
             LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             LogEntryDecoder decoder = new LogEntryDecoder();
             Rlp rlp = decoder.Encode(logEntry);
-            LogEntry deserialized = decoder.Decode(rlp.Bytes.AsRlpContext());
+            LogEntry deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
 
             Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
             Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
@@ -54,7 +54,7 @@ namespace Nethermind.Core.Test.Encoding
             LogEntryDecoder decoder = new LogEntryDecoder();
 
             Rlp encoded = decoder.Encode(logEntry);
-            LogEntry deserialized = decoder.Decode(new Rlp.DecoderContext(encoded.Bytes));
+            LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes));
 
             Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
             Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");

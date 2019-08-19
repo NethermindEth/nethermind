@@ -63,7 +63,7 @@ namespace Nethermind.Core.Test.Encoding
         {
             BlockDecoder decoder = new BlockDecoder();
 
-            Block decoded = decoder.Decode(new Rlp.DecoderContext(Bytes.FromHexString(regression5644)));
+            Block decoded = decoder.Decode(new RlpStream(Bytes.FromHexString(regression5644)));
             Rlp encoded = decoder.Encode(decoded);
             Assert.AreEqual(encoded.Bytes.ToHexString(), encoded.Bytes.ToHexString());
         }
@@ -75,7 +75,7 @@ namespace Nethermind.Core.Test.Encoding
             foreach (Block block in _scenarios)
             {
                 Rlp encoded = decoder.Encode(block);
-                Block decoded = decoder.Decode(new Rlp.DecoderContext(encoded.Bytes));
+                Block decoded = decoder.Decode(new RlpStream(encoded.Bytes));
                 Rlp encoded2 = decoder.Encode(decoded);
                 Assert.AreEqual(encoded.Bytes.ToHexString(), encoded2.Bytes.ToHexString());
             }

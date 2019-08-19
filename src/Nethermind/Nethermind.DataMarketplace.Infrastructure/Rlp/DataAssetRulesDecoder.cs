@@ -38,17 +38,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAssetRules)] = new DataAssetRulesDecoder();
         }
 
-        public DataAssetRules Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataAssetRules Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var expiry = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRule>(context);
-            var upfrontPayment = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRule>(context);
+            var expiry = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRule>(rlpStream);
+            var upfrontPayment = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRule>(rlpStream);
 
             return new DataAssetRules(expiry, upfrontPayment);
         }

@@ -34,7 +34,7 @@ namespace Nethermind.Store
         
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
         private static AccountDecoder _accountDecoder = new AccountDecoder();
-        private Rlp.DecoderContext _decoderContext;
+        private RlpStream _rlpStream;
         private object[] _data;
         private bool _isDirty;
 
@@ -55,7 +55,7 @@ namespace Nethermind.Store
         {
             NodeType = nodeType;
             FullRlp = rlp;
-            _decoderContext = rlp.Bytes.AsRlpContext();
+            _rlpStream = rlp.Bytes.AsRlpStream();
         }
 
         public bool IsValidWithOneNodeLess
@@ -137,14 +137,14 @@ namespace Nethermind.Store
 
                 if (_data[16] == null)
                 {
-                    if (_decoderContext == null)
+                    if (_rlpStream == null)
                     {
                         _data[16] = new byte[0];
                     }
                     else
                     {
                         SeekChild(16);
-                        _data[16] = _decoderContext.DecodeByteArray();
+                        _data[16] = _rlpStream.DecodeByteArray();
                     }
                 }
 
@@ -173,7 +173,7 @@ namespace Nethermind.Store
                     if (FullRlp == null)
                     {
                         FullRlp = tree.GetNode(Keccak, allowCaching);
-                        _decoderContext = FullRlp.Bytes.AsRlpContext();
+                        _rlpStream = FullRlp.Bytes.AsRlpStream();
                     }
                 }
                 else
@@ -182,8 +182,8 @@ namespace Nethermind.Store
                 }
 
                 Metrics.TreeNodeRlpDecodings++;
-                _decoderContext.ReadSequenceLength();
-                int numberOfItems = _decoderContext.ReadNumberOfItemsRemaining();
+                _rlpStream.ReadSequenceLength();
+                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining();
 
                 if (numberOfItems == 17)
                 {
@@ -191,7 +191,7 @@ namespace Nethermind.Store
                 }
                 else if (numberOfItems == 2)
                 {
-                    HexPrefix key = HexPrefix.FromBytes(_decoderContext.DecodeByteArray());
+                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArray());
                     bool isExtension = key.IsExtension;
                     if (isExtension)
                     {
@@ -202,7 +202,7 @@ namespace Nethermind.Store
                     {
                         NodeType = NodeType.Leaf;
                         Key = key;
-                        Value = _decoderContext.DecodeByteArray();
+                        Value = _rlpStream.DecodeByteArray();
                     }
                 }
                 else
@@ -231,7 +231,7 @@ namespace Nethermind.Store
             if (FullRlp == null || IsDirty)
             {
                 FullRlp = RlpEncode();
-                _decoderContext = FullRlp.Bytes.AsRlpContext();
+                _rlpStream = FullRlp.Bytes.AsRlpStream();
             }
 
             /* nodes that are descendants of other nodes are stored inline
@@ -272,28 +272,28 @@ namespace Nethermind.Store
 
         private void SeekChild(int itemToSetOn)
         {
-            if (_decoderContext == null)
+            if (_rlpStream == null)
             {
                 return;
             }
 
-            _decoderContext.Reset();
-            _decoderContext.SkipLength();
+            _rlpStream.Reset();
+            _rlpStream.SkipLength();
             if (IsExtension)
             {
-                _decoderContext.SkipItem();
+                _rlpStream.SkipItem();
                 itemToSetOn--;
             }
 
             for (int i = 0; i < itemToSetOn; i++)
             {
-                _decoderContext.SkipItem();
+                _rlpStream.SkipItem();
             }
         }
 
         private void ResolveChild(int i)
         {
-            if (_decoderContext == null)
+            if (_rlpStream == null)
             {
                 return;
             }
@@ -302,7 +302,7 @@ namespace Nethermind.Store
             if (_data[i] == null)
             {
                 SeekChild(i);
-                int prefix = _decoderContext.ReadByte();
+                int prefix = _rlpStream.ReadByte();
                 if (prefix == 0)
                 {
                     _data[i] = NullNode;
@@ -313,13 +313,13 @@ namespace Nethermind.Store
                 }
                 else if (prefix == 160)
                 {
-                    _decoderContext.Position--;
-                    _data[i] = new TrieNode(NodeType.Unknown, _decoderContext.DecodeKeccak());
+                    _rlpStream.Position--;
+                    _data[i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
                 }
                 else
                 {
-                    _decoderContext.Position--;
-                    Span<byte> fullRlp = _decoderContext.PeekNextItem();
+                    _rlpStream.Position--;
+                    Span<byte> fullRlp = _rlpStream.PeekNextItem();
                     TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
                     _data[i] = child;
                 }
@@ -328,14 +328,14 @@ namespace Nethermind.Store
 
         public Keccak GetChildHash(int i)
         {
-            if (_decoderContext == null)
+            if (_rlpStream == null)
             {
                 return null;
             }
 
             SeekChild(i);
-            (int _, int length) = _decoderContext.PeekPrefixAndContentLength();
-            return length == 32 ? _decoderContext.DecodeKeccak() : null;
+            (int _, int length) = _rlpStream.PeekPrefixAndContentLength();
+            return length == 32 ? _rlpStream.DecodeKeccak() : null;
         }
 
         public bool IsChildNull(int i)
@@ -345,10 +345,10 @@ namespace Nethermind.Store
                 throw new InvalidOperationException("only on branch");
             }
 
-            if (_decoderContext != null && _data?[i] == null)
+            if (_rlpStream != null && _data?[i] == null)
             {
                 SeekChild(i);
-                return _decoderContext.PeekNextRlpLength() == 1;
+                return _rlpStream.PeekNextRlpLength() == 1;
             }
 
             return ReferenceEquals(_data[i], NullNode) || _data?[i] == null;
@@ -386,7 +386,7 @@ namespace Nethermind.Store
             _data[index] = node ?? NullNode;
         }
 
-        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, IDb codeDb, VisitContext context)
+        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, IDb codeDb, VisitContext visitContext)
         {
             try
             {
@@ -394,7 +394,7 @@ namespace Nethermind.Store
             }
             catch (StateException)
             {
-                visitor.VisitMissingNode(Keccak, context);
+                visitor.VisitMissingNode(Keccak, visitContext);
                 return;
             }
 
@@ -404,33 +404,33 @@ namespace Nethermind.Store
                     throw new NotImplementedException();
                 case NodeType.Branch:
                 {
-                    visitor.VisitBranch(this, context);
-                    context.Level++;
+                    visitor.VisitBranch(this, visitContext);
+                    visitContext.Level++;
                     for (int i = 0; i < 16; i++)
                     {
                         TrieNode child = GetChild(i);
                         if (child != null && visitor.ShouldVisit(child.Keccak))
                         {
-                            context.BranchChildIndex = i;
-                            child.Accept(visitor, tree, codeDb, context);
+                            visitContext.BranchChildIndex = i;
+                            child.Accept(visitor, tree, codeDb, visitContext);
                         }
                     }
 
-                    context.Level--;
-                    context.BranchChildIndex = null;
+                    visitContext.Level--;
+                    visitContext.BranchChildIndex = null;
                     break;
                 }
 
                 case NodeType.Extension:
                 {
-                    visitor.VisitExtension(this, context);
+                    visitor.VisitExtension(this, visitContext);
                     TrieNode child = GetChild(0);
                     if (child != null && visitor.ShouldVisit(child.Keccak))
                     {
-                        context.Level++;
-                        context.BranchChildIndex = null;
-                        child.Accept(visitor, tree, codeDb, context);
-                        context.Level--;
+                        visitContext.Level++;
+                        visitContext.BranchChildIndex = null;
+                        child.Accept(visitor, tree, codeDb, visitContext);
+                        visitContext.Level--;
                     }
 
                     break;
@@ -438,27 +438,27 @@ namespace Nethermind.Store
 
                 case NodeType.Leaf:
                 {
-                    visitor.VisitLeaf(this, context);
-                    if (!context.IsStorage)
+                    visitor.VisitLeaf(this, visitContext);
+                    if (!visitContext.IsStorage)
                     {
-                        Account account = _accountDecoder.Decode(Value.AsRlpContext());
+                        Account account = _accountDecoder.Decode(Value.AsRlpStream());
                         if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
                         {
-                            context.Level++;
-                            context.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, codeDb.Get(account.CodeHash), context);
-                            context.Level--;
+                            visitContext.Level++;
+                            visitContext.BranchChildIndex = null;
+                            visitor.VisitCode(account.CodeHash, codeDb.Get(account.CodeHash), visitContext);
+                            visitContext.Level--;
                         }
 
                         if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
                         {
-                            context.IsStorage = true;
+                            visitContext.IsStorage = true;
                             TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
-                            context.Level++;
-                            context.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, codeDb, context);
-                            context.Level--;
-                            context.IsStorage = false;
+                            visitContext.Level++;
+                            visitContext.BranchChildIndex = null;
+                            storageRoot.Accept(visitor, tree, codeDb, visitContext);
+                            visitContext.Level--;
+                            visitContext.IsStorage = false;
                         }
                     }
 
@@ -567,9 +567,9 @@ namespace Nethermind.Store
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (item._decoderContext != null && item._data[i] == null)
+                    if (item._rlpStream != null && item._data[i] == null)
                     {
-                        (int prefixLength, int contentLength) = item._decoderContext.PeekPrefixAndContentLength();
+                        (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
@@ -586,7 +586,7 @@ namespace Nethermind.Store
                         }
                     }
 
-                    item._decoderContext?.SkipItem();
+                    item._rlpStream?.SkipItem();
                 }
 
                 return totalLength;
@@ -595,22 +595,22 @@ namespace Nethermind.Store
             private void WriteChildrenRlp(TrieNode item, Span<byte> destination)
             {
                 int position = 0;
-                var context = item._decoderContext;
+                var rlpStream = item._rlpStream;
                 item.InitData();
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (context != null && item._data[i] == null)
+                    if (rlpStream != null && item._data[i] == null)
                     {
-                        int length = context.PeekNextRlpLength();
-                        Span<byte> nextItem = context.Data.AsSpan().Slice(context.Position, length);
+                        int length = rlpStream.PeekNextRlpLength();
+                        Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                         position += nextItem.Length;
-                        context.SkipItem();
+                        rlpStream.SkipItem();
                     }
                     else
                     {
-                        context?.SkipItem();
+                        rlpStream?.SkipItem();
                         if (ReferenceEquals(item._data[i], TrieNode.NullNode) || item._data[i] == null)
                         {
                             destination[position++] = 128;

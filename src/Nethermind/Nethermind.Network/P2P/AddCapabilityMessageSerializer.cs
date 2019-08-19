@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P
 
         public AddCapabilityMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var protocolCode = context.DecodeString();
             var version = context.DecodeByte();

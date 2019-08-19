@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public RequestEthMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var address = context.DecodeAddress();
             var value = context.DecodeUInt256();

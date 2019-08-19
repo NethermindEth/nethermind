@@ -25,36 +25,36 @@ namespace Nethermind.Core.Encoding
 {
     public class HeaderDecoder : IRlpValueDecoder<BlockHeader>, IRlpDecoder<BlockHeader>
     {
-        public BlockHeader Decode(Rlp.ValueDecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockHeader Decode(Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (context.IsNextItemNull())
+            if (decoderContext.IsNextItemNull())
             {
                 return null;
             }
 
-            var headerRlp = context.PeekNextItem();
-            int headerSequenceLength = context.ReadSequenceLength();
-            int headerCheck = context.Position + headerSequenceLength;
+            var headerRlp = decoderContext.PeekNextItem();
+            int headerSequenceLength = decoderContext.ReadSequenceLength();
+            int headerCheck = decoderContext.Position + headerSequenceLength;
 
-            Keccak parentHash = context.DecodeKeccak();
-            Keccak ommersHash = context.DecodeKeccak();
-            Address beneficiary = context.DecodeAddress();
-            Keccak stateRoot = context.DecodeKeccak();
-            Keccak transactionsRoot = context.DecodeKeccak();
-            Keccak receiptsRoot = context.DecodeKeccak();
-            Bloom bloom = context.DecodeBloom();
-            UInt256 difficulty = context.DecodeUInt256();
-            UInt256 number = context.DecodeUInt256();
-            UInt256 gasLimit = context.DecodeUInt256();
-            UInt256 gasUsed = context.DecodeUInt256();
-            UInt256 timestamp = context.DecodeUInt256();
-            byte[] extraData = context.DecodeByteArray();
-            Keccak mixHash = context.DecodeKeccak();
-            BigInteger nonce = context.DecodeUBigInt();
+            Keccak parentHash = decoderContext.DecodeKeccak();
+            Keccak ommersHash = decoderContext.DecodeKeccak();
+            Address beneficiary = decoderContext.DecodeAddress();
+            Keccak stateRoot = decoderContext.DecodeKeccak();
+            Keccak transactionsRoot = decoderContext.DecodeKeccak();
+            Keccak receiptsRoot = decoderContext.DecodeKeccak();
+            Bloom bloom = decoderContext.DecodeBloom();
+            UInt256 difficulty = decoderContext.DecodeUInt256();
+            UInt256 number = decoderContext.DecodeUInt256();
+            UInt256 gasLimit = decoderContext.DecodeUInt256();
+            UInt256 gasUsed = decoderContext.DecodeUInt256();
+            UInt256 timestamp = decoderContext.DecodeUInt256();
+            byte[] extraData = decoderContext.DecodeByteArray();
+            Keccak mixHash = decoderContext.DecodeKeccak();
+            BigInteger nonce = decoderContext.DecodeUBigInt();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
-                context.Check(headerCheck);
+                decoderContext.Check(headerCheck);
             }
 
             BlockHeader blockHeader = new BlockHeader(
@@ -78,36 +78,36 @@ namespace Nethermind.Core.Encoding
             return blockHeader;
         }
 
-        public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockHeader Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (context.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
 
-            var headerRlp = context.PeekNextItem();
-            int headerSequenceLength = context.ReadSequenceLength();
-            int headerCheck = context.Position + headerSequenceLength;
+            var headerRlp = rlpStream.PeekNextItem();
+            int headerSequenceLength = rlpStream.ReadSequenceLength();
+            int headerCheck = rlpStream.Position + headerSequenceLength;
 
-            Keccak parentHash = context.DecodeKeccak();
-            Keccak ommersHash = context.DecodeKeccak();
-            Address beneficiary = context.DecodeAddress();
-            Keccak stateRoot = context.DecodeKeccak();
-            Keccak transactionsRoot = context.DecodeKeccak();
-            Keccak receiptsRoot = context.DecodeKeccak();
-            Bloom bloom = context.DecodeBloom();
-            UInt256 difficulty = context.DecodeUInt256();
-            UInt256 number = context.DecodeUInt256();
-            UInt256 gasLimit = context.DecodeUInt256();
-            UInt256 gasUsed = context.DecodeUInt256();
-            UInt256 timestamp = context.DecodeUInt256();
-            byte[] extraData = context.DecodeByteArray();
-            Keccak mixHash = context.DecodeKeccak();
-            BigInteger nonce = context.DecodeUBigInt();
+            Keccak parentHash = rlpStream.DecodeKeccak();
+            Keccak ommersHash = rlpStream.DecodeKeccak();
+            Address beneficiary = rlpStream.DecodeAddress();
+            Keccak stateRoot = rlpStream.DecodeKeccak();
+            Keccak transactionsRoot = rlpStream.DecodeKeccak();
+            Keccak receiptsRoot = rlpStream.DecodeKeccak();
+            Bloom bloom = rlpStream.DecodeBloom();
+            UInt256 difficulty = rlpStream.DecodeUInt256();
+            UInt256 number = rlpStream.DecodeUInt256();
+            UInt256 gasLimit = rlpStream.DecodeUInt256();
+            UInt256 gasUsed = rlpStream.DecodeUInt256();
+            UInt256 timestamp = rlpStream.DecodeUInt256();
+            byte[] extraData = rlpStream.DecodeByteArray();
+            Keccak mixHash = rlpStream.DecodeKeccak();
+            BigInteger nonce = rlpStream.DecodeUBigInt();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
-                context.Check(headerCheck);
+                rlpStream.Check(headerCheck);
             }
 
             BlockHeader blockHeader = new BlockHeader(

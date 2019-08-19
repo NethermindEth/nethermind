@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public GraceUnitsExceededMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
             var consumedUnits = context.DecodeUInt();

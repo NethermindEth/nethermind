@@ -37,23 +37,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
 
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            context.ReadSequenceLength();
-            int position = context.Position;
-            byte[] startingBytes = context.DecodeByteArray();
-            context.Position = position;
+            RlpStream rlpStream = bytes.AsRlpStream();
+            rlpStream.ReadSequenceLength();
+            int position = rlpStream.Position;
+            byte[] startingBytes = rlpStream.DecodeByteArray();
+            rlpStream.Position = position;
             if (startingBytes.Length == 32)
             {
-                message.StartingBlockHash = context.DecodeKeccak();
+                message.StartingBlockHash = rlpStream.DecodeKeccak();
             }
             else
             {
-                message.StartingBlockNumber = (long)context.DecodeUInt256();
+                message.StartingBlockNumber = (long)rlpStream.DecodeUInt256();
             }
 
-            message.MaxHeaders = context.DecodeInt();
-            message.Skip = context.DecodeInt();
-            message.Reverse = context.DecodeByte();
+            message.MaxHeaders = rlpStream.DecodeInt();
+            message.Skip = rlpStream.DecodeInt();
+            message.Reverse = rlpStream.DecodeByte();
             return message;
         }
     }

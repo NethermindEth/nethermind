@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Receipts
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
 
             byte[] lowestBytes = _database.Get(Keccak.Zero);
-            LowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new Rlp.DecoderContext(lowestBytes).DecodeLong();
+            LowestInsertedReceiptBlock = lowestBytes == null ? (long?) null : new RlpStream(lowestBytes).DecodeLong();
         }
 
         public TxReceipt Find(Keccak hash)

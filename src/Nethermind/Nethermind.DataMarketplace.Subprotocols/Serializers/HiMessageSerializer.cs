@@ -42,23 +42,23 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
         {
             try
             {
-                return Deserialize(bytes.AsRlpContext());
+                return Deserialize(bytes.AsRlpStream());
             }
             catch (Exception)
             {
                 // strange garbage from p2p
-                return Deserialize(bytes.Skip(3).ToArray().AsRlpContext());
+                return Deserialize(bytes.Skip(3).ToArray().AsRlpStream());
             }
         }
 
-        private static HiMessage Deserialize(Rlp.DecoderContext context)
+        private static HiMessage Deserialize(RlpStream rlpStream)
         {
-            context.ReadSequenceLength();
-            var protocolVersion = context.DecodeByte();
-            var providerAddress = context.DecodeAddress();
-            var consumerAddress = context.DecodeAddress();
-            var nodeId = new PublicKey(context.DecodeByteArray());
-            var signature = SignatureDecoder.DecodeSignature(context);
+            rlpStream.ReadSequenceLength();
+            var protocolVersion = rlpStream.DecodeByte();
+            var providerAddress = rlpStream.DecodeAddress();
+            var consumerAddress = rlpStream.DecodeAddress();
+            var nodeId = new PublicKey(rlpStream.DecodeByteArray());
+            var signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new HiMessage(protocolVersion, providerAddress, consumerAddress,
                 nodeId, signature);

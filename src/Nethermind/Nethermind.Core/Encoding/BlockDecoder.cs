@@ -27,41 +27,41 @@ namespace Nethermind.Core.Encoding
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
         private TransactionDecoder _txDecoder = new TransactionDecoder();
         
-        public Block Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (context.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
             
-            int sequenceLength = context.ReadSequenceLength();
-            int blockCheck = context.Position + sequenceLength;
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            int blockCheck = rlpStream.Position + sequenceLength;
 
-            BlockHeader header = Rlp.Decode<BlockHeader>(context);
+            BlockHeader header = Rlp.Decode<BlockHeader>(rlpStream);
 
-            int transactionsSequenceLength = context.ReadSequenceLength();
-            int transactionsCheck = context.Position + transactionsSequenceLength;
+            int transactionsSequenceLength = rlpStream.ReadSequenceLength();
+            int transactionsCheck = rlpStream.Position + transactionsSequenceLength;
             List<Transaction> transactions = new List<Transaction>();
-            while (context.Position < transactionsCheck)
+            while (rlpStream.Position < transactionsCheck)
             {
-                transactions.Add(Rlp.Decode<Transaction>(context));
+                transactions.Add(Rlp.Decode<Transaction>(rlpStream));
             }
 
-            context.Check(transactionsCheck);
+            rlpStream.Check(transactionsCheck);
 
-            int ommersSequenceLength = context.ReadSequenceLength();
-            int ommersCheck = context.Position + ommersSequenceLength;
+            int ommersSequenceLength = rlpStream.ReadSequenceLength();
+            int ommersCheck = rlpStream.Position + ommersSequenceLength;
             List<BlockHeader> ommerHeaders = new List<BlockHeader>();
-            while (context.Position < ommersCheck)
+            while (rlpStream.Position < ommersCheck)
             {
-                ommerHeaders.Add(Rlp.Decode<BlockHeader>(context, rlpBehaviors));
+                ommerHeaders.Add(Rlp.Decode<BlockHeader>(rlpStream, rlpBehaviors));
             }
 
-            context.Check(ommersCheck);
+            rlpStream.Check(ommersCheck);
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
-                context.Check(blockCheck);
+                rlpStream.Check(blockCheck);
             }
 
             return new Block(header, transactions, ommerHeaders);

@@ -33,16 +33,16 @@ namespace Nethermind.Store
     {
         bool ShouldVisit(Keccak nextNode);
         
-        void VisitTree(Keccak rootHash, VisitContext context);
+        void VisitTree(Keccak rootHash, VisitContext visitContext);
         
-        void VisitMissingNode(Keccak nodeHash, VisitContext context);
+        void VisitMissingNode(Keccak nodeHash, VisitContext visitContext);
         
-        void VisitBranch(TrieNode node, VisitContext context);
+        void VisitBranch(TrieNode node, VisitContext visitContext);
         
-        void VisitExtension(TrieNode node, VisitContext context);
+        void VisitExtension(TrieNode node, VisitContext visitContext);
         
-        void VisitLeaf(TrieNode node, VisitContext context);
+        void VisitLeaf(TrieNode node, VisitContext visitContext);
         
-        void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
+        void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext);
     }
 }

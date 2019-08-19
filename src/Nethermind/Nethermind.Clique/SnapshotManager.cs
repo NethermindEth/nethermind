@@ -235,7 +235,7 @@ namespace Nethermind.Clique
             var bytes = _blocksDb.Get(key);
             if (bytes == null) return null;
 
-            return _decoder.Decode(bytes.AsRlpContext());
+            return _decoder.Decode(bytes.AsRlpStream());
         }
 
         private void Store(Snapshot snapshot)

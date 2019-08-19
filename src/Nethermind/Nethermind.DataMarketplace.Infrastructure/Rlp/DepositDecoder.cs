@@ -38,19 +38,19 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(Deposit)] = new DepositDecoder();
         }
 
-        public Deposit Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public Deposit Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var id = context.DecodeKeccak();
-            var units = context.DecodeUInt();
-            var expiryTime = context.DecodeUInt();
-            var value = context.DecodeUInt256();
+            var id = rlpStream.DecodeKeccak();
+            var units = rlpStream.DecodeUInt();
+            var expiryTime = rlpStream.DecodeUInt();
+            var value = rlpStream.DecodeUInt256();
 
             return new Deposit(id, units, expiryTime, value);
         }

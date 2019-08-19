@@ -22,23 +22,23 @@ namespace Nethermind.Core.Encoding
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
     {
-        public BlockInfo Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (context.IsNextItemNull())
+            if (rlpStream.IsNextItemNull())
             {
                 return null;
             }
             
-            int lastCheck = context.ReadSequenceLength() + context.Position;
+            int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
             BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = context.DecodeKeccak();
-            blockInfo.WasProcessed = context.DecodeBool();
-            blockInfo.TotalDifficulty = context.DecodeUInt256();
+            blockInfo.BlockHash = rlpStream.DecodeKeccak();
+            blockInfo.WasProcessed = rlpStream.DecodeBool();
+            blockInfo.TotalDifficulty = rlpStream.DecodeUInt256();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
-                context.Check(lastCheck);
+                rlpStream.Check(lastCheck);
             }
 
             return blockInfo;
