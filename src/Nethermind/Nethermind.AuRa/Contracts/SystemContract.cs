@@ -8,7 +8,7 @@ namespace Nethermind.AuRa.Contracts
 {
     public class SystemContract
     {
-        protected static Transaction GenerateTransaction(Address contractAddress, byte[] transactionData, long blockNumber, long gasLimit, UInt256 nonce)
+        protected static Transaction GenerateTransaction(Address contractAddress, byte[] transactionData, long gasLimit, UInt256 nonce)
         {
             if (contractAddress == null) return null;
             

@@ -16,20 +16,21 @@ namespace Nethermind.AuRa.Validators
         private IAuRaValidatorProcessor _currentValidator = null;
         private int _nextValidator = 0;
 
-        internal MultiValidator(AuRaParameters.Validator validator, AuRaAdditionalBlockProcessorFactory validatorFactory, ILogManager logManager)
+        public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
+            if (validatorFactory == null) throw new ArgumentNullException(nameof(validatorFactory));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) 
                 throw new ArgumentException("Wrong validator type.", nameof(validator));
-            if (validator.Validators.Count == 0)
-                throw new ArgumentException("Multi validator cannot be empty.");
             
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _validators = validator.Validators?.Count > 0
+                ? validator.Validators
+                    .Select(kvp => new KeyValuePair<long, IAuRaValidatorProcessor>(kvp.Key,
+                        validatorFactory.CreateValidatorProcessor(kvp.Value, Math.Max(1, kvp.Key)))) // we need to make init block at least 1.
+                    .ToArray()
+                : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
 
-            _validators = validator.Validators
-                .Select(kvp => new KeyValuePair<long, IAuRaValidatorProcessor>(kvp.Key, 
-                    validatorFactory.CreateValidator(kvp.Value, Math.Max(1, kvp.Key)))) // we need to make init block at least 1.
-                .ToArray();
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void PreProcess(Block block, ITransactionProcessor transactionProcessor)

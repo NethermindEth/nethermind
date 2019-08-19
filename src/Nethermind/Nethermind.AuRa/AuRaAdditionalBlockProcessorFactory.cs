@@ -38,8 +38,10 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa
 {
-    public class AuRaAdditionalBlockProcessorFactory
+    public class AuRaAdditionalBlockProcessorFactory : IAuRaAdditionalBlockProcessorFactory
     {
+        private const long DefaultStartBlockNumber = 1;
+        
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ILogManager _logManager;
@@ -53,26 +55,22 @@ namespace Nethermind.AuRa
             _logManager = logManager;
         }
 
-        internal IAuRaValidatorProcessor CreateValidator(AuRaParameters.Validator validator, long startBlock)
+        public IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
         {
+            long startBlockNumber = startBlock ?? DefaultStartBlockNumber;
             switch (validator.ValidatorType)
             {
                 case AuRaParameters.ValidatorType.List:
                     return new ListValidator(validator);
                 case AuRaParameters.ValidatorType.Contract:
-                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _logManager, startBlock);
+                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.ReportingContract:
-                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _logManager, startBlock);
+                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.Multi:
                     return new MultiValidator(validator, this, _logManager);
                 default:
                     throw new ArgumentOutOfRangeException();
             }
-        }
-
-        public IAuRaValidatorProcessor CreateAdditionalBlockProcessor(AuRaParameters.Validator validator)
-        {
-            return CreateValidator(validator, 1);
         }
     }
 }

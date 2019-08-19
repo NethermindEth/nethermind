@@ -46,7 +46,6 @@ namespace Nethermind.AuRa.Contracts
         public Transaction Reward(Address contractAddress, Block block, Address[] benefactors, ushort[] kind)
             => GenerateTransaction(contractAddress,
                 _rewardTransactionData, 
-                block.Number, 
                 block.GasLimit - block.GasUsed, 
                 UInt256.Zero);
         

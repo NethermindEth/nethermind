@@ -40,7 +40,7 @@ namespace Nethermind.AuRa.Test
                 }
             };
             
-            var result = factory.CreateAdditionalBlockProcessor(validator);
+            var result = factory.CreateValidatorProcessor(validator);
             
             result.Should().BeOfType(expectedType);
         }

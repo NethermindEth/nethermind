@@ -18,7 +18,9 @@ namespace Nethermind.AuRa.Validators
             if (validator.ValidatorType != AuRaParameters.ValidatorType.List) 
                 throw new ArgumentException("Wrong validator type.", nameof(validator));
             
-            _validatorAddresses = validator.Addresses.ToHashSet();
+            _validatorAddresses = validator.Addresses?.Length > 0
+                ? validator.Addresses.ToHashSet()
+                : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
         }
         
         public void PreProcess(Block block, ITransactionProcessor transactionProcessor) { }

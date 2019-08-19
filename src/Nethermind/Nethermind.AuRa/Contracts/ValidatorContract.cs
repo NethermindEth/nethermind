@@ -70,14 +70,12 @@ namespace Nethermind.AuRa.Contracts
         public Transaction FinalizeChange(Address contractAddress, Block block)
             => GenerateTransaction(contractAddress,
                 _finalizeChangeTransactionData, 
-                block.Number, 
                 block.GasLimit - block.GasUsed, 
                 UInt256.Zero);
 
         public Transaction GetValidators(Address contractAddress, Block block)
             => GenerateTransaction(contractAddress, 
-                _getValidatorsTransactionData, 
-                block.Number,
+                _getValidatorsTransactionData,
                 block.GasLimit - block.GasUsed, 
                 UInt256.Zero);
 

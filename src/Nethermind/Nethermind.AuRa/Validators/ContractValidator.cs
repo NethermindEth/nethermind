@@ -39,7 +39,11 @@ namespace Nethermind.AuRa.Validators
             ILogManager logManager,
             long startBlockNumber)
         {
-            ContractAddress = validator?.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator));
+            if (validator == null) throw new ArgumentNullException(nameof(validator));
+            if (validator.ValidatorType != Type) 
+                throw new ArgumentException("Wrong validator type.", nameof(validator));
+            
+            ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
@@ -90,7 +94,7 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Contract;
+        public virtual AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Contract;
         
         protected virtual ValidatorContract CreateValidatorContract()
         {
@@ -106,6 +110,7 @@ namespace Nethermind.AuRa.Validators
                 CreateSystemAccount();
             }
             
+            // Todo if last InitiateChange is not finalized we need to load potential validators.
             var validators = LoadValidatorsFromContract(block, transactionProcessor);
             
             if (startBlockInitialize)

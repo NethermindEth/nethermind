@@ -655,7 +655,7 @@ namespace Nethermind.Runner.Runners
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
                     var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _logManager)
-                        .CreateAdditionalBlockProcessor(_chainSpec.AuRa.Validators);
+                        .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                         
                     _sealer = new AuRaSealer();
                     _sealValidator = new AuRaSealValidator(validatorProcessor, _logManager);
