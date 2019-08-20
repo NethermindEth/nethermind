@@ -12,7 +12,6 @@ namespace Nethermind.AuRa.Contracts
     public class RewardContract : SystemContract
     {
         private IAbiEncoder _abiEncoder;
-        private readonly byte[] _rewardTransactionData;
         
         [SuppressMessage("ReSharper", "InconsistentNaming")]
         private static class Definition
@@ -40,12 +39,11 @@ namespace Nethermind.AuRa.Contracts
         public RewardContract(IAbiEncoder abiEncoder)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            _rewardTransactionData = _abiEncoder.Encode(Definition.reward);
         }
         
         public Transaction Reward(Address contractAddress, Block block, Address[] benefactors, ushort[] kind)
             => GenerateTransaction(contractAddress,
-                _rewardTransactionData, 
+                _abiEncoder.Encode(Definition.reward, benefactors, kind), 
                 block.GasLimit - block.GasUsed, 
                 UInt256.Zero);
         

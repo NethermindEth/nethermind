@@ -92,6 +92,14 @@ namespace Nethermind.Abi
             {
                 bytes = longInput.ToBigEndianByteArray();
             }
+            else if (arg is short shortInput)
+            {
+                bytes = shortInput.ToBigEndianByteArray();
+            }
+            else if (arg is ushort ushortInput)
+            {
+                bytes = ushortInput.ToBigEndianByteArray();
+            }
             else
             {
                 throw new AbiException(AbiEncodingExceptionMessage);

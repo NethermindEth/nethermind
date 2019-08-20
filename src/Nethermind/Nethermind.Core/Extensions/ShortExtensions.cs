@@ -26,6 +26,12 @@ namespace Nethermind.Core.Extensions
         {
             return BitConverter.GetBytes(BitConverter.IsLittleEndian ? Swap(value) : value);
         }
+        
+        public static byte[] ToBigEndianByteArray(this ushort value)
+        {
+            return BitConverter.GetBytes(BitConverter.IsLittleEndian ? Swap(value) : value);
+        }
+
 
         private static ushort Swap(ushort val)
         {
