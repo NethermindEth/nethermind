@@ -7,11 +7,11 @@ namespace Nethermind.Core
 {
     public static class SignatureDecoder
     {
-        public static Signature DecodeSignature(Rlp.DecoderContext context)
+        public static Signature DecodeSignature(RlpStream rlpStream)
         {
-            Span<byte> vBytes = context.DecodeByteArraySpan();
-            Span<byte> rBytes = context.DecodeByteArraySpan();
-            Span<byte> sBytes = context.DecodeByteArraySpan();
+            Span<byte> vBytes = rlpStream.DecodeByteArraySpan();
+            Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
+            Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
             if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
             {

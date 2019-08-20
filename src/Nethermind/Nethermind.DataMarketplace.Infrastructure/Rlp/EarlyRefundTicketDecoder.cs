@@ -40,18 +40,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(EarlyRefundTicket)] = new EarlyRefundTicketDecoder();
         }
 
-        public EarlyRefundTicket Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public EarlyRefundTicket Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var depositId = context.DecodeKeccak();
-            var claimableAfter = context.DecodeUInt();
-            var signature = SignatureDecoder.DecodeSignature(context);
+            var depositId = rlpStream.DecodeKeccak();
+            var claimableAfter = rlpStream.DecodeUInt();
+            var signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new EarlyRefundTicket(depositId, claimableAfter, signature);
         }

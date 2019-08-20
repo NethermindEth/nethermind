@@ -52,9 +52,9 @@ namespace Nethermind.Network.P2P
                 return new DisconnectMessage(DisconnectReason.Breach2);
             }
             
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            context.ReadSequenceLength();
-            int reason = context.DecodeInt();
+            RlpStream rlpStream = bytes.AsRlpStream();
+            rlpStream.ReadSequenceLength();
+            int reason = rlpStream.DecodeInt();
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
             return disconnectMessage;
         }

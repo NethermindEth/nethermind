@@ -114,14 +114,14 @@ namespace Nethermind.Runner.Runners
             }
 
             var chainFileContent = File.ReadAllBytes(chainFile);
-            var context = new Rlp.DecoderContext(chainFileContent);
+            var rlpStream = new RlpStream(chainFileContent);
             var blocks = new List<Block>();
             
             if (_logger.IsInfo) _logger.Info($"HIVE Loading blocks from {chainFile}");
-            while (context.ReadNumberOfItemsRemaining() > 0)
+            while (rlpStream.ReadNumberOfItemsRemaining() > 0)
             {
-                context.PeekNextItem();
-                Block block = Rlp.Decode<Block>(context);
+                rlpStream.PeekNextItem();
+                Block block = Rlp.Decode<Block>(rlpStream);
                 if (_logger.IsInfo) _logger.Info($"HIVE Reading a chain.rlp block {block.ToString(Block.Format.Short)}");
                 blocks.Add(block);
             }

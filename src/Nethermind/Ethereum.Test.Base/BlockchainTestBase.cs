@@ -292,7 +292,7 @@ namespace Ethereum.Test.Base
                 try
                 {
                     TestBlockJson testBlockJson = test.Blocks[i];
-                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpContext();
+                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
                     Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                     suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 

@@ -100,23 +100,23 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
             if (progress != null)
             {
-                Rlp.DecoderContext context = new Rlp.DecoderContext(progress);
-                context.ReadSequenceLength();
-                _consumedNodesCount = context.DecodeLong();
-                _savedStorageCount = context.DecodeLong();
-                _savedStateCount = context.DecodeLong();
-                _savedNodesCount = context.DecodeLong();
-                _savedAccounts = context.DecodeLong();
-                _savedCode = context.DecodeLong();
-                _requestedNodesCount = context.DecodeLong();
-                _dbChecks = context.DecodeLong();
-                _stateWasThere = context.DecodeLong();
-                _stateWasNotThere = context.DecodeLong();
-                _dataSize = context.DecodeLong();
+                RlpStream rlpStream = new RlpStream(progress);
+                rlpStream.ReadSequenceLength();
+                _consumedNodesCount = rlpStream.DecodeLong();
+                _savedStorageCount = rlpStream.DecodeLong();
+                _savedStateCount = rlpStream.DecodeLong();
+                _savedNodesCount = rlpStream.DecodeLong();
+                _savedAccounts = rlpStream.DecodeLong();
+                _savedCode = rlpStream.DecodeLong();
+                _requestedNodesCount = rlpStream.DecodeLong();
+                _dbChecks = rlpStream.DecodeLong();
+                _stateWasThere = rlpStream.DecodeLong();
+                _stateWasNotThere = rlpStream.DecodeLong();
+                _dataSize = rlpStream.DecodeLong();
 
-                if (context.Position != context.Length)
+                if (rlpStream.Position != rlpStream.Length)
                 {
-                    _secondsInSync = context.DecodeLong();
+                    _secondsInSync = rlpStream.DecodeLong();
                 }
             }
         }
@@ -609,7 +609,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (nodeDataType == NodeDataType.State)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
-                        Account account = _accountDecoder.Decode(new Rlp.DecoderContext(trieNode.Value));
+                        Account account = _accountDecoder.Decode(new RlpStream(trieNode.Value));
                         if (account.CodeHash != Keccak.OfAnEmptyString)
                         {
                             // prepare a branch without the code DB

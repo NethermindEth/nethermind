@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public EarlyRefundTicketMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var ticket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(context);
             var reason = (RefundReason) context.DecodeInt();

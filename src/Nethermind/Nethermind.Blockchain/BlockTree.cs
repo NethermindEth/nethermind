@@ -611,7 +611,7 @@ namespace Nethermind.Blockchain
                         return null;
                     }
 
-                    header = _headerDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                    header = _headerDecoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
                 }
             }
 
@@ -1066,7 +1066,7 @@ namespace Nethermind.Blockchain
             {
                 BlockHeader headBlockHeader = data.Length == 32
                     ? FindHeader(new Keccak(data), BlockTreeLookupOptions.None)
-                    : Rlp.Decode<BlockHeader>(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                    : Rlp.Decode<BlockHeader>(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
 
                 ChainLevelInfo level = LoadLevel(headBlockHeader.Number);
                 int? index = FindIndex(headBlockHeader.Hash, level);
@@ -1261,7 +1261,7 @@ namespace Nethermind.Blockchain
                     return null;
                 }
 
-                block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                block = _blockDecoder.Decode(data.AsRlpStream(), RlpBehaviors.AllowExtraData);
             }
 
             bool totalDifficultyNeeded = (options & BlockTreeLookupOptions.TotalDifficultyNotNeeded) == BlockTreeLookupOptions.None;

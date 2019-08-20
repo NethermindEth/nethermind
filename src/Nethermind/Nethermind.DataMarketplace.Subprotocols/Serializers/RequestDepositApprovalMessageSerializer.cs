@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public RequestDepositApprovalMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var dataAssetId = context.DecodeKeccak();
             var kyc = context.DecodeString();

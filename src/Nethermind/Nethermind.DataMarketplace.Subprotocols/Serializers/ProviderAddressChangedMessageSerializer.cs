@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public ProviderAddressChangedMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var address = context.DecodeAddress();
 

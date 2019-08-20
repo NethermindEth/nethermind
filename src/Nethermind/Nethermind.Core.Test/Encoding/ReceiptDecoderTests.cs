@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptDecoder decoder = new ReceiptDecoder();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpContext(), RlpBehaviors.Storage);
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage);
 
             Assert.AreEqual(txReceipt.BlockHash, deserialized.BlockHash, "block hash");
             Assert.AreEqual(txReceipt.BlockNumber, deserialized.BlockNumber, "block number");
@@ -81,7 +81,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptDecoder decoder = new ReceiptDecoder();
             Rlp rlp = decoder.Encode(txReceipt, RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpContext(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream(), RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
 
             Assert.AreEqual(txReceipt.BlockHash, deserialized.BlockHash, "block hash");
             Assert.AreEqual(txReceipt.BlockNumber, deserialized.BlockNumber, "block number");
@@ -113,7 +113,7 @@ namespace Nethermind.Core.Test.Encoding
 
             ReceiptDecoder decoder = new ReceiptDecoder();
             Rlp rlp = decoder.Encode(txReceipt);
-            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpContext());
+            TxReceipt deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
 
             Assert.AreEqual(null, deserialized.BlockHash, "block hash");
             Assert.AreEqual(0L, deserialized.BlockNumber, "block number");

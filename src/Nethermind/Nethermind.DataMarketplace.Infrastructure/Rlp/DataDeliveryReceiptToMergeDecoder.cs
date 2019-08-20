@@ -41,17 +41,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 new DataDeliveryReceiptToMergeDecoder();
         }
 
-        public DataDeliveryReceiptToMerge Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataDeliveryReceiptToMerge Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var unitsRange = Nethermind.Core.Encoding.Rlp.Decode<UnitsRange>(context);
-            var signature = SignatureDecoder.DecodeSignature(context);
+            var unitsRange = Nethermind.Core.Encoding.Rlp.Decode<UnitsRange>(rlpStream);
+            var signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataDeliveryReceiptToMerge(unitsRange, signature);
         }

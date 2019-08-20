@@ -38,23 +38,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DepositApproval)] = new DepositApprovalDecoder();
         }
 
-        public DepositApproval Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DepositApproval Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var id = context.DecodeKeccak();
-            var assetId = context.DecodeKeccak();
-            var assetName = context.DecodeString();
-            var kyc = context.DecodeString();
-            var consumer = context.DecodeAddress();
-            var provider = context.DecodeAddress();
-            var timestamp = context.DecodeUlong();
-            var state = (DepositApprovalState) context.DecodeInt();
+            var id = rlpStream.DecodeKeccak();
+            var assetId = rlpStream.DecodeKeccak();
+            var assetName = rlpStream.DecodeString();
+            var kyc = rlpStream.DecodeString();
+            var consumer = rlpStream.DecodeAddress();
+            var provider = rlpStream.DecodeAddress();
+            var timestamp = rlpStream.DecodeUlong();
+            var state = (DepositApprovalState) rlpStream.DecodeInt();
 
             return new DepositApproval(id, assetId, assetName, kyc, consumer, provider, timestamp, state);
         }

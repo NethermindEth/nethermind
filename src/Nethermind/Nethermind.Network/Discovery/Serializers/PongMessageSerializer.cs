@@ -46,7 +46,7 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             var results = PrepareForDeserialization<PongMessage>(msg);
 
-            var rlp = results.Data.AsRlpContext();
+            var rlp = results.Data.AsRlpStream();
 
             rlp.ReadSequenceLength();
             rlp.ReadSequenceLength();

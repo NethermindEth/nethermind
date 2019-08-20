@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public RequestDataDeliveryReceiptMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var request = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceiptRequest>(context);
 

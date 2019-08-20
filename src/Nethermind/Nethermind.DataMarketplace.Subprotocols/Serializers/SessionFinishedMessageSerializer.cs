@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public SessionFinishedMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpContext();
+            var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var session = Nethermind.Core.Encoding.Rlp.Decode<Session>(context);
 

@@ -144,6 +144,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         private ConsumerSession Decode(byte[] bytes)
             => bytes is null
                 ? null
-                : _rlpDecoder.Decode(bytes.AsRlpContext());
+                : _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

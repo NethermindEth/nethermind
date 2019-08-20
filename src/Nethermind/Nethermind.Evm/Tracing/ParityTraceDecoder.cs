@@ -28,28 +28,28 @@ namespace Nethermind.Evm.Tracing
 {
     public class ParityTraceDecoder : IRlpDecoder<ParityLikeTxTrace>
     {
-        public ParityLikeTxTrace Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ParityLikeTxTrace Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             ParityLikeTxTrace trace = new ParityLikeTxTrace();
-            context.ReadSequenceLength();
-            trace.BlockHash = context.DecodeKeccak();
-            trace.BlockNumber = (long)context.DecodeUInt256();
-            trace.TransactionHash = context.DecodeKeccak();
-            Span<byte> txPosBytes = context.DecodeByteArraySpan();
+            rlpStream.ReadSequenceLength();
+            trace.BlockHash = rlpStream.DecodeKeccak();
+            trace.BlockNumber = (long)rlpStream.DecodeUInt256();
+            trace.TransactionHash = rlpStream.DecodeKeccak();
+            Span<byte> txPosBytes = rlpStream.DecodeByteArraySpan();
             trace.TransactionPosition = txPosBytes.Length == 0 ? (int?) null : txPosBytes.ToInt32();
-            context.ReadSequenceLength();
-            trace.Action = DecodeAction(context);
-            trace.StateChanges = DecodeStateDiff(context);
+            rlpStream.ReadSequenceLength();
+            trace.Action = DecodeAction(rlpStream);
+            trace.StateChanges = DecodeStateDiff(rlpStream);
             // stateChanges
 
             return trace;
         }
 
-        private Dictionary<Address, ParityAccountStateChange> DecodeStateDiff(Rlp.DecoderContext context)
+        private Dictionary<Address, ParityAccountStateChange> DecodeStateDiff(RlpStream rlpStream)
         {
             var accountStateChange = new Dictionary<Address, ParityAccountStateChange>();
-            int checkpoint = context.ReadSequenceLength();
-            int items = context.ReadNumberOfItemsRemaining(context.Position + checkpoint);
+            int checkpoint = rlpStream.ReadSequenceLength();
+            int items = rlpStream.ReadNumberOfItemsRemaining(rlpStream.Position + checkpoint);
             if (items == 0)
             {
                 return null;
@@ -57,28 +57,28 @@ namespace Nethermind.Evm.Tracing
             
             for (int i = 0; i < items; i = i + 2)
             {
-                accountStateChange[context.DecodeAddress()] = DecodeAccountStateChange(context);
+                accountStateChange[rlpStream.DecodeAddress()] = DecodeAccountStateChange(rlpStream);
             }
 
             return accountStateChange;
         }
 
-        private ParityAccountStateChange DecodeAccountStateChange(Rlp.DecoderContext context)
+        private ParityAccountStateChange DecodeAccountStateChange(RlpStream rlpStream)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
             ParityAccountStateChange change = new ParityAccountStateChange();
-            change.Balance = DecodeChange(context);
-            change.Code = DecodeByteChange(context);
-            change.Nonce = DecodeChange(context);
-            change.Storage = DecodeStorageChange(context);
+            change.Balance = DecodeChange(rlpStream);
+            change.Code = DecodeByteChange(rlpStream);
+            change.Nonce = DecodeChange(rlpStream);
+            change.Storage = DecodeStorageChange(rlpStream);
             return change;
         }
 
-        private Dictionary<UInt256, ParityStateChange<byte[]>> DecodeStorageChange(Rlp.DecoderContext context)
+        private Dictionary<UInt256, ParityStateChange<byte[]>> DecodeStorageChange(RlpStream rlpStream)
         {
-            int checkpoint = context.ReadSequenceLength();
+            int checkpoint = rlpStream.ReadSequenceLength();
             var change = new Dictionary<UInt256, ParityStateChange<byte[]>>();
-            int itemsCount = context.ReadNumberOfItemsRemaining(context.Position + checkpoint);
+            int itemsCount = rlpStream.ReadNumberOfItemsRemaining(rlpStream.Position + checkpoint);
             if (itemsCount == 0)
             {
                 return null;
@@ -86,33 +86,33 @@ namespace Nethermind.Evm.Tracing
             
             for (int i = 0; i < itemsCount; i = i + 2)
             {
-                change[context.DecodeUInt256()] = DecodeByteChange(context);
+                change[rlpStream.DecodeUInt256()] = DecodeByteChange(rlpStream);
             }
 
             return change;
         }
 
-        private ParityStateChange<UInt256?> DecodeChange(Rlp.DecoderContext context)
+        private ParityStateChange<UInt256?> DecodeChange(RlpStream rlpStream)
         {
-            int sequenceLength = context.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            ParityStateChange<UInt256?> change = new ParityStateChange<UInt256?>(context.DecodeNullableUInt256(), context.DecodeNullableUInt256());
+            ParityStateChange<UInt256?> change = new ParityStateChange<UInt256?>(rlpStream.DecodeNullableUInt256(), rlpStream.DecodeNullableUInt256());
             return change;
         }
 
-        private ParityStateChange<byte[]> DecodeByteChange(Rlp.DecoderContext context)
+        private ParityStateChange<byte[]> DecodeByteChange(RlpStream rlpStream)
         {
-            int sequenceLength = context.ReadSequenceLength();
+            int sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            ParityStateChange<byte[]> change = new ParityStateChange<byte[]>(context.DecodeByteArray(), context.DecodeByteArray());
+            ParityStateChange<byte[]> change = new ParityStateChange<byte[]>(rlpStream.DecodeByteArray(), rlpStream.DecodeByteArray());
             return change;
         }
 
@@ -144,35 +144,35 @@ namespace Nethermind.Evm.Tracing
             throw new NotImplementedException();
         }
 
-        private static ParityTraceAction DecodeAction(Rlp.DecoderContext context)
+        private static ParityTraceAction DecodeAction(RlpStream rlpStream)
         {
             ParityTraceAction action = new ParityTraceAction();
-            int sequenceLength = context.ReadSequenceLength();
-            if (context.ReadNumberOfItemsRemaining(context.Position + sequenceLength) == 3)
+            int sequenceLength = rlpStream.ReadSequenceLength();
+            if (rlpStream.ReadNumberOfItemsRemaining(rlpStream.Position + sequenceLength) == 3)
             {
                 action.CallType = "reward";
-                action.RewardType = context.DecodeString();
-                action.Author = context.DecodeAddress();
-                action.Value = context.DecodeUInt256();
+                action.RewardType = rlpStream.DecodeString();
+                action.Author = rlpStream.DecodeAddress();
+                action.Value = rlpStream.DecodeUInt256();
                 action.TraceAddress = Array.Empty<int>();
             }
             else
             {
-                action.CallType = context.DecodeString();
-                action.From = context.DecodeAddress();
-                action.To = context.DecodeAddress();
-                action.Value = context.DecodeUInt256();
-                action.Gas = context.DecodeLong();
-                action.Input = context.DecodeByteArray();
+                action.CallType = rlpStream.DecodeString();
+                action.From = rlpStream.DecodeAddress();
+                action.To = rlpStream.DecodeAddress();
+                action.Value = rlpStream.DecodeUInt256();
+                action.Gas = rlpStream.DecodeLong();
+                action.Input = rlpStream.DecodeByteArray();
                 action.Result = new ParityTraceResult();
-                action.Result.Output = context.DecodeByteArray();
-                action.Result.GasUsed = context.DecodeLong();
-                action.TraceAddress = context.DecodeArray(c => c.DecodeInt());
-                int subtracesCount = context.DecodeInt();
+                action.Result.Output = rlpStream.DecodeByteArray();
+                action.Result.GasUsed = rlpStream.DecodeLong();
+                action.TraceAddress = rlpStream.DecodeArray(c => c.DecodeInt());
+                int subtracesCount = rlpStream.DecodeInt();
                 action.Subtraces = new List<ParityTraceAction>(subtracesCount);
                 for (int i = 0; i < subtracesCount; i++)
                 {
-                    action.Subtraces.Add(DecodeAction(context));
+                    action.Subtraces.Add(DecodeAction(rlpStream));
                 }
             }
 
