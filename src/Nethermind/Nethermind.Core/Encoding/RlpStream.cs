@@ -14,6 +14,11 @@ namespace Nethermind.Core.Encoding
         private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
 
+        protected RlpStream()
+        {
+            Position = 0;
+        }
+        
         public RlpStream(int length)
         {
             Data = new byte[length];
@@ -96,12 +101,12 @@ namespace Nethermind.Core.Encoding
             WriteByte((byte) value);
         }
 
-        private void WriteByte(byte byteToWrite)
+        protected virtual void WriteByte(byte byteToWrite)
         {
             Data[Position++] = byteToWrite;
         }
 
-        private void Write(Span<byte> bytesToWrite)
+        protected virtual void Write(Span<byte> bytesToWrite)
         {
             bytesToWrite.CopyTo(Data.AsSpan().Slice(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;

@@ -7,21 +7,21 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NewNettyFrameEncoder : MessageToByteEncoder<IByteBuffer>
+    public class ZeroNettyFrameEncoder : MessageToByteEncoder<IByteBuffer>
     {
         private readonly ILogger _logger;
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
         
-        public NewNettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
+        public ZeroNettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
         {
             _frameCipher = frameCipher;
             _frameMacProcessor = frameMacProcessor;
             _logger = logger;
         }
 
-        byte[] _encryptBuffer = new byte[16];
-        byte[] _macBuffer = new byte[16];
+        private byte[] _encryptBuffer = new byte[16];
+        private byte[] _macBuffer = new byte[16];
         
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {

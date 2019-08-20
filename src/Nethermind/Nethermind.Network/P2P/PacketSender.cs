@@ -45,6 +45,30 @@ namespace Nethermind.Network.P2P
             }
         }
 
+        private void Send(int packetType, byte[] message)
+        {
+            if (!_context.Channel.Active)
+            {
+                return;
+            }
+         
+            _context.WriteAsync((packetType, message)).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_context.Channel != null && !_context.Channel.Active)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
+                    }
+                    else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
+                }
+                else if (t.IsCompleted)
+                {
+//                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
+                }
+            });
+        }
+        
         private void Send(Packet packet)
         {
             if (!_context.Channel.Active)

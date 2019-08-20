@@ -30,7 +30,7 @@ using Org.BouncyCastle.Crypto.Digests;
 namespace Nethermind.Network.Test.Rlpx
 {
     [TestFixture]
-    public class NewNettyFrameEncoderTests
+    public class ZeroNettyFrameEncoderTests
     {
         [SetUp]
         public void Setup()
@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.Rlpx
         private IFrameCipher _frameCipher;
         private IFrameMacProcessor _macProcessor;
 
-        private class UnderTest : NewNettyFrameEncoder
+        private class UnderTest : ZeroNettyFrameEncoder
         {
             private readonly IChannelHandlerContext _context;
 

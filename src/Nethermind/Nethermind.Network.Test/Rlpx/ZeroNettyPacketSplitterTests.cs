@@ -29,12 +29,12 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.Rlpx
 {
     [TestFixture]
-    public class NewNettyPacketSplitterTests
+    public class ZeroNettyPacketSplitterTests
     {
         private IByteBuffer _input = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
         private IByteBuffer _output = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
 
-        private class UnderTest : NewNettyPacketSplitter
+        private class UnderTest : ZeroNettyPacketSplitter
         {
             private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 

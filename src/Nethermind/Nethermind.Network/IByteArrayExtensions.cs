@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,18 +17,24 @@
  */
 
 using DotNetty.Buffers;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network
-{   
-    public interface IMessageSerializer<T> where T : MessageBase
+{
+    public static class IByteBufferExtensions
     {
-        byte[] Serialize(T message);
-        T Deserialize(byte[] bytes);
-    }
-    
-    public interface IZeroMessageSerializer<T> where T : MessageBase
-    {
-        void Serialize(IByteBuffer byteBuffer, T message);
-        T Deserialize(IByteBuffer byteBuffer);
+        public static byte[] ReadAllBytes(this IByteBuffer buffer)
+        {
+            byte[] bytes = new byte[buffer.ReadableBytes];
+            buffer.ReadBytes(bytes);
+            return bytes;
+        }
+        
+        public static string ReadAllHex(this IByteBuffer buffer)
+        {
+            byte[] bytes = new byte[buffer.ReadableBytes];
+            buffer.ReadBytes(bytes);
+            return bytes.ToHexString();
+        }
     }
 }

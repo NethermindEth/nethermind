@@ -60,37 +60,37 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer SetWriterIndex(int writerIndex)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer SetReaderIndex(int readerIndex)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer SetIndex(int readerIndex, int writerIndex)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public bool IsReadable()
         {
-            throw new NotImplementedException();
+            return false;
         }
 
         public bool IsReadable(int size)
         {
-            throw new NotImplementedException();
+            return false;
         }
 
         public bool IsWritable()
         {
-            throw new NotImplementedException();
+            return true;
         }
 
         public bool IsWritable(int size)
         {
-            throw new NotImplementedException();
+            return true;
         }
 
         public IByteBuffer Clear()
@@ -380,27 +380,27 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer SetBytes(int index, IByteBuffer src)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer SetBytes(int index, IByteBuffer src, int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer SetBytes(int index, IByteBuffer src, int srcIndex, int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer SetBytes(int index, byte[] src)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer SetBytes(int index, byte[] src, int srcIndex, int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public Task<int> SetBytesAsync(int index, Stream src, int length, CancellationToken cancellationToken)
@@ -585,7 +585,7 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer WriteByte(int value)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer WriteShort(int value)
@@ -665,17 +665,17 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer WriteBytes(IByteBuffer src)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer WriteBytes(IByteBuffer src, int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer WriteBytes(IByteBuffer src, int srcIndex, int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer WriteBytes(byte[] src)
@@ -685,7 +685,7 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer WriteBytes(byte[] src, int srcIndex, int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public ArraySegment<byte> GetIoBuffer()
@@ -785,7 +785,7 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer WriteZero(int length)
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public int WriteCharSequence(ICharSequence sequence, Encoding encoding)
@@ -848,15 +848,15 @@ namespace Nethermind.Network.Benchmarks
             throw new NotImplementedException();
         }
 
-        public int Capacity { get; }
-        public int MaxCapacity { get; }
+        public int Capacity { get; } = int.MaxValue;
+        public int MaxCapacity { get; } = int.MaxValue;
         public IByteBufferAllocator Allocator { get; }
         public bool IsDirect { get; }
         public int ReaderIndex { get; }
         public int WriterIndex { get; }
         public int ReadableBytes { get; }
-        public int WritableBytes { get; }
-        public int MaxWritableBytes { get; }
+        public int WritableBytes { get; } = int.MaxValue;
+        public int MaxWritableBytes { get; } = int.MaxValue;
         public int IoBufferCount { get; }
         public bool HasArray { get; }
         public byte[] Array { get; }

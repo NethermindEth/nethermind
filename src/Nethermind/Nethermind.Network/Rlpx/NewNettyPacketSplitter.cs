@@ -26,7 +26,7 @@ using Nethermind.Core.Encoding;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NewNettyPacketSplitter : MessageToByteEncoder<IByteBuffer>
+    public class ZeroNettyPacketSplitter : MessageToByteEncoder<IByteBuffer>
     {
         public const int FrameBoundary = 16;
         public int MaxFrameSize = FrameBoundary * 64;
