@@ -43,6 +43,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public uint Confirmations { get; private set; }
         public uint RequiredConfirmations { get; private set; }
 
+        public bool IsExpired(uint timestamp) => timestamp >= Deposit.ExpiryTime;
+
         public DepositDetails(Deposit deposit, DataAsset dataAsset, Address consumer, byte[] pepper, uint timestamp, 
             Keccak transactionHash, uint confirmationTimestamp = 0, bool rejected = false,
             EarlyRefundTicket earlyRefundTicket = null, Keccak claimedRefundTransactionHash = null,

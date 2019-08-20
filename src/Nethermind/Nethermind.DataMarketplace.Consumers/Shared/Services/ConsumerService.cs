@@ -108,7 +108,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         #region DataRequests
         
         public Task<DataRequestResult> SendDataRequestAsync(Keccak depositId)
-            => _dataRequestService.SendDataRequestAsync(depositId);
+            => _dataRequestService.SendAsync(depositId);
         
         #endregion
         

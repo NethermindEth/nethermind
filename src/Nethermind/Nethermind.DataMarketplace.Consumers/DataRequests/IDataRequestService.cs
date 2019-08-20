@@ -24,6 +24,6 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests
 {
     public interface IDataRequestService
     {
-        Task<DataRequestResult> SendDataRequestAsync(Keccak depositId);
+        Task<DataRequestResult> SendAsync(Keccak depositId);
     }
 }

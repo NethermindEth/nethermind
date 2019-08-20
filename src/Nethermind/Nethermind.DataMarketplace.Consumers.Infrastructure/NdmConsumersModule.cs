@@ -122,8 +122,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
             var dataAssetService = new DataAssetService(providerRepository, consumerNotifier, logManager);
             var providerService = new ProviderService(providerRepository, consumerNotifier, logManager);
-            var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider,
-                kycVerifier, wallet, providerService, sessionRepository, consumerNotifier, logManager);
+            var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider, kycVerifier, wallet,
+                providerService, timestamper, sessionRepository, consumerNotifier, logManager);
             var depositService = new DepositService(blockchainBridge, txPool, abiEncoder, wallet, contractAddress,
                 logManager);
             var sessionService = new SessionService(providerService, depositProvider, dataAssetService,
