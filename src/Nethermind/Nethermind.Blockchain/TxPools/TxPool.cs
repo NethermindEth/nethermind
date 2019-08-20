@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain.TxPools
     /// </summary>
     public class TxPool : ITxPool, IDisposable
     {
-        private static readonly object Locker = new object();
+        private readonly object _locker = new object();
 
         private readonly ConcurrentDictionary<Address, AddressNonces> _nonces =
             new ConcurrentDictionary<Address, AddressNonces>();
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.TxPools
         private bool HandleOwnTransaction(Transaction transaction)
         {
             var address = transaction.SenderAddress;
-            lock (Locker)
+            lock (_locker)
             {
                 if (!_nonces.TryGetValue(address, out var addressNonces))
                 {
@@ -315,7 +315,7 @@ namespace Nethermind.Blockchain.TxPools
                     _fadingOwnTransactions.TryRemove(fadingHash, out _);
                     
                     // Nonce was correct and will never be used again
-                    lock (Locker)
+                    lock (_locker)
                     {
                         var address = fadingHolder.Tx.SenderAddress;
                         if (!_nonces.TryGetValue(address, out var addressNonces))
@@ -361,7 +361,7 @@ namespace Nethermind.Blockchain.TxPools
         // TODO: Ensure that nonce is always valid in case of sending own transactions from different nodes.
         public UInt256 ReserveOwnTransactionNonce(Address address)
         {
-            lock (Locker)
+            lock (_locker)
             {
                 if (!_nonces.TryGetValue(address, out var addressNonces))
                 {

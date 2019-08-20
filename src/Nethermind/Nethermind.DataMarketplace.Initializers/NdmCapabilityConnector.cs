@@ -17,8 +17,9 @@
  */
 
 using Nethermind.Core;
+using Nethermind.DataMarketplace.Consumers;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.Logging;
-using Nethermind.DataMarketplace.Consumers.Services;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
@@ -30,18 +31,18 @@ namespace Nethermind.DataMarketplace.Initializers
         private static readonly Capability Capability = new Capability(Protocol.Ndm, 1);
         private readonly IProtocolsManager _protocolsManager;
         private readonly IProtocolHandlerFactory _protocolHandlerFactory;
-        private readonly IConsumerService _consumerService;
+        private readonly IAccountService _accountService;
         private readonly Address _providerAddress;
         private readonly ILogger _logger;
         public bool CapabilityAdded { get; private set; }
 
         public NdmCapabilityConnector(IProtocolsManager protocolsManager,
-            IProtocolHandlerFactory protocolHandlerFactory,
-            IConsumerService consumerService, ILogManager logManager, Address providerAddress = null)
+            IProtocolHandlerFactory protocolHandlerFactory, IAccountService accountService,
+            ILogManager logManager, Address providerAddress = null)
         {
             _protocolsManager = protocolsManager;
             _protocolHandlerFactory = protocolHandlerFactory;
-            _consumerService = consumerService;
+            _accountService = accountService;
             _logger = logManager.GetClassLogger();
             _providerAddress = providerAddress;
         }
@@ -49,7 +50,7 @@ namespace Nethermind.DataMarketplace.Initializers
         public void Init()
         {
             if (_logger.IsTrace) _logger.Trace("Initializing NDM capability connector.");
-            _consumerService.AddressChanged += (_, e) =>
+            _accountService.AddressChanged += (_, e) =>
             {
                 if (e.OldAddress == e.NewAddress)
                 {
@@ -64,7 +65,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 AddCapability();
             };
             _protocolsManager.AddProtocol(Protocol.Ndm, session => _protocolHandlerFactory.Create(session));
-            var consumerAddress = _consumerService.GetAddress();
+            var consumerAddress = _accountService.GetAddress();
             if ((consumerAddress is null || consumerAddress == Address.Zero) &&
                 (_providerAddress is null || _providerAddress == Address.Zero))
             {

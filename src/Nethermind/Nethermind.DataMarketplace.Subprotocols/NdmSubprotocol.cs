@@ -26,7 +26,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
@@ -456,10 +457,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new DisableDataStreamMessage(depositId, client));
         }
         
-        public void SendRequestDepositApproval(Keccak assetId, string kyc)
+        public void SendRequestDepositApproval(Keccak assetId, Address consumer, string kyc)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requestdepositapproval");
-            Send(new RequestDepositApprovalMessage(assetId, kyc));
+            Send(new RequestDepositApprovalMessage(assetId, consumer, kyc));
         }
         
         private void Handle(SessionFinishedMessage message)
@@ -477,25 +478,27 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DepositApprovalConfirmedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalconfirmed");
-            ConsumerService.ConfirmDepositApprovalAsync(message.DataAssetId).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            ConsumerService.ConfirmDepositApprovalAsync(message.DataAssetId, message.Consumer)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         private void Handle(DepositApprovalRejectedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalrejected");
-            ConsumerService.RejectDepositApprovalAsync(message.DataAssetId).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            ConsumerService.RejectDepositApprovalAsync(message.DataAssetId, message.Consumer)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         public async Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataAssetId = null,

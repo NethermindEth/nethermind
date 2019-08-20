@@ -19,8 +19,8 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
-using Nethermind.DataMarketplace.Consumers.Queries;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.JsonRpc;

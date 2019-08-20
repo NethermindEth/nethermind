@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Consumers.Domain;
+using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {

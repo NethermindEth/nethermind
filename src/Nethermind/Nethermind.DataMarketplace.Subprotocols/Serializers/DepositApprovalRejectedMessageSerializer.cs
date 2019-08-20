@@ -25,15 +25,17 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DepositApprovalRejectedMessageSerializer : IMessageSerializer<DepositApprovalRejectedMessage>
     {
         public byte[] Serialize(DepositApprovalRejectedMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId)).Bytes;
+            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId),
+                Nethermind.Core.Encoding.Rlp.Encode(message.Consumer)).Bytes;
 
         public DepositApprovalRejectedMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var dataAssetId = context.DecodeKeccak();
+            var consumer = context.DecodeAddress();
 
-            return new DepositApprovalRejectedMessage(dataAssetId);
+            return new DepositApprovalRejectedMessage(dataAssetId, consumer);
         }
     }
 }

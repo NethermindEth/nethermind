@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers.Shared;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
     public interface INdmConsumerServices
     {
+        IAccountService AccountService { get; }
         IConsumerService ConsumerService { get; }
     }
 }

@@ -22,22 +22,28 @@ using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
+using Nethermind.DataMarketplace.Consumers.Refunds;
+using Nethermind.DataMarketplace.Consumers.Refunds.Services;
 using Nethermind.Logging;
-using Nethermind.DataMarketplace.Consumers.Services;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.DataMarketplace.Test.Services
 {
     public class RefundServiceTests : ContractInteractionTest
     {
+        private IDepositDetailsRepository _depositRepository;
+        
         [SetUp]
         public void Setup()
         {
             Prepare();
+            _depositRepository = Substitute.For<IDepositDetailsRepository>();
         }
 
         [Test]
@@ -73,7 +79,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             // calls revert and cannot reuse the same state - use only for manual debugging
 //            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
 
-            RefundService refundService = new RefundService(_bridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
+            RefundService refundService = new RefundService(_bridge, _txPool, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
 
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
@@ -125,7 +131,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             uint claimableAfter = timestamp + (uint)TimeSpan.FromDays(1).TotalSeconds;
             AbiSignature earlyRefundAbiDef = new AbiSignature("earlyRefund", new AbiBytes(32), new AbiUInt(32));
             byte[] earlyRefundData = _abiEncoder.Encode(AbiEncodingStyle.Packed, earlyRefundAbiDef, depositId.Bytes, claimableAfter);
-            RefundService refundService = new RefundService(_bridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
+            RefundService refundService = new RefundService(_bridge, _txPool, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
 
             // it will not work so far as we do everything within the same block and timestamp is wrong
             

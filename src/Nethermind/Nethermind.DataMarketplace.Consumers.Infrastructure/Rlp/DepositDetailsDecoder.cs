@@ -19,9 +19,8 @@
 using System;
 using System.IO;
 using Nethermind.Core.Encoding;
-using Nethermind.DataMarketplace.Consumers.Domain;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
-using Org.BouncyCastle.Asn1.Cmp;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 {

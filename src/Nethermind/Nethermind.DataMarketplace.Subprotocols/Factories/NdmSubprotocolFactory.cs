@@ -21,7 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
@@ -35,6 +35,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
         protected readonly IMessageSerializationService MessageSerializationService;
         protected readonly INodeStatsManager NodeStatsManager;
         protected readonly ILogManager LogManager;
+        protected readonly IAccountService AccountService;
         protected readonly IConsumerService ConsumerService;
         protected readonly INdmConsumerChannelManager NdmConsumerChannelManager;
         protected readonly IEcdsa Ecdsa;
@@ -46,14 +47,15 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
         protected Address ConsumerAddress;
 
         public NdmSubprotocolFactory(IMessageSerializationService messageSerializationService,
-            INodeStatsManager nodeStatsManager, ILogManager logManager, IConsumerService consumerService,
-            INdmConsumerChannelManager ndmConsumerChannelManager, IEcdsa ecdsa, IWallet wallet, INdmFaucet faucet,
-            PublicKey nodeId, Address providerAddress, Address consumerAddress,
+            INodeStatsManager nodeStatsManager, ILogManager logManager, IAccountService accountService,
+            IConsumerService consumerService, INdmConsumerChannelManager ndmConsumerChannelManager, IEcdsa ecdsa,
+            IWallet wallet, INdmFaucet faucet, PublicKey nodeId, Address providerAddress, Address consumerAddress,
             bool verifySignature = true)
         {
             MessageSerializationService = messageSerializationService;
             NodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             LogManager = logManager;
+            AccountService = accountService;
             ConsumerService = consumerService;
             NdmConsumerChannelManager = ndmConsumerChannelManager;
             Ecdsa = ecdsa;
@@ -63,7 +65,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Factories
             ProviderAddress = providerAddress;
             ConsumerAddress = consumerAddress;
             VerifySignature = verifySignature;
-            ConsumerService.AddressChanged += (_, e) => ConsumerAddress = e.NewAddress;
+            AccountService.AddressChanged += (_, e) => ConsumerAddress = e.NewAddress;
         }
 
         public virtual INdmSubprotocol Create(ISession p2PSession)

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
 
@@ -26,11 +27,13 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public override int PacketType { get; } = NdmMessageCode.RequestDepositApproval;
         public override string Protocol => "ndm";
         public Keccak DataAssetId { get; }
+        public Address Consumer { get; }
         public string Kyc { get; }
 
-        public RequestDepositApprovalMessage(Keccak dataAssetId, string kyc)
+        public RequestDepositApprovalMessage(Keccak dataAssetId, Address consumer, string kyc)
         {
             DataAssetId = dataAssetId;
+            Consumer = consumer;
             Kyc = kyc;
         }
     }
