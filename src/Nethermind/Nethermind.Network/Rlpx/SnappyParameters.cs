@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.Rlpx
 {
-    public interface IPacketSender
+    public static class SnappyParameters
     {
-        void Enqueue<T>(T message) where T : P2PMessage;
+        public const int MaxSnappyLength = 1024 * 1024 * 16;
     }
 }

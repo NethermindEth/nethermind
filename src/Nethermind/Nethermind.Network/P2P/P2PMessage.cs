@@ -22,6 +22,8 @@ namespace Nethermind.Network.P2P
     {
         public abstract int PacketType { get; }
         
+        public int AdaptivePacketType { get; set; }
+        
         public abstract string Protocol { get; }
     }
 }

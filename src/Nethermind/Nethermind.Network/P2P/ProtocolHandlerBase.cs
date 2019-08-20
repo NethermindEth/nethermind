@@ -54,8 +54,7 @@ namespace Nethermind.Network.P2P
         protected void Send<T>(T message) where T : P2PMessage
         {
             if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");
-            Packet packet = new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
-            Session.DeliverMessage(packet);   
+            Session.DeliverMessage(message);   
         }
 
         protected async Task CheckProtocolInitTimeout()

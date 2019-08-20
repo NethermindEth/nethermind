@@ -25,6 +25,8 @@ namespace Nethermind.Network.Rlpx
         
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
+            _logger.Warn($"Encoding {input.ReadableBytes}");
+            
             if (input.ReadableBytes % 16 != 0)
             {
                 throw new InvalidOperationException($"Frame length should be a multiple of 16");

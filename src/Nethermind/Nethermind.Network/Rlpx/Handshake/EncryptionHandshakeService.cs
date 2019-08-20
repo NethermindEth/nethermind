@@ -30,7 +30,7 @@ namespace Nethermind.Network.Rlpx.Handshake
     /// <summary>
     ///     https://github.com/ethereum/devp2p/blob/master/rlpx.md
     /// </summary>
-    public class EncryptionHandshakeService : IEncryptionHandshakeService
+    public class HandshakeService : IHandshakeService
     {
         private static int MacBitsSize = 256;
 
@@ -42,7 +42,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         private readonly ILogger _logger;
         private readonly IEcdsa _ecdsa;
 
-        public EncryptionHandshakeService(
+        public HandshakeService(
             IMessageSerializationService messageSerializationService,
             IEciesCipher eciesCipher,
             ICryptoRandom cryptoRandom,

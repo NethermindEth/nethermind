@@ -27,6 +27,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Org.BouncyCastle.Crypto.Digests;
@@ -54,6 +55,8 @@ namespace Nethermind.Network.Benchmarks
         private TestSnappy _snappyEncoder;
         private TestZeroSnappy _zeroSnappyEncoder;
         private NewBlockMessage _newBlockMessage;
+        private PacketSender _packetSender;
+        private MessageSerializationService _serializationService;
 
         [GlobalSetup]
         public void Setup()
@@ -103,6 +106,8 @@ namespace Nethermind.Network.Benchmarks
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
+            _serializationService.Register(_newBlockMessageSerializer); 
+            _packetSender = new PacketSender(_serializationService, LimboLogs.Instance);
         }
 
         private class TestEncoder : Rlpx.NettyFrameEncoder
@@ -202,7 +207,6 @@ namespace Nethermind.Network.Benchmarks
         public void Current()
         {
             byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
-
             Packet packet = new Packet("eth", 7, message);
             Packet ensnapped = _snappyEncoder.TestEncode(packet);
             List<object> output = new List<object>();

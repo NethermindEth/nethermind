@@ -27,29 +27,33 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
     {
-        byte[] _snappyBuffer = new byte[16 * 1024 * 1024];
-        
+        byte[] _snappyBuffer = new byte[SnappyParameters.MaxSnappyLength];
+
         private readonly ILogger _logger;
 
         public ZeroSnappyEncoder(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
+            _logger.Warn($"Snapping something");
             byte packetType = input.ReadByte();
+            _logger.Warn($"Snapping {packetType} {input.ReadableBytes}");
 
             output.WriteByte(packetType);
-            
-            if(_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
+
+            if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
             int length = SnappyCodec.Compress(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes, _snappyBuffer, 0);
             input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
-            
+
             if (output.WritableBytes < length)
             {
                 output.DiscardReadBytes();
             }
+            
+            _logger.Warn($"Snapped {packetType} to {length}");
 
             output.WriteBytes(_snappyBuffer, 0, length);
         }

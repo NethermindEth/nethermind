@@ -797,7 +797,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
             _messageSerializationService.Register(new ReceiptsMessageSerializer(_specProvider));
 
-            var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
+            var encryptionHandshakeServiceA = new HandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
             
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
@@ -807,6 +807,7 @@ namespace Nethermind.Runner.Runners
 
             _sessionMonitor = new SessionMonitor(networkConfig, _cryptoRandom, _logManager);
             _rlpxPeer = new RlpxPeer(
+                _messageSerializationService,
                 _nodeKey.PublicKey,
                 _initConfig.P2PPort,
                 encryptionHandshakeServiceA,

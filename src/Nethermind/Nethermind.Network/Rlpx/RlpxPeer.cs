@@ -44,24 +44,27 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        private readonly IEncryptionHandshakeService _encryptionHandshakeService;
+        private readonly IHandshakeService _handshakeService;
+        private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private IEventExecutorGroup _group;
 
         public RlpxPeer(
+            IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
-            IEncryptionHandshakeService encryptionHandshakeService,
+            IHandshakeService handshakeService,
             ILogManager logManager,
             ISessionMonitor sessionMonitor)
         {
             _group = new SingleThreadEventLoop();
+            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
-            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
+            _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
         }
@@ -184,7 +187,7 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, _logManager, _group);
+            var handshakeHandler = new NettyHandshakeHandler(_serializationService, _handshakeService, session, role, _logManager, _group);
 
             IChannelPipeline pipeline = channel.Pipeline;
             // pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));

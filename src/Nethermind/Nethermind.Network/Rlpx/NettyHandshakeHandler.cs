@@ -35,30 +35,32 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly IByteBuffer _buffer = PooledByteBufferAllocator.Default.Buffer();
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
+        private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
         private readonly IEventExecutorGroup _group;
         private readonly ILogger _logger;
         private readonly HandshakeRole _role;
 
-        private readonly IEncryptionHandshakeService _service;
+        private readonly IHandshakeService _service;
         private readonly ISession _session;
         private PublicKey RemoteId => _session.RemoteNodeId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
 
         public NettyHandshakeHandler(
-            IEncryptionHandshakeService service,
+            IMessageSerializationService serializationService,
+            IHandshakeService handshakeService,
             ISession session,
             HandshakeRole role,
             ILogManager logManager,
             IEventExecutorGroup group)
         {
-            
+            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<NettyHandshakeHandler>();
             _role = role;
             _group = group;
-            _service = service ?? throw new ArgumentNullException(nameof(service));
+            _service = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _initCompletionSource = new TaskCompletionSource<object>();
         }
@@ -167,14 +169,14 @@ namespace Nethermind.Network.Rlpx
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor, _logger));
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new ZeroNettyFrameEncoder(frameCipher, macProcessor, _logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
-                PacketSender packetSender = new PacketSender(_logManager);
-                
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new ZeroNettyPacketSplitter(_logManager));
+
+                PacketSender packetSender = new PacketSender(_serializationService, _logManager);
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(packetSender);
 
@@ -212,6 +214,11 @@ namespace Nethermind.Network.Rlpx
                 //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
                 await _channel.DisconnectAsync();
             }
+        }
+
+        ~NettyHandshakeHandler()
+        {
+            _buffer.Release();
         }
     }
 }

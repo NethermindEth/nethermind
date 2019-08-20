@@ -23,6 +23,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -31,6 +32,13 @@ namespace Nethermind.Network.Rlpx
         public const int FrameBoundary = 16;
         public int MaxFrameSize = FrameBoundary * 64;
 
+        private ILogger _logger;
+        
+        public ZeroNettyPacketSplitter(ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
         public void DisableFraming()
         {
             MaxFrameSize = int.MaxValue;
@@ -42,9 +50,12 @@ namespace Nethermind.Network.Rlpx
         [Todo(Improve.Refactor, "We can remove MAC space from here later and move it to encoder")]
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
+            
             Interlocked.Increment(ref _contextId);
 
             packetType = input.ReadByte();
+            _logger.Warn($"Splitting {packetType}");
+            
             int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 

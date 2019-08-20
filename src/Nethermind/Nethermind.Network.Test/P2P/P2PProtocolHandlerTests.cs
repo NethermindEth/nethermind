@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test.P2P
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.Init();
 
-            _session.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Hello));
+            _session.Received(1).DeliverMessage(Arg.Any<HelloMessage>());
         }
 
         [Test]
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test.P2P
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
-            _session.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Pong));
+            _session.Received(1).DeliverMessage(Arg.Any<PongMessage>());
         }
 
         [Test]

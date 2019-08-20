@@ -17,42 +17,39 @@
  */
 
 using System;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
-{    
+{
     public class PacketSender : ChannelHandlerAdapter, IPacketSender
     {
-        private readonly ILogger _logger;        
+        private readonly IMessageSerializationService _messageSerializationService;
+        private readonly ILogger _logger;
         private IChannelHandlerContext _context;
+        private IByteBuffer _byteBuffer = PooledByteBufferAllocator.Default.Buffer();
 
-        public PacketSender(ILogManager logManager)
+        public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager)
         {
+            _byteBuffer.Retain();
+            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void Enqueue(Packet packet)
+        public void Enqueue<T>(T message) where T : P2PMessage
         {
-            try
-            {
-                Send(packet);
-            }
-            catch (Exception e)
-            {
-                _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) failed", e);
-            }
-        }
-
-        private void Send<T>(T message) where T : P2PMessage
-        {
+            _logger.Warn($"Sending {message.Protocol}.{message.PacketType} ({message.AdaptivePacketType})");
             if (!_context.Channel.Active)
             {
                 return;
             }
-         
-            _context.WriteAsync(message).ContinueWith(t =>
+
+            _byteBuffer.WriteByte(message.AdaptivePacketType);
+            _messageSerializationService.Serialize(message, _byteBuffer);
+            _context.WriteAndFlushAsync(_byteBuffer).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -68,14 +65,14 @@ namespace Nethermind.Network.P2P
                 }
             });
         }
-        
+
         private void Send(Packet packet)
         {
             if (!_context.Channel.Active)
             {
                 return;
             }
-         
+
             _context.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -96,6 +93,11 @@ namespace Nethermind.Network.P2P
         public override void HandlerAdded(IChannelHandlerContext context)
         {
             _context = context;
+        }
+
+        ~PacketSender()
+        {
+            _byteBuffer.SafeRelease();
         }
     }
 }

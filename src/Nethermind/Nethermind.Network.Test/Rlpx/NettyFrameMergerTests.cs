@@ -20,7 +20,9 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
@@ -144,6 +146,22 @@ namespace Nethermind.Network.Test.Rlpx
             underTest.Decode((byte[])frame, output);
 
             Assert.AreEqual(2, ((Packet)output[0]).PacketType);
+        }
+        
+        [Test]
+        public void Can_decode_neth_message()
+        {
+            byte[] frame = Bytes.FromHexString("0000adc18000000000000000000000000000000000000000000000000000000080f8aa05b8554e65746865726d696e642f76312e302e302d726332386465762d63396435353432612f5836342d4d6963726f736f66742057696e646f77732031302e302e3137313334202f436f7265342e362e32373631372e3035ccc5836574683ec5836574683f82765fb840824fa845597b92f99482f0d53993bf2562f8cf38e5ccb85ee4bb333df5cc51d197dc02fd0a533b3dfb6bad3f19aed405d68b72e413f8b206ae4ae31349fc7c1e00000000000000000000000000000000000000");
+
+            List<object> output = new List<object>();
+            UnderTest underTest = new UnderTest();
+            underTest.Decode(frame, output);
+
+            Packet packet = (Packet) output[0];
+            HelloMessageSerializer serializer = new HelloMessageSerializer();
+            HelloMessage helloMessage = serializer.Deserialize(packet.Data);
+
+            Assert.AreEqual("Nethermind/v1.0.0-rc28dev-c9d5542a/X64-Microsoft Windows 10.0.17134 /Core4.6.27617.05", helloMessage.ClientId);
         }
     }
 }
