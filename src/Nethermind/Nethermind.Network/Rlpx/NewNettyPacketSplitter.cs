@@ -16,17 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Encoding;
 
 namespace Nethermind.Network.Rlpx
 {
     public class NewNettyPacketSplitter : MessageToByteEncoder<IByteBuffer>
     {
-        private const int FrameBoundary = 16;
+        public const int FrameBoundary = 16;
+        public int MaxFrameSize = FrameBoundary * 64;
+
+        public void DisableFraming()
+        {
+            MaxFrameSize = int.MaxValue;
+        }
 
         private int _contextId;
         private byte packetType = 1;
@@ -34,45 +42,100 @@ namespace Nethermind.Network.Rlpx
         [Todo(Improve.Refactor, "We can remove MAC space from here later and move it to encoder")]
         protected override void Encode(IChannelHandlerContext context, IByteBuffer message, IByteBuffer output)
         {
-            packetType = message.ReadByte();
             Interlocked.Increment(ref _contextId);
+
+            packetType = message.ReadByte();
             int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + message.ReadableBytes;
-            int paddingSize = totalPayloadSize % FrameBoundary == 0 ? 0 : FrameBoundary - totalPayloadSize % FrameBoundary;
 
-            if (output.WritableBytes < totalPayloadSize + paddingSize + 32 + packetTypeSize)
+            int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
+            for (int i = 0; i < framesCount; i++)
             {
-                output.DiscardReadBytes();
-            }
-            
-            /*0*/ output.WriteByte((byte) (totalPayloadSize >> 16));
-            /*1*/ output.WriteByte((byte) (totalPayloadSize >> 8));
-            /*2*/ output.WriteByte((byte) totalPayloadSize);
+                int totalPayloadOffset = MaxFrameSize * i;
+                int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
+                int paddingSize = 0;
+                if (i == framesCount - 1)
+                {
+                    // other frames will be Max frame size which is a multiplier of 16
+                    paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
+                }
 
-            /*3*/ output.WriteByte(193);
-            /*4*/ output.WriteByte(128);
-            /*5-32*/ output.WriteZero(27);
-            /*33 or 33-34*/ WritePacketType(output);
-            /*message*/ message.ReadBytes(output, message.ReadableBytes);
-            /*padding to 16*/ output.WriteZero(paddingSize);
-            /*16 of MAC space*/ output.WriteZero(16);
+                // 000 - 016 | header
+                // 016 - 032 | header MAC
+                // 032 - 03x | packet type
+                // 03x - frm | payload
+                // frm - %16 | padding to 16
+                // pad - +16 | payload MAC
+
+                /*0*/
+                output.WriteByte((byte) (framePayloadSize >> 16));
+                /*1*/
+                output.WriteByte((byte) (framePayloadSize >> 8));
+                /*2*/
+                output.WriteByte((byte) framePayloadSize);
+
+                if (framesCount == 1)
+                {
+                    /*3*/
+                    output.WriteByte(193);
+                    /*4*/
+                    output.WriteByte(128);
+                    /*5-32*/
+                    output.WriteZero(27);
+                }
+                else
+                {
+                    Rlp[] headerDataItems;
+                    if (i == 0)
+                    {
+                        headerDataItems = new Rlp[3];
+                        headerDataItems[2] = Rlp.Encode(totalPayloadSize);
+                    }
+                    else
+                    {
+                        headerDataItems = new Rlp[2];
+                    }
+
+                    headerDataItems[1] = Rlp.Encode(_contextId);
+                    headerDataItems[0] = Rlp.Encode(0);
+                    byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
+                    output.WriteBytes(headerDataBytes);
+                    output.WriteZero(32 - headerDataBytes.Length - 3);
+                }
+
+                int framePacketTypeSize = 0;
+                if (i == 0)
+                {
+                    /*33 or 33-34*/
+                    framePacketTypeSize = WritePacketType(output);
+                }
+
+                /*message*/
+                message.ReadBytes(output, framePayloadSize - framePacketTypeSize);
+                /*padding to 16*/
+                output.WriteZero(paddingSize);
+                /*16 of MAC space*/
+                output.WriteZero(16);
+            }
         }
 
-        private void WritePacketType(IByteBuffer output)
+        private int WritePacketType(IByteBuffer output)
         {
             if (packetType == 0)
             {
                 output.WriteByte(128);
+                return 1;
             }
-            else if (packetType < 128)
+
+            if (packetType < 128)
             {
                 output.WriteByte(packetType);
+                return 1;
             }
-            else
-            {
-                output.WriteByte(129);
-                output.WriteByte(packetType);
-            }
+            
+            output.WriteByte(129);
+            output.WriteByte(packetType);
+            return 2;
         }
     }
 }
