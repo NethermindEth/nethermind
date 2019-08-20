@@ -17,11 +17,13 @@
  */
 
 using System.Reflection;
+using DotNetty.Buffers;
 
 namespace Nethermind.Network
 {
     public interface IMessageSerializationService
     {
+        void Serialize<T>(T message, IByteBuffer byteBuffer) where T : MessageBase;
         byte[] Serialize<T>(T messageBase) where T : MessageBase;
         T Deserialize<T>(byte[] bytes) where T : MessageBase;
         void Register(Assembly assembly);

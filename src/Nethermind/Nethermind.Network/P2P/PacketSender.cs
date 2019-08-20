@@ -45,14 +45,14 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        private void Send(int packetType, byte[] message)
+        private void Send<T>(T message) where T : P2PMessage
         {
             if (!_context.Channel.Active)
             {
                 return;
             }
          
-            _context.WriteAsync((packetType, message)).ContinueWith(t =>
+            _context.WriteAsync(message).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
