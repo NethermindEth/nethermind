@@ -39,8 +39,7 @@ namespace Nethermind.Network.Rlpx
         private readonly KeccakDigest _ingressMacCopy;
         private readonly AesEngine _aesEngine;
         private readonly byte[] _macSecret;
-
-        // TODO: three arguments in place of secrets
+        
         public FrameMacProcessor(PublicKey remoteNodeId, EncryptionSecrets secrets)
         {
             _remoteNodeId = remoteNodeId;

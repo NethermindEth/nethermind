@@ -62,7 +62,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             private readonly IChannelHandlerContext _context;
 
-            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, NullLogger.Instance)
+            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
                 _context = Substitute.For<IChannelHandlerContext>();
             }

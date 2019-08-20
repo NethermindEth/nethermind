@@ -33,7 +33,6 @@ namespace Nethermind.Network.Rlpx
         private const int MacSize = 16;
 
         private readonly IFrameCipher _frameCipher;
-
         private readonly IFrameMacProcessor _frameMacProcessor;
         private readonly ILogger _logger;
 
@@ -44,8 +43,8 @@ namespace Nethermind.Network.Rlpx
 
         public NettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
         {
-            _frameCipher = frameCipher;
-            _frameMacProcessor = frameMacProcessor;
+            _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+            _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
             _logger = logger;
         }
 

@@ -33,8 +33,8 @@ namespace Nethermind.Network.Rlpx
         
         public NettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
         {
-            _frameCipher = frameCipher;
-            _frameMacProcessor = frameMacProcessor;
+            _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+            _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
             _logger = logger;
         }
 

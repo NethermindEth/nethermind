@@ -13,11 +13,11 @@ namespace Nethermind.Network.Rlpx
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
         
-        public ZeroNettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
+        public ZeroNettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
-            _frameCipher = frameCipher;
-            _frameMacProcessor = frameMacProcessor;
-            _logger = logger;
+            _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+            _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private byte[] _encryptBuffer = new byte[16];

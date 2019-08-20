@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -30,9 +31,9 @@ namespace Nethermind.Network.Rlpx
         
         private readonly ILogger _logger;
 
-        public ZeroSnappyEncoder(ILogger logger)
+        public ZeroSnappyEncoder(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)

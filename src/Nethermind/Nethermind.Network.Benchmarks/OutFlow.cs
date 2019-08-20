@@ -88,7 +88,7 @@ namespace Nethermind.Network.Benchmarks
             _splitter.DisableFraming();
             _zeroSplitter = new TestZeroSplitter();
             _zeroSplitter.DisableFraming();
-            _zeroEncoder = new TestZeroEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
+            _zeroEncoder = new TestZeroEncoder(frameCipher, frameMacProcessor);
             _snappyEncoder = new TestSnappy();
             _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
@@ -125,8 +125,8 @@ namespace Nethermind.Network.Benchmarks
                 base.Encode(null, message, buffer);
             }
 
-            public TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
-                : base(frameCipher, frameMacProcessor, logger)
+            public TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
             }
         }
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Benchmarks
         public class TestZeroSnappy : ZeroSnappyEncoder
         {
             public TestZeroSnappy()
-                : base(NullLogger.Instance)
+                : base(LimboLogs.Instance)
             {
             }
 

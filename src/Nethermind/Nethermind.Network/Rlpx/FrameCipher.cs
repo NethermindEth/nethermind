@@ -27,9 +27,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class FrameCipher : IFrameCipher
     {
-        // TODO: check, EthereumJ suggest a block size of 32 bytes while AES should have a 16 bytes block size
         private const int BlockSize = 16;
-
         private const int KeySize = 32;
 
         private readonly IBufferedCipher _decryptionCipher;
