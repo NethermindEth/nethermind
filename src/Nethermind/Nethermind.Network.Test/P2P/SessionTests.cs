@@ -528,5 +528,37 @@ namespace Nethermind.Network.Test.P2P
 
             session.ReceiveMessage(new Packet("---", 100, Bytes.Empty));
         }
+        
+        [Test]
+        public void Updates_local_and_remote_metrics_on_disconnects()
+        {
+            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            IProtocolHandler p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
+
+            long beforeLocal = Network.Metrics.LocalOtherDisconnects;
+            long beforeRemote = Network.Metrics.OtherDisconnects;
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Local, "");
+            long afterLocal = Network.Metrics.LocalOtherDisconnects;
+            long afterRemote = Network.Metrics.OtherDisconnects;
+            Assert.AreEqual(beforeLocal + 1, afterLocal);
+            Assert.AreEqual(beforeRemote, afterRemote);
+            
+            session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _channelHandlerContext, _packetSender);
+            p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
+
+            beforeLocal = Network.Metrics.LocalOtherDisconnects;
+            beforeRemote = Network.Metrics.OtherDisconnects;
+            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "");
+            afterLocal = Network.Metrics.LocalOtherDisconnects;
+            afterRemote = Network.Metrics.OtherDisconnects;
+            Assert.AreEqual(beforeLocal, afterLocal);
+            Assert.AreEqual(beforeRemote + 1, afterRemote);
+        }
     }
 }

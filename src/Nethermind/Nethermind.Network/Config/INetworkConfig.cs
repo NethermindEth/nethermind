@@ -43,7 +43,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "10000")]
         int P2PPingInterval { get; }
 
-        [ConfigItem(DefaultValue = "3")]
+        [ConfigItem(DefaultValue = "2")]
         int P2PPingRetryCount { get; }
 
         [ConfigItem(DefaultValue = "2000")]

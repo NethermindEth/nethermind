@@ -685,6 +685,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterPeerIsAdded(peerA)
                 .AfterPeerIsAdded(peerA)
                 .WaitAMoment()
+                .WaitAMoment()
                 .PeerCountIs(1)
                 .BestSuggested.BlockHasNumber(1).Stop();
         }

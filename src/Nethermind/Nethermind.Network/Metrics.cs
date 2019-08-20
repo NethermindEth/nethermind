@@ -42,6 +42,20 @@ namespace Nethermind.Network
         public static long SameAsSelfDisconnects { get; set; }
         public static long TcpSubsystemErrorDisconnects { get; set; }
         
+        public static long LocalBreachOfProtocolDisconnects { get; set; }
+        public static long LocalUselessPeerDisconnects { get; set; }
+        public static long LocalTooManyPeersDisconnects { get; set; }
+        public static long LocalAlreadyConnectedDisconnects { get; set; }
+        public static long LocalIncompatibleP2PDisconnects { get; set; }
+        public static long LocalReceiveMessageTimeoutDisconnects { get; set; }
+        public static long LocalUnexpectedIdentityDisconnects { get; set; }
+        public static long LocalNullNodeIdentityDisconnects { get; set; }
+        public static long LocalClientQuittingDisconnects { get; set; }
+        public static long LocalOtherDisconnects { get; set; }
+        public static long LocalDisconnectRequestedDisconnects { get; set; }
+        public static long LocalSameAsSelfDisconnects { get; set; }
+        public static long LocalTcpSubsystemErrorDisconnects { get; set; }
+        
         public static long Eth62NewBlockHashesReceived { get; set; }
         public static long Eth62TransactionsReceived { get; set; }
         public static long Eth62GetBlockHeadersReceived { get; set; }

@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -33,11 +34,13 @@ namespace Nethermind.Network
         private System.Timers.Timer _pingTimer;
 
         private readonly INetworkConfig _networkConfig;
+        private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
 
-        public SessionMonitor(INetworkConfig config, ILogManager logManager)
+        public SessionMonitor(INetworkConfig config, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -75,10 +78,10 @@ namespace Nethermind.Network
             {
                 if (x.IsFaulted && _logger.IsError)
                 {
-                    if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error during send ping messages: {x.Exception}");
+                    if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error during send ping messages: {x.Exception}");
                 }
             });
-            
+
             task.Wait();
         }
 
@@ -101,6 +104,8 @@ namespace Nethermind.Network
             }
             else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
+
+        private Random _random = new Random();
 
         private async Task<bool> SendPingMessage(ISession session)
         {
@@ -125,9 +130,21 @@ namespace Nethermind.Network
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Disconnecting due to missed ping messages: {session.RemoteNodeId}");
-            session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "ping");
-            return false;
+            // hacky-tricky solution to mass timeout disconnects - disconnect only some of the nodes
+            bool shallDisconnect;
+            lock (_random)
+            {
+                shallDisconnect = _cryptoRandom.NextInt(2) == 0;
+            }
+
+            if (shallDisconnect)
+            {
+                if (_logger.IsInfo) _logger.Info($"Disconnecting {session} due to missed {_networkConfig.P2PPingRetryCount} * {_networkConfig.P2PPingInterval}ms ping messages.");
+                session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "ping");
+                return false;
+            }
+
+            return true;
         }
 
         private void StartPingTimer()
@@ -164,7 +181,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug)  _logger.Error("DEBUG/ERRUR Error during ping timer stop", e);
+                if (_logger.IsDebug) _logger.Error("DEBUG/ERRUR Error during ping timer stop", e);
             }
         }
     }
