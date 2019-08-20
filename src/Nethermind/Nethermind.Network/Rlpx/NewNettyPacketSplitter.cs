@@ -40,13 +40,13 @@ namespace Nethermind.Network.Rlpx
         private byte packetType = 1;
 
         [Todo(Improve.Refactor, "We can remove MAC space from here later and move it to encoder")]
-        protected override void Encode(IChannelHandlerContext context, IByteBuffer message, IByteBuffer output)
+        protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
             Interlocked.Increment(ref _contextId);
 
-            packetType = message.ReadByte();
+            packetType = input.ReadByte();
             int packetTypeSize = packetType >= 128 ? 2 : 1;
-            int totalPayloadSize = packetTypeSize + message.ReadableBytes;
+            int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 /*message*/
-                message.ReadBytes(output, framePayloadSize - framePacketTypeSize);
+                input.ReadBytes(output, framePayloadSize - framePacketTypeSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
                 /*16 of MAC space*/

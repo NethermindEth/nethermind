@@ -30,7 +30,7 @@ using Org.BouncyCastle.Crypto.Digests;
 namespace Nethermind.Network.Test.Rlpx
 {
     [TestFixture]
-    public class NettyFrameEncoderTests
+    public class NewNettyFrameEncoderTests
     {
         [SetUp]
         public void Setup()
@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.Rlpx
         private IFrameCipher _frameCipher;
         private IFrameMacProcessor _macProcessor;
 
-        private class UnderTest : NettyFrameEncoder
+        private class UnderTest : NewNettyFrameEncoder
         {
             private readonly IChannelHandlerContext _context;
 
@@ -67,9 +67,9 @@ namespace Nethermind.Network.Test.Rlpx
                 _context = Substitute.For<IChannelHandlerContext>();
             }
 
-            public void Encode(byte[] message, IByteBuffer buffer)
+            public void Encode(IByteBuffer input, IByteBuffer output)
             {
-                base.Encode(_context, message, buffer);
+                base.Encode(_context, input, output);
             }
         }
 
@@ -77,8 +77,11 @@ namespace Nethermind.Network.Test.Rlpx
         public void Encrypts_and_adds_mac()
         {
             IByteBuffer result = Unpooled.Buffer(256);
+            IByteBuffer input = Unpooled.Buffer(256);
             UnderTest underTest = new UnderTest(_frameCipher, _macProcessor);
-            underTest.Encode(_frame, result);
+
+            input.WriteBytes(_frame);
+            underTest.Encode(input, result);
 
             byte[] resultBytes = new byte[result.ReadableBytes];
             result.ReadBytes(resultBytes);
