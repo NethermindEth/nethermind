@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -27,6 +28,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public override string Protocol { get; } = "eth";
 
         public Block Block { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
     }
 }

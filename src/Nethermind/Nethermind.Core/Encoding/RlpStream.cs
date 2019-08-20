@@ -127,7 +127,7 @@ namespace Nethermind.Core.Encoding
         {
             if (keccak == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
@@ -148,7 +148,7 @@ namespace Nethermind.Core.Encoding
         {
             if (address == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -161,7 +161,7 @@ namespace Nethermind.Core.Encoding
         {
             if (rlp == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -180,7 +180,7 @@ namespace Nethermind.Core.Encoding
             }
             else if (bloom == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -342,7 +342,7 @@ namespace Nethermind.Core.Encoding
         {
             if (value.IsZero && length == -1)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -376,7 +376,7 @@ namespace Nethermind.Core.Encoding
         {
             if (input == null || input.Length == 0)
             {
-                Write(Rlp.OfEmptyByteArray.Bytes);
+                WriteByte(EmptyArrayByte);
             }
             else if (input.Length == 1 && input[0] < 128)
             {

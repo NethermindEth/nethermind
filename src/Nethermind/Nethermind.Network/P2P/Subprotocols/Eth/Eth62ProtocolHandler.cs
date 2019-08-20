@@ -443,7 +443,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockMessage newBlockMessage)
         {
-            newBlockMessage.Block.TotalDifficulty = (UInt256) newBlockMessage.TotalDifficulty;
+            newBlockMessage.Block.TotalDifficulty = newBlockMessage.TotalDifficulty;
             SyncServer.AddNewBlock(newBlockMessage.Block, Session.Node);
         }
 

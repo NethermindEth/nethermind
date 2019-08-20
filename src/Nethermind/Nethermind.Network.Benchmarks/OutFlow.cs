@@ -23,6 +23,7 @@ using DotNetty.Buffers;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -99,7 +100,7 @@ namespace Nethermind.Network.Benchmarks
             {
                 _outputBuffer = new MockBuffer();
             }
-            
+
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
         }
@@ -160,7 +161,7 @@ namespace Nethermind.Network.Benchmarks
                 return (Packet) result[0];
             }
         }
-        
+
         public class TestZeroSnappy : ZeroSnappyEncoder
         {
             public TestZeroSnappy()
@@ -187,7 +188,7 @@ namespace Nethermind.Network.Benchmarks
                 throw new Exception($"Different - expected:{_expectedResult.ToHexString()} - was:{_actualResult.ToHexString()}");
             }
         }
-        
+
         [Benchmark]
         public void Improved()
         {
@@ -196,17 +197,17 @@ namespace Nethermind.Network.Benchmarks
             _zeroSplitter.Encode(_splitterBuffer, _encoderBuffer);
             _zeroEncoder.Encode(_encoderBuffer, _outputBuffer);
         }
-//
-//        [Benchmark(Baseline = true)]
-//        public void Current()
-//        {
-//            byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
-//
-//            Packet packet = new Packet("eth", 7, message);
-//            Packet ensnapped = _snappyEncoder.TestEncode(packet);
-//            List<object> output = new List<object>();
-//            _splitter.Encode(ensnapped, output);
-//            _encoder.Encode((byte[]) output[0], _outputBuffer);
-//        }
+
+        [Benchmark(Baseline = true)]
+        public void Current()
+        {
+            byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
+
+            Packet packet = new Packet("eth", 7, message);
+            Packet ensnapped = _snappyEncoder.TestEncode(packet);
+            List<object> output = new List<object>();
+            _splitter.Encode(ensnapped, output);
+            _encoder.Encode((byte[]) output[0], _outputBuffer);
+        }
     }
 }
