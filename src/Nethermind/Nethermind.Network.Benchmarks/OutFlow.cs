@@ -165,23 +165,23 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-//        [Benchmark]
-//        public void Improved()
-//        {
-//            NewBlockMessage newBlockMessage = new NewBlockMessage();
-//            newBlockMessage.Block = _block;
-//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-//            Packet packet = new Packet("eth", 1, message);
-//            Packet ensnapped = _snappyEncoder.TestEncode(packet);
-//            if (_splitterBuffer.WritableBytes < ensnapped.Data.Length)
-//            {
-//                _splitterBuffer.DiscardReadBytes();
-//            }
-//            
-//            _splitterBuffer.WriteBytes(ensnapped.Data);
-//            _newSplitter.Encode(_splitterBuffer, _encoderBuffer);
-//            _newEncoder.Encode(_encoderBuffer, _outputBuffer);
-//        }
+        [Benchmark]
+        public void Improved()
+        {
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = _block;
+            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
+            Packet packet = new Packet("eth", 1, message);
+            Packet ensnapped = _snappyEncoder.TestEncode(packet);
+            if (_splitterBuffer.WritableBytes < ensnapped.Data.Length)
+            {
+                _splitterBuffer.DiscardReadBytes();
+            }
+            
+            _splitterBuffer.WriteBytes(ensnapped.Data);
+            _newSplitter.Encode(_splitterBuffer, _encoderBuffer);
+            _newEncoder.Encode(_encoderBuffer, _outputBuffer);
+        }
 
         [Benchmark(Baseline = true)]
         public void Current()
