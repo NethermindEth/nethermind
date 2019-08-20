@@ -60,6 +60,11 @@ namespace Nethermind.Network.Rlpx
                     paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
                 }
 
+                if (output.WritableBytes < 32 + framePayloadSize + paddingSize + 16)
+                {
+                    output.DiscardReadBytes();
+                }
+
                 // 000 - 016 | header
                 // 016 - 032 | header MAC
                 // 032 - 03x | packet type

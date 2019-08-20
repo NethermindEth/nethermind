@@ -120,7 +120,7 @@ namespace Nethermind.Network.Benchmarks
 
         public IByteBuffer DiscardReadBytes()
         {
-            throw new NotImplementedException();
+            return this;
         }
 
         public IByteBuffer DiscardSomeReadBytes()

@@ -30,6 +30,11 @@ namespace Nethermind.Network.Rlpx
                 throw new InvalidOperationException($"Frame length should be a multiple of 16");
             }
 
+            if (output.WritableBytes < input.ReadableBytes)
+            {
+                output.DiscardReadBytes();
+            }
+            
             input.ReadBytes(_encryptBuffer);
             _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
             output.WriteBytes(_encryptBuffer);
@@ -38,7 +43,8 @@ namespace Nethermind.Network.Rlpx
             input.SkipBytes(16);
             output.WriteBytes(_macBuffer);
 
-            for (int i = 0; i < input.ReadableBytes / 16 - 1; i++)
+            int readableBytes = input.ReadableBytes;
+            for (int i = 0; i < readableBytes / 16 - 1; i++)
             {
                 input.ReadBytes(_encryptBuffer);
                 _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);

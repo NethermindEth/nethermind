@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.IO;
+using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
@@ -39,6 +40,31 @@ namespace Nethermind.Network.Rlpx
             if(_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {message.Data.Length}");
             message.Data = SnappyCodec.Compress(message.Data); 
             output.Add(message);
+        }
+    }
+    
+    public class NewSnappyEncoder : MessageToByteEncoder<Packet>
+    {
+        byte[] _snappyBuffer = new byte[16 * 1024 * 1024];
+        
+        private readonly ILogger _logger;
+
+        public NewSnappyEncoder(ILogger logger)
+        {
+            _logger = logger;
+        }
+        
+        protected override void Encode(IChannelHandlerContext context, Packet message, IByteBuffer output)
+        {
+            if(_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {message.Data.Length}");
+            int length = SnappyCodec.Compress(message.Data, 0, message.Data.Length, _snappyBuffer, 0);
+            if (output.WritableBytes < length)
+            {
+                output.DiscardReadBytes();
+            }
+
+            output.WriteByte(message.PacketType);
+            output.WriteBytes(_snappyBuffer, 0, length);
         }
     }
 }
