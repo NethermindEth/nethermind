@@ -16,11 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
+using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -31,17 +34,35 @@ namespace Nethermind.Network.Benchmarks
 {
     [MemoryDiagnoser]
     [CoreJob(baseline: true)]
-    public  class OutFlow
+    public class OutFlow
     {
+        private static byte[] _expectedResult = Bytes.FromHexString("e13025bd4ae2d72b35e6f05a3b2f3aacf9ffe78eb851f84dc3264380eac186032d9d5d7350d1271323fe1a6c5aeea2b9e9d6d25e317ab957d737577b84de62fe4107cafcc795f832b71b71344fa44317ba4e113df762f4fa5dd7150e1a288d62f5d72438d56e3eda3aed9a4ba1be7eadceb782cf8e48a7ff6a521282388c8a88ac293ce26fad579cd1ea2ae80705856da9b9b33b5ef46b64ee3d44d2ecaa8e0d2d932fdf29d1d575e3266bb6524acfc438687a45c492815481698e0e1860c7f854b3918eb6550bd867dbc417c808ef9c746ac6d605b39a26c731476d3c9d5bea8c095b6e212a8f1575f9287ac04191c912891fcea59f91d555c59621cc80f1ef41bf7c941b4816eae18821a15ca39fc8689be7b0d8c56741f040e3ab57d940bd");
+        private byte[] _actualResult = new byte[_expectedResult.Length];
+        private IByteBuffer _splitterBuffer = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
+        private IByteBuffer _encoderBuffer = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
+        private IByteBuffer _outputBuffer = PooledByteBufferAllocator.Default.Buffer(16 * 1024);
+
         private NewBlockMessageSerializer _newBlockMessageSerializer;
         private Block _block;
         private TestSplitter _splitter;
+        private TestNewSplitter _newSplitter;
+        private TestNewEncoder _newEncoder;
         private TestEncoder _encoder;
         private TestSnappy _snappyEncoder;
-        private IByteBuffer _byteBuffer;
 
         [GlobalSetup]
         public void Setup()
+        {
+            SetupAll();
+            Current();
+            Check();
+//            SetupAll();
+//            Improved();
+//            Check();
+            SetupAll(true);
+        }
+
+        private void SetupAll(bool useLimboOutput = false)
         {
             PublicKey publicKey = new PublicKey(
                 "000102030405060708090A0B0C0D0E0F" +
@@ -60,12 +81,17 @@ namespace Nethermind.Network.Benchmarks
             _encoder = new TestEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
             _splitter = new TestSplitter();
             _splitter.DisableFraming();
+            _newSplitter = new TestNewSplitter();
+            _newEncoder = new TestNewEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
             _snappyEncoder = new TestSnappy();
-            _byteBuffer = new MockBuffer();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
+            if (useLimboOutput)
+            {
+                _outputBuffer = new MockBuffer();
+            }
         }
 
         private class TestEncoder : Rlpx.NettyFrameEncoder
@@ -81,11 +107,32 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
+        private class TestNewEncoder : Rlpx.NewNettyFrameEncoder
+        {
+            public void Encode(IByteBuffer message, IByteBuffer buffer)
+            {
+                base.Encode(null, message, buffer);
+            }
+
+            public TestNewEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
+                : base(frameCipher, frameMacProcessor, logger)
+            {
+            }
+        }
+
         private class TestSplitter : Rlpx.NettyPacketSplitter
         {
             public void Encode(Packet message, List<object> output)
             {
                 base.Encode(null, message, output);
+            }
+        }
+
+        private class TestNewSplitter : Rlpx.NewNettyPacketSplitter
+        {
+            public void Encode(IByteBuffer input, IByteBuffer output)
+            {
+                base.Encode(null, input, output);
             }
         }
 
@@ -96,18 +143,44 @@ namespace Nethermind.Network.Benchmarks
             {
             }
 
-            public Packet TestEncode(byte[] input)
+            public Packet TestEncode(Packet input)
             {
                 List<object> result = new List<object>();
-                Encode(null, new Packet(input), result);
+                Encode(null, input, result);
                 return (Packet) result[0];
             }
         }
 
+        private void Check()
+        {
+            if (_outputBuffer.ReadableBytes != _expectedResult.Length)
+            {
+                throw new Exception($"Length wrong - expected:{_expectedResult.Length} - was:{_outputBuffer.ReadableBytes}");
+            }
+
+            _outputBuffer.ReadBytes(_actualResult, 0, _outputBuffer.ReadableBytes);
+            if (!Bytes.AreEqual(_actualResult, _expectedResult))
+            {
+                throw new Exception($"Different - expected:{_expectedResult.ToHexString()} - was:{_actualResult.ToHexString()}");
+            }
+        }
+
 //        [Benchmark]
-//        public bool Improved()
+//        public void Improved()
 //        {
-//            throw new NotImplementedException();
+//            NewBlockMessage newBlockMessage = new NewBlockMessage();
+//            newBlockMessage.Block = _block;
+//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
+//            Packet packet = new Packet("eth", 1, message);
+//            Packet ensnapped = _snappyEncoder.TestEncode(packet);
+//            if (_splitterBuffer.WritableBytes < ensnapped.Data.Length)
+//            {
+//                _splitterBuffer.DiscardReadBytes();
+//            }
+//            
+//            _splitterBuffer.WriteBytes(ensnapped.Data);
+//            _newSplitter.Encode(_splitterBuffer, _encoderBuffer);
+//            _newEncoder.Encode(_encoderBuffer, _outputBuffer);
 //        }
 
         [Benchmark(Baseline = true)]
@@ -117,47 +190,47 @@ namespace Nethermind.Network.Benchmarks
             newBlockMessage.Block = _block;
             byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new Packet("eth", 1, message);
-            Packet ensnapped = _snappyEncoder.TestEncode(packet.Data);
+            Packet ensnapped = _snappyEncoder.TestEncode(packet);
             List<object> output = new List<object>();
             _splitter.Encode(ensnapped, output);
-            _encoder.Encode((byte[]) output[0], _byteBuffer);
+            _encoder.Encode((byte[]) output[0], _outputBuffer);
         }
 
-        [Benchmark]
-        public void Current_no_snappy()
-        {
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
-            newBlockMessage.Block = _block;
-            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-            Packet packet = new Packet("eth", 1, message);
-            List<object> output = new List<object>();
-            _splitter.Encode(packet, output);
-            _encoder.Encode((byte[]) output[0], _byteBuffer);
-        }
-
-        [Benchmark]
-        public void Current_no_encryption()
-        {
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
-            newBlockMessage.Block = _block;
-            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-            Packet packet = new Packet("eth", 1, message);
-            Packet ensnapped = _snappyEncoder.TestEncode(packet.Data);
-            List<object> output = new List<object>();
-            _splitter.Encode(ensnapped, output);
-            _encoder.Encode((byte[]) output[0], _byteBuffer);
-        }
-
-        [Benchmark]
-        public void Current_no_encoder()
-        {
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
-            newBlockMessage.Block = _block;
-            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-            Packet packet = new Packet("eth", 1, message);
-            Packet ensnapped = _snappyEncoder.TestEncode(packet.Data);
-            List<object> output = new List<object>();
-            _splitter.Encode(ensnapped, output);
-        }
+//        [Benchmark]
+//        public void Current_no_snappy()
+//        {
+//            NewBlockMessage newBlockMessage = new NewBlockMessage();
+//            newBlockMessage.Block = _block;
+//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
+//            Packet packet = new Packet("eth", 1, message);
+//            List<object> output = new List<object>();
+//            _splitter.Encode(packet, output);
+//            _encoder.Encode((byte[]) output[0], _outputBuffer);
+//        }
+//
+//        [Benchmark]
+//        public void Current_no_encryption()
+//        {
+//            NewBlockMessage newBlockMessage = new NewBlockMessage();
+//            newBlockMessage.Block = _block;
+//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
+//            Packet packet = new Packet("eth", 1, message);
+//            Packet ensnapped = _snappyEncoder.TestEncode(packet);
+//            List<object> output = new List<object>();
+//            _splitter.Encode(ensnapped, output);
+//            _encoder.Encode((byte[]) output[0], _outputBuffer);
+//        }
+//
+//        [Benchmark]
+//        public void Current_no_encoder()
+//        {
+//            NewBlockMessage newBlockMessage = new NewBlockMessage();
+//            newBlockMessage.Block = _block;
+//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
+//            Packet packet = new Packet("eth", 1, message);
+//            Packet ensnapped = _snappyEncoder.TestEncode(packet);
+//            List<object> output = new List<object>();
+//            _splitter.Encode(ensnapped, output);
+//        }
     }
 }

@@ -24,7 +24,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core.Encoding;
 
 namespace Nethermind.Network.Rlpx
-{   
+{
     public class NettyPacketSplitter : MessageToMessageEncoder<Packet>
     {
         public const int FrameBoundary = 16;
@@ -36,7 +36,7 @@ namespace Nethermind.Network.Rlpx
         {
             MaxFrameSize = int.MaxValue;
         }
-        
+
         protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
         {
             Interlocked.Increment(ref _contextId);
@@ -44,7 +44,7 @@ namespace Nethermind.Network.Rlpx
             byte[] packetTypeData = Rlp.Encode(message.PacketType).Bytes;
             int packetTypeSize = packetTypeData.Length;
             int totalPayloadSize = packetTypeSize + message.Data.Length;
-            
+
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
@@ -58,10 +58,10 @@ namespace Nethermind.Network.Rlpx
 
                 byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + padding + frame MAC
 
-                frame[0] = (byte)(framePayloadSize >> 16);
-                frame[1] = (byte)(framePayloadSize >> 8);
-                frame[2] = (byte)framePayloadSize;
-                
+                frame[0] = (byte) (framePayloadSize >> 16);
+                frame[1] = (byte) (framePayloadSize >> 8);
+                frame[2] = (byte) framePayloadSize;
+
                 Rlp[] headerDataItems;
                 if (framesCount > 1)
                 {

@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.IO;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;

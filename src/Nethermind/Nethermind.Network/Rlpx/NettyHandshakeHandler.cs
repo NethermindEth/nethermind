@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class NettyHandshakeHandler : SimpleChannelInboundHandler<IByteBuffer>
     {
-        private readonly IByteBuffer _buffer = Unpooled.Buffer(256);
+        private readonly IByteBuffer _buffer = PooledByteBufferAllocator.Default.Buffer();
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly ILogManager _logManager;
         private readonly IEventExecutorGroup _group;

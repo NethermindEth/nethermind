@@ -17,6 +17,7 @@
  */
 
 using System.Diagnostics;
+using System.IO;
 
 namespace Nethermind.Network.Rlpx
 {
