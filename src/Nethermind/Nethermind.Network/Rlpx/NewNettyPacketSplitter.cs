@@ -20,6 +20,7 @@ using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -30,39 +31,31 @@ namespace Nethermind.Network.Rlpx
         private int _contextId;
         private byte packetType = 1;
 
+        [Todo(Improve.Refactor, "We can remove MAC space from here later and move it to encoder")]
         protected override void Encode(IChannelHandlerContext context, IByteBuffer message, IByteBuffer output)
         {
-            if (message.ReadableBytes == 1)
+            packetType = message.ReadByte();
+            Interlocked.Increment(ref _contextId);
+            int packetTypeSize = packetType >= 128 ? 2 : 1;
+            int totalPayloadSize = packetTypeSize + message.ReadableBytes;
+            int paddingSize = totalPayloadSize % FrameBoundary == 0 ? 0 : FrameBoundary - totalPayloadSize % FrameBoundary;
+
+            if (output.WritableBytes < totalPayloadSize + paddingSize + 32 + packetTypeSize)
             {
-                packetType = message.ReadByte();
+                output.DiscardReadBytes();
             }
-            else
-            {
-                Interlocked.Increment(ref _contextId);
-                int packetTypeSize = packetType >= 128 ? 2 : 1;
-                int totalPayloadSize = packetTypeSize + message.ReadableBytes;
-                int paddingSize = totalPayloadSize % FrameBoundary == 0 ? 0 : FrameBoundary - totalPayloadSize % FrameBoundary;
+            
+            /*0*/ output.WriteByte((byte) (totalPayloadSize >> 16));
+            /*1*/ output.WriteByte((byte) (totalPayloadSize >> 8));
+            /*2*/ output.WriteByte((byte) totalPayloadSize);
 
-                if (output.WritableBytes < totalPayloadSize + paddingSize + 32 + packetTypeSize)
-                {
-                    output.DiscardReadBytes();
-                }
-                
-                /*0*/ output.WriteByte((byte) (totalPayloadSize >> 16));
-                /*1*/ output.WriteByte((byte) (totalPayloadSize >> 8));
-                /*2*/ output.WriteByte((byte) totalPayloadSize);
-
-                /*3*/ output.WriteByte(193);
-                /*4*/ output.WriteByte(128);
-                
-                /*5-32*/ output.WriteZero(27);
-
-                /*1 or 2*/ WritePacketType(output);
-
-                /*message*/ message.ReadBytes(output, message.ReadableBytes);
-                /*padding*/
-                output.WriteZero(paddingSize);
-            }
+            /*3*/ output.WriteByte(193);
+            /*4*/ output.WriteByte(128);
+            /*5-32*/ output.WriteZero(27);
+            /*33 or 33-34*/ WritePacketType(output);
+            /*message*/ message.ReadBytes(output, message.ReadableBytes);
+            /*padding to 16*/ output.WriteZero(paddingSize);
+            /*16 of MAC space*/ output.WriteZero(16);
         }
 
         private void WritePacketType(IByteBuffer output)
