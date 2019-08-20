@@ -20,6 +20,9 @@ namespace Nethermind.Network.Rlpx
             _logger = logger;
         }
 
+        byte[] _encryptBuffer = new byte[16];
+        byte[] _macBuffer = new byte[16];
+        
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
             if (input.ReadableBytes % 16 != 0)
@@ -27,30 +30,26 @@ namespace Nethermind.Network.Rlpx
                 throw new InvalidOperationException($"Frame length should be a multiple of 16");
             }
 
-            input.ReadBytes(output, input.ReadableBytes);
-//
-//            // for now
-//            input.ReadBytes(_read16);
-//            input.SkipBytes(16);
-//            
-////            if(_logger.IsTrace) _logger.Trace($"Sending frame (before encryption): {message.ToHexString()}");
-//            _frameCipher.Encrypt(_read16, 0, 16, _buffer16, 0);
-//            output.WriteBytes(_buffer16);
-//            
-//            _frameMacProcessor.AddMac(_buffer16, 0, 16, true);
-//            output.WriteBytes(_write16);
-//
-//            for (int i = 0; i < output.ReadableBytes / 16; i++)
-//            {
-//                input.ReadBytes(_read16);
-//                _frameCipher.Encrypt(_read16, 0, 16, _write16,  0);
-//                output.WriteBytes(_write16);
-//            }
-//            
-////            _frameMacProcessor.AddMac(_write16, 0, 236, _write16, 0, false);
-//            output.WriteBytes(_write16);
-//            
-////            if(_logger.IsTrace) _logger.Trace($"Sending frame (after encryption):  {message.ToHexString()}");
+            input.ReadBytes(_encryptBuffer);
+            _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
+            output.WriteBytes(_encryptBuffer);
+            
+            _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
+            input.SkipBytes(16);
+            output.WriteBytes(_macBuffer);
+
+            for (int i = 0; i < input.ReadableBytes / 16 - 1; i++)
+            {
+                input.ReadBytes(_encryptBuffer);
+                _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
+                _frameMacProcessor.EgressUpdate(_encryptBuffer);
+                output.WriteBytes(_encryptBuffer);    
+            }
+            
+            _frameMacProcessor.CalculateMac(_macBuffer);
+            
+            input.SkipBytes(16);
+            output.WriteBytes(_macBuffer);
         }
     }
 }

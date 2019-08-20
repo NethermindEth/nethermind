@@ -21,6 +21,12 @@ namespace Nethermind.Network.Rlpx
     public interface IFrameMacProcessor
     {
         void AddMac(byte[] input, int offset, int length, bool isHeader);
+
+        void EgressUpdate(byte[] input);
+        
+        void CalculateMac(byte[] output);
+        
+        void AddMac(byte[] input, int offset, int length, byte[] output, int outputOffset, bool isHeader);
         void CheckMac(byte[] input, int offset, int length, bool isHeader);
     }
 }

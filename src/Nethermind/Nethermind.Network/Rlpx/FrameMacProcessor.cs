@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using DotNetty.Common.Utilities;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
@@ -76,6 +77,34 @@ namespace Nethermind.Network.Rlpx
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
                 DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
                 UpdateMac(_egressMac, _egressMacCopy,_addMacBuffer, 0, input, offset + length, true);
+            }
+        }
+
+        public void EgressUpdate(byte[] input)
+        {
+            _egressMac.BlockUpdate(input, 0, input.Length);
+        }
+        
+        public void CalculateMac(byte[] output)
+        {
+            DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
+            UpdateMac(_egressMac, _egressMacCopy,_addMacBuffer, 0, output, 0, true);
+        }
+
+        public void AddMac(byte[] input, int offset, int length, byte[] output, int outputOffset, bool isHeader)
+        {
+            if (isHeader)
+            {
+                input.AsSpan().Slice(0, 16).CopyTo(_addMacBuffer.AsSpan().Slice(0, 16));
+                UpdateMac(_egressMac, _egressMacCopy,_addMacBuffer, offset, output, outputOffset, true); // TODO: confirm header is seed 
+            }
+            else
+            {
+                _egressMac.BlockUpdate(input, offset, length);
+
+                // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
+                DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
+                UpdateMac(_egressMac, _egressMacCopy,_addMacBuffer, 0, output, outputOffset, true);
             }
         }
 
