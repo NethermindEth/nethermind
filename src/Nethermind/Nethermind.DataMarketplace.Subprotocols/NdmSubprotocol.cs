@@ -457,10 +457,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new DisableDataStreamMessage(depositId, client));
         }
         
-        public void SendRequestDepositApproval(Keccak assetId, string kyc, Address consumer)
+        public void SendRequestDepositApproval(Keccak assetId, Address consumer, string kyc)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requestdepositapproval");
-            Send(new RequestDepositApprovalMessage(assetId, kyc, consumer));
+            Send(new RequestDepositApprovalMessage(assetId, consumer, kyc));
         }
         
         private void Handle(SessionFinishedMessage message)

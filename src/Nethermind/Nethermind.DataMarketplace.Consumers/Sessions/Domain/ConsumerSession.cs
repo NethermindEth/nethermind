@@ -24,7 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Domain
+namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
 {
     public class ConsumerSession : Session, IEquatable<ConsumerSession>
     {
@@ -134,7 +134,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Domain
                 throw new ArgumentException("Invalid session client id.", nameof(client));
             }
 
-            if (!_clients.TryGetValue(client, out var sessionClient))
+            if (!_clients.TryRemove(client, out var sessionClient))
             {
                 return;
             }

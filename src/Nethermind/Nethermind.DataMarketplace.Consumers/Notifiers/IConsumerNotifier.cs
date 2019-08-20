@@ -42,8 +42,8 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers
         Task SendDataAvailabilityChangedAsync(Keccak depositId, Keccak sessionId, DataAvailability availability);
         Task SendDataStreamEnabledAsync(Keccak depositId, Keccak sessionId);
         Task SendDataStreamDisabledAsync(Keccak depositId, Keccak sessionId);
-        Task SendDepositApprovalConfirmedAsync(Keccak dataAssetId, string dataAssetName);
-        Task SendDepositApprovalRejectedAsync(Keccak dataAssetId, string dataAssetName);
+        Task SendDepositApprovalConfirmedAsync(Keccak dataAssetId, string dataAssetName, Address address);
+        Task SendDepositApprovalRejectedAsync(Keccak dataAssetId, string dataAssetName, Address address);
         Task SendClaimedEarlyRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash);
         Task SendClaimedRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash);
         Task SendBlockProcessedAsync(long blockNumber);

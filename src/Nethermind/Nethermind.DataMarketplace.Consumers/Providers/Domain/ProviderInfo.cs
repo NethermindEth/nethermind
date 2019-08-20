@@ -16,14 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared
+namespace Nethermind.DataMarketplace.Consumers.Providers.Domain
 {
-    public interface IKycVerifier
+    public class ProviderInfo
     {
-        Task<bool> IsVerifiedAsync(Keccak dataAssetId, Address address);
+        public string Name { get; }
+        public Address Address { get; }
+
+        public ProviderInfo(string name, Address address)
+        {
+            Name = name;
+            Address = address;
+        }
     }
 }

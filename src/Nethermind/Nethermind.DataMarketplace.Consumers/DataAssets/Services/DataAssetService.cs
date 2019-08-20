@@ -21,9 +21,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Consumers.Shared.Repositories;
+using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
 
@@ -82,7 +82,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataAssets.Services
 
             dataAsset.SetState(state);
             _consumerNotifier.SendDataAssetStateChangedAsync(dataAssetId, dataAsset.Name, state);
-            if (_logger.IsInfo) _logger.Info($"Changed discovered data asset: '{dataAssetId}' state to: '{state}'.");
+            if (_logger.IsInfo) _logger.Info($"Changed the discovered data asset: '{dataAssetId}' state to: '{state}'.");
         }
 
         public void RemoveDiscovered(Keccak dataAssetId)

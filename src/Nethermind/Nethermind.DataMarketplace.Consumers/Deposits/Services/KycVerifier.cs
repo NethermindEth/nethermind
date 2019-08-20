@@ -24,7 +24,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Services
+namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 {
     public class KycVerifier : IKycVerifier
     {

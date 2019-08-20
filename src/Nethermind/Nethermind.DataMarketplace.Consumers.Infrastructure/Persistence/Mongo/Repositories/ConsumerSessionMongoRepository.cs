@@ -21,9 +21,9 @@ using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Consumers.Shared.Queries;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 

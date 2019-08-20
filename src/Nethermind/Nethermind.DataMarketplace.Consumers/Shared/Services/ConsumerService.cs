@@ -22,19 +22,24 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.DataAssets;
+using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 using Nethermind.DataMarketplace.Consumers.DataRequests;
 using Nethermind.DataMarketplace.Consumers.DataStreams;
 using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
+using Nethermind.DataMarketplace.Consumers.Providers;
+using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Receipts;
 using Nethermind.DataMarketplace.Consumers.Refunds;
 using Nethermind.DataMarketplace.Consumers.Sessions;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 {
+    // This service acts as a bridge between the available actions for NDM consumer and JSON RPC + Subprotocol calls
     public class ConsumerService : IConsumerService
     {
         private readonly IAccountService _accountService;
@@ -151,9 +156,9 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query)
             => _depositApprovalService.BrowseAsync(query);
-        
+
         public Task<Keccak> RequestDepositApprovalAsync(Keccak assetId, string kyc)
-            => _depositApprovalService.RequestAsync(assetId, kyc, _accountService.GetAddress());
+            => _depositApprovalService.RequestAsync(assetId, _accountService.GetAddress(), kyc);
         
         public Task ConfirmDepositApprovalAsync(Keccak assetId, Address consumer)
             => _depositApprovalService.ConfirmAsync(assetId, consumer);

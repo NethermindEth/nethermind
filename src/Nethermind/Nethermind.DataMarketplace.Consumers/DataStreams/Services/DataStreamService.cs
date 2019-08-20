@@ -21,10 +21,11 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.DataAssets;
+using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Consumers.Sessions;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
-using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
 using Nethermind.Wallet;
@@ -33,9 +34,9 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 {
     public class DataStreamService : IDataStreamService
     {
-        private readonly IProviderService _providerService;
         private readonly IDataAssetService _dataAssetService;
         private readonly IDepositProvider _depositProvider;
+        private readonly IProviderService _providerService;
         private readonly ISessionService _sessionService;
         private readonly IWallet _wallet;
         private readonly IConsumerNotifier _consumerNotifier;
@@ -97,22 +98,22 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                 return null;
             }
             
-            var depositDetails = await _depositProvider.GetAsync(session.DepositId);
-            if (depositDetails is null)
+            var deposit = await _depositProvider.GetAsync(session.DepositId);
+            if (deposit is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Cannot toggle data stream, deposit: '{session.DepositId}' was not found.");
 
                 return null;
             }
             
-            if (enable && !_wallet.IsUnlocked(depositDetails.Consumer))
+            if (!_wallet.IsUnlocked(deposit.Consumer))
             {
-                if (_logger.IsWarn) _logger.Warn($"Account: '{depositDetails.Consumer}' is locked, can't enable data stream.");
+                if (_logger.IsWarn) _logger.Warn($"Cannot toggle data stream for deposit: '{session.DepositId}', account: '{deposit.Consumer}' is locked.");
 
                 return null;
             }
             
-            var dataAssetId = depositDetails.DataAsset.Id;
+            var dataAssetId = deposit.DataAsset.Id;
             var dataAsset = _dataAssetService.GetDiscovered(dataAssetId);
             if (dataAsset is null)
             {

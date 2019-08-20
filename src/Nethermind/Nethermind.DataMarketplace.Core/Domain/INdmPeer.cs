@@ -47,7 +47,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         void SendDisableDataStream(Keccak depositId, string client);
         void SendDataDeliveryReceipt(Keccak depositId, DataDeliveryReceipt receipt);
         Task<FaucetResponse> SendRequestEthAsync(Address address, UInt256 value, CancellationToken? token = null);
-        void SendRequestDepositApproval(Keccak assetId, string kyc, Address consumer);
+        void SendRequestDepositApproval(Keccak assetId, Address consumer, string kyc);
 
         Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataAssetId = null,
             bool onlyPending = false, CancellationToken? token = null);

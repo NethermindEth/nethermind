@@ -16,19 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Domain
+namespace Nethermind.DataMarketplace.Consumers.Deposits
 {
-    public class ProviderInfo
+    public interface IDepositProvider
     {
-        public string Name { get; }
-        public Address Address { get; }
-
-        public ProviderInfo(string name, Address address)
-        {
-            Name = name;
-            Address = address;
-        }
+        Task<DepositDetails> GetAsync(Keccak depositId);
     }
 }

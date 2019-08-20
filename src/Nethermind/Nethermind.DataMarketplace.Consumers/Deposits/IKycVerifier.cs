@@ -16,19 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Core.Domain;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Queries
+namespace Nethermind.DataMarketplace.Consumers.Deposits
 {
-    public class GetConsumerSessions : PagedQueryBase
+    public interface IKycVerifier
     {
-        public Keccak DepositId { get; set; }
-        public Keccak DataAssetId { get; set; }
-        public PublicKey ConsumerNodeId { get; set; }
-        public Address ConsumerAddress { get; set; }
-        public PublicKey ProviderNodeId { get; set; }
-        public Address ProviderAddress { get; set; }
+        Task<bool> IsVerifiedAsync(Keccak dataAssetId, Address address);
     }
 }

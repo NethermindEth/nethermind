@@ -11,4 +11,8 @@
       <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <Folder Include="Receipts\Domain" />
+    </ItemGroup>
+
 </Project>

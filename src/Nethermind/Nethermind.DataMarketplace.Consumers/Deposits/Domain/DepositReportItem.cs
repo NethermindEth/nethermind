@@ -23,7 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Domain
+namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 {
     public class DepositReportItem
     {

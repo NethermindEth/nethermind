@@ -17,7 +17,7 @@
  */
 
 using System.Linq;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models

@@ -27,14 +27,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Messages
         public override int PacketType { get; } = NdmMessageCode.RequestDepositApproval;
         public override string Protocol => "ndm";
         public Keccak DataAssetId { get; }
-        public string Kyc { get; }
         public Address Consumer { get; }
+        public string Kyc { get; }
 
-        public RequestDepositApprovalMessage(Keccak dataAssetId, string kyc, Address consumer)
+        public RequestDepositApprovalMessage(Keccak dataAssetId, Address consumer, string kyc)
         {
             DataAssetId = dataAssetId;
-            Kyc = kyc;
             Consumer = consumer;
+            Kyc = kyc;
         }
     }
 }

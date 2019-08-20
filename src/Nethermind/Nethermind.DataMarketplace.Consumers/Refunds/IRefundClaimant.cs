@@ -18,7 +18,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 
 namespace Nethermind.DataMarketplace.Consumers.Refunds
 {

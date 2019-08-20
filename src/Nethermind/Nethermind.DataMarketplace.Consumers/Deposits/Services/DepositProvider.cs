@@ -20,13 +20,13 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
+using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Consumers.Shared.Queries;
 using Nethermind.Logging;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Services
+namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 {
     public class DepositProvider : IDepositProvider
     {
@@ -52,7 +52,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 return deposit;
             }
 
-            deposit = await FetchDepositAsync(depositId);
+            deposit = await FetchAsync(depositId);
             if (deposit is null)
             {
                 if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was not found.'");
@@ -64,7 +64,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             return deposit;
         }
 
-        private async Task<DepositDetails> FetchDepositAsync(Keccak depositId)
+        private async Task<DepositDetails> FetchAsync(Keccak depositId)
         {
             var deposit = await _depositRepository.GetAsync(depositId);
             if (deposit is null)

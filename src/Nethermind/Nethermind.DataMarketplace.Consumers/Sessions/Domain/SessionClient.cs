@@ -19,9 +19,9 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Domain
+namespace Nethermind.DataMarketplace.Consumers.Sessions.Domain
 {
-    public class SessionClient
+    public class SessionClient : IEquatable<SessionClient>
     {
         private int _streamEnabled;
         private string[] _args;
@@ -58,6 +58,26 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Domain
         public void DisableStream()
         {
             Interlocked.Exchange(ref _streamEnabled, 0);
+        }
+
+        public bool Equals(SessionClient other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Id == other.Id;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((SessionClient) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return (Id != null ? Id.GetHashCode() : 0);
         }
     }
 }

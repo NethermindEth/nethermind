@@ -22,11 +22,11 @@ using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Refunds;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 
@@ -57,13 +57,40 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _consumerNotifier = consumerNotifier;
             _logger = logManager.GetClassLogger();
             _timer = new Timer(tryClaimRefundsIntervalMilliseconds);
-            _timer.Elapsed += TimerOnElapsed;
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
         }
 
         public void Init()
         {
             _timer.Start();
+            _timer.Elapsed += TimerOnElapsed;
+            _blockProcessor.BlockProcessed += OnBlockProcessed;
+            if (_logger.IsInfo) _logger.Info("Initialized NDM consumer services background processor.");
+        }
+
+        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            if (_logger.IsInfo) _logger.Info("Verifying whether any refunds might be claimed...");
+            _depositRepository.BrowseAsync(new GetDeposits
+                {
+                    Results = int.MaxValue,
+                    EligibleToRefund = true,
+                    CurrentBlockTimestamp = _currentBlockTimestamp
+                })
+                .ContinueWith(async t =>
+                {
+                    if (t.IsFaulted && _logger.IsError)
+                    {
+                        _logger.Error($"Fetching the deposits has failed.", t.Exception);
+                        return;
+                    }
+
+                    var refundTo = _accountService.GetAddress();
+                    foreach (var deposit in t.Result.Items)
+                    {
+                        await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
+                        await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
+                    }
+                });
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -100,32 +127,6 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                     }
                 });
             }
-        }
-
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
-        {
-            if (_logger.IsInfo) _logger.Info("Verifying whether any refunds might be claimed...");
-            _depositRepository.BrowseAsync(new GetDeposits
-                {
-                    Results = int.MaxValue,
-                    EligibleToRefund = true,
-                    CurrentBlockTimestamp = _currentBlockTimestamp
-                })
-                .ContinueWith(async t =>
-                {
-                    if (t.IsFaulted && _logger.IsError)
-                    {
-                        _logger.Error($"Fetching the deposits has failed.", t.Exception);
-                        return;
-                    }
-
-                    var refundTo = _accountService.GetAddress();
-                    foreach (var deposit in t.Result.Items)
-                    {
-                        await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
-                        await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
-                    }
-                });
         }
     }
 }

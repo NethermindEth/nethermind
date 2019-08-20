@@ -19,11 +19,12 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
+using Nethermind.DataMarketplace.Consumers.Providers;
+using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
-using Nethermind.DataMarketplace.Consumers.Shared;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Consumers.Shared.Queries;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
 using Nethermind.Wallet;

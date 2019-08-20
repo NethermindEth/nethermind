@@ -18,8 +18,8 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Consumers.Shared.Queries;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Consumers.Sessions.Repositories

@@ -19,11 +19,12 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Sessions;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
-using Nethermind.DataMarketplace.Consumers.Shared;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
 
@@ -52,8 +53,8 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
         
         public async Task SetUnitsAsync(Keccak depositId, uint consumedUnitsFromProvider)
         {
-            var (deposit, session) = await TryGetDepositAndSessionAsync(depositId);
-            if (session is null)
+            var (session, deposit) = await TryGetSessionAndDepositAsync(depositId);
+            if (session is null || deposit is null)
             {
                 return;
             }
@@ -111,14 +112,22 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
             await _consumerNotifier.SendDataAvailabilityChangedAsync(depositId, session.Id, dataAvailability);
         }
 
-        public  Task HandleInvalidDataAsync(Keccak depositId, InvalidDataReason reason)
-            => _consumerNotifier.SendDataInvalidAsync(depositId, reason);
+        public async Task HandleInvalidDataAsync(Keccak depositId, InvalidDataReason reason)
+        {
+            var session = _sessionService.GetActive(depositId);
+            if (session is null)
+            {
+                return;
+            }
 
+            await _consumerNotifier.SendDataInvalidAsync(depositId, reason);
+
+        }
         public async Task HandleGraceUnitsExceededAsync(Keccak depositId, uint consumedUnitsFromProvider, uint graceUnits)
         {
             if (_logger.IsWarn) _logger.Warn($"Handling the exceeded grace units for deposit: {depositId} (consumed: {consumedUnitsFromProvider}, grace: {graceUnits}).");
-            var (deposit, session) = await TryGetDepositAndSessionAsync(depositId);
-            if (session is null)
+            var (session, deposit) = await TryGetSessionAndDepositAsync(depositId);
+            if (session is null || deposit is null)
             {
                 return;
             }
@@ -129,26 +138,26 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                 consumedUnitsFromProvider, consumedUnits, graceUnits);
         }
         
-        private async Task<(DepositDetails deposit, ConsumerSession session)> TryGetDepositAndSessionAsync(
+        private async Task<(ConsumerSession session, DepositDetails deposit)> TryGetSessionAndDepositAsync(
             Keccak depositId)
         {
+            var session = _sessionService.GetActive(depositId);
+            if (session is null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Session for deposit: '{depositId}' was not found.");
+
+                return (null, null);
+            }
+            
             var deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Deposit: '{depositId}' was not found.");
 
-                return (null, null);
+                return (session, null);
             }
-
-            var session = _sessionService.GetActive(depositId);
-            if (!(session is null))
-            {
-                return (deposit, session);
-            }
-            
-            if (_logger.IsInfo) _logger.Info($"Session for deposit: '{depositId}' was not found.");
                 
-            return (deposit, null);
+            return (session, deposit);
         }
     }
 }

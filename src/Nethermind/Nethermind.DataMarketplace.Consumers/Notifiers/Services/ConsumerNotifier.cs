@@ -150,20 +150,22 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     sessionId
                 }));
 
-        public Task SendDepositApprovalConfirmedAsync(Keccak dataAssetId, string dataAssetName)
+        public Task SendDepositApprovalConfirmedAsync(Keccak dataAssetId, string dataAssetName, Address address)
             => _notifier.NotifyAsync(new Notification("deposit_approval_confirmed",
                 new
                 {
                     dataAssetId,
-                    dataAssetName
+                    dataAssetName,
+                    address
                 }));
 
-        public Task SendDepositApprovalRejectedAsync(Keccak dataAssetId, string dataAssetName)
+        public Task SendDepositApprovalRejectedAsync(Keccak dataAssetId, string dataAssetName, Address address)
             => _notifier.NotifyAsync(new Notification("deposit_approval_rejected",
                 new
                 {
                     dataAssetId,
-                    dataAssetName
+                    dataAssetName,
+                    address
                 }));
 
         public Task SendClaimedEarlyRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash)

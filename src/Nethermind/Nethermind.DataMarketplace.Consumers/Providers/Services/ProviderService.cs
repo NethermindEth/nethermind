@@ -23,12 +23,12 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Consumers.Shared.Repositories;
+using Nethermind.DataMarketplace.Consumers.Providers.Domain;
+using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Services
+namespace Nethermind.DataMarketplace.Consumers.Providers.Services
 {
     public class ProviderService : IProviderService
     {
@@ -70,11 +70,9 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             return null;
         }
 
-        public IEnumerable<INdmPeer> GetPeers()
-            => _providers.Values;
+        public IEnumerable<INdmPeer> GetPeers() => _providers.Values;
 
-        public Task<IReadOnlyList<ProviderInfo>> GetKnownAsync()
-            => _providerRepository.GetProvidersAsync();
+        public Task<IReadOnlyList<ProviderInfo>> GetKnownAsync() => _providerRepository.GetProvidersAsync();
 
         public void Add(INdmPeer peer)
         {
@@ -82,20 +80,12 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             AddProviderNodes(peer);
         }
 
-        public async Task ChangeAddressAsync(INdmPeer peer, Address address)
+        private void AddProviderNodes(INdmPeer peer)
         {
-            if (peer.ProviderAddress == address)
-            {
-                return;
-            }
-            
-            var previousAddress = peer.ProviderAddress;
-            if (_logger.IsInfo) _logger.Info($"Changing provider address: '{previousAddress}' -> '{address}' for peer: '{peer.NodeId}'.");
-            _providersWithCommonAddress.TryRemove(peer.ProviderAddress, out _);
-            peer.ChangeProviderAddress(address);
-            AddProviderNodes(peer);
-            await _consumerNotifier.SendProviderAddressChangedAsync(address, previousAddress);
-            if (_logger.IsInfo) _logger.Info($"Changed provider address: '{previousAddress}' -> '{address}'.");
+            var nodes = _providersWithCommonAddress.AddOrUpdate(peer.ProviderAddress,
+                _ => new ConcurrentDictionary<PublicKey, string>(), (_, n) => n);
+            nodes.TryAdd(peer.NodeId, string.Empty);
+            if (_logger.IsInfo) _logger.Info($"Added provider peer: '{peer.NodeId}' for address: '{peer.ProviderAddress}', nodes: {nodes.Count}.");
         }
 
         public void Remove(PublicKey nodeId)
@@ -117,13 +107,21 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 _providersWithCommonAddress.TryRemove(provider.ProviderAddress, out _);
             }
         }
-
-        private void AddProviderNodes(INdmPeer peer)
+        
+        public async Task ChangeAddressAsync(INdmPeer peer, Address address)
         {
-            var nodes = _providersWithCommonAddress.AddOrUpdate(peer.ProviderAddress,
-                _ => new ConcurrentDictionary<PublicKey, string>(), (_, n) => n);
-            nodes.TryAdd(peer.NodeId, string.Empty);
-            if (_logger.IsInfo) _logger.Info($"Added provider peer: '{peer.NodeId}' for address: '{peer.ProviderAddress}', nodes: {nodes.Count}.");
+            if (peer.ProviderAddress == address)
+            {
+                return;
+            }
+            
+            var previousAddress = peer.ProviderAddress;
+            if (_logger.IsInfo) _logger.Info($"Changing provider address: '{previousAddress}' -> '{address}' for peer: '{peer.NodeId}'.");
+            _providersWithCommonAddress.TryRemove(peer.ProviderAddress, out _);
+            peer.ChangeProviderAddress(address);
+            AddProviderNodes(peer);
+            await _consumerNotifier.SendProviderAddressChangedAsync(address, previousAddress);
+            if (_logger.IsInfo) _logger.Info($"Changed provider address: '{previousAddress}' -> '{address}'.");
         }
     }
 }

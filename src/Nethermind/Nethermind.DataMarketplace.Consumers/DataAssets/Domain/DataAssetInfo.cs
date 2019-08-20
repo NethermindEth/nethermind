@@ -16,15 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared.Repositories
+namespace Nethermind.DataMarketplace.Consumers.DataAssets.Domain
 {
-    public interface IProviderRepository
+    public class DataAssetInfo
     {
-        Task<IReadOnlyList<DataAssetInfo>> GetDataAssetsAsync();
-        Task<IReadOnlyList<ProviderInfo>> GetProvidersAsync();
+        public Keccak Id { get; }
+        public string Name { get; }
+        public string Description { get; }
+
+        public DataAssetInfo(Keccak id, string name, string description)
+        {
+            Id = id;
+            Name = name;
+            Description = description;
+        }
     }
 }

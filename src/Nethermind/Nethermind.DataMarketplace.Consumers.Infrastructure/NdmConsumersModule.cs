@@ -29,12 +29,13 @@ using Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repo
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc;
 using Nethermind.DataMarketplace.Consumers.Notifiers.Services;
+using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
+using Nethermind.DataMarketplace.Consumers.Providers.Services;
 using Nethermind.DataMarketplace.Consumers.Receipts.Services;
 using Nethermind.DataMarketplace.Consumers.Refunds.Services;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Consumers.Sessions.Services;
 using Nethermind.DataMarketplace.Consumers.Shared;
-using Nethermind.DataMarketplace.Consumers.Shared.Repositories;
 using Nethermind.DataMarketplace.Consumers.Shared.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo.Repositories;

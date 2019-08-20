@@ -16,22 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared
+namespace Nethermind.DataMarketplace.Consumers.Sessions.Queries
 {
-    public interface IProviderService
+    public class GetConsumerSessions : PagedQueryBase
     {
-        INdmPeer GetPeer(Address address);
-        IEnumerable<INdmPeer> GetPeers();
-        Task<IReadOnlyList<ProviderInfo>> GetKnownAsync();
-        void Add(INdmPeer peer);
-        Task ChangeAddressAsync(INdmPeer peer, Address address);
-        void Remove(PublicKey nodeId);
+        public Keccak DepositId { get; set; }
+        public Keccak DataAssetId { get; set; }
+        public PublicKey ConsumerNodeId { get; set; }
+        public Address ConsumerAddress { get; set; }
+        public PublicKey ProviderNodeId { get; set; }
+        public Address ProviderAddress { get; set; }
     }
 }

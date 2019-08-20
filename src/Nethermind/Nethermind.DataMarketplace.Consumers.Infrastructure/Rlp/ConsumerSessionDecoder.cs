@@ -19,7 +19,7 @@
 using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
