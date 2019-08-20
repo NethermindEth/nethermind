@@ -18,6 +18,7 @@
 
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
@@ -38,12 +39,13 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests.Services
         private readonly IKycVerifier _kycVerifier;
         private readonly IWallet _wallet;
         private readonly IProviderService _providerService;
+        private readonly ITimestamper _timestamper;
         private readonly IConsumerSessionRepository _sessionRepository;
         private readonly IConsumerNotifier _consumerNotifier;
         private readonly ILogger _logger;
 
         public DataRequestService(IDataRequestFactory dataRequestFactory, IDepositProvider depositProvider,
-            IKycVerifier kycVerifier, IWallet wallet, IProviderService providerService,
+            IKycVerifier kycVerifier, IWallet wallet, IProviderService providerService, ITimestamper timestamper,
             IConsumerSessionRepository sessionRepository, IConsumerNotifier consumerNotifier, ILogManager logManager)
         {
             _dataRequestFactory = dataRequestFactory;
@@ -51,12 +53,13 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests.Services
             _kycVerifier = kycVerifier;
             _wallet = wallet;
             _providerService = providerService;
+            _timestamper = timestamper;
             _sessionRepository = sessionRepository;
             _consumerNotifier = consumerNotifier;
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<DataRequestResult> SendDataRequestAsync(Keccak depositId)
+        public async Task<DataRequestResult> SendAsync(Keccak depositId)
         {
             var deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)
@@ -81,9 +84,16 @@ namespace Nethermind.DataMarketplace.Consumers.DataRequests.Services
 
             if (!deposit.Confirmed)
             {
-                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is not confirmed.'");
+                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is unconfirmed.'");
 
                 return DataRequestResult.DepositUnconfirmed;
+            }
+
+            if (deposit.IsExpired((uint) _timestamper.EpochSeconds))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Deposit with id: '{depositId}' is expired.'");
+
+                return DataRequestResult.DepositExpired;
             }
 
             var providerPeer = _providerService.GetPeer(deposit.DataAsset.Provider.Address);
