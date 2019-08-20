@@ -219,12 +219,12 @@ namespace Nethermind.Facade
             return _stateReader.GetCode(codeHash);
         }
 
-        public BigInteger GetNonce(Address address)
+        public UInt256 GetNonce(Address address)
         {
             return _stateReader.GetNonce(_blockTree.Head.StateRoot, address);
         }
 
-        public BigInteger GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             return _stateReader.GetBalance(_blockTree.Head.StateRoot, address);
         }

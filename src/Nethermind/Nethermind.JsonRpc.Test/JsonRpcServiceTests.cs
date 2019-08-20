@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -96,7 +97,7 @@ namespace Nethermind.JsonRpc.Test
         public void GetNewFilterTest()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<BigInteger?>.Success(1));
+            ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<UInt256?>.Success(1));
 
             var parameters = new
             {
