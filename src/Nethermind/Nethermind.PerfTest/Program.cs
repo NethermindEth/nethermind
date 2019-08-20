@@ -23,6 +23,9 @@ using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Abi;
+using Nethermind.AuRa;
+using Nethermind.AuRa.Rewards;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -195,7 +198,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
 
-        private const int BlocksToLoad = 100_000;
+        private const int BlocksToLoad = 6_000_000;
 
         private static async Task RunBenchmarkBlocks()
         {
@@ -215,7 +218,7 @@ namespace Nethermind.PerfTest
 
             /* load spec */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "sokol.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             _logger.Info($"ChainSpec loaded");
@@ -234,11 +237,17 @@ namespace Nethermind.PerfTest
             
             var transactionPool = new TxPool(NullTxStorage.Instance,
                 Timestamper.Default,
-                NullEthereumEcdsa.Instance, specProvider, new TxPoolConfig(), _logManager);
+                new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _logManager);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
+            
+            /* state & storage */
+            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
+
+            IList<IAdditionalBlockProcessor> blockProcessors = new List<IAdditionalBlockProcessor>();
             
             ISealValidator sealValidator;
             if (specProvider.ChainId == RopstenSpecProvider.Instance.ChainId)
@@ -246,12 +255,26 @@ namespace Nethermind.PerfTest
                 var difficultyCalculator = new DifficultyCalculator(specProvider);
                 sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
             }
-            else
+            else if (chainSpec.SealEngineType == SealEngineType.Clique)
             {
                 var snapshotManager = new SnapshotManager(CliqueConfig.Default, blocksDb, blockTree, ethereumSigner, _logManager);
                 sealValidator = new CliqueSealValidator(CliqueConfig.Default, snapshotManager, _logManager);
                 rewardCalculator = NoBlockRewards.Instance;
                 recoveryStep = new CompositeDataRecoveryStep(recoveryStep, new AuthorRecoveryStep(snapshotManager));
+            }
+            else if (chainSpec.SealEngineType == SealEngineType.AuRa)
+            {
+                var abiEncoder = new AbiEncoder();
+                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, _logManager)
+                    .CreateValidatorProcessor(chainSpec.AuRa.Validators);
+                    
+                sealValidator = new AuRaSealValidator(validatorProcessor, _logManager);
+                rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder);
+                blockProcessors.Add(validatorProcessor);
+            }
+            else
+            {
+                throw new NotSupportedException();
             }
 
             /* store & validation */
@@ -261,25 +284,40 @@ namespace Nethermind.PerfTest
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TxValidator(chainSpec.ChainId);
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
-
-            /* state & storage */
-
-            var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
-            var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
-
+            
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, blockProcessors);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, false);
-            foreach (KeyValuePair<Address, ChainSpecAllocation> allocation in chainSpec.Allocations)
+            
+            if (chainSpec.SealEngineType == SealEngineType.AuRa)
             {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);
-                if (allocation.Value.Code != null)
+                stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
+                storageProvider.Commit();
+                stateProvider.Commit(Homestead.Instance);
+            }
+            
+            foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(address, allocation.Balance);
+                if (allocation.Code != null)
                 {
-                    Keccak codeHash = stateProvider.UpdateCode(allocation.Value.Code);
-                    stateProvider.UpdateCodeHash(allocation.Key, codeHash, specProvider.GenesisSpec);
+                    Keccak codeHash = stateProvider.UpdateCode(allocation.Code);
+                    stateProvider.UpdateCodeHash(address, codeHash, specProvider.GenesisSpec);
+                }
+                
+                if (allocation.Constructor != null)
+                {
+                    Transaction constructorTransaction = new Transaction(true)
+                    {
+                        SenderAddress = address,
+                        Init = allocation.Constructor,
+                        GasLimit = chainSpec.Genesis.GasLimit
+                    };
+                    
+                    processor.Execute(constructorTransaction, chainSpec.Genesis.Header, NullTxTracer.Instance);
                 }
             }
             
@@ -294,7 +332,7 @@ namespace Nethermind.PerfTest
 //            {
 //                throw new Exception("Unexpected genesis hash");
 //            }
-
+//
             if (chainSpec.Genesis.Hash != blockTree.Genesis.Hash)
             {
                 throw new Exception("Unexpected genesis hash");
