@@ -36,7 +36,7 @@ namespace Nethermind.Network.Benchmarks
     [CoreJob(baseline: true)]
     public class OutFlow
     {
-        private static byte[] _expectedResult = Bytes.FromHexString("e13025bd4ae2d72b35e6f05a3b2f3aacf9ffe78eb851f84dc3264380eac186032d9d5d7350d1271323fe1a6c5aeea2b9e9d6d25e317ab957d737577b84de62fe4107cafcc795f832b71b71344fa44317ba4e113df762f4fa5dd7150e1a288d62f5d72438d56e3eda3aed9a4ba1be7eadceb782cf8e48a7ff6a521282388c8a88ac293ce26fad579cd1ea2ae80705856da9b9b33b5ef46b64ee3d44d2ecaa8e0d2d932fdf29d1d575e3266bb6524acfc438687a45c492815481698e0e1860c7f854b3918eb6550bd867dbc417c808ef9c746ac6d605b39a26c731476d3c9d5bea8c095b6e212a8f1575f9287ac04191c912891fcea59f91d555c59621cc80f1ef41bf7c941b4816eae18821a15ca39fc8689be7b0d8c56741f040e3ab57d940bd");
+        private static byte[] _expectedResult = Bytes.FromHexString("e13025bd4ae2d72b35e6f05a3b2f3aacf9ffe78eb851f84dc3264380eac186032b9d5d7350d1271323fe1a6c5aeea2b9e9d6d25e317ab957d737577b84de62fe4107cafcc795f832b71b71344fa44317ba4e113df762f4fa5dd7150e1a288d62f5d72438d56e3eda3aed9a4ba1be7eadceb782cf8e48a7ff6a521282388c8a88ac293ce26fad579cd1ea2ae80705856da9b9b33b5ef46b64ee3d44d2ecaa8e0d2d932fdf29d1d575e3266bb6524acfc438687a45c492815481698e0e1860c7f854b3918eb6550bd867dbc417c808ef9c746ac6d605b39a26c731476d3c9d5bea8c095b6e212a8f1575f9287ac04191c912891fcea59f91d555c59621cc80f1ef41bf7c941b4816eae18821a15ca39fc81726079e7056490dffa3d190cae9d698");
         private byte[] _actualResult = new byte[_expectedResult.Length];
         private IByteBuffer _snappyBuffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
         private IByteBuffer _splitterBuffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
@@ -57,12 +57,12 @@ namespace Nethermind.Network.Benchmarks
         [GlobalSetup]
         public void Setup()
         {
-            SetupAll();
-            Current();
-            Check();
-            SetupAll();
-            Improved();
-            Check();
+//            SetupAll();
+//            Current();
+//            Check();
+//            SetupAll();
+//            Improved();
+//            Check();
             SetupAll(true);
         }
 
@@ -191,63 +191,22 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public void Improved()
         {
-//            _zeroNewBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
-            byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
-            _snappyBuffer.WriteByte(7);
-            _snappyBuffer.WriteBytes(message);
-            
+            _zeroNewBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
             _zeroSnappyEncoder.TestEncode(_snappyBuffer, _splitterBuffer);
             _zeroSplitter.Encode(_splitterBuffer, _encoderBuffer);
             _zeroEncoder.Encode(_encoderBuffer, _outputBuffer);
         }
-
-        [Benchmark(Baseline = true)]
-        public void Current()
-        {
-            byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
-
-            Packet packet = new Packet("eth", 1, message);
-            Packet ensnapped = _snappyEncoder.TestEncode(packet);
-            List<object> output = new List<object>();
-            _splitter.Encode(ensnapped, output);
-            _encoder.Encode((byte[]) output[0], _outputBuffer);
-        }
-
-//        [Benchmark]
-//        public void Current_no_snappy()
-//        {
-//            NewBlockMessage newBlockMessage = new NewBlockMessage();
-//            newBlockMessage.Block = _block;
-//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-//            Packet packet = new Packet("eth", 1, message);
-//            List<object> output = new List<object>();
-//            _splitter.Encode(packet, output);
-//            _encoder.Encode((byte[]) output[0], _outputBuffer);
-//        }
 //
-//        [Benchmark]
-//        public void Current_no_encryption()
+//        [Benchmark(Baseline = true)]
+//        public void Current()
 //        {
-//            NewBlockMessage newBlockMessage = new NewBlockMessage();
-//            newBlockMessage.Block = _block;
-//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-//            Packet packet = new Packet("eth", 1, message);
+//            byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
+//
+//            Packet packet = new Packet("eth", 7, message);
 //            Packet ensnapped = _snappyEncoder.TestEncode(packet);
 //            List<object> output = new List<object>();
 //            _splitter.Encode(ensnapped, output);
 //            _encoder.Encode((byte[]) output[0], _outputBuffer);
-//        }
-//
-//        [Benchmark]
-//        public void Current_no_encoder()
-//        {
-//            NewBlockMessage newBlockMessage = new NewBlockMessage();
-//            newBlockMessage.Block = _block;
-//            byte[] message = _newBlockMessageSerializer.Serialize(newBlockMessage);
-//            Packet packet = new Packet("eth", 1, message);
-//            Packet ensnapped = _snappyEncoder.TestEncode(packet);
-//            List<object> output = new List<object>();
-//            _splitter.Encode(ensnapped, output);
 //        }
     }
 }

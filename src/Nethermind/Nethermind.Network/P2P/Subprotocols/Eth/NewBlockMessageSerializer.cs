@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
@@ -25,27 +24,6 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class NettyRlpStream : RlpStream
-    {
-        private readonly IByteBuffer _byteBuffer;
-
-        public NettyRlpStream(IByteBuffer byteBuffer)
-        {
-            _byteBuffer = byteBuffer;
-        }
-
-        protected override void Write(Span<byte> bytesToWrite)
-        {
-            bytesToWrite.CopyTo(_byteBuffer.Array.AsSpan().Slice(_byteBuffer.ArrayOffset + _byteBuffer.WriterIndex, bytesToWrite.Length));
-            _byteBuffer.SetWriterIndex(_byteBuffer.WriterIndex + bytesToWrite.Length);
-        }
-
-        protected override void WriteByte(byte byteToWrite)
-        {
-            _byteBuffer.WriteByte(byteToWrite);
-        }
-    }
-
     public class NewBlockMessageSerializer : IMessageSerializer<NewBlockMessage>
     {
         private BlockDecoder _blockDecoder = new BlockDecoder();

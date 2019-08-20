@@ -859,7 +859,7 @@ namespace Nethermind.Network.Benchmarks
         public int MaxWritableBytes { get; } = int.MaxValue;
         public int IoBufferCount { get; }
         public bool HasArray { get; }
-        public byte[] Array { get; }
+        public byte[] Array { get; } = new byte[1024 * 1024];
         public bool HasMemoryAddress { get; }
         public int ArrayOffset { get; }
     }

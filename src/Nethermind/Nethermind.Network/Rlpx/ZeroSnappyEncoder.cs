@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
@@ -24,20 +24,33 @@ using Snappy;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class SnappyEncoder : MessageToMessageEncoder<Packet>
+    public class ZeroSnappyEncoder : MessageToByteEncoder<IByteBuffer>
     {
+        byte[] _snappyBuffer = new byte[16 * 1024 * 1024];
+        
         private readonly ILogger _logger;
 
-        public SnappyEncoder(ILogger logger)
+        public ZeroSnappyEncoder(ILogger logger)
         {
             _logger = logger;
         }
         
-        protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
+        protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
-            if(_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {message.Data.Length}");
-            message.Data = SnappyCodec.Compress(message.Data); 
-            output.Add(message);
+            byte packetType = input.ReadByte();
+
+            output.WriteByte(packetType);
+            
+            if(_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
+            int length = SnappyCodec.Compress(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes, _snappyBuffer, 0);
+            input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
+            
+            if (output.WritableBytes < length)
+            {
+                output.DiscardReadBytes();
+            }
+
+            output.WriteBytes(_snappyBuffer, 0, length);
         }
     }
 }
