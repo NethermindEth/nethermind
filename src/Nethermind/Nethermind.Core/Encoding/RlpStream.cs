@@ -171,7 +171,14 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(Bloom bloom)
         {
-            if (bloom == null)
+            if (ReferenceEquals(bloom, Bloom.Empty))
+            {
+                WriteByte(185);
+                WriteByte(1);
+                WriteByte(0);
+                WriteZero(256);
+            }
+            else if (bloom == null)
             {
                 WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
             }
@@ -182,6 +189,11 @@ namespace Nethermind.Core.Encoding
                 WriteByte(0);
                 Write(bloom.Bytes);
             }
+        }
+
+        protected virtual void WriteZero(int length)
+        {
+            Position += 256;
         }
 
         public void Encode(byte value)

@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Builders
                 4_000_000,
                 1_000_000,
                 new byte[] {1, 2, 3});
-            TestObjectInternal.Bloom = new Bloom();
+            TestObjectInternal.Bloom = Bloom.Empty;
             TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
             TestObjectInternal.Nonce = 1000;
             TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;

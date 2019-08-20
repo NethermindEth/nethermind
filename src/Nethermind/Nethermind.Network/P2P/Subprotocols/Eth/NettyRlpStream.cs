@@ -53,5 +53,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             
             _byteBuffer.WriteByte(byteToWrite);
         }
+
+        protected override void WriteZero(int length)
+        {
+            if (_byteBuffer.WritableBytes < length)
+            {
+                _byteBuffer.DiscardReadBytes();
+            }
+            
+            _byteBuffer.WriteZero(length);
+        }
     }
 }
