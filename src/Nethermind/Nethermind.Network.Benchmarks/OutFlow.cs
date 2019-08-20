@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
+using DotNetty.Common;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -108,6 +109,7 @@ namespace Nethermind.Network.Benchmarks
             _newBlockMessage.Block = _block;
             _serializationService.Register(_newBlockMessageSerializer); 
             _packetSender = new PacketSender(_serializationService, LimboLogs.Instance);
+            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
         private class TestEncoder : Rlpx.NettyFrameEncoder

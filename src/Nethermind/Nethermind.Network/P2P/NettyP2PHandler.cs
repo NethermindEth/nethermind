@@ -89,6 +89,8 @@ namespace Nethermind.Network.P2P
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
+            _logger.Warn(exception.ToString());
+            
             //In case of SocketException we log it as debug to avoid noise
             string clientId = _session?.Node.ClientId ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)

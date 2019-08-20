@@ -76,11 +76,7 @@ namespace Nethermind.Network
         {
             IMessageSerializer<T> serializer = GetSerializer<T>();
             byte[] serialized = serializer.Serialize(message);
-            if (byteBuffer.WritableBytes < serialized.Length + 1)
-            {
-                byteBuffer.DiscardReadBytes();
-            }
-            
+            byteBuffer.MakeSpace(serialized.Length, "serialization");
             byteBuffer.WriteBytes(serialized);
         }
 

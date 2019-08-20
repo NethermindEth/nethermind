@@ -128,6 +128,8 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
+            _logger.Warn(exception.ToString());
+            
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {

@@ -116,6 +116,8 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
+            _logger.Warn(exception.ToString());
+            
             string clientId = _session.Node?.ClientId ?? $"unknown {_session?.RemoteHost}";
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
@@ -214,11 +216,6 @@ namespace Nethermind.Network.Rlpx
                 //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
                 await _channel.DisconnectAsync();
             }
-        }
-
-        ~NettyHandshakeHandler()
-        {
-            _buffer.Release();
         }
     }
 }

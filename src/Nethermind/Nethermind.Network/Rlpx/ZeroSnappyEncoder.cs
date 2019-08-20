@@ -38,23 +38,16 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
-            _logger.Warn($"Snapping something");
             byte packetType = input.ReadByte();
-            _logger.Warn($"Snapping {packetType} {input.ReadableBytes}");
 
+            output.MakeSpace(1, "snappy 1");
             output.WriteByte(packetType);
 
             if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
             int length = SnappyCodec.Compress(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes, _snappyBuffer, 0);
             input.SetReaderIndex(input.ReaderIndex + input.ReadableBytes);
 
-            if (output.WritableBytes < length)
-            {
-                output.DiscardReadBytes();
-            }
-            
-            _logger.Warn($"Snapped {packetType} to {length}");
-
+            output.MakeSpace(length, "snappy");
             output.WriteBytes(_snappyBuffer, 0, length);
         }
     }

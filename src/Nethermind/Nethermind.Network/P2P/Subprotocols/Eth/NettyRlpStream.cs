@@ -33,10 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected override void Write(Span<byte> bytesToWrite)
         {
-            if (_byteBuffer.WritableBytes < bytesToWrite.Length)
-            {
-                _byteBuffer.DiscardReadBytes();
-            }
+            _byteBuffer.MakeSpace(bytesToWrite.Length);
 
             bytesToWrite.CopyTo(_byteBuffer.Array.AsSpan().Slice(_byteBuffer.ArrayOffset + _byteBuffer.WriterIndex, bytesToWrite.Length));
             int newWriterIndex = _byteBuffer.WriterIndex + bytesToWrite.Length;
@@ -46,21 +43,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected override void WriteByte(byte byteToWrite)
         {
-            if (_byteBuffer.WritableBytes == 0)
-            {
-                _byteBuffer.DiscardReadBytes();
-            }
-            
+            _byteBuffer.MakeSpace(1);
             _byteBuffer.WriteByte(byteToWrite);
         }
 
         protected override void WriteZero(int length)
         {
-            if (_byteBuffer.WritableBytes < length)
-            {
-                _byteBuffer.DiscardReadBytes();
-            }
-            
+            _byteBuffer.MakeSpace(length);
             _byteBuffer.WriteZero(length);
         }
     }
