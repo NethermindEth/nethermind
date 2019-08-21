@@ -166,8 +166,8 @@ namespace Nethermind.Network.Test.P2P
             session.Init(5, _channelHandlerContext, _packetSender);
             session.EnableSnappy();
             Assert.True(handler.SnappyEnabled);
-            _pipeline.Received().Get<NettyPacketSplitter>();
-            _pipeline.Received().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<SnappyEncoder>());
+            _pipeline.Received().Get<ZeroNettyPacketSplitter>();
+            _pipeline.Received().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());
         }
 
         [Test]
