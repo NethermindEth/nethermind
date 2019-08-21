@@ -41,11 +41,11 @@ namespace Nethermind.Network.Rlpx
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
         private int _totalBodySize;
 
-        public ZeroNettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
+        public ZeroNettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
             _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
