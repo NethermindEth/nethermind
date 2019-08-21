@@ -31,6 +31,8 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Test.Rlpx.Handshake;
 using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nethermind.Network.Benchmarks
@@ -73,20 +75,10 @@ namespace Nethermind.Network.Benchmarks
 
         private void SetupAll(bool useLimboOutput = false)
         {
-            PublicKey publicKey = new PublicKey(
-                "000102030405060708090A0B0C0D0E0F" +
-                "101112131415161718191A1B1C1D1E1F" +
-                "202122232425262728292A2B2C2D2E2F" +
-                "303132333435363738393A3B3C3D3E3F");
-            EncryptionSecrets secrets = new EncryptionSecrets();
-            secrets.AesSecret = Keccak.EmptyTreeHash.Bytes;
-            secrets.MacSecret = Keccak.OfAnEmptySequenceRlp.Bytes;
-            secrets.Token = Keccak.OfAnEmptyString.Bytes;
-            secrets.EgressMac = new KeccakDigest(256);
-            secrets.IngressMac = new KeccakDigest(256);
-
-            FrameCipher frameCipher = new FrameCipher(secrets.AesSecret);
-            FrameMacProcessor frameMacProcessor = new FrameMacProcessor(publicKey, secrets);
+            var secrets = TestSecrets.GetSecretsPair();
+            
+            FrameCipher frameCipher = new FrameCipher(secrets.A.AesSecret);
+            FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
             _encoder = new TestEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
             _splitter = new TestSplitter();
             _splitter.DisableFraming();

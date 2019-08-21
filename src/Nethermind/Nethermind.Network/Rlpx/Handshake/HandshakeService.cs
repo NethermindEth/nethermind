@@ -53,7 +53,8 @@ namespace Nethermind.Network.Rlpx.Handshake
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
-            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));;
+            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));
+            ;
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
@@ -94,12 +95,12 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] plainText = null;
             try
             {
-                if(_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
-                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);   
+                if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
+                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
             }
             catch (Exception ex)
             {
-                if(_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
             }
 
             if (!isOld)
@@ -113,9 +114,9 @@ namespace Nethermind.Network.Rlpx.Handshake
             {
                 authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
             }
-            
+
             var nodeId = authMessage.PublicKey;
-            if(_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
+            if (_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
 
             handshake.RemoteNodeId = nodeId;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
@@ -130,7 +131,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] ackData;
             if (isOld) // what was the difference? shall I really include ephemeral public key in v4?
             {
-                if(_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
+                if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
                 AckMessage ackMessage = new AckMessage();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
@@ -138,13 +139,13 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             else
             {
-                if(_logger.IsTrace) _logger.Trace($"Building an {nameof(AckEip8Message)}");
+                if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckEip8Message)}");
                 AckEip8Message ackMessage = new AckEip8Message();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                ackData = _messageSerializationService.Serialize(ackMessage);    
+                ackData = _messageSerializationService.Serialize(ackMessage);
             }
-            
+
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes);
@@ -165,33 +166,47 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             catch (Exception ex)
             {
-                if(_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
+                if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
             }
-            
+
             if (isOld)
             {
                 AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plainText);
-                if(_logger.IsTrace) _logger.Trace("Received ACK old");
-                    
+                if (_logger.IsTrace) _logger.Trace("Received ACK old");
+
                 handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
-                handshake.RecipientNonce = ackMessage.Nonce;   
+                handshake.RecipientNonce = ackMessage.Nonce;
             }
             else
             {
                 byte[] sizeData = ack.Data.Slice(0, 2);
                 (_, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
-                
+
                 AckEip8Message ackEip8Message = _messageSerializationService.Deserialize<AckEip8Message>(plainText);
                 if (_logger.IsTrace) _logger.Trace($"Received ACK v{ackEip8Message.Version}");
-                
+
                 handshake.RemoteEphemeralPublicKey = ackEip8Message.EphemeralPublicKey;
                 handshake.RecipientNonce = ackEip8Message.Nonce;
             }
 
             SetSecrets(handshake, HandshakeRole.Initiator);
+
+            if (_logger.IsTrace) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId}");
+#if DEBUG
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
+                _logger.Trace($"{handshake.RemoteNodeId} initiator nonce {handshake.InitiatorNonce.ToHexString()}");
+                _logger.Trace($"{handshake.RemoteNodeId} recipient nonce {handshake.RecipientNonce.ToHexString()}");
+                _logger.Trace($"{handshake.RemoteNodeId} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
+                _logger.Trace($"{handshake.RemoteNodeId} remote public key {handshake.RemoteNodeId}");
+                _logger.Trace($"{handshake.RemoteNodeId} auth packet {handshake.AuthPacket.Data.ToHexString()}");
+                _logger.Trace($"{handshake.RemoteNodeId} ack packet {handshake.AckPacket.Data.ToHexString()}");
+            }
+#endif
         }
 
-        private void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)
+        public static void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)
         {
             byte[] ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
             byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
@@ -224,20 +239,6 @@ namespace Nethermind.Network.Rlpx.Handshake
                 handshake.Secrets.EgressMac = mac2;
                 handshake.Secrets.IngressMac = mac1;
             }
-
-            if(_logger.IsTrace) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId}");
-            #if DEBUG
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
-                _logger.Trace($"{handshake.RemoteNodeId} initiator nonce {handshake.InitiatorNonce.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} recipient nonce {handshake.RecipientNonce.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
-                _logger.Trace($"{handshake.RemoteNodeId} remote public key {handshake.RemoteNodeId}");
-                _logger.Trace($"{handshake.RemoteNodeId} auth packet {handshake.AuthPacket.Data.ToHexString()}");
-                _logger.Trace($"{handshake.RemoteNodeId} ack packet {handshake.AckPacket.Data.ToHexString()}");
-            }
-            #endif
         }
     }
 }
