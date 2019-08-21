@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -62,8 +63,8 @@ namespace Nethermind.Network.Rlpx
             ILogManager logManager,
             ISessionMonitor sessionMonitor)
         {
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
-            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
+//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => level > LogLevel.Information, false));
+//            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
             _group = new SingleThreadEventLoop();
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));

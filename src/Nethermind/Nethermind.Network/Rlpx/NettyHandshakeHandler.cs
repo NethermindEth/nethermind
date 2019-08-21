@@ -33,7 +33,6 @@ namespace Nethermind.Network.Rlpx
 {
     public class NettyHandshakeHandler : SimpleChannelInboundHandler<IByteBuffer>
     {
-        private readonly IByteBuffer _buffer = PooledByteBufferAllocator.Default.Buffer();
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
@@ -74,8 +73,9 @@ namespace Nethermind.Network.Rlpx
                 Packet auth = _service.Auth(RemoteId, _handshake);
 
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {RemoteId} @ {context.Channel.RemoteAddress}");
-                _buffer.WriteBytes(auth.Data);
-                context.WriteAndFlushAsync(_buffer);
+                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+                buffer.WriteBytes(auth.Data);
+                context.WriteAndFlushAsync(buffer);
             }
 
             _session.RemoteHost = ((IPEndPoint) context.Channel.RemoteAddress).Address.ToString();
@@ -152,8 +152,9 @@ namespace Nethermind.Network.Rlpx
 
                     //_p2PSession.RemoteNodeId = _remoteId;
                     if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
-                    _buffer.WriteBytes(ack.Data);
-                    context.WriteAndFlushAsync(_buffer);
+                    IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+                    buffer.WriteBytes(ack.Data);
+                    context.WriteAndFlushAsync(buffer);
                 }
                 else
                 {
