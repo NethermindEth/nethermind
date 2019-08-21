@@ -18,6 +18,7 @@
 
 using System;
 using System.Net.Sockets;
+using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -25,12 +26,12 @@ using Snappy;
 
 namespace Nethermind.Network.P2P
 {
-    public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
+    public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<IByteBuffer>
     {
         private readonly ISession _session;
         private readonly ILogger _logger;
 
-        public NettyP2PHandler(ISession session, ILogManager logManager)
+        public ZeroNettyP2PHandler(ISession session, ILogManager logManager)
         {
             _session = session ?? throw new ArgumentNullException(nameof(session));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -47,50 +48,64 @@ namespace Nethermind.Network.P2P
             base.ChannelRegistered(context);
         }
 
-        protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
+        protected override void ChannelRead0(IChannelHandlerContext ctx, IByteBuffer input)
         {
+            byte packetType = input.ReadByte();
+            Packet packet = new Packet("???", packetType, null);
+
             if (SnappyEnabled)
             {
-                if (SnappyCodec.GetUncompressedLength(msg.Data) > SnappyParameters.MaxSnappyLength)
+                int uncompressedLength = SnappyCodec.GetUncompressedLength(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes);
+                if (uncompressedLength > SnappyParameters.MaxSnappyLength)
                 {
                     throw new Exception("Max message size exceeeded"); // TODO: disconnect here
                 }
 
-                if (msg.Data.Length > SnappyParameters.MaxSnappyLength / 4)
+                if (input.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {msg.Data.Length}");
+                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {input.ReadableBytes}");
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {msg.Data.Length}");
+                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {input.ReadableBytes}");
                 }
 
+
+                byte[] output = new byte[uncompressedLength];
                 try
                 {
-                    msg.Data = SnappyCodec.Uncompress(msg.Data);
+                    SnappyCodec.Uncompress(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes, output, 0);
+                    
                 }
-                catch
+                catch (Exception e)
                 {
-                    if (msg.Data.Length == 2 && msg.Data[0] == 193)
+                    if (input.ReadableBytes == 2 && input.ReadByte() == 193)
                     {
                         // this is a Parity disconnect sent as a non-snappy-encoded message
                         // e.g. 0xc103
                     }
                     else
                     {
+                        input.SkipBytes(input.ReadableBytes);
                         throw;
                     }
                 }
+
+                input.SkipBytes(input.ReadableBytes);
+                packet.Data = output;
+            }
+            else
+            {
+                packet.Data = input.ReadAllBytes();    
             }
             
-            if (_logger.IsTrace) _logger.Trace($"Channel read... data length {msg.Data.Length}");
-            _session.ReceiveMessage(msg);
+            _session.ReceiveMessage(packet);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             _logger.Warn(exception.ToString());
-            
+
             //In case of SocketException we log it as debug to avoid noise
             string clientId = _session?.Node.ClientId ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
@@ -100,13 +115,13 @@ namespace Nethermind.Network.P2P
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
-            } 
+            }
 
             base.ExceptionCaught(context, exception);
         }
 
         public bool SnappyEnabled { get; private set; }
-        
+
         public void EnableSnappy()
         {
             SnappyEnabled = true;

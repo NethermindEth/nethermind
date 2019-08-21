@@ -32,6 +32,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Test;
 using Nethermind.Network.Test.Rlpx.Handshake;
 using Org.BouncyCastle.Crypto.Digests;
 
@@ -75,7 +76,7 @@ namespace Nethermind.Network.Benchmarks
 
         private void SetupAll(bool useLimboOutput = false)
         {
-            var secrets = TestSecrets.GetSecretsPair();
+            var secrets = NetTestVectors.GetSecretsPair();
             
             FrameCipher frameCipher = new FrameCipher(secrets.A.AesSecret);
             FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
