@@ -159,7 +159,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 : null;
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
-                    depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, personalBridge)));
+                    depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, personalBridge, timestamper)));
 
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
                 refundClaimant, depositConfirmationService, blockProcessor, depositRepository, consumerNotifier,

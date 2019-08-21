@@ -56,6 +56,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IEthRequestService _ethRequestService;
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
+        private ITimestamper _timestamper;
 
         [SetUp]
         public void Setup()
@@ -65,8 +66,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
+            _timestamper = new Timestamper();
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge);
+                _ethRequestService, _personalBridge, _timestamper);
         }
 
         [Test]
@@ -93,7 +95,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge);
+                _ethRequestService, _personalBridge, _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
