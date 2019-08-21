@@ -436,7 +436,29 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 _logManager);
             
+            _storageProvider = new StorageProvider(
+                _dbProvider.StateDb,
+                _stateProvider,
+                _logManager);
+            
             IList<IAdditionalBlockProcessor> blockPreProcessors = new List<IAdditionalBlockProcessor>();
+            // blockchain processing
+            var blockhashProvider = new BlockhashProvider(
+                _blockTree, _logManager);
+
+            var virtualMachine = new VirtualMachine(
+                _stateProvider,
+                _storageProvider,
+                blockhashProvider,
+                _specProvider,
+                _logManager);
+
+            _transactionProcessor = new TransactionProcessor(
+                _specProvider,
+                _stateProvider,
+                _storageProvider,
+                virtualMachine,
+                _logManager);
             
             InitSealEngine(blockPreProcessors);
 
@@ -461,30 +483,7 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 _logManager);
 
-            _storageProvider = new StorageProvider(
-                _dbProvider.StateDb,
-                _stateProvider,
-                _logManager);
-
             _txPoolInfoProvider = new TxPoolInfoProvider(_stateProvider, _txPool);
-
-/* blockchain processing */
-            var blockhashProvider = new BlockhashProvider(
-                _blockTree, _logManager);
-
-            var virtualMachine = new VirtualMachine(
-                _stateProvider,
-                _storageProvider,
-                blockhashProvider,
-                _specProvider,
-                _logManager);
-
-            _transactionProcessor = new TransactionProcessor(
-                _specProvider,
-                _stateProvider,
-                _storageProvider,
-                virtualMachine,
-                _logManager);
 
             _blockProcessor = new BlockProcessor(
                 _specProvider,
@@ -654,11 +653,11 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _logManager)
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _transactionProcessor, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                         
                     _sealer = new AuRaSealer();
-                    _sealValidator = new AuRaSealValidator(validatorProcessor, _logManager);
+                    _sealValidator = new AuRaSealValidator(validatorProcessor, _ethereumEcdsa, _logManager);
                     _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder);
                     blockPreProcessors.Add(validatorProcessor);
                     break;

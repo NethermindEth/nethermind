@@ -23,9 +23,9 @@ namespace Nethermind.AuRa.Validators
                 : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
         }
         
-        public void PreProcess(Block block, ITransactionProcessor transactionProcessor) { }
+        public void PreProcess(Block block) { }
 
-        public void PostProcess(Block block, TxReceipt[] receipts, ITransactionProcessor transactionProcessor) { }
+        public void PostProcess(Block block, TxReceipt[] receipts) { }
 
         public void Initialize(Block block, TransactionProcessor transactionProcessor) { }
 

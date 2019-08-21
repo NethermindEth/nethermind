@@ -139,9 +139,9 @@ namespace Nethermind.AuRa.Test.Validators
             var validatorsKeys = _validator.Validators.Keys;
             _block.Number = (validatorsKeys.First() + validatorsKeys.Skip(1).First()) / 2;
             
-            validator.PreProcess(_block, _transactionProcessor);
+            validator.PreProcess(_block);
             
-            _innerValidators.First().Value.Received(1).PreProcess(Arg.Any<Block>(), _transactionProcessor);
+            _innerValidators.First().Value.Received(1).PreProcess(Arg.Any<Block>());
         }
         
         private void ProcessBlocks(long count, MultiValidator validator)
@@ -149,8 +149,8 @@ namespace Nethermind.AuRa.Test.Validators
             for (int i = 1; i < count; i++)
             {
                 _block.Number = i;
-                validator.PreProcess(_block, _transactionProcessor);
-                validator.PostProcess(_block, Array.Empty<TxReceipt>(), _transactionProcessor);
+                validator.PreProcess(_block);
+                validator.PostProcess(_block, Array.Empty<TxReceipt>());
                 validator.IsValidSealer(Address.Zero);
             }
         }
@@ -161,9 +161,9 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 var (innerValidator, calls) = getValidatorWithCallCount(i);
                 
-                innerValidator.Received(calls).PreProcess(Arg.Any<Block>(), _transactionProcessor);
+                innerValidator.Received(calls).PreProcess(Arg.Any<Block>());
                 innerValidator.Received(calls).PostProcess(Arg.Any<Block>(),
-                    Array.Empty<TxReceipt>(), _transactionProcessor);
+                    Array.Empty<TxReceipt>());
                 innerValidator.Received(calls).IsValidSealer(Address.Zero);
             }
         }

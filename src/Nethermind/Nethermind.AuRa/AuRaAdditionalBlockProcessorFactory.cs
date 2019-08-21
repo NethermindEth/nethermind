@@ -44,14 +44,17 @@ namespace Nethermind.AuRa
         
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
+        private readonly ITransactionProcessor _transactionProcessor;
         private readonly ILogManager _logManager;
 
         public AuRaAdditionalBlockProcessorFactory(IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
+            ITransactionProcessor transactionProcessor,
             ILogManager logManager)
         {
             _stateProvider = stateProvider;
             _abiEncoder = abiEncoder;
+            _transactionProcessor = transactionProcessor;
             _logManager = logManager;
         }
 
@@ -63,9 +66,9 @@ namespace Nethermind.AuRa
                 case AuRaParameters.ValidatorType.List:
                     return new ListValidator(validator);
                 case AuRaParameters.ValidatorType.Contract:
-                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _logManager, startBlockNumber);
+                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.ReportingContract:
-                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _logManager, startBlockNumber);
+                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.Multi:
                     return new MultiValidator(validator, this, _logManager);
                 default:

@@ -19,16 +19,16 @@ namespace Nethermind.AuRa.Validators
         private ValidatorContract _validatorContract;
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
+        private readonly ITransactionProcessor _transactionProcessor;
+        
+        private HashSet<Address> _validators;
+        private PendingValidators _pendingValidators;
+        private readonly HashSet<Address> _validatedSinceFinalized = new HashSet<Address>();
 
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
         protected long StartBlockNumber { get; }
         protected CallOutputTracer Output { get; } = new CallOutputTracer();
-
-        private HashSet<Address> _validators;
-        private PendingValidators _pendingValidators;
-        private readonly HashSet<Address> _validatedSinceFinalized = new HashSet<Address>();
-
         protected ValidatorContract ValidatorContract => _validatorContract ?? (_validatorContract = CreateValidatorContract());
         private bool IsInitialized => _validators != null;
 
@@ -36,7 +36,8 @@ namespace Nethermind.AuRa.Validators
             AuRaParameters.Validator validator,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
-            ILogManager logManager,
+            ITransactionProcessor transactionProcessor,
+            ILogManager logManager,            
             long startBlockNumber)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
@@ -44,25 +45,26 @@ namespace Nethermind.AuRa.Validators
                 throw new ArgumentException("Wrong validator type.", nameof(validator));
             
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));;
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             StartBlockNumber = startBlockNumber;
         }
-
+        
         public bool IsValidSealer(Address address) => _validators.Contains(address);
 
-        public virtual void PreProcess(Block block, ITransactionProcessor transactionProcessor)
+        public virtual void PreProcess(Block block)
         {
             if (!IsInitialized)
             {
-                Initialize(block, transactionProcessor);
+                Initialize(block);
             }
 
-            FinalizePendingValidatorsIfNeeded(block, transactionProcessor);
+            FinalizePendingValidatorsIfNeeded(block);
         }
 
-        private void FinalizePendingValidatorsIfNeeded(Block block, ITransactionProcessor transactionProcessor)
+        private void FinalizePendingValidatorsIfNeeded(Block block)
         {
             bool thereArePendingValidators = _pendingValidators != null;
             if (thereArePendingValidators)
@@ -72,7 +74,7 @@ namespace Nethermind.AuRa.Validators
                 {
                     if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {_pendingValidators.BlockNumber} at block {block.Number}.");
                     var transaction = ValidatorContract.FinalizeChange(ContractAddress, block);
-                    SystemContract.InvokeTransaction(block.Header, transactionProcessor, transaction, Output);
+                    SystemContract.InvokeTransaction(block.Header, _transactionProcessor, transaction, Output);
                     
                     _validators = new HashSet<Address>(_pendingValidators.Addresses);
                     _pendingValidators = null;
@@ -85,7 +87,7 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        public virtual void PostProcess(Block block, TxReceipt[] receipts, ITransactionProcessor transactionProcessor)
+        public virtual void PostProcess(Block block, TxReceipt[] receipts)
         {
             if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, block, receipts, out var potentialValidators))
             {
@@ -101,7 +103,7 @@ namespace Nethermind.AuRa.Validators
             return new ValidatorContract(AbiEncoder);
         }
 
-        private void Initialize(Block block, ITransactionProcessor transactionProcessor)
+        private void Initialize(Block block)
         {
             var startBlockInitialize = StartBlockNumber == block.Number;
             
@@ -111,7 +113,7 @@ namespace Nethermind.AuRa.Validators
             }
             
             // Todo if last InitiateChange is not finalized we need to load potential validators.
-            var validators = LoadValidatorsFromContract(block, transactionProcessor);
+            var validators = LoadValidatorsFromContract(block);
             
             if (startBlockInitialize)
             {
@@ -130,9 +132,9 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        private Address[] LoadValidatorsFromContract(Block block, ITransactionProcessor transactionProcessor)
+        private Address[] LoadValidatorsFromContract(Block block)
         {
-            SystemContract.InvokeTransaction(block.Header, transactionProcessor, ValidatorContract.GetValidators(ContractAddress, block), Output);
+            SystemContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.GetValidators(ContractAddress, block), Output);
 
             var validators = ValidatorContract.DecodeAddresses(Output.ReturnValue);
             if (validators.Length == 0)

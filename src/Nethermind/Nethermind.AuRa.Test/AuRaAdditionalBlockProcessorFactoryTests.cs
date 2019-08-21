@@ -5,6 +5,7 @@ using Nethermind.Abi;
 using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Store;
 using NSubstitute;
@@ -22,7 +23,8 @@ namespace Nethermind.AuRa.Test
         {
             var factory = new AuRaAdditionalBlockProcessorFactory(
                 Substitute.For<IStateProvider>(),
-                Substitute.For<IAbiEncoder>(),
+                Substitute.For<IAbiEncoder>(), 
+                Substitute.For<ITransactionProcessor>(),
                 Substitute.For<ILogManager>());
 
             var validator = new AuRaParameters.Validator()

@@ -235,11 +235,12 @@ namespace Nethermind.PerfTest
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
             
+            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
             var transactionPool = new TxPool(NullTxStorage.Instance,
                 Timestamper.Default,
-                new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _logManager);
+                ethereumSigner, specProvider, new TxPoolConfig(), _logManager);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
-            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
+            
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
             
@@ -247,7 +248,11 @@ namespace Nethermind.PerfTest
             var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
+            /* blockchain processing */
             IList<IAdditionalBlockProcessor> blockProcessors = new List<IAdditionalBlockProcessor>();
+            var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             
             ISealValidator sealValidator;
             if (specProvider.ChainId == RopstenSpecProvider.Instance.ChainId)
@@ -265,10 +270,10 @@ namespace Nethermind.PerfTest
             else if (chainSpec.SealEngineType == SealEngineType.AuRa)
             {
                 var abiEncoder = new AbiEncoder();
-                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, _logManager)
+                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, processor, _logManager)
                     .CreateValidatorProcessor(chainSpec.AuRa.Validators);
                     
-                sealValidator = new AuRaSealValidator(validatorProcessor, _logManager);
+                sealValidator = new AuRaSealValidator(validatorProcessor, ethereumSigner, _logManager);
                 rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder);
                 blockProcessors.Add(validatorProcessor);
             }
@@ -286,9 +291,6 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
             
             /* blockchain processing */
-            var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
-            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, blockProcessors);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, false);
             

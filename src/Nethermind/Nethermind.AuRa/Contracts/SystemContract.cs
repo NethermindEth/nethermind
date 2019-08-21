@@ -43,7 +43,7 @@ namespace Nethermind.AuRa.Contracts
                 
                 if (tracer.StatusCode != StatusCode.Success)
                 {
-                    throw new AuRaException($"System call returned error '{tracer.Error}'.");
+                    throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
                 }
             }
         }
