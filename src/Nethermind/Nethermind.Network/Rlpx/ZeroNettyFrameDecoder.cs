@@ -100,16 +100,13 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 int expectedSize = _totalBodySize + paddingSize + MacSize;
-                byte[] buffer;
-                if (input.ReadableBytes >= expectedSize)
-                {
-                    buffer = new byte[expectedSize + _headerBuffer.Length];
-                    input.ReadBytes(buffer, 32, expectedSize);
-                }
-                else
+                if (input.ReadableBytes < expectedSize)
                 {
                     return;
                 }
+                
+                byte[] buffer = new byte[expectedSize + _headerBuffer.Length];
+                input.ReadBytes(buffer, 32, expectedSize);
 
                 if (_logger.IsTrace) _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
 
