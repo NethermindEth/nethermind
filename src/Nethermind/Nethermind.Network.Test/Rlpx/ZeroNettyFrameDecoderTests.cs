@@ -65,10 +65,10 @@ namespace Nethermind.Network.Test.Rlpx
                 _context = Substitute.For<IChannelHandlerContext>();
             }
 
-            public IByteBuffer Decode(IByteBuffer buffer)
+            public IByteBuffer Decode(IByteBuffer input)
             {
                 List<object> result = new List<object>();
-                base.Decode(_context, buffer, result);
+                base.Decode(_context, input, result);
                 return (IByteBuffer)result[0];
             }
         }
