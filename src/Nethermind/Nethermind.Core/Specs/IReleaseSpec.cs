@@ -166,5 +166,10 @@ namespace Nethermind.Core.Specs
         /// Istanbul ChainID opcode
         /// </summary>
         bool IsEip1344Enabled { get; }
+        
+        /// <summary>
+        /// Transaction data gas cost reduction
+        /// </summary>
+        bool IsEip2028Enabled { get; }
     }
 }

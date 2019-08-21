@@ -17,7 +17,6 @@
  */
 
 using System.Collections.Generic;
-using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
