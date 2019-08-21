@@ -90,14 +90,14 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 results = 10;
             }
 
-            var now = _timestamper.EpochSeconds;
+            var timestamp = (uint)_timestamper.EpochSeconds;
             var skip = (page - 1) * results;
             var items = new List<DepositReportItem>();
             foreach (var (_, deposit) in foundDeposits.OrderByDescending(d => d.Value.Timestamp).Skip(skip)
                 .Take(results))
             {
                 depositsReceipts.TryGetValue(deposit.Id, out var depositReceipts);
-                var expired = now >= deposit.Deposit.ExpiryTime;
+                var expired = deposit.IsExpired(timestamp);
                 var receiptItems = depositReceipts?.Select(r => new DataDeliveryReceiptReportItem(r.Id, r.Number,
                     r.SessionId, r.ConsumerNodeId, r.Request, r.Receipt, r.Timestamp, r.IsMerged, r.IsClaimed));
                 var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions

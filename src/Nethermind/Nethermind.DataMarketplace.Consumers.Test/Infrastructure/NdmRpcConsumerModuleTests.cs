@@ -56,6 +56,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IEthRequestService _ethRequestService;
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
+        private ITimestamper _timestamper;
+        private const uint DepositExpiryTime = 1546393600;
+        private static readonly DateTime Date = new DateTime(2019, 1, 2); //1546383600
 
         [SetUp]
         public void Setup()
@@ -65,8 +68,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
+            _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge);
+                _ethRequestService, _personalBridge, _timestamper);
         }
 
         [Test]
@@ -93,7 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge);
+                _ethRequestService, _personalBridge, _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -497,10 +501,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.Id.Should().Be(Keccak.OfAnEmptyString);
             deposit.Deposit.Units.Should().Be(1);
             deposit.Deposit.Value.Should().Be(1);
-            deposit.Deposit.ExpiryTime.Should().Be(1);
+            deposit.Deposit.ExpiryTime.Should().Be(DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
             deposit.TransactionHash.Should().Be(TestItem.KeccakA);
             deposit.Confirmed.Should().Be(false);
+            deposit.Expired.Should().Be(false);
             deposit.RefundClaimed.Should().Be(false);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             deposit.ConsumedUnits.Should().Be(0);
@@ -543,12 +548,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 new DataAssetProvider(Address.Zero, "test"));
 
         private static DepositDetails GetDepositDetails()
-            => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, 1, 1),
+            => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
-                "test", 1, 1, TestItem.AddressB, 1, 1, false, TestItem.KeccakA,
+                "test", 1, 1, TestItem.AddressB, 1, DepositExpiryTime, false, TestItem.KeccakA,
                 1, 1, 1, true, false, TestItem.KeccakB, false, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,

@@ -44,16 +44,18 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
         private readonly IPersonalBridge _personalBridge;
+        private readonly ITimestamper _timestamper;
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IPersonalBridge personalBridge)
+            IPersonalBridge personalBridge, ITimestamper timestamper)
         {
             _consumerService = consumerService;
             _depositReportService = depositReportService;
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             _ethRequestService = ethRequestService;
             _personalBridge = personalBridge;
+            _timestamper = timestamper;
         }
 
         public ResultWrapper<AccountForRpc[]> ndm_listAccounts()
@@ -111,22 +113,24 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits query)
         {
+            var timestamp = (uint) _timestamper.EpochSeconds;
             var deposits = await _consumerService.GetDepositsAsync(query ?? new GetDeposits
             {
                 Results = int.MaxValue
             });
 
             return ResultWrapper<PagedResult<DepositDetailsForRpc>>.Success(PagedResult<DepositDetailsForRpc>.From(
-                deposits, deposits.Items.Select(d => new DepositDetailsForRpc(d)).ToArray()));
+                deposits, deposits.Items.Select(d => new DepositDetailsForRpc(d, timestamp)).ToArray()));
         }
 
         public async Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId)
         {
+            var timestamp = (uint) _timestamper.EpochSeconds;
             var deposit = await _consumerService.GetDepositAsync(depositId);
 
             return deposit == null
                 ? ResultWrapper<DepositDetailsForRpc>.Fail($"Deposit: '{depositId}' was not found.")
-                : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit));
+                : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit, timestamp));
         }
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit)
