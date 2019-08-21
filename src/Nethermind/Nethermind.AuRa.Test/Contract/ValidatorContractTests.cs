@@ -42,9 +42,9 @@ namespace Nethermind.AuRa.Test.Contract
         {
             _block.Number = blockNumber;
 
-            var contract = new ValidatorContract(new AbiEncoder());
+            var contract = new ValidatorContract(new AbiEncoder(), _contractAddress);
             
-            var transaction = contract.FinalizeChange(null, _block);
+            var transaction = contract.FinalizeChange();
             
             transaction.Should().BeNull();
         }
@@ -64,9 +64,9 @@ namespace Nethermind.AuRa.Test.Contract
                 Nonce = 0
             };
             
-            var contract = new ValidatorContract(new AbiEncoder());
+            var contract = new ValidatorContract(new AbiEncoder(), _contractAddress);
             
-            var transaction = contract.FinalizeChange(_contractAddress, _block);
+            var transaction = contract.FinalizeChange();
             
             transaction.Should().BeEquivalentTo(expectation);
         }

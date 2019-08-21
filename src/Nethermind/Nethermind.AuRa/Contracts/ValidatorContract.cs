@@ -60,24 +60,16 @@ namespace Nethermind.AuRa.Contracts
                 new AbiSignature(nameof(addressArrayResult), new AbiArray(AbiType.Address)));
         }
 
-        public ValidatorContract(IAbiEncoder abiEncoder)
+        public ValidatorContract(IAbiEncoder abiEncoder, Address contractAddress) : base(contractAddress)
         {
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _finalizeChangeTransactionData = _abiEncoder.Encode(Definition.finalizeChange);
             _getValidatorsTransactionData = _abiEncoder.Encode(Definition.getValidators);
         }
 
-        public Transaction FinalizeChange(Address contractAddress, Block block)
-            => GenerateTransaction(contractAddress,
-                _finalizeChangeTransactionData, 
-                block.GasLimit - block.GasUsed, 
-                UInt256.Zero);
+        public Transaction FinalizeChange() => GenerateTransaction(_finalizeChangeTransactionData);
 
-        public Transaction GetValidators(Address contractAddress, Block block)
-            => GenerateTransaction(contractAddress, 
-                _getValidatorsTransactionData,
-                block.GasLimit - block.GasUsed, 
-                UInt256.Zero);
+        public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData);
 
         public bool CheckInitiateChangeEvent(Address contractAddress, Block block, TxReceipt[] receipts, out Address[] addresses)
         {

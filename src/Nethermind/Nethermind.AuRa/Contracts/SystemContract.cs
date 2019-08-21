@@ -1,3 +1,4 @@
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -8,19 +9,24 @@ namespace Nethermind.AuRa.Contracts
 {
     public class SystemContract
     {
-        protected static Transaction GenerateTransaction(Address contractAddress, byte[] transactionData, long gasLimit, UInt256 nonce)
+        private readonly Address _contractAddress;
+
+        public SystemContract(Address contractAddress)
         {
-            if (contractAddress == null) return null;
-            
-            var transaction = new Transaction
+            _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
+        }
+        
+        protected Transaction GenerateTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null)
+        {
+            var transaction = new Transaction(true)
             {
-                Value = 0,
+                Value = UInt256.Zero,
                 Data = transactionData,
-                To = contractAddress,
+                To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = gasLimit,
-                GasPrice = 0.GWei(),
-                Nonce = nonce,
+                GasPrice = UInt256.Zero,
+                Nonce = nonce ?? UInt256.Zero,
             };
                 
             transaction.Hash = Transaction.CalculateHash(transaction);

@@ -29,7 +29,7 @@ namespace Nethermind.AuRa.Validators
         protected IAbiEncoder AbiEncoder { get; }
         protected long StartBlockNumber { get; }
         protected CallOutputTracer Output { get; } = new CallOutputTracer();
-        protected ValidatorContract ValidatorContract => _validatorContract ?? (_validatorContract = CreateValidatorContract());
+        protected ValidatorContract ValidatorContract => _validatorContract ?? (_validatorContract = CreateValidatorContract(ContractAddress));
         private bool IsInitialized => _validators != null;
 
         public ContractValidator(
@@ -73,7 +73,7 @@ namespace Nethermind.AuRa.Validators
                 if (shouldFinalizePendingValidators)
                 {
                     if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {_pendingValidators.BlockNumber} at block {block.Number}.");
-                    var transaction = ValidatorContract.FinalizeChange(ContractAddress, block);
+                    var transaction = ValidatorContract.FinalizeChange();
                     SystemContract.InvokeTransaction(block.Header, _transactionProcessor, transaction, Output);
                     
                     _validators = new HashSet<Address>(_pendingValidators.Addresses);
@@ -98,9 +98,9 @@ namespace Nethermind.AuRa.Validators
 
         public virtual AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Contract;
         
-        protected virtual ValidatorContract CreateValidatorContract()
+        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress)
         {
-            return new ValidatorContract(AbiEncoder);
+            return new ValidatorContract(AbiEncoder, contractAddress);
         }
 
         private void Initialize(Block block)
@@ -134,7 +134,7 @@ namespace Nethermind.AuRa.Validators
 
         private Address[] LoadValidatorsFromContract(Block block)
         {
-            SystemContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.GetValidators(ContractAddress, block), Output);
+            SystemContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.GetValidators(), Output);
 
             var validators = ValidatorContract.DecodeAddresses(Output.ReturnValue);
             if (validators.Length == 0)
