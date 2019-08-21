@@ -40,9 +40,8 @@ namespace Nethermind.Network.Benchmarks
     public class InFlow
     {
         private static byte[] _input = Bytes.FromHexString("e13025bd4ae2d72b35e6f05a3b2f3aacf9ffe78eb851f84dc3264380eac186032b9d5d7350d1271323fe1a6c5aeea2b9e9d6d25e317ab957d737577b84de62fe4107cafcc795f832b71b71344fa44317ba4e113df762f4fa5dd7150e1a288d62f5d72438d56e3eda3aed9a4ba1be7eadceb782cf8e48a7ff6a521282388c8a88ac293ce26fad579cd1ea2ae80705856da9b9b33b5ef46b64ee3d44d2ecaa8e0d2d932fdf29d1d575e3266bb6524acfc438687a45c492815481698e0e1860c7f854b3918eb6550bd867dbc417c808ef9c746ac6d605b39a26c731476d3c9d5bea8c095b6e212a8f1575f9287ac04191c912891fcea59f91d555c59621cc80f1ef41bf7c941b4816eae18821a15ca39fc81726079e7056490dffa3d190cae9d698");
-        private byte[] _actualResult = new byte[_input.Length];
         private IByteBuffer _decoderBuffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
-        private IByteBuffer _outputBuffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
+        private NewBlockMessage _outputMessage;
 
         private NewBlockMessageSerializer _newBlockMessageSerializer;
         private ZeroNewBlockMessageSerializer _zeroNewBlockMessageSerializer;
@@ -95,10 +94,6 @@ namespace Nethermind.Network.Benchmarks
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
             _zeroNewBlockMessageSerializer = new ZeroNewBlockMessageSerializer();
-            if (useLimboOutput)
-            {
-                _outputBuffer = new MockBuffer();
-            }
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
@@ -197,15 +192,9 @@ namespace Nethermind.Network.Benchmarks
 
         private void Check()
         {
-            if (_outputBuffer.ReadableBytes != _input.Length)
+            if (_outputMessage.Block.Transactions.Length != 2)
             {
-                throw new Exception($"Length wrong - expected:{_input.Length} - was:{_outputBuffer.ReadableBytes}");
-            }
-
-            _outputBuffer.ReadBytes(_actualResult, 0, _outputBuffer.ReadableBytes);
-            if (!Bytes.AreEqual(_actualResult, _input))
-            {
-                throw new Exception($"Different - expected:{_input.ToHexString()} - was:{_actualResult.ToHexString()}");
+                throw new Exception();
             }
         }
 
@@ -215,6 +204,7 @@ namespace Nethermind.Network.Benchmarks
             _decoderBuffer.WriteBytes(_input);
             IByteBuffer decoded = _zeroDecoder.Decode(_decoderBuffer);
             IByteBuffer merged = _zeroMerger.Decode(decoded);
+            _outputMessage = _newBlockMessageSerializer.Deserialize(merged.ReadAllBytes());
         }
 
         [Benchmark(Baseline = true)]
@@ -223,6 +213,7 @@ namespace Nethermind.Network.Benchmarks
             _decoderBuffer.WriteBytes(_input);
             byte[] decoded = _decoder.Decode(_decoderBuffer);
             Packet merged = _merger.Decode(decoded);
+            _outputMessage = _newBlockMessageSerializer.Deserialize(merged.Data);
         }
     }
 }
