@@ -19,7 +19,6 @@
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 using NUnit.Framework;

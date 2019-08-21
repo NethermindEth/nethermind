@@ -53,5 +53,6 @@ namespace Nethermind.Core.Specs
         public bool IsEip1283Enabled { get; set; }
         public bool IsEip1234Enabled { get; set; }
         public bool IsEip1344Enabled { get; set; }
+        public bool IsEip2028Enabled { get; set; }
     }
 }

@@ -16,10 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using NUnit.Framework;
 
