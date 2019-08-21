@@ -21,6 +21,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
@@ -35,20 +36,10 @@ namespace Nethermind.Network.Test.Rlpx
         [SetUp]
         public void Setup()
         {
-            PublicKey publicKey = new PublicKey(
-                "000102030405060708090A0B0C0D0E0F" +
-                "101112131415161718191A1B1C1D1E1F" +
-                "202122232425262728292A2B2C2D2E2F" +
-                "303132333435363738393A3B3C3D3E3F");
-            EncryptionSecrets secrets = new EncryptionSecrets();
-            secrets.AesSecret = Keccak.EmptyTreeHash.Bytes;
-            secrets.MacSecret = Keccak.OfAnEmptySequenceRlp.Bytes;
-            secrets.Token = Keccak.OfAnEmptyString.Bytes;
-            secrets.EgressMac = new KeccakDigest(256);
-            secrets.IngressMac = new KeccakDigest(256);
+            var secrets = NetTestVectors.GetSecretsPair();
 
-            _frameCipher = new FrameCipher(secrets.AesSecret);
-            _macProcessor = new FrameMacProcessor(publicKey, secrets);
+            _frameCipher = new FrameCipher(secrets.B.AesSecret);
+            _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.B);
 
             _frame = new byte[16 + 16];
             _frame[2] = 16; // size   
@@ -87,7 +78,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] resultBytes = new byte[result.ReadableBytes];
             result.ReadBytes(resultBytes);
             TestContext.WriteLine(resultBytes.ToHexString());
-            Assert.AreEqual("e13025bd4ae2d72b35e6f05a3b2f3aacf9ffe78eb851f84dc3264380eac18603ad9d5d7350d1271323fe1a6c5aeea2b9e9d6d25e317ab957d737577b84de62fe4107cafcc795f832b71b71344fa44317ba4e113df762f4fa5dd7150e1a288d62f5d72438d56e3eda3aed9a4ba1be7eadceb782cf8e48a7ff6a521282388c8a88ac293ce26fad579cd1ea2ae80705856da9b9b33b5ef46b64ee3d44d2ecaa8e0d2d932fdf29d1d575e3266bb6524acfc438687a45c492815481698e0e1860c7f854b3918eb6550bd867dbc417c808ef9c746ac6d605b39a26c731476d3c9d5bea8c095b6e212a8f1575f9287ac04191c912891fcea59f91d555c59621cc80f1ef41bf7c941b4816eae18821a15ca39fc85ee480ddbd800dd7f6b55e0aabe780eb", resultBytes.ToHexString());
+            Assert.AreEqual("96cf8b950a261eae89f0e0cd0432c7d1363cbe6becec70d9fc2a0a2a6e22b2277a4acc5efc408b693073fe8bfb82068dfcf279d80dafce41dbc4f658d92add3bb276063415c4dbacf81bbd2b0a1254eb858522b77417c9e3d6d36d67454c6c45188c642657ffdd5a67c0e2dabd5db24cd8702662f6d041ff896dcf1ef958fa37ef49187302c9ec43ea5cf3828119e84658d397b4646316636dbe4295c5e5b2df69e72c75b32fc03a1e0ec227d3b94fcd4e1f5b593e3dca74d0d327cc2a31402e57f2e62d3b721a8131d40a35e7c2d1babfe3578814f51444b518917e940721eebeabac4b70ad82c21e5270c7434907a92543914698a0cc6c692a33ad6fafc591be2de18e6c297d07a5992cc68adb27cefd2d035b729ba707432f328b43abbd52", resultBytes.ToHexString());
         }
         
         [Test]
@@ -103,7 +94,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] resultBytes = new byte[result.ReadableBytes];
             result.ReadBytes(resultBytes);
             TestContext.WriteLine(resultBytes.ToHexString());
-            Assert.AreEqual("e130d47ccae2d72b35e6f05a3b2f3aac6f8306efaab67e93d97a402718dd627a2c5b59831e282550dafc25955b170246fc3d8d4a9bee410b71fb963e8bc2f2ce", resultBytes.ToHexString());
+            Assert.AreEqual("96cf7a548a261eae89f0e0cd0432c7d16e577417ac9a1918475d6953365b6bfdfb8cc8aeb2b9892ac971c172fa7ba67231c85aef205cd03aab2bae95848215fe", resultBytes.ToHexString());
         }
     }
 }

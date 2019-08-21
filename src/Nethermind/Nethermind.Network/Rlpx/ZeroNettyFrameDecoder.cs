@@ -50,6 +50,8 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+            
             if (_state == FrameDecoderState.WaitingForHeader)
             {
                 if (_logger.IsTrace) _logger.Trace($"Decoding frame header {input.ReadableBytes}");
@@ -104,21 +106,18 @@ namespace Nethermind.Network.Rlpx
                 {
                     return;
                 }
+
+                buffer.MakeSpace(expectedSize + _headerBuffer.Length);
+                buffer.WriteBytes(_headerBuffer, 0, 16);
                 
-                byte[] buffer = new byte[expectedSize + _headerBuffer.Length];
-                input.ReadBytes(buffer, 32, expectedSize);
+                int frameSize = expectedSize - MacSize;
+                _frameMacProcessor.CheckMac(input.Array, input.ArrayOffset + input.ReaderIndex, frameSize, false);
+                _frameCipher.Decrypt(input.Array, input.ArrayOffset + input.ReaderIndex, frameSize, buffer.Array, buffer.ArrayOffset + buffer.WriterIndex);
 
-                if (_logger.IsTrace) _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
-
-                int frameSize = buffer.Length - MacSize - _headerBuffer.Length;
-                _frameMacProcessor.CheckMac(buffer, 32, frameSize, false);
-                _frameCipher.Decrypt(buffer, 32, frameSize, buffer, 32);
-
-                _headerBuffer.AsSpan().CopyTo(buffer.AsSpan().Slice(0,32));
+                input.SetReaderIndex(input.ReaderIndex + frameSize);
+                buffer.SetWriterIndex(buffer.WriterIndex + frameSize);
+                
                 output.Add(buffer);
-                
-                if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
-                
                 _state = FrameDecoderState.WaitingForHeader;
             }
         }
