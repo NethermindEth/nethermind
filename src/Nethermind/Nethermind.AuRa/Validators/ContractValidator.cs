@@ -73,8 +73,7 @@ namespace Nethermind.AuRa.Validators
                 if (shouldFinalizePendingValidators)
                 {
                     if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {_pendingValidators.BlockNumber} at block {block.Number}.");
-                    var transaction = ValidatorContract.FinalizeChange();
-                    SystemContract.InvokeTransaction(block.Header, _transactionProcessor, transaction, Output);
+                    ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
                     
                     _validators = new HashSet<Address>(_pendingValidators.Addresses);
                     _pendingValidators = null;
@@ -134,7 +133,7 @@ namespace Nethermind.AuRa.Validators
 
         private Address[] LoadValidatorsFromContract(Block block)
         {
-            SystemContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.GetValidators(), Output);
+            ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.GetValidators(), Output);
 
             var validators = ValidatorContract.DecodeAddresses(Output.ReturnValue);
             if (validators.Length == 0)

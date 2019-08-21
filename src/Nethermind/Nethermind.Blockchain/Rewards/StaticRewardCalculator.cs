@@ -19,7 +19,6 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Rewards
 {
@@ -32,7 +31,7 @@ namespace Nethermind.Blockchain.Rewards
             _blockReward = blockReward;
         }
 
-        public BlockReward[] CalculateRewards(Block block, ITransactionProcessor transactionProcessor)
+        public BlockReward[] CalculateRewards(Block block)
         {
             return new[] { new BlockReward(block.Beneficiary, _blockReward) };
         }

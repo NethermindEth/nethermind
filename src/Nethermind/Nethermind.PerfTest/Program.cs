@@ -274,7 +274,7 @@ namespace Nethermind.PerfTest
                     .CreateValidatorProcessor(chainSpec.AuRa.Validators);
                     
                 sealValidator = new AuRaSealValidator(validatorProcessor, ethereumSigner, _logManager);
-                rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder);
+                rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder, processor);
                 blockProcessors.Add(validatorProcessor);
             }
             else

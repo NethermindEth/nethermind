@@ -31,27 +31,30 @@ namespace Nethermind.AuRa.Rewards
 {
     public class AuRaRewardCalculator : IRewardCalculator
     {
+        private readonly ITransactionProcessor _transactionProcessor;
         private readonly long _blockRewardContractTransition;
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly RewardContract _contract;
         private readonly CallOutputTracer _tracer = new CallOutputTracer();
 
-        public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder)
+        public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder,  ITransactionProcessor transactionProcessor)
         {
-            _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
+            if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _blockRewardContractTransition = auRaParameters.BlockRewardContractTransition;
             _contract = new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress);
+            _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
 
-        public BlockReward[] CalculateRewards(Block block, ITransactionProcessor transactionProcessor)
+        public BlockReward[] CalculateRewards(Block block)
             => block.Number < _blockRewardContractTransition
-                ? _blockRewardCalculator.CalculateRewards(block, transactionProcessor)
-                : CalculateRewardsWithContract(block, transactionProcessor);
+                ? _blockRewardCalculator.CalculateRewards(block)
+                : CalculateRewardsWithContract(block);
 
-        private BlockReward[] CalculateRewardsWithContract(Block block, ITransactionProcessor transactionProcessor)
+        private BlockReward[] CalculateRewardsWithContract(Block block)
         {
             var transaction = _contract.Reward(new[] {block.Beneficiary}, new ushort[] {0});
-            SystemContract.InvokeTransaction(block.Header, transactionProcessor, transaction, _tracer);
+            _contract.InvokeTransaction(block.Header, _transactionProcessor, transaction, _tracer);
             var (addresses, rewards) = _contract.DecodeRewards(_tracer.ReturnValue);
 
             var blockRewards = new BlockReward[addresses.Length];

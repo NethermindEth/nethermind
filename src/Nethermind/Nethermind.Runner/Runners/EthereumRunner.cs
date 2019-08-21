@@ -660,7 +660,7 @@ namespace Nethermind.Runner.Runners
                         
                     _sealer = new AuRaSealer();
                     _sealValidator = new AuRaSealValidator(validatorProcessor, _ethereumEcdsa, _logManager);
-                    _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder);
+                    _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder, _transactionProcessor);
                     blockPreProcessors.Add(validatorProcessor);
                     break;
                 default:

@@ -18,7 +18,6 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Rewards
 {
@@ -32,6 +31,6 @@ namespace Nethermind.Blockchain.Rewards
         
         private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
 
-        public BlockReward[] CalculateRewards(Block block, ITransactionProcessor transactionProcessor) => _noRewards;
+        public BlockReward[] CalculateRewards(Block block) => _noRewards;
     }
 }

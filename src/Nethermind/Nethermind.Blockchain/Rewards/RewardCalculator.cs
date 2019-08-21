@@ -22,7 +22,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Rewards
 {
@@ -36,7 +35,7 @@ namespace Nethermind.Blockchain.Rewards
         }
 
         [Todo(Improve.MissingFunctionality, "Use ChainSpec for block rewards")]
-        public BlockReward[] CalculateRewards(Block block, ITransactionProcessor transactionProcessor)
+        public BlockReward[] CalculateRewards(Block block)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             UInt256 blockReward = spec.IsEip649Enabled ? spec.IsEip1234Enabled ? 2.Ether() : 3.Ether() : 5.Ether();

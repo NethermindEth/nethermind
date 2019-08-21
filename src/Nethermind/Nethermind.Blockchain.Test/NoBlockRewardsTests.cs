@@ -19,8 +19,6 @@
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -32,7 +30,7 @@ namespace Nethermind.Blockchain.Test
         {
             Block block = Build.A.Block.WithNumber(10).WithOmmers(Build.A.Block.WithNumber(9).TestObject).TestObject;
             NoBlockRewards calculator = NoBlockRewards.Instance;
-            var rewards = calculator.CalculateRewards(block, Substitute.For<ITransactionProcessor>());
+            var rewards = calculator.CalculateRewards(block);
             Assert.IsEmpty(rewards);
         }
     }

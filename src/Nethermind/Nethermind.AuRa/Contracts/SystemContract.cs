@@ -34,7 +34,7 @@ namespace Nethermind.AuRa.Contracts
             return transaction;
         }
         
-        public static void InvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer, bool isReadOnly = false)
+        public void InvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer, bool isReadOnly = false)
         {
             if (transaction != null)
             {

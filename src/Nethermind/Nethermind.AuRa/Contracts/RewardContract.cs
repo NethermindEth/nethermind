@@ -14,7 +14,7 @@ namespace Nethermind.AuRa.Contracts
         private readonly IAbiEncoder _abiEncoder;
         
         [SuppressMessage("ReSharper", "InconsistentNaming")]
-        private static class Definition
+        public static class Definition
         {
             
             /// <summary>

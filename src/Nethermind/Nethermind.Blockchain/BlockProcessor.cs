@@ -325,7 +325,7 @@ namespace Nethermind.Blockchain
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
         {
             if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
-            var rewards = _rewardCalculator.CalculateRewards(block, _transactionProcessor);
+            var rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
                 BlockReward reward = rewards[i];
