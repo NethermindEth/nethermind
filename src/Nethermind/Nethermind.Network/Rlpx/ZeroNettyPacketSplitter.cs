@@ -33,12 +33,12 @@ namespace Nethermind.Network.Rlpx
         public int MaxFrameSize = FrameBoundary * 64;
 
         private ILogger _logger;
-        
+
         public ZeroNettyPacketSplitter(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
-        
+
         public void DisableFraming()
         {
             MaxFrameSize = int.MaxValue;
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Rlpx
             Interlocked.Increment(ref _contextId);
 
             packetType = input.ReadByte();
-            
+
             int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 
@@ -68,7 +68,7 @@ namespace Nethermind.Network.Rlpx
                     // other frames will be Max frame size which is a multiplier of 16
                     paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
                 }
-                
+
                 output.MakeSpace(32 + framePayloadSize + paddingSize + 16, "splitter");
 
                 // 000 - 016 | header
@@ -92,7 +92,7 @@ namespace Nethermind.Network.Rlpx
                     /*4*/
                     output.WriteByte(128);
                     /*5-32*/
-                    output.WriteZero(27);
+                    output.WriteZero(11);
                 }
                 else
                 {
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Rlpx
                     headerDataItems[0] = Rlp.Encode(0);
                     byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
                     output.WriteBytes(headerDataBytes);
-                    output.WriteZero(32 - headerDataBytes.Length - 3);
+                    output.WriteZero(16 - headerDataBytes.Length - 3);
                 }
 
                 int framePacketTypeSize = 0;
@@ -125,8 +125,6 @@ namespace Nethermind.Network.Rlpx
                 input.ReadBytes(output, framePayloadSize - framePacketTypeSize);
                 /*padding to 16*/
                 output.WriteZero(paddingSize);
-                /*16 of MAC space*/
-                output.WriteZero(16);
             }
         }
 
@@ -143,7 +141,7 @@ namespace Nethermind.Network.Rlpx
                 output.WriteByte(packetType);
                 return 1;
             }
-            
+
             output.WriteByte(129);
             output.WriteByte(packetType);
             return 2;

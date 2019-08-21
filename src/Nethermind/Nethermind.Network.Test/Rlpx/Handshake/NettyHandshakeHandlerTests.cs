@@ -92,7 +92,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Initiator, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<NettyFrameEncoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameEncoder>());
             _pipeline.Received(1).AddLast(Arg.Any<NettyFrameDecoder>());
         }
 
@@ -102,7 +102,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Initiator, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<NettyPacketSplitter>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyPacketSplitter>());
             _pipeline.Received(1).AddLast(Arg.Any<NettyFrameMerger>());
         }
 
@@ -141,7 +141,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelActive(_channelHandlerContext);
 
             _handshakeService.Received(1).Auth(_session.RemoteNodeId, Arg.Any<EncryptionHandshake>());
-            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(0, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8)));
+            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8)));
         }
 
         [Test]
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Recipient, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<NettyFrameEncoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameEncoder>());
             _pipeline.Received(1).AddLast(Arg.Any<NettyFrameDecoder>());
         }
 
@@ -160,7 +160,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Recipient, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<NettyPacketSplitter>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyPacketSplitter>());
             _pipeline.Received(1).AddLast(Arg.Any<NettyFrameMerger>());
         }
 
@@ -209,7 +209,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _handshakeService.Received(1).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
-            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(0, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8)));
+            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(b.ArrayOffset, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8)));
         }
     }
 }

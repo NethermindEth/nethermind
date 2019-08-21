@@ -42,11 +42,11 @@ namespace Nethermind.Network
         {
             if (output.WritableBytes < length)
             {
-                Console.WriteLine($"Making space - discarding for {length} {reason}");
+//                Console.WriteLine($"Making space - discarding for {length} {reason}");
                 output.DiscardReadBytes();
                 if (output.WritableBytes < length)
                 {
-                    Console.WriteLine($"Making space - adjusting capacity for {length} - previous {output.Capacity} {reason}");
+//                    Console.WriteLine($"Making space - adjusting capacity for {length} - previous {output.Capacity} {reason}");
                     output.AdjustCapacity(length);
                 }
             }

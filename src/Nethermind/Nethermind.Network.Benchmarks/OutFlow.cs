@@ -62,12 +62,12 @@ namespace Nethermind.Network.Benchmarks
         [GlobalSetup]
         public void Setup()
         {
-//            SetupAll();
-//            Current();
-//            Check();
-//            SetupAll();
-//            Improved();
-//            Check();
+            SetupAll();
+            Current();
+            Check();
+            SetupAll();
+            Improved();
+            Check();
             SetupAll(true);
         }
 
@@ -107,7 +107,8 @@ namespace Nethermind.Network.Benchmarks
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;
-            _serializationService.Register(_newBlockMessageSerializer); 
+            _serializationService = new MessageSerializationService();
+            _serializationService.Register(_newBlockMessageSerializer);
             _packetSender = new PacketSender(_serializationService, LimboLogs.Instance);
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
@@ -148,6 +149,11 @@ namespace Nethermind.Network.Benchmarks
 
         private class TestZeroSplitter : Rlpx.ZeroNettyPacketSplitter
         {
+            public TestZeroSplitter()
+                : base(LimboLogs.Instance)
+            {
+            }
+
             public void Encode(IByteBuffer input, IByteBuffer output)
             {
                 base.Encode(null, input, output);
