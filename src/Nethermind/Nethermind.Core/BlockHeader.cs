@@ -76,11 +76,11 @@ namespace Nethermind.Core
 
         private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);
 
-        public static Keccak CalculateHash(BlockHeader header)
+        public static Keccak CalculateHash(BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             using (MemoryStream stream = Rlp.BorrowStream())
             {
-                Rlp.Encode(stream, header);
+                Rlp.Encode(stream, header, behaviors);
                 byte[] buffer = _rlpBuffer.Value;
                 stream.Seek(0, SeekOrigin.Begin);
                 stream.Read(buffer, 0, (int) stream.Length);

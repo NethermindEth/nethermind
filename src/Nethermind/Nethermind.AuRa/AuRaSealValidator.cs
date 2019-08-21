@@ -19,6 +19,8 @@
 using System;
 using Nethermind.AuRa.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Logging;
 using Nethermind.Mining;
 
@@ -27,22 +29,55 @@ namespace Nethermind.AuRa
     public class AuRaSealValidator : ISealValidator
     {
         private readonly IAuRaValidator _validator;
-        private ILogger _logger;
+        private readonly IEthereumEcdsa _ecdsa;
+        private readonly ILogger _logger;
 
-        public AuRaSealValidator(IAuRaValidator validator, ILogManager logManager)
+        public AuRaSealValidator(IAuRaValidator validator, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
-            _validator = validator;
+            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+            _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
+            if (header.AuRaStep < parent.AuRaStep)
+            {
+                return false;
+            }
+            
+            if (header.AuRaStep - parent.AuRaStep != 1)
+            {
+                // report_skipped
+            }
+            
             return true;
         }
 
         public bool ValidateSeal(BlockHeader header)
         {
-            return true;
+            if (header.IsGenesis) return true;
+            
+            if (header.Author == null)
+            {
+                header.Author = GetSealer(header);
+            }
+
+            // check if valid author for step(!)
+            
+            bool isValid = header.Author == header.Beneficiary;
+            // cannot call: _validator.IsValidSealer(header.Author); because we can call it only when previous step was processed.
+            
+            return isValid;
+            // report_benign
+        }
+
+        private Address GetSealer(BlockHeader header)
+        {
+            Signature signature = new Signature(header.AuRaSignature);
+            signature.V += 27;
+            Keccak message = BlockHeader.CalculateHash(header, RlpBehaviors.ForSealing);
+            return _ecdsa.RecoverAddress(signature, message);
         }
     }
 }

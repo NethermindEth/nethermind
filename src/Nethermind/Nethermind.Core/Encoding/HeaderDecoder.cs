@@ -158,9 +158,8 @@ namespace Nethermind.Core.Encoding
                 return Rlp.OfEmptySequence;
             }
 
-            bool isAuRa = item.AuRaSignature != null;
-            bool withMixHashAndNonce = !rlpBehaviors.HasFlag(RlpBehaviors.ForSealing);
-            int numberOfElements = isAuRa || withMixHashAndNonce ? 15 : 13;
+            bool notForSealing = !rlpBehaviors.HasFlag(RlpBehaviors.ForSealing);
+            int numberOfElements = notForSealing ? 15 : 13;
             Rlp[] elements = new Rlp[numberOfElements];
             elements[0] = Rlp.Encode(item.ParentHash);
             elements[1] = Rlp.Encode(item.OmmersHash);
@@ -175,20 +174,23 @@ namespace Nethermind.Core.Encoding
             elements[10] = Rlp.Encode(item.GasUsed);
             elements[11] = Rlp.Encode(item.Timestamp);
             elements[12] = Rlp.Encode(item.ExtraData);
-            
-            if (isAuRa)
+
+            if (notForSealing)
             {
-                elements[13] = Rlp.Encode(item.AuRaStep.Value);
-                elements[14] = Rlp.Encode(item.AuRaSignature);                
-            }
-            else if (withMixHashAndNonce)
-            {
-                elements[13] = Rlp.Encode(item.MixHash);
-                elements[14] = Rlp.Encode(item.Nonce);
+                bool isAuRa = item.AuRaSignature != null;
+                
+                if (isAuRa)
+                {
+                    elements[13] = Rlp.Encode(item.AuRaStep.Value);
+                    elements[14] = Rlp.Encode(item.AuRaSignature);
+                }
+                else
+                {
+                    elements[13] = Rlp.Encode(item.MixHash);
+                    elements[14] = Rlp.Encode(item.Nonce);
+                }
             }
 
-            Rlp rlp = Rlp.Encode(elements);
-            
             return Rlp.Encode(elements);
         }
 
@@ -200,7 +202,7 @@ namespace Nethermind.Core.Encoding
                 return;
             }
 
-            bool withMixHashAndNonce = !rlpBehaviors.HasFlag(RlpBehaviors.ForSealing);
+            bool notForSealing = !rlpBehaviors.HasFlag(RlpBehaviors.ForSealing);
             Rlp.StartSequence(stream, GetContentLength(item, rlpBehaviors));
             Rlp.Encode(stream, item.ParentHash);
             Rlp.Encode(stream, item.OmmersHash);
@@ -215,16 +217,22 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.GasUsed);
             Rlp.Encode(stream, item.Timestamp);
             Rlp.Encode(stream, item.ExtraData);
-            
-            if (item.AuRaSignature != null)
+
+            if (notForSealing)
             {
-                Rlp.Encode(stream, item.AuRaStep.Value);
-                Rlp.Encode(stream, item.AuRaSignature);
-            }
-            else if (withMixHashAndNonce)
-            {
-                Rlp.Encode(stream, item.MixHash);
-                Rlp.Encode(stream, item.Nonce);
+                bool isAuRa = item.AuRaSignature != null;
+                
+                if (isAuRa)
+                {
+                    Rlp.Encode(stream, item.AuRaStep.Value);
+                    Rlp.Encode(stream, item.AuRaSignature);
+                }
+                else
+                {
+                    Rlp.Encode(stream, item.MixHash);
+                    Rlp.Encode(stream, item.Nonce);
+                }
+                
             }
         }
 
@@ -235,7 +243,7 @@ namespace Nethermind.Core.Encoding
                 return 0;
             }
 
-            bool forSealing = (rlpBehaviors & RlpBehaviors.ForSealing) == RlpBehaviors.ForSealing;
+            bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             int contentLength = 0
                                 + Rlp.LengthOf(item.ParentHash)
                                 + Rlp.LengthOf(item.OmmersHash)
@@ -250,15 +258,20 @@ namespace Nethermind.Core.Encoding
                                 + Rlp.LengthOf(item.GasUsed)
                                 + Rlp.LengthOf(item.Timestamp)
                                 + Rlp.LengthOf(item.ExtraData);
-            
-            if (item.AuRaSignature != null)
+
+            if (notForSealing)
             {
-                contentLength += Rlp.LengthOf(item.AuRaStep.Value);
-                contentLength += Rlp.LengthOf(item.AuRaSignature);
-            }
-            else if (!forSealing)
-            {
-                contentLength += Rlp.LengthOf(item.MixHash) + Rlp.LengthOf(item.Nonce);
+                var isAUra = item.AuRaSignature != null;
+                
+                if (isAUra)
+                {
+                    contentLength += Rlp.LengthOf(item.AuRaStep.Value);
+                    contentLength += Rlp.LengthOf(item.AuRaSignature);
+                }
+                else
+                {
+                    contentLength += Rlp.LengthOf(item.MixHash) + Rlp.LengthOf(item.Nonce);
+                }
             }
 
             return contentLength;

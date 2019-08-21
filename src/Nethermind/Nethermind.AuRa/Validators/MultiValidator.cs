@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Evm;
 using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
@@ -33,18 +32,18 @@ namespace Nethermind.AuRa.Validators
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void PreProcess(Block block, ITransactionProcessor transactionProcessor)
+        public void PreProcess(Block block)
         {
             if (TryUpdateValidator(block))
             {
                 if (_logger.IsInfo) _logger.Info($"Signal for switch to {_currentValidator.Type} based validator set at block {block.Number}.");
             }
-            _currentValidator?.PreProcess(block, transactionProcessor);
+            _currentValidator?.PreProcess(block);
         }
 
-        public void PostProcess(Block block, TxReceipt[] receipts, ITransactionProcessor transactionProcessor)
+        public void PostProcess(Block block, TxReceipt[] receipts)
         {
-            _currentValidator?.PostProcess(block, receipts, transactionProcessor);
+            _currentValidator?.PostProcess(block, receipts);
         }
         
         public bool IsValidSealer(Address address) => _currentValidator?.IsValidSealer(address) == true;
