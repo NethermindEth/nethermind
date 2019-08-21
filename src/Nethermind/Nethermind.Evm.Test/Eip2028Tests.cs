@@ -28,8 +28,6 @@ namespace Nethermind.Evm.Test
     public class Eip2028Tests : VirtualMachineTestsBase
     {
         private IntrinsicGasCalculator _gasCalculator;
-        protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
-        protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
 
         public override void Setup()
         {
@@ -37,20 +35,48 @@ namespace Nethermind.Evm.Test
             _gasCalculator = new IntrinsicGasCalculator();
         }
 
-        [Test]
-        public void non_zero_transaction_data_cost_should_be_16()
+        private class AfterIstanbul : Eip2028Tests
         {
-            var transaction = new Transaction {Data = new byte[] {1}};
-            var cost = _gasCalculator.Calculate(transaction, Spec);
-            cost.Should().Be(GasCostOf.Transaction + 16);
+            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
+            protected override ISpecProvider SpecProvider => new CustomSpecProvider(32000, (0, Istanbul.Instance));
+
+            [Test]
+            public void non_zero_transaction_data_cost_should_be_16()
+            {
+                var transaction = new Transaction {Data = new byte[] {1}};
+                var cost = _gasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(GasCostOf.Transaction + 16);
+            }
+
+            [Test]
+            public void zero_transaction_data_cost_should_be_4()
+            {
+                var transaction = new Transaction {Data = new byte[] {0}};
+                var cost = _gasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+            }
         }
 
-        [Test]
-        public void zero_transaction_data_cost_should_be_4()
+        private class BeforeIstanbul : Eip2028Tests
         {
-            var transaction = new Transaction {Data = new byte[] {0}};
-            var cost = _gasCalculator.Calculate(transaction, Spec);
-            cost.Should().Be(GasCostOf.Transaction + 4);
+            protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber - 1;
+            protected override ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
+
+            [Test]
+            public void non_zero_transaction_data_cost_should_be_68()
+            {
+                var transaction = new Transaction {Data = new byte[] {1}};
+                var cost = _gasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZero);
+            }
+
+            [Test]
+            public void zero_transaction_data_cost_should_be_4()
+            {
+                var transaction = new Transaction {Data = new byte[] {0}};
+                var cost = _gasCalculator.Calculate(transaction, Spec);
+                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataZero);
+            }
         }
     }
 }
