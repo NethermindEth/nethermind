@@ -119,6 +119,8 @@ namespace Nethermind.Network.Rlpx
                     output.Add(outputBuffer);
                 }
             }
+
+            input.Release();
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)

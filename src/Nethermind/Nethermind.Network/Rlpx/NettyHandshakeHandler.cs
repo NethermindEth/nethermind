@@ -171,11 +171,11 @@ namespace Nethermind.Network.Rlpx
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
+                context.Channel.Pipeline.AddLast(new ZeroNettyFrameDecoder(frameCipher, macProcessor, _logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroNettyFrameEncoder(frameCipher, macProcessor, _logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
+                context.Channel.Pipeline.AddLast(new ZeroNettyFrameMerger(_logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroNettyPacketSplitter(_logManager));
 
@@ -183,8 +183,8 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(packetSender);
 
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                NettyP2PHandler handler = new NettyP2PHandler(_session, _logManager);
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(_session, _logManager);
                 context.Channel.Pipeline.AddLast(_group, handler);
 
                 handler.Init(packetSender, context);

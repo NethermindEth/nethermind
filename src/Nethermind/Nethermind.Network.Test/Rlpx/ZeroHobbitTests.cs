@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -173,6 +174,8 @@ namespace Nethermind.Network.Test.Rlpx
             frameEncoder.Encode(_encoderBuffer, hobbitBuffer);
 //                TestContext.Out.WriteLine("encoded frame: " + frame.ToHexString());
 
+            TestContext.Out.WriteLine(hobbitBuffer.Array.Slice(hobbitBuffer.ArrayOffset + hobbitBuffer.ReaderIndex, hobbitBuffer.ReadableBytes).ToHexString());
+
             /***** AND BACK AGAIN *****/
 
             FrameDecoderTest frameDecoder = new FrameDecoderTest(_frameCipherB, _macProcessorB);
@@ -182,7 +185,7 @@ namespace Nethermind.Network.Test.Rlpx
 //                TestContext.Out.WriteLine("decoded frame: " + frame.ToHexString());
             var mergerBuffer = frameMergerTest.Decode(decoderBuffer);
 
-            Packet decodedPacket = new Packet("???",mergerBuffer.ReadByte(), mergerBuffer.ReadAllBytes());
+            Packet decodedPacket = new Packet("???", mergerBuffer.ReadByte(), mergerBuffer.ReadAllBytes());
 
             Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
             Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
