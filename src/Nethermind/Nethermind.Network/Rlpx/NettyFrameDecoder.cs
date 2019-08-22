@@ -73,13 +73,8 @@ namespace Nethermind.Network.Rlpx
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[1] & 0xFF);
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
                     _state = FrameDecoderState.WaitingForPayload;
-                    
-                    int paddingSize = 16 - _totalBodySize % 16;
-                    if (paddingSize == 16)
-                    {
-                        paddingSize = 0;
-                    }
 
+                    int paddingSize = FramePadding.Calculate16(_totalBodySize);
                     if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
                 }
                 else
@@ -93,12 +88,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)_logger.Trace($"Decoding payload {input.ReadableBytes}");
 
-                int paddingSize = 16 - _totalBodySize % 16;
-                if (paddingSize == 16)
-                {
-                    paddingSize = 0;
-                }
-
+                int paddingSize = FramePadding.Calculate16(_totalBodySize);
                 int expectedSize = _totalBodySize + paddingSize + MacSize;
                 byte[] buffer;
                 if (input.ReadableBytes >= expectedSize)

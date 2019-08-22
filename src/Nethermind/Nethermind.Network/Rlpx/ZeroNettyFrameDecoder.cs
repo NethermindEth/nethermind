@@ -30,13 +30,14 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroNettyFrameDecoder : ByteToMessageDecoder
     {
+        private const int HeaderSize = 16;
         private const int MacSize = 16;
 
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
         private readonly ILogger _logger;
 
-        private readonly byte[] _headerBuffer = new byte[32];
+        private readonly byte[] _headerBuffer = new byte[HeaderSize + MacSize];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
         private int _totalBodySize;
@@ -63,7 +64,7 @@ namespace Nethermind.Network.Rlpx
                     return;
                 }
 
-                if (input.ReadableBytes >= 32)
+                if (input.ReadableBytes >= HeaderSize + MacSize)
                 {
                     input.ReadBytes(_headerBuffer);
                     if (_logger.IsTrace) _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
@@ -76,13 +77,7 @@ namespace Nethermind.Network.Rlpx
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
                     _state = FrameDecoderState.WaitingForPayload;
                     
-                    int paddingSize = 16 - _totalBodySize % 16;
-                    if (paddingSize == 16)
-                    {
-                        paddingSize = 0;
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
+                    if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {FramePadding.Calculate16(_totalBodySize)} + 16");
                 }
                 else
                 {
@@ -95,26 +90,21 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)_logger.Trace($"Decoding payload {input.ReadableBytes}");
 
-                int paddingSize = 16 - _totalBodySize % 16;
-                if (paddingSize == 16)
-                {
-                    paddingSize = 0;
-                }
-
+                int paddingSize = FramePadding.Calculate16(_totalBodySize);
                 int expectedSize = _totalBodySize + paddingSize + MacSize;
                 if (input.ReadableBytes < expectedSize)
                 {
                     return;
                 }
 
-                buffer.MakeSpace(expectedSize + _headerBuffer.Length);
-                buffer.WriteBytes(_headerBuffer, 0, 16);
-                
                 int frameSize = expectedSize - MacSize;
+                buffer.MakeSpace(HeaderSize + frameSize);
+                buffer.WriteBytes(_headerBuffer, 0, HeaderSize);
+                
                 _frameMacProcessor.CheckMac(input.Array, input.ArrayOffset + input.ReaderIndex, frameSize, false);
                 _frameCipher.Decrypt(input.Array, input.ArrayOffset + input.ReaderIndex, frameSize, buffer.Array, buffer.ArrayOffset + buffer.WriterIndex);
 
-                input.SetReaderIndex(input.ReaderIndex + frameSize);
+                input.SetReaderIndex(input.ReaderIndex + frameSize + MacSize);
                 buffer.SetWriterIndex(buffer.WriterIndex + frameSize);
                 
                 output.Add(buffer);

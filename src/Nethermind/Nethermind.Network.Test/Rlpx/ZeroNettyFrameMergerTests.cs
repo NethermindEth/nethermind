@@ -50,32 +50,37 @@ namespace Nethermind.Network.Test.Rlpx
             }
         }
 
-        private class TestFrameHelper : NettyPacketSplitter
+        private class TestFrameHelper : ZeroNettyPacketSplitter
         {
             private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 
-            public void Encode(Packet message, List<object> output)
+            public void Encode(IByteBuffer input, IByteBuffer output)
             {
-                base.Encode(_context, message, output);
+                base.Encode(_context, input, output);
+            }
+
+            public TestFrameHelper() : base(LimboLogs.Instance)
+            {
             }
         }
 
-        private static List<byte[]> BuildFrames(int count)
+        private static IByteBuffer BuildFrames(int count)
         {
             TestFrameHelper frameBuilder = new TestFrameHelper();
-            Packet packet = new Packet("eth", 2, new byte[(count - 1) * NettyPacketSplitter.FrameBoundary * 64 + 1]);
-            List<object> frames = new List<object>();
-            frameBuilder.Encode(packet, frames);
-            return frames.Cast<byte[]>().ToList();
+            int totalLength = (count - 1) * ZeroNettyPacketSplitter.FrameBoundary * 64 + 1;
+            IByteBuffer input = PooledByteBufferAllocator.Default.Buffer(1 +  totalLength);
+            input.WriteByte(2);
+            input.WriteZero(totalLength);
+            
+            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(1 + totalLength + count * 16);
+            frameBuilder.Encode(input, output);
+            return output;
         }
 
         [Test]
         public void Handles_non_chunked_frames()
         {
-            byte[] frame = BuildFrames(1).Single();
-            IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
-            input.WriteBytes(frame);
-
+            IByteBuffer input = BuildFrames(1);
             UnderTest underTest = new UnderTest();
             var output = underTest.Decode(input);
 
@@ -85,24 +90,16 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Merges_frames_with_same_context_id()
         {
-            List<byte[]> frames = BuildFrames(3);
-            IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
-
+            IByteBuffer input = BuildFrames(3);
             UnderTest underTest = new UnderTest();
-            for (int i = 0; i < frames.Count; i++)
-            {
-                input.WriteBytes(frames[i]);
-                List<IByteBuffer> output = underTest.Decode(input);
-                Assert.AreEqual(i < frames.Count - 1 ? 0 : 1, output.Count);
-            }
+            List<IByteBuffer> output = underTest.Decode(input);
+            Assert.AreEqual(1, output.Count);
         }
 
         [Test]
         public void Sets_data_on_non_chunked_packets()
         {
-            byte[] frame = BuildFrames(1).Single();
-            IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
-            input.WriteBytes(frame);
+            IByteBuffer input = BuildFrames(1);
             
             UnderTest underTest = new UnderTest();
             List<IByteBuffer> output = underTest.Decode(input);
@@ -113,17 +110,11 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Sets_data_on_chunked_packets()
         {
-            List<byte[]> frames = BuildFrames(3);
-            IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
+            IByteBuffer input = BuildFrames(3);
             
             UnderTest underTest = new UnderTest();
             List<IByteBuffer> output = null;
-            for (int i = 0; i < frames.Count; i++)
-            {
-                input.WriteBytes(frames[i]);
-                output = underTest.Decode(input);
-            }
-
+            output = underTest.Decode(input);
             byte[] outputBytes = output?[0].ReadAllBytes();
             Assert.AreEqual(2049, outputBytes?.Length);
         }
@@ -131,9 +122,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Sets_packet_type_on_non_chunked_packets()
         {
-            byte[] frame = BuildFrames(1).Single();
-            IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
-            input.WriteBytes(frame);
+            IByteBuffer input = BuildFrames(1);
 
             UnderTest underTest = new UnderTest();
             List<IByteBuffer> output = underTest.Decode(input);
@@ -144,18 +133,22 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Can_decode_neth_message()
         {
-            byte[] frame = Bytes.FromHexString("0000adc18000000000000000000000000000000000000000000000000000000080f8aa05b8554e65746865726d696e642f76312e302e302d726332386465762d63396435353432612f5836342d4d6963726f736f66742057696e646f77732031302e302e3137313334202f436f7265342e362e32373631372e3035ccc5836574683ec5836574683f82765fb840824fa845597b92f99482f0d53993bf2562f8cf38e5ccb85ee4bb333df5cc51d197dc02fd0a533b3dfb6bad3f19aed405d68b72e413f8b206ae4ae31349fc7c1e00000000000000000000000000000000000000");
+            byte[] frame = Bytes.FromHexString("0000adc180000000000000000000000080f8aa05b8554e65746865726d696e642f76312e302e302d726332386465762d63396435353432612f5836342d4d6963726f736f66742057696e646f77732031302e302e3137313334202f436f7265342e362e32373631372e3035ccc5836574683ec5836574683f82765fb840824fa845597b92f99482f0d53993bf2562f8cf38e5ccb85ee4bb333df5cc51d197dc02fd0a533b3dfb6bad3f19aed405d68b72e413f8b206ae4ae31349fc7c1e000000");
             IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
             input.WriteBytes(frame);
             
             UnderTest underTest = new UnderTest();
             List<IByteBuffer> output = underTest.Decode(input);
 
+            byte packetType = output[0].ReadByte();
+            Assert.AreEqual(0, packetType);
+            
             byte[] outputBytes = output[0].ReadAllBytes();
             HelloMessageSerializer serializer = new HelloMessageSerializer();
             HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 
             Assert.AreEqual("Nethermind/v1.0.0-rc28dev-c9d5542a/X64-Microsoft Windows 10.0.17134 /Core4.6.27617.05", helloMessage.ClientId);
+            Assert.AreEqual(input.ReaderIndex, input.WriterIndex, "reader index == writer index");
         }
     }
 }

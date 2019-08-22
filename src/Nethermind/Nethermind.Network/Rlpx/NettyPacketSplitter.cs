@@ -50,12 +50,7 @@ namespace Nethermind.Network.Rlpx
             {
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
-                int paddingSize = 0;
-                if (i == framesCount - 1)
-                {
-                    paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
-                }
-
+                int paddingSize = i == framesCount - 1 ? FramePadding.Calculate16(totalPayloadSize) : 0;
                 byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + padding + frame MAC
 
                 frame[0] = (byte) (framePayloadSize >> 16);

@@ -47,7 +47,7 @@ namespace Nethermind.Network
                 if (output.WritableBytes < length)
                 {
 //                    Console.WriteLine($"Making space - adjusting capacity for {length} - previous {output.Capacity} {reason}");
-                    output.AdjustCapacity(length);
+                    output.EnsureWritable(length, true);
                 }
             }
         }

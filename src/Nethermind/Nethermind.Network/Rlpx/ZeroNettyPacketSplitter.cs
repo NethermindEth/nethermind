@@ -62,21 +62,13 @@ namespace Nethermind.Network.Rlpx
             {
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
-                int paddingSize = 0;
-                if (i == framesCount - 1)
-                {
-                    // other frames will be Max frame size which is a multiplier of 16
-                    paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
-                }
-
-                output.MakeSpace(32 + framePayloadSize + paddingSize + 16, "splitter");
+                int paddingSize = i == framesCount - 1 ? FramePadding.Calculate16(totalPayloadSize) : 0;
+                output.MakeSpace(16 + framePayloadSize + paddingSize, "splitter");
 
                 // 000 - 016 | header
-                // 016 - 032 | header MAC
-                // 032 - 03x | packet type
-                // 03x - frm | payload
+                // 016 - 01x | packet type
+                // 01x - frm | payload
                 // frm - %16 | padding to 16
-                // pad - +16 | payload MAC
 
                 /*0*/
                 output.WriteByte((byte) (framePayloadSize >> 16));
