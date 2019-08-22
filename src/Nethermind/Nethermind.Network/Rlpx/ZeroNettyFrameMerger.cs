@@ -31,13 +31,14 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroNettyFrameMerger : MessageToMessageDecoder<IByteBuffer>
     {
-        private const int HeaderSize = 32;
-        private const int FrameMacSize = 16;
+        public const int MaxChunkedFrameSize = FrameBoundary * 64;
+        private const int FrameBoundary = 16;
+        private const int HeaderSize = 16;
+        private const int MacSize = 16;
         private readonly Dictionary<int, int> _currentSizes = new Dictionary<int, int>();
         private readonly ILogger _logger;
-
-        private readonly Dictionary<int, Packet> _packets = new Dictionary<int, Packet>();
-        private readonly Dictionary<int, List<byte[]>> _payloads = new Dictionary<int, List<byte[]>>();
+        
+        private readonly Dictionary<int, IByteBuffer> _payloads = new Dictionary<int, IByteBuffer>(); // spec used to say that the chunks can come mixed but probably not needed any more
         private readonly Dictionary<int, int> _totalPayloadSizes = new Dictionary<int, int>();
 
         public ZeroNettyFrameMerger(ILogManager logManager)
@@ -47,84 +48,76 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            if (_logger.IsTrace)
+            while (input.ReadableBytes > 0)
             {
-                _logger.Trace("Merging frames");
-            }
-
-            byte[] header = new byte[16];
-            input.ReadBytes(header);
-            
-            Rlp.ValueDecoderContext headerBodyItems = header.Slice(3, 13).AsRlpValueContext();
-            int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-            int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
-            headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
-            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
-
-            bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
-            if (isChunked)
-            {
-                Debug.Assert(contextId.HasValue);
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace("Merging chunked packet");
+                    _logger.Trace("Merging frames");
                 }
 
-                bool isFirstChunk = totalPacketSize.HasValue;
-                if (isFirstChunk)
-                {
-                    _currentSizes[contextId.Value] = 0;
-                    _totalPayloadSizes[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
-                    _packets[contextId.Value] = new Packet("???", input.ReadByte(), new byte[_totalPayloadSizes[contextId.Value]]); // adaptive IDs
-                    _payloads[contextId.Value] = new List<byte[]>();
-                }
+                byte[] header = new byte[HeaderSize];
+                input.ReadBytes(header);
 
-                int packetTypeDataSize = isFirstChunk ? 1 : 0;
-                int frameSize = input.ReadableBytes - packetTypeDataSize;
-                
-                byte[] payload = new byte[frameSize];
-                input.ReadBytes(payload);
-                _payloads[contextId.Value].Add(payload);
-                _currentSizes[contextId.Value] += frameSize;
-                if (_currentSizes[contextId.Value] >= _totalPayloadSizes[contextId.Value])
+                Rlp.ValueDecoderContext headerBodyItems = header.Slice(3, 13).AsRlpValueContext();
+                int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
+                int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
+                headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
+                int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
+                int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
+
+                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
+                if (isChunked)
                 {
-                    int padding = _currentSizes[contextId.Value] - _totalPayloadSizes[contextId.Value];
-                    Packet packet = _packets[contextId.Value];
-                    int offset = 0;
-                    int frameCount = _payloads[contextId.Value].Count;
-                    for (int i = 0; i < frameCount; i++)
+                    Debug.Assert(contextId.HasValue);
+                    if (_logger.IsTrace)
                     {
-                        int length = _payloads[contextId.Value][i].Length - (i == frameCount - 1 ? padding : 0);
-                        Buffer.BlockCopy(_payloads[contextId.Value][i], 0, packet.Data, offset, length);
-                        offset += length;
+                        _logger.Trace("Merging chunked packet");
                     }
 
-                    output.Add(packet);
-                    _currentSizes.Remove(contextId.Value);
-                    _totalPayloadSizes.Remove(contextId.Value);
-                    _payloads.Remove(contextId.Value);
-                    _packets.Remove(contextId.Value);
-                }
-            }
-            else
-            {
-                int totalBodySize = header[0] & 0xFF;
-                totalBodySize = (totalBodySize << 8) + (header[1] & 0xFF);
-                totalBodySize = (totalBodySize << 8) + (header[2] & 0xFF);
-                
-                byte packetTypeRlp = input.ReadByte();
+                    bool isFirstChunk = totalPacketSize.HasValue;
+                    if (isFirstChunk)
+                    {
+                        _currentSizes[contextId.Value] = 0;
+                        _totalPayloadSizes[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
+                        _payloads[contextId.Value] = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
+                        _payloads[contextId.Value].WriteByte(input.ReadByte());
+                    }
 
-                if (_logger.IsTrace)
+                    int frameSize = Math.Min(_totalPayloadSizes[contextId.Value] - _currentSizes[contextId.Value], MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
+
+                    _currentSizes[contextId.Value] += frameSize;
+                    bool isLastChunk = _currentSizes[contextId.Value] >= _totalPayloadSizes[contextId.Value];
+                    input.ReadBytes(_payloads[contextId.Value], frameSize);
+
+                    if (isLastChunk)
+                    {
+                        input.SkipBytes(FramePadding.Calculate16(frameSize));
+                        IByteBuffer outputBuffer = _payloads[contextId.Value];
+                        output.Add(outputBuffer);
+                        _currentSizes.Remove(contextId.Value);
+                        _totalPayloadSizes.Remove(contextId.Value);
+                        _payloads.Remove(contextId.Value);
+                    }
+                }
+                else
                 {
-                    _logger.Trace($"Merging single frame packet of length {totalBodySize - 1}");
-                }
+                    int totalBodySize = header[0] & 0xFF;
+                    totalBodySize = (totalBodySize << 8) + (header[1] & 0xFF);
+                    totalBodySize = (totalBodySize << 8) + (header[2] & 0xFF);
 
-                IByteBuffer outputBuffer = PooledByteBufferAllocator.Default.Buffer(totalBodySize);
-                outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
-                input.ReadBytes(outputBuffer, totalBodySize - 1);
-                input.SkipBytes(FramePadding.Calculate16(totalBodySize));
-                output.Add(outputBuffer);
+                    byte packetTypeRlp = input.ReadByte();
+
+                    if (_logger.IsTrace)
+                    {
+                        _logger.Trace($"Merging single frame packet of length {totalBodySize - 1}");
+                    }
+
+                    IByteBuffer outputBuffer = PooledByteBufferAllocator.Default.Buffer(totalBodySize);
+                    outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
+                    input.ReadBytes(outputBuffer, totalBodySize - 1);
+                    input.SkipBytes(FramePadding.Calculate16(totalBodySize));
+                    output.Add(outputBuffer);
+                }
             }
         }
 

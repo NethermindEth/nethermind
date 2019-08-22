@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.Rlpx
             input.WriteByte(2);
             input.WriteZero(totalLength);
             
-            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(1 + totalLength + count * 16);
+            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(totalLength + FramePadding.Calculate16(totalLength) + count * 16);
             frameBuilder.Encode(input, output);
             return output;
         }
@@ -116,7 +116,7 @@ namespace Nethermind.Network.Test.Rlpx
             List<IByteBuffer> output = null;
             output = underTest.Decode(input);
             byte[] outputBytes = output?[0].ReadAllBytes();
-            Assert.AreEqual(2049, outputBytes?.Length);
+            Assert.AreEqual(1 + 2049, outputBytes?.Length);
         }
 
         [Test]
