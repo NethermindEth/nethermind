@@ -40,7 +40,7 @@ namespace Nethermind.Network.Rlpx
         private readonly byte[] _headerBuffer = new byte[HeaderSize + MacSize];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
-        private int _totalBodySize;
+        private int _frameSize;
 
         public ZeroNettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
@@ -51,7 +51,7 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+            IByteBuffer buffer = null;
             while (input.ReadableBytes > 0)
             {
                 if (_state == FrameDecoderState.WaitingForHeader)
@@ -73,12 +73,14 @@ namespace Nethermind.Network.Rlpx
                         _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
                         _frameCipher.Decrypt(_headerBuffer, 0, 16, _headerBuffer, 0);
 
-                        _totalBodySize = _headerBuffer[0] & 0xFF;
-                        _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[1] & 0xFF);
-                        _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
+                        _frameSize = _headerBuffer[0] & 0xFF;
+                        _frameSize = (_frameSize << 8) + (_headerBuffer[1] & 0xFF);
+                        _frameSize = (_frameSize << 8) + (_headerBuffer[2] & 0xFF);
+                        int paddingSize = FramePadding.Calculate16(_frameSize);
+                        _frameSize += paddingSize;
                         _state = FrameDecoderState.WaitingForPayload;
 
-                        if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {FramePadding.Calculate16(_totalBodySize)} + 16");
+                        if (_logger.IsTrace) _logger.Trace($"Expecting a message {_frameSize - paddingSize} + {paddingSize} + 16");
                     }
                     else
                     {
@@ -90,29 +92,30 @@ namespace Nethermind.Network.Rlpx
                 if (_state == FrameDecoderState.WaitingForPayload)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Decoding payload {input.ReadableBytes}");
-
-                    int paddingSize = FramePadding.Calculate16(_totalBodySize);
-                    int expectedSize = _totalBodySize + paddingSize + MacSize;
-                    if (input.ReadableBytes < expectedSize)
+                    
+                    if (input.ReadableBytes < _frameSize + MacSize)
                     {
                         return;
                     }
-
-                    int frameSize = expectedSize - MacSize;
-                    buffer.MakeSpace(HeaderSize + frameSize);
+                    
+                    if (buffer == null)
+                    {
+                        buffer = PooledByteBufferAllocator.Default.Buffer();
+                    }
+                    
+                    buffer.MakeSpace(HeaderSize + _frameSize);
                     buffer.WriteBytes(_headerBuffer, 0, HeaderSize);
 
-                    _frameMacProcessor.CheckMac(input.Array, input.ArrayOffset + input.ReaderIndex, frameSize, false);
-                    _frameCipher.Decrypt(input.Array, input.ArrayOffset + input.ReaderIndex, frameSize, buffer.Array, buffer.ArrayOffset + buffer.WriterIndex);
+                    _frameMacProcessor.CheckMac(input.Array, input.ArrayOffset + input.ReaderIndex, _frameSize, false);
+                    _frameCipher.Decrypt(input.Array, input.ArrayOffset + input.ReaderIndex, _frameSize, buffer.Array, buffer.ArrayOffset + buffer.WriterIndex);
 
-                    input.SetReaderIndex(input.ReaderIndex + frameSize + MacSize);
-                    buffer.SetWriterIndex(buffer.WriterIndex + frameSize);
+                    input.SetReaderIndex(input.ReaderIndex + _frameSize + MacSize);
+                    buffer.SetWriterIndex(buffer.WriterIndex + _frameSize);
+                    output.Add(buffer);
                     
                     _state = FrameDecoderState.WaitingForHeader;
                 }
             }
-            
-            output.Add(buffer);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
