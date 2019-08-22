@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 
@@ -30,23 +29,31 @@ namespace Nethermind.Network
             buffer.ReadBytes(bytes);
             return bytes;
         }
-        
+
         public static string ReadAllHex(this IByteBuffer buffer)
         {
             byte[] bytes = new byte[buffer.ReadableBytes];
             buffer.ReadBytes(bytes);
             return bytes.ToHexString();
         }
-        
+
         public static void MakeSpace(this IByteBuffer output, int length, string reason = null)
         {
             if (output.WritableBytes < length)
             {
-//                Console.WriteLine($"Making space - discarding for {length} {reason}");
-                output.DiscardReadBytes();
+                if (output.ReaderIndex == output.WriterIndex)
+                {
+                    output.Clear();
+                }
+                else
+                {
+//                  Console.WriteLine($"Making space - discarding for {length} {reason}");
+                    output.DiscardReadBytes();
+                }
+
                 if (output.WritableBytes < length)
                 {
-//                    Console.WriteLine($"Making space - adjusting capacity for {length} - previous {output.Capacity} {reason}");
+//                  Console.WriteLine($"Making space - adjusting capacity for {length} - previous {output.Capacity} {reason}");
                     output.EnsureWritable(length, true);
                 }
             }

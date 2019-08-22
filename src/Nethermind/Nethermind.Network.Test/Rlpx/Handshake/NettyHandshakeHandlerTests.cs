@@ -93,7 +93,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameEncoder>());
-            _pipeline.Received(1).AddLast(Arg.Any<NettyFrameDecoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameDecoder>());
         }
 
         [Test]
@@ -103,7 +103,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyPacketSplitter>());
-            _pipeline.Received(1).AddLast(Arg.Any<NettyFrameMerger>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameMerger>());
         }
 
         [Test]
@@ -112,7 +112,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Initiator, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(_group, Arg.Any<NettyP2PHandler>());
+            _pipeline.Received(1).AddLast(_group, Arg.Any<ZeroNettyP2PHandler>());
             _pipeline.Received(1).AddLast(Arg.Any<PacketSender>());
         }
 
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameEncoder>());
-            _pipeline.Received(1).AddLast(Arg.Any<NettyFrameDecoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameDecoder>());
         }
 
         [Test]
@@ -161,7 +161,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyPacketSplitter>());
-            _pipeline.Received(1).AddLast(Arg.Any<NettyFrameMerger>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameMerger>());
         }
 
         [Test]
@@ -170,7 +170,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Recipient, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(_group, Arg.Any<NettyP2PHandler>());
+            _pipeline.Received(1).AddLast(_group, Arg.Any<ZeroNettyP2PHandler>());
             _pipeline.Received(1).AddLast(Arg.Any<PacketSender>());
         }
 
