@@ -100,7 +100,6 @@ namespace Nethermind.Network.P2P
             }
             
             _session.ReceiveMessage(packet);
-            input.Release();
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
