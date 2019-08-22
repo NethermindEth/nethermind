@@ -35,11 +35,10 @@ namespace Nethermind.Network.Rlpx
         private const int FrameBoundary = 16;
         private const int HeaderSize = 16;
         private const int MacSize = 16;
-        private readonly Dictionary<int, int> _currentSizes = new Dictionary<int, int>();
+        private readonly Dictionary<int, int> _remaining = new Dictionary<int, int>();
         private readonly ILogger _logger;
-        
+
         private readonly Dictionary<int, IByteBuffer> _payloads = new Dictionary<int, IByteBuffer>(); // spec used to say that the chunks can come mixed but probably not needed any more
-        private readonly Dictionary<int, int> _totalPayloadSizes = new Dictionary<int, int>();
 
         public ZeroNettyFrameMerger(ILogManager logManager)
         {
@@ -50,6 +49,11 @@ namespace Nethermind.Network.Rlpx
         {
             while (input.ReadableBytes > 0)
             {
+                if (_remaining.Count > 1)
+                {
+                    _logger.Warn("Just checking if remaining count is ever > 1");
+                }
+                
                 if (_logger.IsTrace)
                 {
                     _logger.Trace("Merging frames");
@@ -65,7 +69,7 @@ namespace Nethermind.Network.Rlpx
                 int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
                 int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
 
-                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
+                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _remaining.ContainsKey(contextId.Value);
                 if (isChunked)
                 {
                     Debug.Assert(contextId.HasValue);
@@ -77,25 +81,21 @@ namespace Nethermind.Network.Rlpx
                     bool isFirstChunk = totalPacketSize.HasValue;
                     if (isFirstChunk)
                     {
-                        _currentSizes[contextId.Value] = 0;
-                        _totalPayloadSizes[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
+                        _remaining[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
                         _payloads[contextId.Value] = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
                         _payloads[contextId.Value].WriteByte(input.ReadByte());
                     }
 
-                    int frameSize = Math.Min(_totalPayloadSizes[contextId.Value] - _currentSizes[contextId.Value], MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
+                    int frameSize = Math.Min(_remaining[contextId.Value], MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
 
-                    _currentSizes[contextId.Value] += frameSize;
-                    bool isLastChunk = _currentSizes[contextId.Value] >= _totalPayloadSizes[contextId.Value];
                     input.ReadBytes(_payloads[contextId.Value], frameSize);
-
-                    if (isLastChunk)
+                    _remaining[contextId.Value] -= frameSize;
+                    if (_remaining[contextId.Value] == 0)
                     {
                         input.SkipBytes(FramePadding.Calculate16(frameSize));
                         IByteBuffer outputBuffer = _payloads[contextId.Value];
                         output.Add(outputBuffer);
-                        _currentSizes.Remove(contextId.Value);
-                        _totalPayloadSizes.Remove(contextId.Value);
+                        _remaining.Remove(contextId.Value);
                         _payloads.Remove(contextId.Value);
                     }
                 }
@@ -146,7 +146,7 @@ namespace Nethermind.Network.Rlpx
 
         private static byte GetPacketType(byte packetTypeRlp)
         {
-            return packetTypeRlp == 128 ? (byte)0 : packetTypeRlp;
+            return packetTypeRlp == 128 ? (byte) 0 : packetTypeRlp;
         }
     }
 }
