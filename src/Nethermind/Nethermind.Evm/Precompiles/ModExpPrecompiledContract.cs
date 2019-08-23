@@ -20,6 +20,7 @@ using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
@@ -37,12 +38,12 @@ namespace Nethermind.Evm.Precompiles
 
         public Address Address { get; } = Address.FromNumber(5);
 
-        public long BaseGasCost()
+        public long BaseGasCost(IReleaseSpec releaseSpec)
         {
             return 0L;
         }
         
-        public long DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             try
             {

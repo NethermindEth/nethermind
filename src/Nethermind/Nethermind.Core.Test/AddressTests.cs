@@ -172,7 +172,7 @@ namespace Nethermind.Core.Test
         [TestCase(1000, false)]
         public void From_number_for_precompile(int number, bool isPrecompile)
         {
-            Address address = Address.FromNumber(number);
+            Address address = Address.FromNumber((UInt256)number);
             Assert.AreEqual(isPrecompile, address.IsPrecompiled(Byzantium.Instance));
         }
         

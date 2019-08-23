@@ -423,8 +423,8 @@ namespace Nethermind.Evm
             long gasAvailable = state.GasAvailable;
 
             IPrecompiledContract precompile = _precompiles[state.Env.CodeInfo.PrecompileAddress];
-            long baseGasCost = precompile.BaseGasCost();
-            long dataGasCost = precompile.DataGasCost(callData);
+            long baseGasCost = precompile.BaseGasCost(spec);
+            long dataGasCost = precompile.DataGasCost(callData, spec);
 
             bool wasCreated = false;
             if (!_state.AccountExists(state.Env.ExecutingAccount))

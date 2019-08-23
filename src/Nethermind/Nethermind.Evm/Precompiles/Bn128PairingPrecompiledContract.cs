@@ -20,6 +20,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto.ZkSnarks;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
@@ -39,19 +40,19 @@ namespace Nethermind.Evm.Precompiles
 
         public Address Address { get; } = Address.FromNumber(8);
 
-        public long BaseGasCost()
+        public long BaseGasCost(IReleaseSpec releaseSpec)
         {
-            return 100000L;
+            return releaseSpec.IsEip1108Enabled ? 45000L : 100000L;
         }
 
-        public long DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             if (inputData == null)
             {
                 return 0L;
             }
 
-            return 80000 * (inputData.Length / PairSize);
+            return (releaseSpec.IsEip1108Enabled ? 34000L : 80000L)* (inputData.Length / PairSize);
         }
 
         public (byte[], bool) Run(byte[] inputData)

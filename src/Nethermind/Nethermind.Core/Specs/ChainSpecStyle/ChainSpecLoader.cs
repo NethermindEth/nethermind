@@ -80,6 +80,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             chainSpec.Parameters.ForkBlock = chainSpecJson.Params.ForkBlock;
             chainSpec.Parameters.ForkCanonHash = chainSpecJson.Params.ForkCanonHash;
             chainSpec.Parameters.Eip150Transition = chainSpecJson.Params.Eip150Transition;
+            chainSpec.Parameters.Eip152Transition = chainSpecJson.Params.Eip152Transition;
             chainSpec.Parameters.Eip160Transition = chainSpecJson.Params.Eip160Transition;
             chainSpec.Parameters.Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition;
             chainSpec.Parameters.Eip161dTransition = chainSpecJson.Params.Eip161dTransition;
@@ -91,8 +92,13 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             chainSpec.Parameters.Eip145Transition = chainSpecJson.Params.Eip145Transition;
             chainSpec.Parameters.Eip1014Transition = chainSpecJson.Params.Eip1014Transition;
             chainSpec.Parameters.Eip1052Transition = chainSpecJson.Params.Eip1052Transition;
+            chainSpec.Parameters.Eip1108Transition = chainSpecJson.Params.Eip1108Transition;
             chainSpec.Parameters.Eip1283Transition = chainSpecJson.Params.Eip1283Transition;
             chainSpec.Parameters.Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition;
+            chainSpec.Parameters.Eip1344Transition = chainSpecJson.Params.Eip1344Transition;
+            chainSpec.Parameters.Eip1884Transition = chainSpecJson.Params.Eip1884Transition;
+            chainSpec.Parameters.Eip2028Transition = chainSpecJson.Params.Eip2028Transition;
+            chainSpec.Parameters.Eip2200Transition = chainSpecJson.Params.Eip2200Transition;
         }
 
         private void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
