@@ -168,8 +168,28 @@ namespace Nethermind.Core.Specs
         bool IsEip1344Enabled { get; }
         
         /// <summary>
-        /// Transaction data gas cost reduction
+        /// Istanbul transaction data gas cost reduction
         /// </summary>
         bool IsEip2028Enabled { get; }
+
+        /// <summary>
+        /// Istanbul Blake2b precompile
+        /// </summary>
+        bool IsEip152Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul alt_bn128 gas cost reduction
+        /// </summary>
+        bool IsEip1108Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul state opcodes gas cost increase
+        /// </summary>
+        bool IsEip1884Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul net-metered SSTORE
+        /// </summary>
+        bool IsEip2200Enabled { get; }
     }
 }

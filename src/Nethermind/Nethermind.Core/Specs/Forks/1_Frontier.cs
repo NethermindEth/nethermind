@@ -63,5 +63,9 @@ namespace Nethermind.Core.Specs.Forks
         public bool IsEip1234Enabled => false;
         public bool IsEip1344Enabled => false;
         public bool IsEip2028Enabled => false;
+        public bool IsEip152Enabled => false;
+        public bool IsEip1108Enabled => false;
+        public bool IsEip1884Enabled => false;
+        public bool IsEip2200Enabled => false;
     }
 }
