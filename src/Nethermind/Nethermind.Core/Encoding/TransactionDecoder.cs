@@ -36,7 +36,7 @@ namespace Nethermind.Core.Encoding
             Transaction transaction = new Transaction();
             transaction.Nonce = rlpStream.DecodeUInt256();
             transaction.GasPrice = rlpStream.DecodeUInt256();
-            transaction.GasLimit = rlpStream.DecodeUInt256();
+            transaction.GasLimit = rlpStream.DecodeLong();
             transaction.To = rlpStream.DecodeAddress();
             transaction.Value = rlpStream.DecodeUInt256();
             if (transaction.To == null)

@@ -51,8 +51,6 @@ namespace Nethermind.Core.Encoding
             UInt256 gasUsed = decoderContext.DecodeUInt256();
             UInt256 timestamp = decoderContext.DecodeUInt256();
             byte[] extraData = decoderContext.DecodeByteArray();
-            Keccak mixHash = decoderContext.DecodeKeccak();
-            BigInteger nonce = decoderContext.DecodeUBigInt();
 
             BlockHeader blockHeader = new BlockHeader(
                 parentHash,
@@ -72,7 +70,7 @@ namespace Nethermind.Core.Encoding
                 Hash = Keccak.Compute(headerRlp)
             };
             
-            if (context.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+            if (decoderContext.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.MixHash = decoderContext.DecodeKeccak();
                 blockHeader.Nonce = (ulong) decoderContext.DecodeUBigInt();
@@ -134,7 +132,7 @@ namespace Nethermind.Core.Encoding
                 Hash = Keccak.Compute(headerRlp)
             };
             
-            if (context.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
+            if (rlpStream.PeekPrefixAndContentLength().ContentLength == Keccak.Size)
             {
                 blockHeader.MixHash = rlpStream.DecodeKeccak();
                 blockHeader.Nonce = (ulong) rlpStream.DecodeUBigInt();
@@ -283,7 +281,7 @@ namespace Nethermind.Core.Encoding
                 else
                 {
                     contentLength += Rlp.LengthOf(item.MixHash);
-					contentLength += Rlp.LengthOf(item.Nonce)
+                    contentLength += Rlp.LengthOf(item.Nonce);
                 }
             }
 

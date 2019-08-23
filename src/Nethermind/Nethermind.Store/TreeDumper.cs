@@ -33,7 +33,12 @@ namespace Nethermind.Store
             _builder.Clear();
         }
         
-        public void VisitTree(Keccak rootHash, VisitContext context)
+        public bool ShouldVisit(Keccak nextNode)
+        {
+            return true;
+        }        
+        
+        public void VisitTree(Keccak rootHash, VisitContext visitContext)
         {
             if (rootHash == Keccak.EmptyTreeHash)
             {
@@ -71,16 +76,16 @@ namespace Nethermind.Store
         {
             string leafDescription = visitContext.IsStorage ? "LEAF " : "ACCOUNT ";
             _builder.AppendLine($"{GetPrefix(visitContext)}{leafDescription}{(node.Keccak?.Bytes ?? node.FullRlp?.Bytes)?.ToHexString()}");
-            if (!context.IsStorage)
+            if (!visitContext.IsStorage)
             {
-                Account account = decoder.Decode(new Rlp.DecoderContext(value));
-                _builder.AppendLine($"{GetPrefix(context)}  NONCE: {account.Nonce}");
-                _builder.AppendLine($"{GetPrefix(context)}  BALANCE: {account.Balance}");
-                _builder.AppendLine($"{GetPrefix(context)}  IS_CONTRACT: {account.IsContract}");
+                Account account = decoder.Decode(new RlpStream(value));
+                _builder.AppendLine($"{GetPrefix(visitContext)}  NONCE: {account.Nonce}");
+                _builder.AppendLine($"{GetPrefix(visitContext)}  BALANCE: {account.Balance}");
+                _builder.AppendLine($"{GetPrefix(visitContext)}  IS_CONTRACT: {account.IsContract}");
             }
             else
             {
-                _builder.AppendLine($"{GetPrefix(context)}  VALUE: {new Rlp.DecoderContext(value).DecodeByteArray().ToHexString(true, true)}");
+                _builder.AppendLine($"{GetPrefix(visitContext)}  VALUE: {new RlpStream(value).DecodeByteArray().ToHexString(true, true)}");
             }
         }
 

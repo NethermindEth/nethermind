@@ -205,7 +205,7 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCaseSource(nameof(LoadsInitialValidatorsFromContractData))]
         public void loads_initial_validators_from_contract(InitializeValidatorsTestParameters test)
         {
-            var initialValidators = Enumerable.Range(1, test.InitialValidatorsCount).Select(i => Address.FromNumber(i)).ToArray();
+            var initialValidators = Enumerable.Range(1, test.InitialValidatorsCount).Select(i => Address.FromNumber((UInt256) i)).ToArray();
             SetupInitialValidators(initialValidators);
             var validator = new ContractValidator(_validator, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, test.StartBlockNumber);
 
@@ -537,14 +537,7 @@ namespace Nethermind.AuRa.Test.Validators
                 currentValidators = test.GetCurrentValidators(blockNumber);
                 var nextValidators = test.GetNextValidators(blockNumber);
                 currentValidators.Select(a => validator.IsValidSealer(a)).Should().AllBeEquivalentTo(true, $"Validator address is not recognized in block {blockNumber}");
-                try
-                {
-                    nextValidators?.Except(currentValidators).Select(a => validator.IsValidSealer(a)).Should().AllBeEquivalentTo(false);
-                }
-                catch (Exception e)
-                {
-                    throw;
-                }
+                nextValidators?.Except(currentValidators).Select(a => validator.IsValidSealer(a)).Should().AllBeEquivalentTo(false);
             }
             
             ValidateFinalizationForChain(test.Current);
@@ -562,7 +555,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         private static Address[] GenerateValidators(int number) => 
-            Enumerable.Range(1, number).Select(i => Address.FromNumber(i)).ToArray();
+            Enumerable.Range(1, number).Select(i => Address.FromNumber((UInt256) i)).ToArray();
 
         private void SetupInitialValidators(params Address[] initialValidators)
         {

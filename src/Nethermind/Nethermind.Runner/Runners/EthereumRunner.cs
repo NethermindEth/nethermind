@@ -161,7 +161,6 @@ namespace Nethermind.Runner.Runners
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
         private readonly ITimestamper _timestamper = new Timestamper();
-        private IStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
         private IWallet _wallet;
         private IEnode _enode;

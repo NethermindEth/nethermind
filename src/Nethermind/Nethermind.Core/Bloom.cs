@@ -37,7 +37,7 @@ namespace Nethermind.Core
             _bits = new BitArray(2048);
         }
         
-        public Bloom(LogEntry[] logEntries, Bloom blockBloom)
+        public Bloom(LogEntry[] logEntries, Bloom blockBloom = null)
         {
             _bits = new BitArray(2048);
             Add(logEntries, blockBloom);

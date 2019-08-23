@@ -241,9 +241,15 @@ namespace Nethermind.PerfTest
 
             var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
             
-            var transactionPool = new TxPool(NullTxStorage.Instance,
+            var transactionPool = new TxPool(
+                NullTxStorage.Instance, 
                 Timestamper.Default,
-                ethereumSigner, specProvider, new TxPoolConfig(), _logManager);
+                ethereumSigner, 
+                specProvider, 
+                new TxPoolConfig(),
+                stateProvider,
+                _logManager);
+            
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);

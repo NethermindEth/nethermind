@@ -78,7 +78,7 @@ namespace Nethermind.Core
 
         public static Keccak CalculateHash(BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            Rlp.Encode(stream, header, behaviors);
+            Rlp buffer = _headerDecoder.Encode(header, behaviors);
             return Keccak.Compute(buffer.Bytes);
         }
 

@@ -23,6 +23,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -93,7 +94,7 @@ namespace Nethermind.Core.Test
                     topics[j] = keccakGenerator.First();
                 }
 
-                entries[i] = new LogEntry(Address.FromNumber(random.Next()), Array.Empty<byte>(), topics);
+                entries[i] = new LogEntry(Address.FromNumber((UInt256) random.Next()), Array.Empty<byte>(), topics);
             }
 
             return entries;
