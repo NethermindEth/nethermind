@@ -56,5 +56,10 @@ namespace Nethermind.Store
                 return ((Address != null ? Address.GetHashCode() : 0) * 397) ^ Index.GetHashCode();
             }
         }
+
+        public override string ToString()
+        {
+            return $"{Address}.{Index}";
+        }
     }
 }

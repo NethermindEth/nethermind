@@ -22,11 +22,11 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Evm
 {
     public class IntrinsicGasCalculator
-    {   
+    {
         public long Calculate(Transaction transaction, IReleaseSpec releaseSpec)
         {
             long result = GasCostOf.Transaction;
-            long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? 16 : GasCostOf.TxDataNonZero;
+            long txDataNonZeroGasCost = releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
 
             if (transaction.Data != null)
             {

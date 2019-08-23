@@ -77,6 +77,7 @@ namespace Nethermind.Evm
         DIFFICULTY = 0x44,
         GASLIMIT = 0x45,
         CHAINID = 0x46,
+        SELFBALANCE = 0x47,
 
         POP = 0x50,
         MLOAD = 0x51,
