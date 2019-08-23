@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.AuRa.Contracts;
 using Nethermind.Blockchain;
@@ -53,14 +55,39 @@ namespace Nethermind.AuRa.Rewards
 
         private BlockReward[] CalculateRewardsWithContract(Block block)
         {
-            var transaction = _contract.Reward(new[] {block.Beneficiary}, new ushort[] {0});
+            (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
+            {
+                var length = block.Ommers.Length + 1;
+                if (length > 1)
+                {
+                    List<Address> beneficiariesList = new List<Address>(length) {block.Beneficiary};
+                    List<ushort> kindsList = new List<ushort>(length) {RewardContract.Definition.BenefactorKind.Author};
+                    
+                    for (int i = 0; i < block.Ommers.Length; i++)
+                    {
+                        var uncle = block.Ommers[i];
+                        if (RewardContract.Definition.BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
+                        {
+                            beneficiariesList.Add(uncle.Beneficiary);
+                            kindsList.Add(kind);
+                        }
+                    }
+
+                    return (beneficiariesList.ToArray(), kindsList.ToArray());
+                }
+
+                return (new[] {block.Beneficiary}, new[] {RewardContract.Definition.BenefactorKind.Author});
+            }
+
+            var (beneficiaries, kinds) = GetBeneficiaries();
+            var transaction = _contract.Reward(beneficiaries, kinds);
             _contract.InvokeTransaction(block.Header, _transactionProcessor, transaction, _tracer);
             var (addresses, rewards) = _contract.DecodeRewards(_tracer.ReturnValue);
 
             var blockRewards = new BlockReward[addresses.Length];
             for (int i = 0; i < addresses.Length; i++)
             {
-                blockRewards[i] = new BlockReward(addresses[i], rewards[i]);
+                blockRewards[i] = new BlockReward(addresses[i], rewards[i], RewardContract.Definition.BenefactorKind.ToBlockRewardType(kinds[i]));
             }
 
             return blockRewards;

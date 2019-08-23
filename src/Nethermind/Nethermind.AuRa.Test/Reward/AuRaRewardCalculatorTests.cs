@@ -8,6 +8,7 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Test;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -36,17 +37,8 @@ namespace Nethermind.AuRa.Test.Reward
 
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _transactionProcessor = Substitute.For<ITransactionProcessor>();
-            _block = new Block(
-                new BlockHeader(
-                    Keccak.Zero,
-                    Keccak.EmptyTreeHash, 
-                    Address.FromNumber(200),
-                    UInt256.One,
-                    1,
-                    100,
-                    UInt256.One,
-                    Array.Empty<byte>()), 
-                new BlockBody());
+            
+            _block = new Block(Prepare.A.BlockHeader().TestObject, new BlockBody());
             
             _abiEncoder
                 .Encode(AbiEncodingStyle.IncludeSignature, Arg.Is<AbiSignature>(s => s.Name == "reward"), Arg.Any<object[]>())
@@ -91,6 +83,30 @@ namespace Nethermind.AuRa.Test.Reward
         {
             _block.Number = blockNumber;
             var expected = new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block);
+            SetupBlockRewards(expected);
+            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
+            var result =  calculator.CalculateRewards(_block);            
+            result.Should().BeEquivalentTo(expected);
+        }
+        
+        [TestCase(10, 100)]
+        [TestCase(15, 150)]
+        public void calculates_rewards_correctly_for_ommers(long blockNumber, long expectedReward)
+        {
+            _block.Number = blockNumber;
+            _block.Body.Ommers = new[]
+            {
+                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(777)).WithNumber(blockNumber - 1).TestObject,
+                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(888)).WithNumber(blockNumber - 2).TestObject
+            };
+            
+            var expected = new BlockReward[]
+            {
+                new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block),
+                new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.Uncle),
+                new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.Uncle),
+            };
+            
             SetupBlockRewards(expected);
             var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
             var result =  calculator.CalculateRewards(_block);            
