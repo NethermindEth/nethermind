@@ -214,9 +214,16 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
         }
 
-        protected void AssertStorage(UInt256 address, BigInteger value)
+        protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
-            Assert.AreEqual(value.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, address)), "storage");
+            byte[] actualValue = Storage.Get(new StorageAddress(Recipient, address));
+            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
+        }
+        
+        protected void AssertStorage(StorageAddress storageAddress, BigInteger expectedValue)
+        {
+            byte[] actualValue = Storage.Get(storageAddress);
+            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageAddress}");
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)

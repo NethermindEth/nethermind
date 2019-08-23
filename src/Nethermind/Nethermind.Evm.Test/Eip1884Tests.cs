@@ -16,8 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -30,16 +35,36 @@ namespace Nethermind.Evm.Test
         [Test]
         public void after_istanbul_selfbalance_opcode_puts_current_address_balance_onto_the_stack()
         {
-            var code = Prepare.EvmCode
+            byte[] contractCode = Prepare.EvmCode
                 .Op(Instruction.SELFBALANCE)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
                 .Done;
+                    
+            Keccak codeHash = TestState.UpdateCode(contractCode);
+            
+            TestState.CreateAccount(TestItem.AddressC, 1.Ether());
+            TestState.UpdateCodeHash(TestItem.AddressC, codeHash, Spec);
+            
+            TestState.CreateAccount(TestItem.AddressD, 1.Ether());
+            TestState.UpdateCodeHash(TestItem.AddressD, codeHash, Spec);
+            
+            var code = Prepare.EvmCode
+                .Call(TestItem.AddressC, 50000)
+                .DelegateCall(TestItem.AddressD, 50000)
+                .Op(Instruction.SELFBALANCE)
+                .PushData(1)
+                .Op(Instruction.SSTORE)
+                .Done;
+            
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
-            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.SelfBalance + GasCostOf.SSet);
-            var balance = TestState.GetBalance(Recipient);
-            AssertStorage(0, balance);
+            AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 29 + 26 + GasCostOf.VeryLow + GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
+            var balanceB = TestState.GetBalance(TestItem.AddressB);
+            var balanceC = TestState.GetBalance(TestItem.AddressC);
+            AssertStorage(new StorageAddress(TestItem.AddressB, UInt256.Zero), balanceB);
+            AssertStorage(new StorageAddress(TestItem.AddressB, UInt256.One), balanceB);
+            AssertStorage(new StorageAddress(TestItem.AddressC, UInt256.Zero), balanceC);
         }
     }
 }
