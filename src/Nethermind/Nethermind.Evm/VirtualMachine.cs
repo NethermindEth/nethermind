@@ -1829,9 +1829,18 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
+                        bool useNetMetering = spec.IsEip1283Enabled | spec.IsEip2200Enabled;
                         // fail fast before the first storage read if gas is not enough even for reset
-                        if (!spec.IsEip1283Enabled && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                        if (!useNetMetering && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
                         {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
+                        }
+                        
+                        // fail fast before the first storage read if gas is not enough even for reset
+                        if (!spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
+                        {
+                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
@@ -1846,7 +1855,7 @@ namespace Nethermind.Evm
                         
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
 
-                        if (!spec.IsEip1283Enabled) // note that for this case we already deducted 5000
+                        if (!useNetMetering) // note that for this case we already deducted 5000
                         {
                             if (newIsZero)
                             {
@@ -1868,7 +1877,7 @@ namespace Nethermind.Evm
                         {
                             if (newSameAsCurrent)
                             {
-                                if(!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
+                                if(!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
                                 {
                                     EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;
@@ -1906,7 +1915,7 @@ namespace Nethermind.Evm
                                 }
                                 else // eip1283enabled, N != C != O
                                 {
-                                    if (!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
+                                    if (!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
                                     {
                                         EndInstructionTraceError(OutOfGasErrorText);
                                         return CallResult.OutOfGasException;
