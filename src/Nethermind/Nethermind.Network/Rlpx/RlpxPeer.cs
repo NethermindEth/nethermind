@@ -63,8 +63,8 @@ namespace Nethermind.Network.Rlpx
             ILogManager logManager,
             ISessionMonitor sessionMonitor)
         {
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => level > LogLevel.Information, false));
-//            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
+            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => level > LogLevel.Warning, false));
+            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
             _group = new SingleThreadEventLoop();
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -216,7 +216,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
+//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
 
             await _bootstrapChannel.CloseAsync().ContinueWith(t =>
             {

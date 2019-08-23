@@ -101,7 +101,6 @@ namespace Nethermind.Network.Rlpx
                     if (buffer == null)
                     {
                         buffer = PooledByteBufferAllocator.Default.Buffer(HeaderSize + _frameSize);
-                        buffer.Retain();
                     }
                     
                     buffer.MakeSpace(HeaderSize + _frameSize);

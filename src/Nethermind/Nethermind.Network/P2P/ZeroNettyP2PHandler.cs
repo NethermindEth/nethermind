@@ -19,6 +19,7 @@
 using System;
 using System.Net.Sockets;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -96,9 +97,10 @@ namespace Nethermind.Network.P2P
             }
             else
             {
-                packet.Data = input.ReadAllBytes();    
+                packet.Data = input.ReadAllBytes();
             }
             
+//            input.SafeRelease();
             _session.ReceiveMessage(packet);
         }
 

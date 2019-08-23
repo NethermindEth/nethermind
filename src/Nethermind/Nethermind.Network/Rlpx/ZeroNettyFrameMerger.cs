@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -35,10 +36,11 @@ namespace Nethermind.Network.Rlpx
         private const int FrameBoundary = 16;
         private const int HeaderSize = 16;
         private const int MacSize = 16;
-        private readonly Dictionary<int, int> _remaining = new Dictionary<int, int>();
-        private readonly ILogger _logger;
+        private  int _remaining;
+        private int? _currentContextId;
+        private ILogger _logger;
 
-        private readonly Dictionary<int, IByteBuffer> _payloads = new Dictionary<int, IByteBuffer>(); // spec used to say that the chunks can come mixed but probably not needed any more
+        private IByteBuffer _payload; // spec used to say that the chunks can come mixed but probably not needed any more
 
         public ZeroNettyFrameMerger(ILogManager logManager)
         {
@@ -49,11 +51,6 @@ namespace Nethermind.Network.Rlpx
         {
             while (input.ReadableBytes > 0)
             {
-                if (_remaining.Count > 1)
-                {
-                    _logger.Warn("Just checking if remaining count is ever > 1");
-                }
-                
                 if (_logger.IsTrace)
                 {
                     _logger.Trace("Merging frames");
@@ -69,7 +66,8 @@ namespace Nethermind.Network.Rlpx
                 int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
                 int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
 
-                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _remaining.ContainsKey(contextId.Value);
+                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
+                _currentContextId = contextId;
                 if (isChunked)
                 {
                     Debug.Assert(contextId.HasValue);
@@ -81,23 +79,22 @@ namespace Nethermind.Network.Rlpx
                     bool isFirstChunk = totalPacketSize.HasValue;
                     if (isFirstChunk)
                     {
-                        _remaining[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
-                        _payloads[contextId.Value] = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
-                        _payloads[contextId.Value].Retain();
-                        _payloads[contextId.Value].WriteByte(input.ReadByte());
+                        _remaining = totalPacketSize.Value - 1; // packet type data size
+                        _payload = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
+                        _payload.WriteByte(input.ReadByte());
                     }
 
-                    int frameSize = Math.Min(_remaining[contextId.Value], MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
+                    _logger.Error($"{totalPacketSize}");
+                    Debug.Assert(_payload != null, $"TPS {totalPacketSize} CID {contextId} CCID {_currentContextId}");
+                    int frameSize = Math.Min(_remaining, MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
 
-                    input.ReadBytes(_payloads[contextId.Value], frameSize);
-                    _remaining[contextId.Value] -= frameSize;
-                    if (_remaining[contextId.Value] == 0)
+                    input.ReadBytes(_payload, frameSize);
+                    _remaining -= frameSize;
+                    if (_remaining == 0)
                     {
                         input.SkipBytes(FrameParams.CalculatePadding(frameSize));
-                        IByteBuffer outputBuffer = _payloads[contextId.Value];
+                        IByteBuffer outputBuffer = _payload;
                         output.Add(outputBuffer);
-                        _remaining.Remove(contextId.Value);
-                        _payloads.Remove(contextId.Value);
                     }
                 }
                 else
@@ -114,7 +111,6 @@ namespace Nethermind.Network.Rlpx
                     }
 
                     IByteBuffer outputBuffer = PooledByteBufferAllocator.Default.Buffer(totalBodySize);
-                    outputBuffer.Retain();
                     outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
                     input.ReadBytes(outputBuffer, totalBodySize - 1);
                     input.SkipBytes(FrameParams.CalculatePadding(totalBodySize));
