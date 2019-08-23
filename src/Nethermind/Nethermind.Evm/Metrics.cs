@@ -34,5 +34,6 @@ namespace Nethermind.Evm
         public static long ModExpPrecompile { get; set; }
         public static long Ripemd160Precompile { get; set; }
         public static long Sha256Precompile { get; set; }
+        public static long Blake2BPrecompile { get; set; }
     }
 }

@@ -395,7 +395,8 @@ namespace Nethermind.Evm
                 [Bn128AddPrecompiledContract.Instance.Address] = Bn128AddPrecompiledContract.Instance,
                 [Bn128MulPrecompiledContract.Instance.Address] = Bn128MulPrecompiledContract.Instance,
                 [Bn128PairingPrecompiledContract.Instance.Address] = Bn128PairingPrecompiledContract.Instance,
-                [ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance
+                [ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance,
+                [Blake2BPrecompiledContract.Instance.Address] = Blake2BPrecompiledContract.Instance,
             };
         }
 
