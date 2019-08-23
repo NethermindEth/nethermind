@@ -67,12 +67,12 @@ namespace Nethermind.Network.Test.Rlpx
         private static IByteBuffer BuildFrames(int count)
         {
             TestFrameHelper frameBuilder = new TestFrameHelper();
-            int totalLength = (count - 1) * ZeroNettyPacketSplitter.FrameBoundary * 64 + 1;
+            int totalLength = (count - 1) * FrameParams.DefaultMaxFrameSize + 1;
             IByteBuffer input = PooledByteBufferAllocator.Default.Buffer(1 +  totalLength);
             input.WriteByte(2);
             input.WriteZero(totalLength);
             
-            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(totalLength + FramePadding.Calculate16(totalLength) + count * 16);
+            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(totalLength + FrameParams.CalculatePadding(totalLength) + count * 16);
             frameBuilder.Encode(input, output);
             return output;
         }

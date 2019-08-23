@@ -29,8 +29,7 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroNettyPacketSplitter : MessageToByteEncoder<IByteBuffer>
     {
-        public const int FrameBoundary = 16;
-        public int MaxFrameSize = FrameBoundary * 64;
+        public int MaxFrameSize = FrameParams.DefaultMaxFrameSize;
 
         private ILogger _logger;
 
@@ -62,14 +61,15 @@ namespace Nethermind.Network.Rlpx
             {
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
-                int paddingSize = i == framesCount - 1 ? FramePadding.Calculate16(totalPayloadSize) : 0;
-                output.MakeSpace(16 + framePayloadSize + paddingSize, "splitter");
+                int paddingSize = i == framesCount - 1 ? FrameParams.CalculatePadding(totalPayloadSize) : 0;
+                output.MakeSpace(FrameParams.HeaderSize + framePayloadSize + paddingSize, "splitter");
 
                 // 000 - 016 | header
                 // 016 - 01x | packet type
                 // 01x - frm | payload
                 // frm - %16 | padding to 16
 
+                // here we encode payload size as an RLP encoded long value without leading zeros
                 /*0*/
                 output.WriteByte((byte) (framePayloadSize >> 16));
                 /*1*/
@@ -79,11 +79,12 @@ namespace Nethermind.Network.Rlpx
 
                 if (framesCount == 1)
                 {
+                    // 193|128 is an RLP encoded array with one element that is zero
                     /*3*/
                     output.WriteByte(193);
                     /*4*/
                     output.WriteByte(128);
-                    /*5-32*/
+                    /*5-16*/
                     output.WriteZero(11);
                 }
                 else
@@ -103,7 +104,7 @@ namespace Nethermind.Network.Rlpx
                     headerDataItems[0] = Rlp.Encode(0);
                     byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
                     output.WriteBytes(headerDataBytes);
-                    output.WriteZero(16 - headerDataBytes.Length - 3);
+                    output.WriteZero(FrameParams.HeaderSize - headerDataBytes.Length - 3);
                 }
 
                 int framePacketTypeSize = 0;

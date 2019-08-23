@@ -30,7 +30,14 @@ namespace Nethermind.Network.Rlpx
         private readonly ILogger _logger;
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
+        
+        public int MaxFrameSize = FrameParams.DefaultMaxFrameSize;
 
+        public void DisableFraming()
+        {
+            MaxFrameSize = int.MaxValue;
+        }
+        
         public ZeroNettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
             _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
@@ -38,16 +45,16 @@ namespace Nethermind.Network.Rlpx
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private byte[] _encryptBuffer = new byte[16];
+        private byte[] _encryptBuffer = new byte[FrameParams.FrameBlockSize];
         private byte[] _macBuffer = new byte[16];
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
             while (input.ReadableBytes > 0)
             {
-                int frameLength = Math.Min(64 * 16, input.ReadableBytes - 16);
+                int frameLength = Math.Min(MaxFrameSize, input.ReadableBytes - 16);
                 
-                if (input.ReadableBytes % 16 != 0)
+                if (input.ReadableBytes % FrameParams.FrameBlockSize != 0)
                 {
                     throw new InvalidOperationException($"Frame length should be a multiple of 16");
                 }
@@ -62,7 +69,7 @@ namespace Nethermind.Network.Rlpx
                 _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
                 output.WriteBytes(_macBuffer);
                 
-                for (int i = 0; i < frameLength / 16; i++)
+                for (int i = 0; i < frameLength / FrameParams.FrameBlockSize; i++)
                 {
                     input.ReadBytes(_encryptBuffer);
                     _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);

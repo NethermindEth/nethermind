@@ -20,12 +20,20 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Network.Rlpx
 {
-    public static class FramePadding
+    public static class FrameParams
     {
+        public const int MacSize = 16;
+        
+        public const int HeaderSize = 16;
+        
+        public const int FrameBlockSize = 16;
+        
+        public const int DefaultMaxFrameSize = FrameBlockSize * 64;
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int Calculate16(int size)
+        public static int CalculatePadding(int size)
         {
-            return size % 16 == 0 ? 0 : 16 - size % 16;
+            return size % FrameBlockSize == 0 ? 0 : FrameBlockSize - size % FrameBlockSize;
         }
     }
 }

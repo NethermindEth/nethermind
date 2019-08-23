@@ -76,7 +76,7 @@ namespace Nethermind.Network.Rlpx
                         _frameSize = _headerBuffer[0] & 0xFF;
                         _frameSize = (_frameSize << 8) + (_headerBuffer[1] & 0xFF);
                         _frameSize = (_frameSize << 8) + (_headerBuffer[2] & 0xFF);
-                        int paddingSize = FramePadding.Calculate16(_frameSize);
+                        int paddingSize = FrameParams.CalculatePadding(_frameSize);
                         _frameSize += paddingSize;
                         _state = FrameDecoderState.WaitingForPayload;
 

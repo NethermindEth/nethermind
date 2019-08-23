@@ -123,6 +123,7 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsTrace) _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
             _context.Channel.Pipeline.Get<ZeroNettyPacketSplitter>()?.DisableFraming();
+            _context.Channel.Pipeline.Get<ZeroNettyFrameEncoder>()?.DisableFraming();
             _context.Channel.Pipeline.Get<NettyPacketSplitter>()?.DisableFraming();
             
             // since groups were used, we are on a different thread

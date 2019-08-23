@@ -93,7 +93,7 @@ namespace Nethermind.Network.Rlpx
                     _remaining[contextId.Value] -= frameSize;
                     if (_remaining[contextId.Value] == 0)
                     {
-                        input.SkipBytes(FramePadding.Calculate16(frameSize));
+                        input.SkipBytes(FrameParams.CalculatePadding(frameSize));
                         IByteBuffer outputBuffer = _payloads[contextId.Value];
                         output.Add(outputBuffer);
                         _remaining.Remove(contextId.Value);
@@ -117,7 +117,7 @@ namespace Nethermind.Network.Rlpx
                     outputBuffer.Retain();
                     outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
                     input.ReadBytes(outputBuffer, totalBodySize - 1);
-                    input.SkipBytes(FramePadding.Calculate16(totalBodySize));
+                    input.SkipBytes(FrameParams.CalculatePadding(totalBodySize));
                     output.Add(outputBuffer);
                 }
             }

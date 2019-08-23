@@ -171,11 +171,11 @@ namespace Nethermind.Network.Rlpx
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logManager));
+                context.Channel.Pipeline.AddLast(new ZeroNettyFrameDecoder(frameCipher, macProcessor, _logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroNettyFrameEncoder(frameCipher, macProcessor, _logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logManager));
+                context.Channel.Pipeline.AddLast(new ZeroNettyFrameMerger(_logManager));
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroNettyPacketSplitter(_logManager));
 
@@ -184,7 +184,7 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(packetSender);
 
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                NettyP2PHandler handler = new NettyP2PHandler(_session, _logManager);
+                ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(_session, _logManager);
                 context.Channel.Pipeline.AddLast(_group, handler);
 
                 handler.Init(packetSender, context);

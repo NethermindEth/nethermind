@@ -347,7 +347,9 @@ namespace Nethermind.Network.Test.Rlpx
             packetSplitter.Encode(_splitterBuffer, _encoderBuffer);
 
             ZeroFrameEncoderTest frameEncoder = new ZeroFrameEncoderTest(_frameCipherA, _macProcessorA);
+            frameEncoder.DisableFraming();
             frameEncoder.Encode(_encoderBuffer, hobbitBuffer);
+            
 //                TestContext.Out.WriteLine("encoded frame: " + frame.ToHexString());
 
             TestContext.Out.WriteLine(hobbitBuffer.Array.Slice(hobbitBuffer.ArrayOffset + hobbitBuffer.ReaderIndex, hobbitBuffer.ReadableBytes).ToHexString());
