@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -30,12 +31,12 @@ namespace Nethermind.Evm.Precompiles
 
         public Address Address { get; } = Address.FromNumber(4);
 
-        public long BaseGasCost()
+        public long BaseGasCost(IReleaseSpec releaseSpec)
         {
             return 15L;
         }
 
-        public long DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
         {
             return 3L * EvmPooledMemory.Div32Ceiling((ulong)inputData.Length);
         }

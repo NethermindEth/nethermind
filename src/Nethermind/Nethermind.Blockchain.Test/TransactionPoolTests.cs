@@ -353,7 +353,7 @@ namespace Nethermind.Blockchain.Test
             {
                 for (var i = 0; i < transactionsPerPeer; i++)
                 {
-                    transactions.Add(GetTransaction(privateKey, Address.FromNumber(i)));
+                    transactions.Add(GetTransaction(privateKey, Address.FromNumber((UInt256)i)));
                 }
             }
 

@@ -280,6 +280,25 @@ namespace Nethermind.Evm.Test
                 return this;
             }
             
+            public Prepare CallWithInput(Address address, long gasLimit, string input)
+            {
+                return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
+            }
+            
+            public Prepare CallWithInput(Address address, long gasLimit, byte[] input)
+            {
+                StoreDataInMemory(0, input);
+                PushData(0);
+                PushData(0);
+                PushData(input.Length);
+                PushData(0);
+                PushData(0);
+                PushData(address);
+                PushData(gasLimit);
+                Op(Instruction.CALL);
+                return this;
+            }
+            
             public Prepare CallWithValue(Address address, long gasLimit, UInt256 value)
             {
                 PushData(0);
