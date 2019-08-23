@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
@@ -27,29 +28,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
-            return Rlp.Encode(message.Bodies.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(
-                Rlp.Encode(b.Transactions),
-                Rlp.Encode(b.Ommers))).ToArray()).Bytes;
+            return Rlp.Encode(message.Bodies.Select(b => b == null
+                ? Rlp.OfEmptySequence
+                : Rlp.Encode(
+                    Rlp.Encode(b.Transactions),
+                    Rlp.Encode(b.Ommers))).ToArray()).Bytes;
         }
 
         public BlockBodiesMessage Deserialize(byte[] bytes)
         {
-            RlpStream rlpStream = bytes.AsRlpStream();
-            BlockBodiesMessage message = new BlockBodiesMessage();
-            message.Bodies = rlpStream.DecodeArray(ctx =>
-            {
-                int sequenceLength = rlpStream.ReadSequenceLength();
-                if (sequenceLength == 0)
-                {
-                    return null;
-                }
-                
-                Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
-                BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
-                return new BlockBody(transactions, ommers);
-            });
+            Console.WriteLine($"DESERILIZING A MESSAGE OF LENGHT {bytes.Length}");
 
-            return message;
+            try
+            {
+                RlpStream rlpStream = bytes.AsRlpStream();
+                BlockBodiesMessage message = new BlockBodiesMessage();
+                message.Bodies = rlpStream.DecodeArray(ctx =>
+                {
+                    int sequenceLength = rlpStream.ReadSequenceLength();
+                    if (sequenceLength == 0)
+                    {
+                        return null;
+                    }
+
+                    Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
+                    BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
+                    return new BlockBody(transactions, ommers);
+                });
+
+                Console.WriteLine($"SUCCESS DESERILIZING A MESSAGE OF LENGHT {bytes.Length}");
+                return message;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"FAILURE DESERILIZING A MESSAGE OF LENGHT {bytes.Length}");
+                Console.WriteLine(e);
+                throw;
+            }
         }
     }
 }

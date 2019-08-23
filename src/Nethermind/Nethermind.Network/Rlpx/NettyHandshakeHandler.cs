@@ -170,20 +170,20 @@ namespace Nethermind.Network.Rlpx
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logManager));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroNettyFrameEncoder(frameCipher, macProcessor, _logManager));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logManager));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new ZeroNettyPacketSplitter(_logManager));
 
                 PacketSender packetSender = new PacketSender(_serializationService, _logManager);
                 if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(packetSender);
 
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
                 NettyP2PHandler handler = new NettyP2PHandler(_session, _logManager);
                 context.Channel.Pipeline.AddLast(_group, handler);
 

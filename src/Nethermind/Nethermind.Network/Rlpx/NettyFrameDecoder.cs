@@ -118,21 +118,21 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            _logger.Warn(exception.ToString());
+            _logger.Warn("NETTY FRAME DECODER |" +exception.ToString());
             
-            //In case of SocketException we log it as debug to avoid noise
-            if (exception is SocketException)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Frame decoding failed (SocketException): {exception}");
-            }
-            else if (exception.Message?.Contains("MAC mismatch") ?? false)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{GetType().Name} MAC mismatch error: {exception}");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error: {exception}");
-            }
+//            //In case of SocketException we log it as debug to avoid noise
+//            if (exception is SocketException)
+//            {
+//                if (_logger.IsTrace) _logger.Trace($"Frame decoding failed (SocketException): {exception}");
+//            }
+//            else if (exception.Message?.Contains("MAC mismatch") ?? false)
+//            {
+//                if (_logger.IsTrace) _logger.Trace($"{GetType().Name} MAC mismatch error: {exception}");
+//            }
+//            else
+//            {
+//                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error: {exception}");
+//            }
 
             base.ExceptionCaught(context, exception);
         }
