@@ -161,9 +161,9 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static Rlp.DecoderContext AsRlpContext(this byte[] bytes)
+        public static RlpStream AsRlpStream(this byte[] bytes)
         {
-            return bytes == null ? new Rlp.DecoderContext(Bytes.Empty) : new Rlp.DecoderContext(bytes);
+            return bytes == null ? new RlpStream(Bytes.Empty) : new RlpStream(bytes);
         }
         
         public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[] bytes)

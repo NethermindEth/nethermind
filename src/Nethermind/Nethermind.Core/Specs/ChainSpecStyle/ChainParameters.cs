@@ -33,6 +33,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         public Keccak ForkCanonHash { get; set; }
         public long? ForkBlock { get; set; }
         public long? Eip150Transition { get; set; }
+        public long? Eip152Transition { get; set; }
         public long? Eip160Transition { get; set; }
         public long? Eip161abcTransition { get; set; }
         public long? Eip161dTransition { get; set; }
@@ -44,8 +45,12 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         public long? Eip145Transition { get; set; }
         public long? Eip1014Transition { get; set; }
         public long? Eip1052Transition { get; set; }
+        public long? Eip1108Transition { get; set; }
         public long? Eip1283Transition { get; set; }
         public long? Eip1283DisableTransition { get; set; }
         public long? Eip1344Transition { get; set; }
+        public long? Eip1884Transition { get; set; }
+        public long? Eip2028Transition { get; set; }
+        public long? Eip2200Transition { get; set; }
     }
 }

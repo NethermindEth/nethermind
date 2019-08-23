@@ -68,8 +68,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
-            var depositService = new DepositService(blockchainBridge, encoder, services.Wallet, contractAddress,
-                LimboLogs.Instance);
+            var depositService = new DepositService(blockchainBridge, services.TransactionPool, encoder,
+                services.Wallet, contractAddress, logManager);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();

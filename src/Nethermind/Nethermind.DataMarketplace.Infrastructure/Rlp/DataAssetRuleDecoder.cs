@@ -38,16 +38,16 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAssetRule)] = new DataAssetRuleDecoder();
         }
 
-        public DataAssetRule Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataAssetRule Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var value = context.DecodeUInt256();
+            var value = rlpStream.DecodeUInt256();
 
             return new DataAssetRule(value);
         }

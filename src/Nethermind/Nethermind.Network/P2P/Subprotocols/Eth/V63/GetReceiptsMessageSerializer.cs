@@ -30,8 +30,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public GetReceiptsMessage Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
-            var hashes = decoderContext.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            RlpStream rlpStream = bytes.AsRlpStream();
+            var hashes = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return new GetReceiptsMessage(hashes);
         }
     }

@@ -93,6 +93,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
         private DataDeliveryReceiptDetails Decode(byte[] bytes)
             => bytes is null
                 ? null
-                : _rlpDecoder.Decode(bytes.AsRlpContext());
+                : _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

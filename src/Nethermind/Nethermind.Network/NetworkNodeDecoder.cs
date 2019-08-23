@@ -31,15 +31,23 @@ namespace Nethermind.Network
             Rlp.Decoders[typeof(NetworkNode)] = new NetworkNodeDecoder();
         }
 
-        public NetworkNode Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public NetworkNode Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            context.ReadSequenceLength();
+            rlpStream.ReadSequenceLength();
 
-            var publicKey = new PublicKey(context.DecodeByteArray());
-            var ip = System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
-            var port = context.DecodeByteArraySpan().ToInt32();
-            System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
-            var reputation = context.DecodeByteArray().ToInt64();
+            PublicKey publicKey = new PublicKey(rlpStream.DecodeByteArray());
+            string ip = rlpStream.DecodeString();
+            int port = rlpStream.DecodeByteArraySpan().ToInt32();
+            rlpStream.SkipItem();
+            long reputation = 0L;
+            try
+            {
+                reputation = rlpStream.DecodeLong();
+            }
+            catch (RlpException)
+            {
+                // regression - old format
+            }
 
             var networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;
@@ -47,13 +55,15 @@ namespace Nethermind.Network
 
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Rlp[] elements = new Rlp[5];
-            elements[0] = Rlp.Encode(item.NodeId.Bytes);
-            elements[1] = Rlp.Encode(item.Host);
-            elements[2] = Rlp.Encode(item.Port);
-            elements[3] = Rlp.Encode(string.Empty);
-            elements[4] = Rlp.Encode(item.Reputation);
-            return Rlp.Encode(elements);
+            int contentLength = GetContentLength(item, rlpBehaviors);
+            RlpStream stream = new RlpStream(Rlp.GetSequenceRlpLength(contentLength));
+            stream.StartSequence(contentLength);
+            stream.Encode(item.NodeId.Bytes);
+            stream.Encode(item.Host);
+            stream.Encode(item.Port);
+            stream.Encode(string.Empty);
+            stream.Encode(item.Reputation);
+            return new Rlp(stream.Data);
         }
 
         public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -63,7 +73,17 @@ namespace Nethermind.Network
 
         public int GetLength(NetworkNode item, RlpBehaviors rlpBehaviors)
         {
-            throw new System.NotImplementedException();
+            return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+        }
+
+        private int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
+        {
+            return Rlp.LengthOf(item.NodeId.Bytes)
+                   + Rlp.LengthOf(item.NodeId.Bytes)
+                   + Rlp.LengthOf(item.Host)
+                   + Rlp.LengthOf(item.Port)
+                   + 1
+                   + Rlp.LengthOf(item.Reputation);
         }
 
         public static void Init()

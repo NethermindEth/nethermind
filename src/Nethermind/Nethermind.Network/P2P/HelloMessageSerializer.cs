@@ -41,13 +41,13 @@ namespace Nethermind.Network.P2P
 
         public HelloMessage Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            context.ReadSequenceLength();
+            RlpStream rlpStream = bytes.AsRlpStream();
+            rlpStream.ReadSequenceLength();
 
             HelloMessage helloMessage = new HelloMessage();
-            helloMessage.P2PVersion = context.DecodeByte();
-            helloMessage.ClientId = context.DecodeString();
-            helloMessage.Capabilities = context.DecodeArray(ctx =>
+            helloMessage.P2PVersion = rlpStream.DecodeByte();
+            helloMessage.ClientId = rlpStream.DecodeString();
+            helloMessage.Capabilities = rlpStream.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
                 string protocolCode = ctx.DecodeString();
@@ -55,8 +55,8 @@ namespace Nethermind.Network.P2P
                 return new Capability(protocolCode, version);
             }).ToList();
             
-            helloMessage.ListenPort = context.DecodeInt();
-            helloMessage.NodeId = new PublicKey(context.DecodeByteArray());
+            helloMessage.ListenPort = rlpStream.DecodeInt();
+            helloMessage.NodeId = new PublicKey(rlpStream.DecodeByteArray());
             return helloMessage;
         }
     }

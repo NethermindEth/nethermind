@@ -35,6 +35,7 @@ namespace Nethermind.Runner.Runners
         public async Task StopAsync()
         {
             if (_logger.IsInfo) _logger.Info($"Stopping GRPC server...");
+            await _server.ShutdownAsync();
             await GrpcEnvironment.ShutdownChannelsAsync();
             if (_logger.IsInfo) _logger.Info($"GRPC shutdown complete.");
         }

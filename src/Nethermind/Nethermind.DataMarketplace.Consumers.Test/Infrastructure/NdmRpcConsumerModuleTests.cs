@@ -28,18 +28,21 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers.Domain;
+using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
+using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
+using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
-using Nethermind.DataMarketplace.Consumers.Queries;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers.Providers.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -48,22 +51,26 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
     public class NdmRpcConsumerModuleTests
     {
         private IConsumerService _consumerService;
-        private IReportService _reportService;
+        private IDepositReportService _depositReportService;
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
+        private ITimestamper _timestamper;
+        private const uint DepositExpiryTime = 1546393600;
+        private static readonly DateTime Date = new DateTime(2019, 1, 2); //1546383600
 
         [SetUp]
         public void Setup()
         {
             _consumerService = Substitute.For<IConsumerService>();
-            _reportService = Substitute.For<IReportService>();
+            _depositReportService = Substitute.For<IDepositReportService>();
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
-            _rpc = new NdmRpcConsumerModule(_consumerService, _reportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge);
+            _timestamper = new Timestamper(Date);
+            _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
+                _ethRequestService, _personalBridge, _timestamper);
         }
 
         [Test]
@@ -89,8 +96,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public void given_null_personal_bridge_list_accounts_should_not_return_accounts()
         {
             _personalBridge = null;
-            _rpc = new NdmRpcConsumerModule(_consumerService, _reportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge);
+            _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
+                _ethRequestService, _personalBridge, _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -317,9 +324,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var item = GetDepositReportItem();
             var report = new DepositsReport(1, 1, 0,
                 PagedResult<DepositReportItem>.Create(new[] {item}, 1, 1, 1, 1));
-            _reportService.GetDepositsReportAsync(query).Returns(report);
+            _depositReportService.GetAsync(query).Returns(report);
             var result = await _rpc.ndm_getDepositsReport(query);
-            await _reportService.Received().GetDepositsReportAsync(query);
+            await _depositReportService.Received().GetAsync(query);
             result.Data.Should().NotBeNull();
             result.Data.Deposits.Should().NotBeNull();
             result.Data.Deposits.Items.Should().ContainSingle();
@@ -494,10 +501,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.Id.Should().Be(Keccak.OfAnEmptyString);
             deposit.Deposit.Units.Should().Be(1);
             deposit.Deposit.Value.Should().Be(1);
-            deposit.Deposit.ExpiryTime.Should().Be(1);
+            deposit.Deposit.ExpiryTime.Should().Be(DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
             deposit.TransactionHash.Should().Be(TestItem.KeccakA);
             deposit.Confirmed.Should().Be(false);
+            deposit.Expired.Should().Be(false);
             deposit.RefundClaimed.Should().Be(false);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             deposit.ConsumedUnits.Should().Be(0);
@@ -540,13 +548,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
                 new DataAssetProvider(Address.Zero, "test"));
 
         private static DepositDetails GetDepositDetails()
-            => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, 1, 1),
+            => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,
-                "test", 1, 1, TestItem.AddressB, 1, 1, false, TestItem.KeccakA,
-                1, 1, 1, true, false, TestItem.KeccakB, 1, new[]
+                "test", 1, 1, TestItem.AddressB, 1, DepositExpiryTime, false, TestItem.KeccakA,
+                1, 1, 1, true, false, TestItem.KeccakB, false, 1, new[]
                 {
                     new DataDeliveryReceiptReportItem(Keccak.Zero, 1, TestItem.KeccakC, TestItem.PublicKeyA,
                         new DataDeliveryReceiptRequest(1, TestItem.KeccakD, new UnitsRange(0, 1), false,

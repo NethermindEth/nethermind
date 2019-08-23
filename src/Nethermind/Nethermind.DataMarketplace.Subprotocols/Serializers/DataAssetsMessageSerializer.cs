@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 
         public DataAssetsMessage Deserialize(byte[] bytes)
         {
-            var dataAssets = Nethermind.Core.Encoding.Rlp.DecodeArray<DataAsset>(bytes.AsRlpContext());
+            var dataAssets = Nethermind.Core.Encoding.Rlp.DecodeArray<DataAsset>(bytes.AsRlpStream());
             foreach (var dataAsset in dataAssets)
             {
                 dataAsset.ClearPlugin();

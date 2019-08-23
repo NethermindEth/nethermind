@@ -74,19 +74,12 @@ namespace Nethermind.Core
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
-        private static ThreadLocal<byte[]> _rlpBuffer = new ThreadLocal<byte[]>(() => new byte[1024]);
+        private static HeaderDecoder _headerDecoder = new HeaderDecoder();
 
         public static Keccak CalculateHash(BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                Rlp.Encode(stream, header, behaviors);
-                byte[] buffer = _rlpBuffer.Value;
-                stream.Seek(0, SeekOrigin.Begin);
-                stream.Read(buffer, 0, (int) stream.Length);
-                Keccak newOne = Keccak.Compute(buffer.AsSpan().Slice(0, (int) stream.Length));
-                return newOne;
-            }
+            Rlp.Encode(stream, header, behaviors);
+            return Keccak.Compute(buffer.Bytes);
         }
 
         public static Keccak CalculateHash(Block block) => CalculateHash(block.Header);
@@ -109,7 +102,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Tx Root: {TxRoot}");
             builder.AppendLine($"{indent}Receipts Root: {ReceiptsRoot}");
             builder.AppendLine($"{indent}State Root: {StateRoot}");
-            
+
             return builder.ToString();
         }
 

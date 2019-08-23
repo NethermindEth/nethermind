@@ -34,30 +34,30 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAsset)] = new DataAssetDecoder();
         }
 
-        public DataAsset Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataAsset Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var id = context.DecodeKeccak();
-            var name = context.DecodeString();
-            var description = context.DecodeString();
-            var unitPrice = context.DecodeUInt256();
-            var unitType = (DataAssetUnitType) context.DecodeInt();
-            var minUnits = context.DecodeUInt();
-            var maxUnits = context.DecodeUInt();
-            var rules = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRules>(context);
-            var provider = Nethermind.Core.Encoding.Rlp.Decode<DataAssetProvider>(context);
-            var file = context.DecodeString();
-            var queryType = (QueryType) context.DecodeInt();
-            var state = (DataAssetState) context.DecodeInt();
-            var termsAndConditions = context.DecodeString();
-            var kycRequired = context.DecodeBool();
-            var plugin = context.DecodeString();
+            var id = rlpStream.DecodeKeccak();
+            var name = rlpStream.DecodeString();
+            var description = rlpStream.DecodeString();
+            var unitPrice = rlpStream.DecodeUInt256();
+            var unitType = (DataAssetUnitType) rlpStream.DecodeInt();
+            var minUnits = rlpStream.DecodeUInt();
+            var maxUnits = rlpStream.DecodeUInt();
+            var rules = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRules>(rlpStream);
+            var provider = Nethermind.Core.Encoding.Rlp.Decode<DataAssetProvider>(rlpStream);
+            var file = rlpStream.DecodeString();
+            var queryType = (QueryType) rlpStream.DecodeInt();
+            var state = (DataAssetState) rlpStream.DecodeInt();
+            var termsAndConditions = rlpStream.DecodeString();
+            var kycRequired = rlpStream.DecodeBool();
+            var plugin = rlpStream.DecodeString();
 
             return new DataAsset(id, name, description, unitPrice, unitType, minUnits, maxUnits,
                 rules, provider, file, queryType, state, termsAndConditions, kycRequired, plugin);

@@ -21,8 +21,10 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.DataMarketplace.Consumers.Domain;
-using Nethermind.DataMarketplace.Consumers.Repositories;
+using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
+using Nethermind.DataMarketplace.Consumers.Providers.Domain;
+using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories
@@ -68,6 +70,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         private DepositDetails Decode(byte[] bytes)
             => bytes is null
                 ? null
-                : _rlpDecoder.Decode(bytes.AsRlpContext());
+                : _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

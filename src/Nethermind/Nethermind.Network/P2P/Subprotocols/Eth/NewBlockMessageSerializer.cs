@@ -19,25 +19,32 @@
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class NewBlockMessageSerializer : IMessageSerializer<NewBlockMessage>
     {
+        private BlockDecoder _blockDecoder = new BlockDecoder();
+        
         public byte[] Serialize(NewBlockMessage message)
         {
-            return Rlp.Encode(
-                Rlp.Encode(message.Block),
-                Rlp.Encode(message.TotalDifficulty)).Bytes;
+            int contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) + Rlp.LengthOf((UInt256)message.TotalDifficulty);
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            RlpStream rlpStream = new RlpStream(totalLength);
+            rlpStream.StartSequence(contentLength);
+            rlpStream.Encode(message.Block);
+            rlpStream.Encode((UInt256)message.TotalDifficulty);
+            return rlpStream.Data;
         }
 
         public NewBlockMessage Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext context = bytes.AsRlpContext();
+            RlpStream rlpStream = bytes.AsRlpStream();
             NewBlockMessage message = new NewBlockMessage();
-            context.ReadSequenceLength();
-            message.Block = Rlp.Decode<Block>(context);
-            message.TotalDifficulty = context.DecodeUBigInt();
+            rlpStream.ReadSequenceLength();
+            message.Block = Rlp.Decode<Block>(rlpStream);
+            message.TotalDifficulty = rlpStream.DecodeUBigInt();
             return message;
         }
     }

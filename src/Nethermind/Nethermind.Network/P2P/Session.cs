@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P
             LocalPort = localPort;
             SessionId = Guid.NewGuid();
         }
-        
+
         public Session(
             int localPort,
             ILogManager logManager,
@@ -122,7 +122,7 @@ namespace Nethermind.Network.P2P
             }
 
             if (_logger.IsTrace) _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
-            
+
             _context.Channel.Pipeline.Get<NettyPacketSplitter>().DisableFraming();
             // since groups were used, we are on a different thread
             _context.Channel.Pipeline.Get<NettyP2PHandler>().EnableSnappy();
@@ -203,8 +203,8 @@ namespace Nethermind.Network.P2P
 
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
-            if(_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
-            
+            if (_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
+
             if (context == null) throw new ArgumentNullException(nameof(context));
             if (packetSender == null) throw new ArgumentNullException(nameof(packetSender));
 
@@ -215,7 +215,7 @@ namespace Nethermind.Network.P2P
                 {
                     return;
                 }
-                
+
                 if (State != SessionState.HandshakeComplete)
                 {
                     throw new InvalidOperationException($"{nameof(Init)} called on {this}");
@@ -231,14 +231,14 @@ namespace Nethermind.Network.P2P
 
         public void Handshake(PublicKey handshakeRemoteNodeId)
         {
-            if(_logger.IsTrace) _logger.Trace($"{nameof(Handshake)} called on {this}");
+            if (_logger.IsTrace) _logger.Trace($"{nameof(Handshake)} called on {this}");
             lock (_sessionStateLock)
             {
                 if (State == SessionState.Initialized || State == SessionState.HandshakeComplete)
                 {
                     throw new InvalidOperationException($"{nameof(Handshake)} called on {this}");
                 }
-                
+
                 if (IsClosing)
                 {
                     return;
@@ -292,7 +292,7 @@ namespace Nethermind.Network.P2P
                     }
                     catch (Exception e)
                     {
-                        if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to disconnect {protocolHandler.ProtocolCode} {protocolHandler.ProtocolVersion} correctly", e);
+                        if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR Failed to disconnect {protocolHandler.ProtocolCode} {protocolHandler.ProtocolVersion} correctly", e);
                     }
                 }
             }
@@ -304,12 +304,14 @@ namespace Nethermind.Network.P2P
         public byte P2PVersion { get; private set; }
 
         private SessionState _state;
+
         public SessionState State
         {
             get => _state;
-            private set {
+            private set
+            {
                 _state = value;
-                BestStateReached = (SessionState)Math.Min((int)SessionState.Initialized, (int)value);
+                BestStateReached = (SessionState) Math.Min((int) SessionState.Initialized, (int) value);
             }
         }
 
@@ -318,7 +320,7 @@ namespace Nethermind.Network.P2P
         public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnect call {disconnectReason} {disconnectType}");
-            
+
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)
@@ -329,6 +331,8 @@ namespace Nethermind.Network.P2P
 
                 State = SessionState.Disconnecting;
             }
+
+            UpdateMetric(disconnectType, disconnectReason);
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} invoking 'Disconnecting' event {disconnectReason} {disconnectType}");
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
@@ -366,6 +370,101 @@ namespace Nethermind.Network.P2P
                 Disconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));
             }
             else if (_logger.IsDebug) _logger.Error($"DEBUG/ERROR  No subscriptions for session disconnected event on {this}");
+        }
+
+        private static void UpdateMetric(DisconnectType disconnectType, DisconnectReason disconnectReason)
+        {
+            if (disconnectType == DisconnectType.Remote)
+            {
+                switch (disconnectReason)
+                {
+                    case DisconnectReason.BreachOfProtocol:
+                        Metrics.BreachOfProtocolDisconnects++;
+                        break;
+                    case DisconnectReason.UselessPeer:
+                        Metrics.UselessPeerDisconnects++;
+                        break;
+                    case DisconnectReason.TooManyPeers:
+                        Metrics.TooManyPeersDisconnects++;
+                        break;
+                    case DisconnectReason.AlreadyConnected:
+                        Metrics.AlreadyConnectedDisconnects++;
+                        break;
+                    case DisconnectReason.IncompatibleP2PVersion:
+                        Metrics.IncompatibleP2PDisconnects++;
+                        break;
+                    case DisconnectReason.NullNodeIdentityReceived:
+                        Metrics.NullNodeIdentityDisconnects++;
+                        break;
+                    case DisconnectReason.ClientQuitting:
+                        Metrics.ClientQuittingDisconnects++;
+                        break;
+                    case DisconnectReason.UnexpectedIdentity:
+                        Metrics.UnexpectedIdentityDisconnects++;
+                        break;
+                    case DisconnectReason.ReceiveMessageTimeout:
+                        Metrics.ReceiveMessageTimeoutDisconnects++;
+                        break;
+                    case DisconnectReason.DisconnectRequested:
+                        Metrics.DisconnectRequestedDisconnects++;
+                        break;
+                    case DisconnectReason.IdentitySameAsSelf:
+                        Metrics.SameAsSelfDisconnects++;
+                        break;
+                    case DisconnectReason.TcpSubSystemError:
+                        Metrics.TcpSubsystemErrorDisconnects++;
+                        break;
+                    default:
+                        Metrics.OtherDisconnects++;
+                        break;
+                }
+            }
+
+            if (disconnectType == DisconnectType.Local)
+            {
+                switch (disconnectReason)
+                {
+                    case DisconnectReason.BreachOfProtocol:
+                        Metrics.LocalBreachOfProtocolDisconnects++;
+                        break;
+                    case DisconnectReason.UselessPeer:
+                        Metrics.LocalUselessPeerDisconnects++;
+                        break;
+                    case DisconnectReason.TooManyPeers:
+                        Metrics.LocalTooManyPeersDisconnects++;
+                        break;
+                    case DisconnectReason.AlreadyConnected:
+                        Metrics.LocalAlreadyConnectedDisconnects++;
+                        break;
+                    case DisconnectReason.IncompatibleP2PVersion:
+                        Metrics.LocalIncompatibleP2PDisconnects++;
+                        break;
+                    case DisconnectReason.NullNodeIdentityReceived:
+                        Metrics.LocalNullNodeIdentityDisconnects++;
+                        break;
+                    case DisconnectReason.ClientQuitting:
+                        Metrics.LocalClientQuittingDisconnects++;
+                        break;
+                    case DisconnectReason.UnexpectedIdentity:
+                        Metrics.LocalUnexpectedIdentityDisconnects++;
+                        break;
+                    case DisconnectReason.ReceiveMessageTimeout:
+                        Metrics.LocalReceiveMessageTimeoutDisconnects++;
+                        break;
+                    case DisconnectReason.DisconnectRequested:
+                        Metrics.LocalDisconnectRequestedDisconnects++;
+                        break;
+                    case DisconnectReason.IdentitySameAsSelf:
+                        Metrics.LocalSameAsSelfDisconnects++;
+                        break;
+                    case DisconnectReason.TcpSubSystemError:
+                        Metrics.LocalTcpSubsystemErrorDisconnects++;
+                        break;
+                    default:
+                        Metrics.LocalOtherDisconnects++;
+                        break;
+                }
+            }
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
@@ -465,7 +564,7 @@ namespace Nethermind.Network.P2P
                         {
                             break;
                         }
-                        
+
                         return offset + messageCode;
                     }
 

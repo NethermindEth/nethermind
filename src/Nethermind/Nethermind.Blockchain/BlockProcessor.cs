@@ -173,21 +173,9 @@ namespace Nethermind.Blockchain
             return _receiptsTracer.TxReceipts;
         }
 
-        private void SetReceiptsRootAndBloom(Block block, TxReceipt[] txReceipts)
+        private void SetReceiptsRoot(Block block, TxReceipt[] txReceipts)
         {
             block.Header.ReceiptsRoot = block.CalculateReceiptRoot(_specProvider, txReceipts);
-            block.Header.Bloom = txReceipts.Length > 0 ? BuildBloom(txReceipts) : Bloom.Empty;
-        }
-
-        private Bloom BuildBloom(TxReceipt[] txReceipts)
-        {
-            Bloom bloom = new Bloom();
-            for (int i = 0; i < txReceipts.Length; i++)
-            {
-                bloom.Add(txReceipts[i].Logs);
-            }
-
-            return bloom;
         }
 
         private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)
@@ -215,7 +203,7 @@ namespace Nethermind.Blockchain
             _additionalBlockProcessor?.PreProcess(block);
             
             var receipts = ProcessTransactions(block, options, blockTracer);
-            SetReceiptsRootAndBloom(block, receipts);
+            SetReceiptsRoot(block, receipts);
             ApplyMinerRewards(block, blockTracer);
             
             _additionalBlockProcessor?.PostProcess(block, receipts);
@@ -298,28 +286,17 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
 
-            var bh = suggestedBlock.Header;
-            BlockHeader header = new BlockHeader(
-                bh.ParentHash, 
-                bh.OmmersHash, 
-                bh.Beneficiary, 
-                bh.Difficulty, 
-                bh.Number,
-                bh.GasLimit, 
-                bh.Timestamp, 
-                bh.ExtraData)
-            {
-                Author = bh.Author,
-                Hash = bh.Hash,
-                MixHash = bh.MixHash,
-                Nonce = bh.Nonce,
-                TxRoot = bh.TxRoot,
-                TotalDifficulty = bh.TotalDifficulty,
-                AuRaStep = bh.AuRaStep,
-                AuRaSignature = bh.AuRaSignature
-            };
-            
-            return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            BlockHeader s = suggestedBlock.Header;
+            BlockHeader header = new BlockHeader(s.ParentHash, s.OmmersHash, s.Beneficiary, s.Difficulty, s.Number, s.GasLimit, s.Timestamp, s.ExtraData);
+            Block processedBlock = new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            header.Bloom = Bloom.Empty;
+            header.Author = suggestedBlock.Header.Author;
+            header.Hash = s.Hash;
+            header.MixHash = s.MixHash;
+            header.Nonce = s.Nonce;
+            header.TxRoot = suggestedBlock.TransactionsRoot;
+            header.TotalDifficulty = suggestedBlock.TotalDifficulty;
+            return processedBlock;
         }
 
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)

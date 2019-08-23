@@ -133,24 +133,24 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockHash, options);
             }
 
-            public BlockHeader FindHeader(long number)
+            public Block FindBlock(long blockNumber, BlockTreeLookupOptions options)
             {
-                return _blockTree.FindHeader(number);
+                return _blockTree.FindBlock(blockNumber, options);
             }
 
-            public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
+            public BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options)
             {
-                return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
+                return _blockTree.FindHeader(blockNumber, options);
+            }
+
+            public Keccak FindHash(long blockNumber)
+            {
+                return _blockTree.FindHash(blockNumber);
             }
 
             public BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse)
             {
                 return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-            }
-
-            public Block FindBlock(long blockNumber)
-            {
-                return _blockTree.FindBlock(blockNumber);
             }
 
             public void DeleteInvalidBlock(Block invalidBlock)
@@ -235,19 +235,19 @@ namespace Nethermind.PerfTest
             var blockInfosDb = dbProvider.BlockInfosDb;
             var receiptsDb = dbProvider.ReceiptsDb;
             
-            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
-            var transactionPool = new TxPool(NullTxStorage.Instance,
-                Timestamper.Default,
-                ethereumSigner, specProvider, new TxPoolConfig(), _logManager);
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
-            
-
-            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
-            
             /* state & storage */
             var stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
+            var ethereumSigner = new EthereumEcdsa(specProvider, _logManager);
+            
+            var transactionPool = new TxPool(NullTxStorage.Instance,
+                Timestamper.Default,
+                ethereumSigner, specProvider, new TxPoolConfig(), _logManager);
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, specProvider, transactionPool, _logManager));
+
+            IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
+           
             /* blockchain processing */
             IList<IAdditionalBlockProcessor> blockProcessors = new List<IAdditionalBlockProcessor>();
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

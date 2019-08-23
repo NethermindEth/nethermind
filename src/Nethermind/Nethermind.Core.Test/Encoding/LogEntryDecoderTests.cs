@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.IO;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -30,39 +29,48 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_do_roundtrip()
         {
-            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new [] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             LogEntryDecoder decoder = new LogEntryDecoder();
             Rlp rlp = decoder.Encode(logEntry);
-            LogEntry deserialized = decoder.Decode(rlp.Bytes.AsRlpContext());
+            LogEntry deserialized = decoder.Decode(rlp.Bytes.AsRlpStream());
 
             Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
             Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
             Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
         }
-        
+
         [Test]
         public void Can_handle_nulls()
         {
-            Rlp rlp = Rlp.Encode((LogEntry)null);
+            Rlp rlp = Rlp.Encode((LogEntry) null);
             LogEntry decoded = Rlp.Decode<LogEntry>(rlp);
             Assert.Null(decoded);
         }
-        
+
         [Test]
-        public void Can_do_roundtrip_memory_stream()
+        public void Can_do_roundtrip_rlp_stream()
         {
-            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new [] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
             LogEntryDecoder decoder = new LogEntryDecoder();
-            
-            using (MemoryStream stream = Rlp.BorrowStream())
-            {
-                decoder.Encode(stream, logEntry);
-                LogEntry deserialized = Rlp.Decode<LogEntry>(stream.ToArray());
-                
-                Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
-                Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
-                Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
-            }
+
+            Rlp encoded = decoder.Encode(logEntry);
+            LogEntry deserialized = decoder.Decode(new RlpStream(encoded.Bytes));
+
+            Assert.AreEqual(logEntry.Data, deserialized.Data, "data");
+            Assert.AreEqual(logEntry.LoggersAddress, deserialized.LoggersAddress, "address");
+            Assert.AreEqual(logEntry.Topics, deserialized.Topics, "topics");
+        }
+
+        [Test]
+        public void Rlp_stream_and_standard_have_same_results()
+        {
+            LogEntry logEntry = new LogEntry(TestItem.AddressA, new byte[] {1, 2, 3}, new[] {TestItem.KeccakA, TestItem.KeccakB});
+            LogEntryDecoder decoder = new LogEntryDecoder();
+
+            Rlp rlpStreamResult = decoder.Encode(logEntry);
+
+            Rlp rlp = decoder.Encode(logEntry);
+            Assert.AreEqual(rlp.Bytes.ToHexString(), rlpStreamResult.Bytes.ToHexString());
         }
     }
 }

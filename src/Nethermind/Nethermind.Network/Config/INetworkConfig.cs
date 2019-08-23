@@ -32,7 +32,7 @@ namespace Nethermind.Network.Config
         bool IsPeersPersistenceOn { get; set; }
 
         [ConfigItem(Description = "Max number of connected peers.", DefaultValue = "25")]
-        int ActivePeersMaxCount { get; }
+        int ActivePeersMaxCount { get; set; }
 
         [ConfigItem(DefaultValue = "5000")]
         int PeersPersistenceInterval { get; set; }
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "10000")]
         int P2PPingInterval { get; }
 
-        [ConfigItem(DefaultValue = "3")]
+        [ConfigItem(DefaultValue = "2")]
         int P2PPingRetryCount { get; }
 
         [ConfigItem(DefaultValue = "2000")]

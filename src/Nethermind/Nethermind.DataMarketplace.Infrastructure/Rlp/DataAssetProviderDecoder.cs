@@ -38,17 +38,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAssetProvider)] = new DataAssetProviderDecoder();
         }
 
-        public DataAssetProvider Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataAssetProvider Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var address = context.DecodeAddress();
-            var name = context.DecodeString();
+            var address = rlpStream.DecodeAddress();
+            var name = rlpStream.DecodeString();
 
             return new DataAssetProvider(address, name);
         }

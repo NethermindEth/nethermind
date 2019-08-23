@@ -31,16 +31,18 @@ namespace Nethermind.Store
     
     public interface ITreeVisitor
     {
-        void VisitTree(Keccak rootHash, VisitContext context);
+        bool ShouldVisit(Keccak nextNode);
         
-        void VisitMissingNode(Keccak nodeHash, VisitContext context);
+        void VisitTree(Keccak rootHash, VisitContext visitContext);
         
-        void VisitBranch(byte[] hashOrRlp, VisitContext context);
+        void VisitMissingNode(Keccak nodeHash, VisitContext visitContext);
         
-        void VisitExtension(byte[] hashOrRlp, VisitContext context);
+        void VisitBranch(TrieNode node, VisitContext visitContext);
         
-        void VisitLeaf(byte[] hashOrRlp, VisitContext context, byte[] value = null);
+        void VisitExtension(TrieNode node, VisitContext visitContext);
         
-        void VisitCode(Keccak codeHash, byte[] code, VisitContext context);
+        void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value = null);
+        
+        void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext);
     }
 }

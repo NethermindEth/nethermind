@@ -22,18 +22,16 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
+using Nethermind.DataMarketplace.Consumers.Deposits;
+using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
-using Nethermind.DataMarketplace.Consumers.Queries;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Personal;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
@@ -42,20 +40,22 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
     {
 
         private readonly IConsumerService _consumerService;
-        private readonly IReportService _reportService;
+        private readonly IDepositReportService _depositReportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
         private readonly IPersonalBridge _personalBridge;
+        private readonly ITimestamper _timestamper;
 
-        public NdmRpcConsumerModule(IConsumerService consumerService, IReportService reportService,
+        public NdmRpcConsumerModule(IConsumerService consumerService, IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IPersonalBridge personalBridge)
+            IPersonalBridge personalBridge, ITimestamper timestamper)
         {
             _consumerService = consumerService;
-            _reportService = reportService;
+            _depositReportService = depositReportService;
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             _ethRequestService = ethRequestService;
             _personalBridge = personalBridge;
+            _timestamper = timestamper;
         }
 
         public ResultWrapper<AccountForRpc[]> ndm_listAccounts()
@@ -113,22 +113,24 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits query)
         {
+            var timestamp = (uint) _timestamper.EpochSeconds;
             var deposits = await _consumerService.GetDepositsAsync(query ?? new GetDeposits
             {
                 Results = int.MaxValue
             });
 
             return ResultWrapper<PagedResult<DepositDetailsForRpc>>.Success(PagedResult<DepositDetailsForRpc>.From(
-                deposits, deposits.Items.Select(d => new DepositDetailsForRpc(d)).ToArray()));
+                deposits, deposits.Items.Select(d => new DepositDetailsForRpc(d, timestamp)).ToArray()));
         }
 
         public async Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId)
         {
+            var timestamp = (uint) _timestamper.EpochSeconds;
             var deposit = await _consumerService.GetDepositAsync(depositId);
 
             return deposit == null
                 ? ResultWrapper<DepositDetailsForRpc>.Fail($"Deposit: '{depositId}' was not found.")
-                : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit));
+                : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit, timestamp));
         }
 
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit)
@@ -168,7 +170,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<DepositsReportForRpc>> ndm_getDepositsReport(GetDepositsReport query = null)
         {
-            var report = await _reportService.GetDepositsReportAsync(query ?? new GetDepositsReport());
+            var report = await _depositReportService.GetAsync(query ?? new GetDepositsReport());
 
             return ResultWrapper<DepositsReportForRpc>.Success(new DepositsReportForRpc(report));
         }
@@ -186,13 +188,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 depositApprovals, depositApprovals.Items.Select(d => new DepositApprovalForRpc(d)).ToArray()));
         }
 
-
         public async Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak assetId, string kyc)
         {
             var id = await _consumerService.RequestDepositApprovalAsync(assetId, kyc);
 
             return id is null
-                ? ResultWrapper<Keccak>.Fail($"Deposit approval for data asset: '{assetId}' couldn't be requested.")
+                ? ResultWrapper<Keccak>.Fail($"Deposit approval for data asset: '{assetId} couldn't be requested.")
                 : ResultWrapper<Keccak>.Success(id);
         }
 

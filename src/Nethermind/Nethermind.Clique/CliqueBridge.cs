@@ -93,7 +93,7 @@ namespace Nethermind.Clique
 
         public Address[] GetSigners(long number)
         {
-            BlockHeader header = _blockTree.FindHeader(number);
+            BlockHeader header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             return _snapshotManager.GetOrCreateSnapshot(header.Number, header.Hash).Signers.Select(s => s.Key).ToArray();
         }
 

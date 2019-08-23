@@ -27,33 +27,32 @@ namespace Nethermind.Core.Encoding
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {
-        public Transaction Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var transactionSequence = context.PeekNextItem();
+            var transactionSequence = rlpStream.PeekNextItem();
 
-            int transactionLength = context.ReadSequenceLength();
-            int lastCheck = context.Position + transactionLength;
+            int transactionLength = rlpStream.ReadSequenceLength();
+            int lastCheck = rlpStream.Position + transactionLength;
             Transaction transaction = new Transaction();
-            transaction.Nonce = context.DecodeUInt256();
-            transaction.GasPrice = context.DecodeUInt256();
-            UInt256 gasLimit = context.DecodeUInt256();
-            transaction.GasLimit = gasLimit > new UInt256(long.MaxValue) ? long.MaxValue : (long)gasLimit;
-            transaction.To = context.DecodeAddress();
-            transaction.Value = context.DecodeUInt256();
+            transaction.Nonce = rlpStream.DecodeUInt256();
+            transaction.GasPrice = rlpStream.DecodeUInt256();
+            transaction.GasLimit = rlpStream.DecodeUInt256();
+            transaction.To = rlpStream.DecodeAddress();
+            transaction.Value = rlpStream.DecodeUInt256();
             if (transaction.To == null)
             {
-                transaction.Init = context.DecodeByteArray();
+                transaction.Init = rlpStream.DecodeByteArray();
             }
             else
             {
-                transaction.Data = context.DecodeByteArray();
+                transaction.Data = rlpStream.DecodeByteArray();
             }
 
-            if (context.Position < lastCheck)
+            if (rlpStream.Position < lastCheck)
             {
-                Span<byte> vBytes = context.DecodeByteArraySpan();
-                Span<byte> rBytes = context.DecodeByteArraySpan();
-                Span<byte> sBytes = context.DecodeByteArraySpan();
+                Span<byte> vBytes = rlpStream.DecodeByteArraySpan();
+                Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
+                Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
                 if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
                 {
@@ -79,7 +78,7 @@ namespace Nethermind.Core.Encoding
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
-                context.Check(lastCheck);
+                rlpStream.Check(lastCheck);
             }
 
             return transaction;
@@ -87,7 +86,9 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Rlp.Encode(item, false);
+            RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+            Encode(rlpStream, item, rlpBehaviors);
+            return new Rlp(rlpStream.Data);
         }
 
         public void Encode(MemoryStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -103,6 +104,21 @@ namespace Nethermind.Core.Encoding
             Rlp.Encode(stream, item.Signature?.V ?? 0);
             Rlp.Encode(stream, item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
             Rlp.Encode(stream, item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
+        }
+        
+        public void Encode(RlpStream stream, Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int contentLength = GetContentLength(item, false);
+            stream.StartSequence(contentLength);
+            stream.Encode(item.Nonce);
+            stream.Encode(item.GasPrice);
+            stream.Encode(item.GasLimit);
+            stream.Encode(item.To);
+            stream.Encode(item.Value);
+            stream.Encode(item.To == null ? item.Init : item.Data);
+            stream.Encode(item.Signature?.V ?? 0);
+            stream.Encode(item.Signature == null ? null : item.Signature.RAsSpan.WithoutLeadingZeros());
+            stream.Encode(item.Signature == null ? null : item.Signature.SAsSpan.WithoutLeadingZeros());
         }
 
         private int GetContentLength(Transaction item, bool forSigning , bool isEip155Enabled = false, int chainId = 0)

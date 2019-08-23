@@ -40,20 +40,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 new DataDeliveryReceiptRequestDecoder();
         }
 
-        public DataDeliveryReceiptRequest Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataDeliveryReceiptRequest Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var number = context.DecodeUInt();
-            var depositId = context.DecodeKeccak();
-            var unitsRange = Nethermind.Core.Encoding.Rlp.Decode<UnitsRange>(context);
-            var isSettlement = context.DecodeBool();
-            var receipts = Nethermind.Core.Encoding.Rlp.DecodeArray<DataDeliveryReceiptToMerge>(context);
+            var number = rlpStream.DecodeUInt();
+            var depositId = rlpStream.DecodeKeccak();
+            var unitsRange = Nethermind.Core.Encoding.Rlp.Decode<UnitsRange>(rlpStream);
+            var isSettlement = rlpStream.DecodeBool();
+            var receipts = Nethermind.Core.Encoding.Rlp.DecodeArray<DataDeliveryReceiptToMerge>(rlpStream);
 
             return new DataDeliveryReceiptRequest(number, depositId, unitsRange, isSettlement, receipts);
         }

@@ -38,17 +38,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(FaucetResponse)] = new FaucetResponseDecoder();
         }
 
-        public FaucetResponse Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public FaucetResponse Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var status = (FaucetRequestStatus) context.DecodeInt();
-            var request = Nethermind.Core.Encoding.Rlp.Decode<FaucetRequestDetails>(context);
+            var status = (FaucetRequestStatus) rlpStream.DecodeInt();
+            var request = Nethermind.Core.Encoding.Rlp.Decode<FaucetRequestDetails>(rlpStream);
 
             return new FaucetResponse(status, request);
         }

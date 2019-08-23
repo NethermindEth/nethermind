@@ -24,9 +24,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.DataMarketplace.Consumers.Domain;
-using Nethermind.DataMarketplace.Consumers.Queries;
-using Nethermind.DataMarketplace.Consumers.Repositories;
+using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
+using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
+using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Store;
@@ -144,6 +144,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
         private ConsumerSession Decode(byte[] bytes)
             => bytes is null
                 ? null
-                : _rlpDecoder.Decode(bytes.AsRlpContext());
+                : _rlpDecoder.Decode(bytes.AsRlpStream());
     }
 }

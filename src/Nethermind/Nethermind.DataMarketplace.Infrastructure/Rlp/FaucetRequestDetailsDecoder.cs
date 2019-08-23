@@ -39,20 +39,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(FaucetRequestDetails)] = new FaucetRequestDetailsDecoder();
         }
 
-        public FaucetRequestDetails Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public FaucetRequestDetails Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var host = context.DecodeString();
-            var address = context.DecodeAddress();
-            var value = context.DecodeUInt256();
-            var date = DateTimeOffset.FromUnixTimeSeconds(context.DecodeLong()).UtcDateTime;
-            var transactionHash = context.DecodeKeccak();
+            var host = rlpStream.DecodeString();
+            var address = rlpStream.DecodeAddress();
+            var value = rlpStream.DecodeUInt256();
+            var date = DateTimeOffset.FromUnixTimeSeconds(rlpStream.DecodeLong()).UtcDateTime;
+            var transactionHash = rlpStream.DecodeKeccak();
 
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
         }

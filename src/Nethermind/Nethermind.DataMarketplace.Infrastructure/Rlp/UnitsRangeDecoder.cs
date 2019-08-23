@@ -38,17 +38,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(UnitsRange)] = new UnitsRangeDecoder();
         }
 
-        public UnitsRange Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public UnitsRange Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var from = context.DecodeUInt();
-            var to = context.DecodeUInt();
+            var from = rlpStream.DecodeUInt();
+            var to = rlpStream.DecodeUInt();
 
             return new UnitsRange(from, to);
         }

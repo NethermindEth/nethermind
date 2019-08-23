@@ -136,12 +136,12 @@ namespace Nethermind.Blockchain
         
         BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
         
-        Block FindBlock(long blockNumber);
+        Block FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
-        BlockHeader FindHeader(long blockNumber);
+        BlockHeader FindHeader(long blockNumber, BlockTreeLookupOptions options);
         
-        Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
-        
+        Keccak FindHash(long blockNumber);
+
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         
         void DeleteInvalidBlock(Block invalidBlock);

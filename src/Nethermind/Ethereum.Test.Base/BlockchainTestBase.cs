@@ -241,7 +241,8 @@ namespace Ethereum.Test.Base
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), _logManager);
+            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
+            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
@@ -249,7 +250,6 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
@@ -293,7 +293,7 @@ namespace Ethereum.Test.Base
                 try
                 {
                     TestBlockJson testBlockJson = test.Blocks[i];
-                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpContext();
+                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpStream();
                     Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                     suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
 

@@ -39,20 +39,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(EthRequest)] = new EthRequestDecoder();
         }
         
-        public EthRequest Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public EthRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var id = context.DecodeKeccak();
-            var host = context.DecodeString();
-            var address = context.DecodeAddress();
-            var value = context.DecodeUInt256();
-            var requestedAt = DateTimeOffset.FromUnixTimeSeconds(context.DecodeLong()).UtcDateTime;
-            var transactionHash = context.DecodeKeccak();
+            var id = rlpStream.DecodeKeccak();
+            var host = rlpStream.DecodeString();
+            var address = rlpStream.DecodeAddress();
+            var value = rlpStream.DecodeUInt256();
+            var requestedAt = DateTimeOffset.FromUnixTimeSeconds(rlpStream.DecodeLong()).UtcDateTime;
+            var transactionHash = rlpStream.DecodeKeccak();
 
             return new EthRequest(id, host, address, value, requestedAt, transactionHash);
         }

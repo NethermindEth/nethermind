@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using Nethermind.Abi;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -36,14 +37,16 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
         private readonly ILogger _logger;
         private readonly Address _contractAddress;
 
-        public DepositService(IBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
+        public DepositService(IBlockchainBridge blockchainBridge, ITxPool txPool, IAbiEncoder abiEncoder, IWallet wallet,
            Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPool = txPool;
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
@@ -93,7 +96,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 70000; // check  
             transaction.GasPrice = 20.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
+            transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
             _wallet.Sign(transaction, _blockchainBridge.GetNetworkId());
             return _blockchainBridge.SendTransaction(transaction, true);
         }

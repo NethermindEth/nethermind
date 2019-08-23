@@ -168,7 +168,7 @@ namespace Nethermind.Core.Test
         public void Long_negative()
         {
             Rlp output = Rlp.Encode(-1L);
-            var context = new Rlp.DecoderContext(output.Bytes);
+            var context = new RlpStream(output.Bytes);
             long value = context.DecodeLong();
 
             Assert.AreEqual(-1L, value);

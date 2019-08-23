@@ -19,7 +19,6 @@ notifications:
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#team
       - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#general
 after_success:
-  - ./scripts/docker-publish.sh
   - sonar-scanner
   - bash <(curl -s https://codecov.io/bash)
 jobs:
@@ -216,5 +215,6 @@ jobs:
       name: "Ethereum.Transition.Test"
     - script:
       - git submodule update --init && dotnet test /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Trie.Test
+      - ./scripts/docker-publish.sh
       if: branch = master OR type = pull_request
       name: "Ethereum.Trie.Test"

@@ -167,13 +167,38 @@ namespace Nethermind.Core.Specs
         /// Istanbul ChainID opcode
         /// </summary>
         bool IsEip1344Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul transaction data gas cost reduction
+        /// </summary>
+        bool IsEip2028Enabled { get; }
 
+        /// <summary>
+        /// Istanbul Blake2b precompile
+        /// </summary>
+        bool IsEip152Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul alt_bn128 gas cost reduction
+        /// </summary>
+        bool IsEip1108Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul state opcodes gas cost increase
+        /// </summary>
+        bool IsEip1884Enabled { get; }
+        
+        /// <summary>
+        /// Istanbul net-metered SSTORE
+        /// </summary>
+        bool IsEip2200Enabled { get; }
+		
         /// <summary>
         /// Should EIP158 be ignored for this account.
         /// </summary>
         /// <remarks>THis is needed for SystemUser account compatibility with Parity.</remarks>
         /// <param name="address"></param>
         /// <returns></returns>
-        bool IsEip158IgnoredAccount(Address address);
+        bool IsEip158IgnoredAccount(Address address);		
     }
 }

@@ -108,7 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Address[] data = result.ToArray();
                 return ResultWrapper<IEnumerable<Address>>.Success(data.ToArray());
             }
-            catch (Exception e)
+            catch (Exception)
             {
                 return ResultWrapper<IEnumerable<Address>>.Fail("Error while getting key addresses from wallet.");
             }

@@ -104,8 +104,8 @@ namespace Nethermind.Network.Rlpx
                 byte[] buffer;
                 if (input.ReadableBytes >= expectedSize)
                 {
-                    buffer = new byte[expectedSize];
-                    input.ReadBytes(buffer);
+                    buffer = new byte[expectedSize + _headerBuffer.Length];
+                    input.ReadBytes(buffer, 32, expectedSize);
                 }
                 else
                 {
@@ -114,11 +114,12 @@ namespace Nethermind.Network.Rlpx
 
                 if (_logger.IsTrace) _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
 
-                int frameSize = buffer.Length - MacSize;
-                _frameMacProcessor.CheckMac(buffer, 0, frameSize, false);
-                _frameCipher.Decrypt(buffer, 0, frameSize, buffer, 0);
+                int frameSize = buffer.Length - MacSize - _headerBuffer.Length;
+                _frameMacProcessor.CheckMac(buffer, 32, frameSize, false);
+                _frameCipher.Decrypt(buffer, 32, frameSize, buffer, 32);
 
-                output.Add(Bytes.Concat(_headerBuffer, buffer));
+                _headerBuffer.AsSpan().CopyTo(buffer.AsSpan().Slice(0,32));
+                output.Add(buffer);
                 
                 if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
                 

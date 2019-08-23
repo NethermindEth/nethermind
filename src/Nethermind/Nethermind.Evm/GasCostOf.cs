@@ -34,7 +34,7 @@ namespace Nethermind.Evm
         public const long SLoad = 50;
         public const long SLoadEip150 = 200;
         public const long JumpDest = 1;
-        public const long SStoreEip1283 = 200;
+        public const long SStoreNetMetered = 200;
         public const long SSet = 20000;
         public const long SReset = 5000;
         public const long Create = 32000;

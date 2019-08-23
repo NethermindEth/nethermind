@@ -33,14 +33,19 @@ namespace Nethermind.Store
         }
         
         public TrieStats Stats { get; } = new TrieStats();
-        
-        public void VisitTree(Keccak rootHash, VisitContext context)
+
+        public bool ShouldVisit(Keccak nextNode)
+        {
+            return true;
+        }
+
+        public void VisitTree(Keccak rootHash, VisitContext visitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, VisitContext context)
+        public void VisitMissingNode(Keccak nodeHash, VisitContext visitContext)
         {
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
                 Stats.MissingStorage++;
             }
@@ -50,9 +55,9 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitBranch(byte[] hashOrRlp, VisitContext context)
+        public void VisitBranch(TrieNode node, VisitContext visitContext)
         {
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
                 Stats.StorageBranchCount++;
             }
@@ -62,9 +67,9 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitExtension(byte[] hashOrRlp, VisitContext context)
-        {
-            if (context.IsStorage)
+        public void VisitExtension(TrieNode node, VisitContext visitContext)
+                 {
+            if (visitContext.IsStorage)
             {
                 Stats.StorageExtensionCount++;
             }
@@ -73,8 +78,8 @@ namespace Nethermind.Store
                 Stats.StateExtensionCount++;
             }
         }
-
-        public void VisitLeaf(byte[] hashOrRlp, VisitContext context, byte[] value = null)
+        
+        public void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value = null)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {
@@ -82,7 +87,7 @@ namespace Nethermind.Store
                 _logger.Warn($"Collected info from {Stats.NodesCount} nodes. Missing CODE {Stats.MissingCode} STATE {Stats.MissingState} STORAGE {Stats.MissingStorage}");
             }
             
-            if (context.IsStorage)
+            if (visitContext.IsStorage)
             {
                 Stats.StorageLeafCount++;
             }
@@ -92,7 +97,7 @@ namespace Nethermind.Store
             }
         }
         
-        public void VisitCode(Keccak codeHash, byte[] code, VisitContext context)
+        public void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext)
         {
             if (code != null)
             {

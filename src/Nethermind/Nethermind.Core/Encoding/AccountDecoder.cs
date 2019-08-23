@@ -24,32 +24,58 @@ namespace Nethermind.Core.Encoding
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
-        public Account Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Account Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            context.ReadSequenceLength();
-            UInt256 nonce = context.DecodeUInt256();
-            UInt256 balance = context.DecodeUInt256();
-            Keccak storageRoot = context.DecodeKeccak();
-            Keccak codeHash = context.DecodeKeccak();
+            rlpStream.ReadSequenceLength();
+            UInt256 nonce = rlpStream.DecodeUInt256();
+            UInt256 balance = rlpStream.DecodeUInt256();
+            Keccak storageRoot = rlpStream.DecodeKeccak();
+            Keccak codeHash = rlpStream.DecodeKeccak();
             Account account = new Account(nonce, balance, storageRoot, codeHash);
             return account;
         }
 
         public Rlp Encode(Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Rlp.Encode(
-                Rlp.Encode(item.Nonce),
-                Rlp.Encode(item.Balance),
-                Rlp.Encode(item.StorageRoot),
-                Rlp.Encode(item.CodeHash));
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
+            int contentLength = GetContentLength(item);
+            RlpStream rlpStream = new RlpStream(Rlp.LengthOfSequence(contentLength));
+            rlpStream.StartSequence(contentLength);
+            rlpStream.Encode(item.Nonce);
+            rlpStream.Encode(item.Balance);
+            rlpStream.Encode(item.StorageRoot);
+            rlpStream.Encode(item.CodeHash);
+            return new Rlp(rlpStream.Data);
         }
 
-        public void Encode(MemoryStream stream, Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public int GetLength(Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new System.NotImplementedException();
+            if (item == null)
+            {
+                return 1;
+            }
+            
+            return Rlp.LengthOfSequence(GetContentLength(item));
         }
-
-        public int GetLength(Account item, RlpBehaviors rlpBehaviors)
+        
+        private int GetContentLength(Account item)
+        {
+            if (item == null)
+            {
+                return 0;
+            }
+            
+            var contentLength = 2 * Rlp.LengthOfKeccakRlp;
+            contentLength += Rlp.LengthOf(item.Nonce);
+            contentLength += Rlp.LengthOf(item.Balance);
+            return contentLength;
+        }
+        
+        public void Encode(MemoryStream stream, Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             throw new System.NotImplementedException();
         }

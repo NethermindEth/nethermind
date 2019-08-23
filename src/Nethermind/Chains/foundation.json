@@ -163,7 +163,13 @@
     "eip658Transition": "0x42ae50",
     "eip145Transition": "0x6f1580",
     "eip1014Transition": "0x6f1580",
-    "eip1052Transition": "0x6f1580"
+    "eip1052Transition": "0x6f1580",
+    "eip152Transition": "0x989680",
+    "eip1108Transition": "0x989680",
+    "eip1344Transition": "0x989680",
+    "eip1884Transition": "0x989680",
+    "eip2028Transition": "0x989680",
+    "eip2200Transition": "0x989680"
   },
   "genesis": {
     "seal": {

@@ -30,7 +30,7 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public Address Address { get; private set; }
         public UInt256 Value { get; private set; }
         public DateTime RequestedAt { get; private set; }
-        public Keccak TransactionHash { get; }
+        public Keccak TransactionHash { get; private set; }
 
         public EthRequest(Keccak id, string host, Address address, UInt256 value, DateTime requestedAt,
             Keccak transactionHash)
@@ -43,9 +43,12 @@ namespace Nethermind.DataMarketplace.Core.Domain
             TransactionHash = transactionHash;
         }
 
-        public void UpdateRequestDate(DateTime requestedAt)
+        public void UpdateRequestDetails(Address address, UInt256 value, DateTime requestedAt, Keccak transactionHash)
         {
+            Address = address;
+            Value = value;
             RequestedAt = requestedAt;
+            TransactionHash = transactionHash;
         }
     }
 }

@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
             
-            Block block = _blockTree.FindBlock(txReceipt.BlockNumber);
+            Block block = _blockTree.FindBlock(txReceipt.BlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null)
             {
                 return null;
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options)
         {
-            Block block = _blockTree.FindBlock(blockNumber);
+            Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
             if (txIndex > block.Transactions.Length - 1) throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace Trace(long blockNumber, Transaction tx, GethTraceOptions options)
         {
-            Block block = _blockTree.FindBlock(blockNumber);
+            Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
             block.Body = new BlockBody(new[] {tx}, new BlockHeader[]{});
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options)
         {
-            Block block = _blockTree.FindBlock(blockNumber);
+            Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             return TraceBlock(block, options);
         }
         
@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain
             }
             
             TxReceipt txReceipt = _receiptStorage.Find(txHash);
-            Block block = _blockTree.FindBlock(txReceipt.BlockNumber);
+            Block block = _blockTree.FindBlock(txReceipt.BlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
             return ParityTrace(block, txHash, traceTypes);
@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain
 
         public ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes traceTypes)
         {
-            Block block = _blockTree.FindBlock(blockNumber);
+            Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             bool loadedFromDb = true;
             
             List<ParityLikeTxTrace> result = new List<ParityLikeTxTrace>();
@@ -156,7 +156,7 @@ namespace Nethermind.Blockchain
                 byte[] traceBytes = _traceDb.Get(block.Hash);
                 if (traceBytes != null)
                 {
-                    result.AddRange(Rlp.DecodeArray<ParityLikeTxTrace>(new Rlp.DecoderContext(traceBytes), RlpBehaviors.None));
+                    result.AddRange(Rlp.DecodeArray<ParityLikeTxTrace>(new RlpStream(traceBytes), RlpBehaviors.None));
                 }
             }
 

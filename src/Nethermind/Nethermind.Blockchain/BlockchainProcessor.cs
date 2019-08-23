@@ -337,11 +337,9 @@ namespace Nethermind.Blockchain
                     {
                         if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                         {
-                            stateRoot = block.Header.StateRoot;
-                            if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
-                            break;
+                            if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.Hash}");
                         }
-
+                        
                         blocksToProcess.Add(block);
                     }
 

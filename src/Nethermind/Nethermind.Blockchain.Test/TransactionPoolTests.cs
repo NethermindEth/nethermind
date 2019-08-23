@@ -7,7 +7,7 @@
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
  *
- * The Nethermind library is distributed in the hope that it will be useful,
+ * The Nethermind library is distributed in the hope that it willhttps://github.com/NethermindEth/nethermind/pull/750 be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
  * GNU Lesser General Public License for more details.
@@ -18,8 +18,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Test.Synchronization;
 using Nethermind.Blockchain.TxPools;
@@ -48,6 +48,7 @@ namespace Nethermind.Blockchain.Test
         private ITxStorage _noTxStorage;
         private ITxStorage _inMemoryTxStorage;
         private ITxStorage _persistentTxStorage;
+        private IStateProvider _stateProvider;
 
         [SetUp]
         public void Setup()
@@ -60,6 +61,7 @@ namespace Nethermind.Blockchain.Test
             _noTxStorage = NullTxStorage.Instance;
             _inMemoryTxStorage = new InMemoryTxStorage();
             _persistentTxStorage = new PersistentTxStorage(new MemDb(), _specProvider);
+            _stateProvider = new StateProvider(new StateDb(), new MemDb(), _logManager);
         }
 
         [Test]
@@ -195,6 +197,56 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()
+        {
+            _txPool = CreatePool(_noTxStorage);
+            var nonceA1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
+            var nonceA2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
+            var nonceA3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressA);
+            var nonceB1 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+            var nonceB2 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+            var nonceB3 = _txPool.ReserveOwnTransactionNonce(TestItem.AddressB);
+
+            nonceA1.Should().Be(0);
+            nonceA2.Should().Be(1);
+            nonceA3.Should().Be(2);
+            nonceB1.Should().Be(0);
+            nonceB2.Should().Be(1);
+            nonceB3.Should().Be(2);
+        }
+        
+        [Test]
+        public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
+        {
+            var address = TestItem.AddressA;
+            const int reservationsCount = 1000;
+            _txPool = CreatePool(_noTxStorage);
+            var result = Parallel.For(0, reservationsCount, i =>
+            {
+                _txPool.ReserveOwnTransactionNonce(address);
+            });
+
+            result.IsCompleted.Should().BeTrue();
+            var nonce = _txPool.ReserveOwnTransactionNonce(address);
+            nonce.Should().Be(new UInt256(reservationsCount));
+        }
+
+        [Test]
+        public void should_return_own_nonce_already_used_result_when_trying_to_send_transaction_with_same_nonce_for_same_address()
+        {
+            var blockNumber = RopstenSpecProvider.ByzantiumBlockNumber;
+            _txPool = CreatePool(_noTxStorage);
+            var result1 = _txPool.AddTransaction(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressA), blockNumber, true);
+            result1.Should().Be(AddTxResult.Added);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            var result2 = _txPool.AddTransaction(GetTransaction(TestItem.PrivateKeyA, TestItem.AddressB), blockNumber, true);
+            result2.Should().Be(AddTxResult.OwnNonceAlreadyUsed);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+        }
+
+        [Test]
         public void should_add_all_transactions_to_storage_when_using_accept_all_filter()
         {
             var transactions = AddAndFilterTransactions(_inMemoryTxStorage, new AcceptAllTxFilter());
@@ -258,7 +310,7 @@ namespace Nethermind.Blockchain.Test
 
         private TxPool CreatePool(ITxStorage txStorage)
             => new TxPool(txStorage,
-                Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _logManager);
+                Timestamper.Default, _ethereumEcdsa, _specProvider, new TxPoolConfig(), _stateProvider, _logManager);
 
         private ISyncPeer GetPeer(PublicKey publicKey)
             => new SyncPeerMock(_remoteBlockTree, publicKey);
@@ -301,7 +353,7 @@ namespace Nethermind.Blockchain.Test
             {
                 for (var i = 0; i < transactionsPerPeer; i++)
                 {
-                    transactions.Add(GetTransaction(privateKey, Address.FromNumber(i)));
+                    transactions.Add(GetTransaction(privateKey, Address.FromNumber((UInt256)i)));
                 }
             }
 

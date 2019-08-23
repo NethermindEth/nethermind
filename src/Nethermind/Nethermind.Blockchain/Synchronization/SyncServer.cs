@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -191,6 +190,7 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     }
                     
+                    receipt.BlockNumber = block.Number;
                     blockReceipts[receiptIndex] = receipt;
                 }
 
@@ -218,17 +218,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         public Block Find(Keccak hash)
         {
-            return _blockTree.FindBlock(hash, BlockTreeLookupOptions.None);
+            return _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
         }
 
-        public BlockHeader FindHeader(long number)
+        public Keccak FindHash(long number)
         {
-            return _blockTree.FindHeader(number);
-        }
-
-        public Block[] FindBlocks(Keccak hash, int numberOfBlocks, int skip, bool reverse)
-        {
-            return _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
+            return _blockTree.FindHash(number);
         }
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]

@@ -65,9 +65,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool validSeals = flags.HasFlag(Response.ValidSeals);
                 bool noEmptySpaces = flags.HasFlag(Response.NoEmptySpace);
-                bool justFirst = flags.HasFlag(Response.JustFirstHeader);
+                bool justFirst = flags.HasFlag(Response.JustFirst);
                 bool allKnown = flags.HasFlag(Response.AllKnown);
                 bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
+                bool noBody = flags.HasFlag(Response.NoBody);
 
                 if (timeoutOnFullBatch && number == SyncBatchSize.Max)
                 {
@@ -81,8 +82,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 {
                     for (int i = 1; i < number; i++)
                     {
+                        
                         headers[i] = consistent
-                            ? Build.A.BlockHeader.WithParent(headers[i - 1]).TestObject
+                            ? Build.A.BlockHeader.WithParent(headers[i - 1]).WithOmmersHash(noBody ? Keccak.OfAnEmptySequenceRlp : Keccak.Zero).TestObject
                             : Build.A.BlockHeader.WithNumber(headers[i - 1].Number + 1).TestObject;
 
                         if (allKnown)
@@ -107,7 +109,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool validSeals = flags.HasFlag(Response.ValidSeals);
                 bool noEmptySpaces = flags.HasFlag(Response.NoEmptySpace);
-                bool justFirst = flags.HasFlag(Response.JustFirstHeader);
+                bool justFirst = flags.HasFlag(Response.JustFirst);
                 bool allKnown = flags.HasFlag(Response.AllKnown);
                 bool timeoutOnFullBatch = flags.HasFlag(Response.TimeoutOnFullBatch);
 
@@ -252,7 +254,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect));
 
             syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
-                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect | Response.JustFirstHeader));
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect | Response.JustFirst));
 
             PeerInfo peerInfo = new PeerInfo(syncPeer);
             peerInfo.TotalDifficulty = UInt256.MaxValue;
@@ -262,6 +264,29 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await task.ContinueWith(t => Assert.True(t.IsFaulted));
 
             Assert.AreEqual(0, _blockTree.BestSuggestedHeader.Number);
+        }
+        
+        [TestCase(33L)]
+        [TestCase(65L)]
+        public async Task Peer_sends_just_one_item_when_advertising_more_blocks_but_no_bodies(long headNumber)
+        {
+            BlockDownloader blockDownloader = new BlockDownloader(_blockTree, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, NullSyncReport.Instance, LimboLogs.Instance);
+
+            ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+            syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildHeaderResponse(ci.ArgAt<long>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.NoBody));
+
+            syncPeer.GetBlocks(Arg.Any<Keccak[]>(), Arg.Any<CancellationToken>())
+                .Returns(ci => _responseBuilder.BuildBlocksResponse(ci.ArgAt<Keccak[]>(0), Response.AllCorrect | Response.JustFirst));
+
+            PeerInfo peerInfo = new PeerInfo(syncPeer);
+            peerInfo.TotalDifficulty = UInt256.MaxValue;
+            peerInfo.HeadNumber = headNumber;
+
+            Task task = blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None);
+            await task.ContinueWith(t => Assert.False(t.IsFaulted));
+
+            Assert.AreEqual(headNumber, _blockTree.BestSuggestedHeader.Number);
         }
 
         [Test]
@@ -510,9 +535,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             ValidSeals = 2,
             NoEmptySpace = 4,
             AllCorrect = 7,
-            JustFirstHeader = 8,
+            JustFirst = 8,
             AllKnown = 16,
             TimeoutOnFullBatch = 32,
+            NoBody = 64,
         }
     }
 }

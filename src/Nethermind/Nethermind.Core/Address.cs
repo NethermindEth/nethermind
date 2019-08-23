@@ -115,9 +115,11 @@ namespace Nethermind.Core
             return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
-        public static Address FromNumber(BigInteger number)
+        public static Address FromNumber(UInt256 number)
         {
-            return new Address(number.ToBigEndianByteArray(20));
+            byte[] addressBytes = new byte[20];
+            number.ToBigEndian(addressBytes);
+            return new Address(addressBytes);
         }
 
         public static Address OfContract(Address deployingAddress, UInt256 nonce)

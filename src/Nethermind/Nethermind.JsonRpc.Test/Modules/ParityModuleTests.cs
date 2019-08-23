@@ -23,8 +23,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
+using Nethermind.Store;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules
@@ -42,11 +44,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             var ethereumEcdsa = new EthereumEcdsa(specProvider, logger);
             var txStorage = new InMemoryTxStorage();
             var txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(),
-                LimboLogs.Instance);
+                new StateProvider(new StateDb(), new MemDb(), LimboLogs.Instance),  LimboLogs.Instance);
             _parityModule = new ParityModule(new EthereumEcdsa(specProvider,logger), txPool, logger);
             var blockNumber = 1;
             var transaction = Build.A.Transaction.Signed(ethereumEcdsa, TestItem.PrivateKeyD, blockNumber)
-                .WithSenderAddress(Address.FromNumber(blockNumber)).TestObject;
+                .WithSenderAddress(Address.FromNumber((UInt256)blockNumber)).TestObject;
             transaction.Signature.V = 37;
             txPool.AddTransaction(transaction, blockNumber);
         }

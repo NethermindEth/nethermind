@@ -34,7 +34,7 @@ namespace Nethermind.Network.Config
         public int BootnodePongTimeout { get; set; } = 1000 * 100;
         public int PingRetryCount { get; set; } = 3;
         public int DiscoveryInterval { get; set; } = 1000 * 30;
-        public int DiscoveryPersistenceInterval { get; set; } = 1000 * 5;
+        public int DiscoveryPersistenceInterval { get; set; } = 1000 * 180;
         public int DiscoveryNewCycleWaitTime { get; set; } = 50;
         public int UdpChannelCloseTimeout { get; set; } = 1000 * 5;
         public int PingMessageVersion { get; set; } = 4;

@@ -52,7 +52,7 @@ namespace Nethermind.Store
                 return null;
             }
 
-            return _decoder.Decode(bytes.AsRlpContext());
+            return _decoder.Decode(bytes.AsRlpStream());
         }
         
         [DebuggerStepThrough]
@@ -64,7 +64,7 @@ namespace Nethermind.Store
                 return null;
             }
 
-            return _decoder.Decode(bytes.AsRlpContext());
+            return _decoder.Decode(bytes.AsRlpStream());
         }
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);

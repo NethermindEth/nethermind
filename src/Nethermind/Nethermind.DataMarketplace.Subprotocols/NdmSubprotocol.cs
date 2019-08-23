@@ -26,7 +26,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers.Services;
+using Nethermind.DataMarketplace.Consumers;
+using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
@@ -69,7 +70,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
         public byte ProtocolVersion { get; } = 1;
         public string ProtocolCode { get; } = Protocol.Ndm;
-        public int MessageIdSpaceSize { get; } = 0x1E;
+        public int MessageIdSpaceSize { get; } = 0x1F;
 
         public bool HasAvailableCapability(Capability capability) => false;
         public bool HasAgreedCapability(Capability capability) => false;
@@ -142,7 +143,8 @@ namespace Nethermind.DataMarketplace.Subprotocols
                     message => Handle(Deserialize<DepositApprovalsMessage>(message.Data)),
                 [NdmMessageCode.ProviderAddressChanged] = message =>
                     Handle(Deserialize<ProviderAddressChangedMessage>(message.Data)),
-                [NdmMessageCode.EthRequested] = message => Handle(Deserialize<EthRequestedMessage>(message.Data))
+                [NdmMessageCode.EthRequested] = message => Handle(Deserialize<EthRequestedMessage>(message.Data)),
+                [NdmMessageCode.GraceUnitsExceeded] = message => Handle(Deserialize<GraceUnitsExceededMessage>(message.Data))
             };
 
         public void Init()
@@ -455,10 +457,10 @@ namespace Nethermind.DataMarketplace.Subprotocols
             Send(new DisableDataStreamMessage(depositId, client));
         }
         
-        public void SendRequestDepositApproval(Keccak assetId, string kyc)
+        public void SendRequestDepositApproval(Keccak assetId, Address consumer, string kyc)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM sending: requestdepositapproval");
-            Send(new RequestDepositApprovalMessage(assetId, kyc));
+            Send(new RequestDepositApprovalMessage(assetId, consumer, kyc));
         }
         
         private void Handle(SessionFinishedMessage message)
@@ -476,25 +478,27 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DepositApprovalConfirmedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalconfirmed");
-            ConsumerService.ConfirmDepositApprovalAsync(message.DataAssetId).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            ConsumerService.ConfirmDepositApprovalAsync(message.DataAssetId, message.Consumer)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         private void Handle(DepositApprovalRejectedMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: depositapprovalrejected");
-            ConsumerService.RejectDepositApprovalAsync(message.DataAssetId).ContinueWith(t =>
-            {
-                if (t.IsFaulted && Logger.IsError)
+            ConsumerService.RejectDepositApprovalAsync(message.DataAssetId, message.Consumer)
+                .ContinueWith(t =>
                 {
-                    Logger.Error("There was an error within NDM subprotocol.", t.Exception);
-                }
-            });
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         public async Task<IReadOnlyList<DepositApproval>> SendGetDepositApprovals(Keccak dataAssetId = null,
@@ -560,6 +564,19 @@ namespace Nethermind.DataMarketplace.Subprotocols
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: ethrequested");
             var request = RequestEthRequests.Take();
             request.CompletionSource.SetResult(message.Response);
+        }
+
+        private void Handle(GraceUnitsExceededMessage message)
+        {
+            if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: graceunitsexceeded");
+            ConsumerService.HandleGraceUnitsExceededAsync(message.DepositId, message.ConsumedUnits, message.GraceUnits)
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted && Logger.IsError)
+                    {
+                        Logger.Error("There was an error within NDM subprotocol.", t.Exception);
+                    }
+                });
         }
 
         private void Handle(DataAssetDataMessage message)
@@ -663,8 +680,15 @@ namespace Nethermind.DataMarketplace.Subprotocols
                 return;
             }
 
-            DepositApprovalsRequests?.CompleteAdding();
-            DepositApprovalsRequests?.Dispose();
+            try
+            {
+                DepositApprovalsRequests?.CompleteAdding();
+                DepositApprovalsRequests?.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+     
             ConsumerService.FinishSessionsAsync(this).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)

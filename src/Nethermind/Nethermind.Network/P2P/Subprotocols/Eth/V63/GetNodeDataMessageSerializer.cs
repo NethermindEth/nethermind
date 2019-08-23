@@ -30,8 +30,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public GetNodeDataMessage Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
-            var keys = decoderContext.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            RlpStream rlpStream = bytes.AsRlpStream();
+            var keys = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return new GetNodeDataMessage(keys);
         }
     }

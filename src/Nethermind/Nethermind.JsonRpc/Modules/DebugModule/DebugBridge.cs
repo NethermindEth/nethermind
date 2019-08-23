@@ -109,13 +109,13 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public byte[] GetBlockRlp(long number)
         {
-            BlockHeader header = _blockTree.FindHeader(number);
-            if (header == null)
+            Keccak hash = _blockTree.FindHash(number);
+            if (hash == null)
             {
                 return null;
             }
 
-            return _dbMappings[DbNames.Blocks].Get(header.Hash);
+            return _dbMappings[DbNames.Blocks].Get(hash);
         }
 
         public string GetConfigValue(string category, string name)

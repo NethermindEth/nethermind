@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -24,9 +25,9 @@ namespace Nethermind.Evm.Precompiles
     {
         Address Address { get; }
 
-        long BaseGasCost();
+        long BaseGasCost(IReleaseSpec releaseSpec);
 
-        long DataGasCost(byte[] inputData);
+        long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec);
 
         (byte[], bool) Run(byte[] inputData);
     }

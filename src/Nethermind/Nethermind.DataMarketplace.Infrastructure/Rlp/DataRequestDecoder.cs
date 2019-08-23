@@ -40,23 +40,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataRequest)] = new DataRequestDecoder();
         }
 
-        public DataRequest Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataRequest Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var assetId = context.DecodeKeccak();
-            var units = context.DecodeUInt();
-            var value = context.DecodeUInt256();
-            var expiryTime = context.DecodeUInt();
-            var salt = context.DecodeByteArray();
-            var provider = context.DecodeAddress();
-            var consumer = context.DecodeAddress();
-            var signature = SignatureDecoder.DecodeSignature(context);
+            var assetId = rlpStream.DecodeKeccak();
+            var units = rlpStream.DecodeUInt();
+            var value = rlpStream.DecodeUInt256();
+            var expiryTime = rlpStream.DecodeUInt();
+            var salt = rlpStream.DecodeByteArray();
+            var provider = rlpStream.DecodeAddress();
+            var consumer = rlpStream.DecodeAddress();
+            var signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataRequest(assetId, units, value, expiryTime, salt, provider, consumer, signature);
         }

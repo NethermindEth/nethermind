@@ -43,15 +43,16 @@ namespace Nethermind.Evm
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
 
-        private readonly BigInteger P255Int = BigInteger.Pow(2, 255);
-        private readonly BigInteger P256Int = BigInteger.Pow(2, 256);
+        private bool _simdOperationsEnabled = Vector<byte>.Count == 32;
+        private BigInteger P255Int = BigInteger.Pow(2, 255);
+        private BigInteger P256Int = BigInteger.Pow(2, 256);
         private BigInteger P255 => P255Int;
-        private readonly BigInteger BigInt256 = 256;
-        public readonly BigInteger BigInt32 = 32;
+        private BigInteger BigInt256 = 256;
+        public BigInteger BigInt32 = 32;
 
-        internal readonly byte[] BytesZero = {0};
+        internal byte[] BytesZero = {0};
 
-        internal readonly byte[] BytesZero32 =
+        internal byte[] BytesZero32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -59,7 +60,7 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 0
         };
         
-        internal readonly byte[] BytesMax32 =
+        internal byte[] BytesMax32 =
         {
             255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255,
@@ -378,6 +379,11 @@ namespace Nethermind.Evm
             return cachedCodeInfo;
         }
 
+        public void DisableSimdInstructions()
+        {
+            _simdOperationsEnabled = false;
+        }
+
         private void InitializePrecompiledContracts()
         {
             _precompiles = new Dictionary<Address, IPrecompiledContract>
@@ -417,8 +423,8 @@ namespace Nethermind.Evm
             long gasAvailable = state.GasAvailable;
 
             IPrecompiledContract precompile = _precompiles[state.Env.CodeInfo.PrecompileAddress];
-            long baseGasCost = precompile.BaseGasCost();
-            long dataGasCost = precompile.DataGasCost(callData);
+            long baseGasCost = precompile.BaseGasCost(spec);
+            long dataGasCost = precompile.DataGasCost(callData, spec);
 
             bool wasCreated = false;
             if (!_state.AccountExists(state.Env.ExecutingAccount))
@@ -1270,10 +1276,20 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
         
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> bVec = new Vector<byte>(b);
-                        
-                        Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
+                        if (_simdOperationsEnabled)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> bVec = new Vector<byte>(b);
+
+                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            for (int i = 0; i < 32; i++)
+                            {
+                                wordBuffer[i] = (byte)(a[i] & b[i]);
+                            }
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1289,10 +1305,20 @@ namespace Nethermind.Evm
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
         
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> bVec = new Vector<byte>(b);
-                        
-                        Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
+                        if (_simdOperationsEnabled)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> bVec = new Vector<byte>(b);
+
+                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            for (int i = 0; i < 32; i++)
+                            {
+                                wordBuffer[i] = (byte)(a[i] | b[i]);
+                            }
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1307,11 +1333,21 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
                         Span<byte> b = PopBytes(bytesOnStack);
-        
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> bVec = new Vector<byte>(b);
-                        
-                        Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
+
+                        if (_simdOperationsEnabled)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> bVec = new Vector<byte>(b);
+
+                            Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            for (int i = 0; i < 32; i++)
+                            {
+                                wordBuffer[i] = (byte)(a[i] ^ b[i]);
+                            }
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1326,10 +1362,20 @@ namespace Nethermind.Evm
 
                         Span<byte> a = PopBytes(bytesOnStack);
 
-                        Vector<byte> aVec = new Vector<byte>(a);
-                        Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
+                        if (_simdOperationsEnabled)
+                        {
+                            Vector<byte> aVec = new Vector<byte>(a);
+                            Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
-                        negVec.CopyTo(wordBufferArray);
+                            negVec.CopyTo(wordBufferArray);
+                        }
+                        else
+                        {
+                            for (int i = 0; i < 32; ++i)
+                            {
+                                wordBufferArray[i] = (byte)~a[i];
+                            }
+                        }
 
                         PushBytes(wordBufferArray, bytesOnStack);
                         break;
@@ -1783,9 +1829,18 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
+                        bool useNetMetering = spec.IsEip1283Enabled | spec.IsEip2200Enabled;
                         // fail fast before the first storage read if gas is not enough even for reset
-                        if (!spec.IsEip1283Enabled && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                        if (!useNetMetering && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
                         {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
+                        }
+                        
+                        // fail fast before the first storage read if gas is not enough even for reset
+                        if (!spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
+                        {
+                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
@@ -1800,7 +1855,7 @@ namespace Nethermind.Evm
                         
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
 
-                        if (!spec.IsEip1283Enabled) // note that for this case we already deducted 5000
+                        if (!useNetMetering) // note that for this case we already deducted 5000
                         {
                             if (newIsZero)
                             {
@@ -1822,7 +1877,7 @@ namespace Nethermind.Evm
                         {
                             if (newSameAsCurrent)
                             {
-                                if(!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
+                                if(!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
                                 {
                                     EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;
@@ -1860,7 +1915,7 @@ namespace Nethermind.Evm
                                 }
                                 else // eip1283enabled, N != C != O
                                 {
-                                    if (!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
+                                    if (!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
                                     {
                                         EndInstructionTraceError(OutOfGasErrorText);
                                         return CallResult.OutOfGasException;

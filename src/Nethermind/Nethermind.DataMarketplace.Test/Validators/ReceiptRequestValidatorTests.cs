@@ -20,8 +20,9 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Receipts;
+using Nethermind.DataMarketplace.Consumers.Receipts.Services;
 using Nethermind.Logging;
-using Nethermind.DataMarketplace.Consumers.Services;
 using Nethermind.DataMarketplace.Core.Domain;
 using NUnit.Framework;
 

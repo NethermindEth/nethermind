@@ -20,8 +20,8 @@ using System.Threading.Tasks;
 using MongoDB.Driver;
 using MongoDB.Driver.Linq;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Consumers.Queries;
-using Nethermind.DataMarketplace.Consumers.Repositories;
+using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
+using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
 

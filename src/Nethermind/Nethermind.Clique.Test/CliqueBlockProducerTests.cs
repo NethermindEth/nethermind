@@ -88,8 +88,18 @@ namespace Nethermind.Clique.Test
                 MemDb blocksDb = new MemDb();
                 MemDb headersDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
+                
+                ISnapshotableDb stateDb = new StateDb();
+                ISnapshotableDb codeDb = new StateDb();
+                IDb traceDb = new MemDb();
+                
+                ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), _logManager);
+                StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
+                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
+                stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
+
+                TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
 
                 BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, nodeLogManager);
@@ -103,15 +113,7 @@ namespace Nethermind.Clique.Test
                 _snapshotManager[privateKey] = snapshotManager;
                 CliqueSealer cliqueSealer = new CliqueSealer(wallet, _cliqueConfig, snapshotManager, privateKey.Address, nodeLogManager);
 
-                ISnapshotableDb stateDb = new StateDb();
-                ISnapshotableDb codeDb = new StateDb();
-                IDb traceDb = new MemDb();
-                
-                ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
-                StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);
-                stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether());
-                stateProvider.Commit(GoerliSpecProvider.Instance.GenesisSpec);
 
                 _genesis.StateRoot = _genesis3Validators.StateRoot = stateProvider.StateRoot;
                 _genesis.Hash = BlockHeader.CalculateHash(_genesis.Header);
@@ -290,7 +292,7 @@ namespace Nethermind.Clique.Test
             public On AssertHeadBlockTimestamp(PrivateKey nodeKey)
             {
                 if (_logger.IsInfo) _logger.Info($"ASSERTING HEAD BLOCK TIMESTAMP ON {nodeKey.Address}");
-                Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
+                Assert.LessOrEqual(_blockTrees[nodeKey].FindBlock(_blockTrees[nodeKey].Head.Number - 1, BlockTreeLookupOptions.None).Timestamp + _cliqueConfig.BlockPeriod, _blockTrees[nodeKey].Head.Timestamp + 1);
                 return this;
             }
 
@@ -298,8 +300,8 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {vote} VOTE ON {address} AT BLOCK {number}");
-                Assert.AreEqual(vote ? Clique.NonceAuthVote : Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number).Header.Nonce, nodeKey + " vote nonce");
-                Assert.AreEqual(address, _blockTrees[nodeKey].FindBlock(number).Beneficiary, nodeKey.Address + " vote nonce");
+                Assert.AreEqual(vote ? Clique.NonceAuthVote : Clique.NonceDropVote, _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header.Nonce, nodeKey + " vote nonce");
+                Assert.AreEqual(address, _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Beneficiary, nodeKey.Address + " vote nonce");
                 return this;
             }
 
@@ -307,7 +309,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING {count} SIGNERS AT BLOCK {number}");
-                var header = _blockTrees[nodeKey].FindBlock(number).Header;
+                var header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
                 Assert.AreEqual(count, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Signers.Count, nodeKey + " signers count");
                 return this;
             }
@@ -317,7 +319,7 @@ namespace Nethermind.Clique.Test
             {
                 WaitForNumber(nodeKey, number);
                 if (_logger.IsInfo) _logger.Info($"ASSERTING EMPTY TALLY FOR {privateKeyB.Address} EMPTY AT {number}");
-                var header = _blockTrees[nodeKey].FindBlock(number).Header;
+                var header = _blockTrees[nodeKey].FindBlock(number, BlockTreeLookupOptions.None).Header;
                 Assert.AreEqual(false, _snapshotManager[nodeKey].GetOrCreateSnapshot(header.Number, header.Hash).Tally.ContainsKey(privateKeyB.Address), nodeKey + " tally empty");
                 return this;
             }
@@ -356,7 +358,7 @@ namespace Nethermind.Clique.Test
 
             public Block GetBlock(PrivateKey privateKey, long number)
             {
-                Block block = _blockTrees[privateKey].FindBlock(number);
+                Block block = _blockTrees[privateKey].FindBlock(number, BlockTreeLookupOptions.None);
                 if (block == null)
                 {
                     throw new InvalidOperationException($"Cannot find block {number}");

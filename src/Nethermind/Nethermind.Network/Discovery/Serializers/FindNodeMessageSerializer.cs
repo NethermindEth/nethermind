@@ -32,25 +32,24 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public byte[] Serialize(FindNodeMessage message)
         {
-            byte[] typeBytes = { (byte)message.MessageType };
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.SearchedNodeId),
                 //verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
-            byte[] serializedMsg = Serialize(typeBytes, data);
+            byte[] serializedMsg = Serialize((byte) message.MessageType, data);
             return serializedMsg;
         }
 
         public FindNodeMessage Deserialize(byte[] msg)
         {
             var results = PrepareForDeserialization<FindNodeMessage>(msg);
-            Rlp.DecoderContext context = results.Data.AsRlpContext();
+            RlpStream rlpStream = results.Data.AsRlpStream();
 
-            context.ReadSequenceLength();
-            var searchedNodeId = context.DecodeByteArray();
-            var expirationTime = context.DecodeLong();
+            rlpStream.ReadSequenceLength();
+            var searchedNodeId = rlpStream.DecodeByteArray();
+            var expirationTime = rlpStream.DecodeLong();
 
             var message = results.Message;
             message.SearchedNodeId = searchedNodeId;

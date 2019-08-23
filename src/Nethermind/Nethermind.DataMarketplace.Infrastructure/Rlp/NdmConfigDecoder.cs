@@ -33,37 +33,37 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             Nethermind.Core.Encoding.Rlp.Decoders[typeof(NdmConfig)] = new NdmConfigDecoder();
         }
 
-        public NdmConfig Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public NdmConfig Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var enabled = context.DecodeBool();
-            var id = context.DecodeString();
-            var initializerName = context.DecodeString();
-            var storeConfigInDatabase = context.DecodeBool();
-            var verifyP2PSignature = context.DecodeBool();
-            var persistence = context.DecodeString();
-            var faucetEnabled = context.DecodeBool();
-            var faucetAddress = context.DecodeString();
-            var faucetHost = context.DecodeString();
-            var faucetWeiRequestMaxValue = context.DecodeUInt256();
-            var faucetEthDailyRequestsTotalValue = context.DecodeUInt256();
-            var consumerAddress = context.DecodeString();
-            var contractAddress = context.DecodeString();
-            var providerName = context.DecodeString();
-            var providerAddress = context.DecodeString();
-            var providerColdWalletAddress = context.DecodeString();
-            var receiptRequestThreshold = context.DecodeUInt256();
-            var receiptsMergeThreshold = context.DecodeUInt256();
-            var paymentClaimThreshold = context.DecodeUInt256();
-            var blockConfirmations = context.DecodeUInt();
-            var filesPath = context.DecodeString();
-            var fileMaxSize = context.DecodeUlong();
-            var pluginsPath = context.DecodeString();
+            var enabled = rlpStream.DecodeBool();
+            var id = rlpStream.DecodeString();
+            var initializerName = rlpStream.DecodeString();
+            var storeConfigInDatabase = rlpStream.DecodeBool();
+            var verifyP2PSignature = rlpStream.DecodeBool();
+            var persistence = rlpStream.DecodeString();
+            var faucetEnabled = rlpStream.DecodeBool();
+            var faucetAddress = rlpStream.DecodeString();
+            var faucetHost = rlpStream.DecodeString();
+            var faucetWeiRequestMaxValue = rlpStream.DecodeUInt256();
+            var faucetEthDailyRequestsTotalValue = rlpStream.DecodeUInt256();
+            var consumerAddress = rlpStream.DecodeString();
+            var contractAddress = rlpStream.DecodeString();
+            var providerName = rlpStream.DecodeString();
+            var providerAddress = rlpStream.DecodeString();
+            var providerColdWalletAddress = rlpStream.DecodeString();
+            var receiptRequestThreshold = rlpStream.DecodeUInt256();
+            var receiptsMergeThreshold = rlpStream.DecodeUInt256();
+            var paymentClaimThreshold = rlpStream.DecodeUInt256();
+            var blockConfirmations = rlpStream.DecodeUInt();
+            var filesPath = rlpStream.DecodeString();
+            var fileMaxSize = rlpStream.DecodeUlong();
+            var pluginsPath = rlpStream.DecodeString();
 
             return new NdmConfig
             {

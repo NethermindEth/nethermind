@@ -40,23 +40,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 new DataDeliveryReceiptDetailsDecoder();
         }
 
-        public DataDeliveryReceiptDetails Decode(Nethermind.Core.Encoding.Rlp.DecoderContext context,
+        public DataDeliveryReceiptDetails Decode(RlpStream rlpStream,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var sequenceLength = context.ReadSequenceLength();
+            var sequenceLength = rlpStream.ReadSequenceLength();
             if (sequenceLength == 0)
             {
                 return null;
             }
 
-            var id = context.DecodeKeccak();
-            var sessionId = context.DecodeKeccak();
-            var dataAssetId = context.DecodeKeccak();
-            var consumerNodeId = new PublicKey(context.DecodeByteArray());
-            var request = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceiptRequest>(context);
-            var receipt = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceipt>(context);
-            var timestamp = context.DecodeUlong();
-            var isClaimed = context.DecodeBool();
+            var id = rlpStream.DecodeKeccak();
+            var sessionId = rlpStream.DecodeKeccak();
+            var dataAssetId = rlpStream.DecodeKeccak();
+            var consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
+            var request = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceiptRequest>(rlpStream);
+            var receipt = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceipt>(rlpStream);
+            var timestamp = rlpStream.DecodeUlong();
+            var isClaimed = rlpStream.DecodeBool();
 
             return new DataDeliveryReceiptDetails(id, sessionId, dataAssetId, consumerNodeId, request, receipt,
                 timestamp, isClaimed);

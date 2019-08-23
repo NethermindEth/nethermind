@@ -87,6 +87,7 @@ using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
@@ -152,6 +153,7 @@ namespace Nethermind.Runner.Runners
         private IBlockProcessor _blockProcessor;
         private IRewardCalculator _rewardCalculator;
         private ISpecProvider _specProvider;
+        private IStateProvider _stateProvider;
         private ISealer _sealer;
         private ISealValidator _sealValidator;
         private IBlockProducer _blockProducer;
@@ -404,13 +406,18 @@ namespace Nethermind.Runner.Runners
                 ? (IDbProvider) new MemDbProvider()
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
 
+            _stateProvider = new StateProvider(
+                _dbProvider.StateDb,
+                _dbProvider.CodeDb,
+                _logManager);
+            
             _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
             _txPool = new TxPool(
                 new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
                 Timestamper.Default,
                 _ethereumEcdsa,
                 _specProvider,
-                _txPoolConfig, _logManager);
+                _txPoolConfig, _stateProvider, _logManager);
             var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
 
@@ -431,12 +438,8 @@ namespace Nethermind.Runner.Runners
 
             _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
             
-            _snapshotManager = null;
-            
-            _stateProvider = new StateProvider(
-                _dbProvider.StateDb,
-                _dbProvider.CodeDb,
-                _logManager);
+            _snapshotManager = null;            
+
             
             _storageProvider = new StorageProvider(
                 _dbProvider.StateDb,
@@ -869,6 +872,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            _messageSerializationService.Register(new ReceiptsMessageSerializer(_specProvider));
 
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
@@ -878,7 +882,7 @@ namespace Nethermind.Runner.Runners
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
 
-            _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
+            _sessionMonitor = new SessionMonitor(networkConfig, _cryptoRandom, _logManager);
             _rlpxPeer = new RlpxPeer(
                 _nodeKey.PublicKey,
                 _initConfig.P2PPort,

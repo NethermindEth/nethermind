@@ -153,7 +153,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
             for (int i = 0; i < length; i++)
             {
-                _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i));
+                _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i, BlockTreeLookupOptions.None));
             }
         }
 
@@ -859,6 +859,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     if (i < 10 && j == 0 && _maliciousByInvalidReceipts.Contains(syncPeer))
                     {
                         receiptSyncBatch.Response[i][j] = new TxReceipt();
+                        receiptSyncBatch.Response[i][j].Logs = new LogEntry[0];
                         receiptSyncBatch.Response[i][j].StatusCode = (byte) (1 - receiptSyncBatch.Response[i][j].StatusCode);
                         receiptSyncBatch.Response[i][j].PostTransactionState = Keccak.Compute(receiptSyncBatch.Response[i][j].PostTransactionState?.Bytes ?? new byte[] {1});
                     }
@@ -931,7 +932,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     TestContext.WriteLine($"{_time,6} | SYNC PEER {syncPeer.Node:s} WILL SEND SHIFTED MESSAGES ({startNumber} INSTEAD OF {headersSyncBatch.StartNumber})");
                 }
 
-                Keccak hash = tree.FindHeader(startNumber)?.Hash;
+                Keccak hash = tree.FindHash(startNumber);
 
                 if (hash == null)
                 {

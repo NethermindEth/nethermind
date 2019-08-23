@@ -54,6 +54,11 @@ namespace Nethermind.Core.Specs
         public bool IsEip1283Enabled { get; set; }
         public bool IsEip1234Enabled { get; set; }
         public bool IsEip1344Enabled { get; set; }
-        public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;
+        public bool IsEip2028Enabled { get; set; }
+        public bool IsEip152Enabled { get; set; }
+        public bool IsEip1108Enabled { get; set; }
+        public bool IsEip1884Enabled { get; set; }
+        public bool IsEip2200Enabled { get; set; }
+        public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;		
     }
 }

@@ -50,11 +50,11 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public AckEip8Message Deserialize(byte[] bytes)
         {
-            Rlp.DecoderContext context = bytes.AsRlpContext();
+            RlpStream rlpStream = bytes.AsRlpStream();
             AckEip8Message authEip8Message = new AckEip8Message();
-            context.ReadSequenceLength();
-            authEip8Message.EphemeralPublicKey = new PublicKey(context.DecodeByteArray());
-            authEip8Message.Nonce = context.DecodeByteArray();
+            rlpStream.ReadSequenceLength();
+            authEip8Message.EphemeralPublicKey = new PublicKey(rlpStream.DecodeByteArray());
+            authEip8Message.Nonce = rlpStream.DecodeByteArray();
             return authEip8Message;
         }
     }

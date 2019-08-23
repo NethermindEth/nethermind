@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
@@ -33,6 +34,9 @@ namespace Nethermind.Network.Rlpx
         private readonly PublicKey _remoteNodeId;
         private readonly KeccakDigest _egressMac;
         private readonly KeccakDigest _ingressMac;
+        private readonly KeccakDigest _egressMacCopy;
+        private readonly KeccakDigest _ingressMacCopy;
+        private readonly AesEngine _aesEngine;
         private readonly byte[] _macSecret;
 
         // TODO: three arguments in place of secrets
@@ -41,40 +45,59 @@ namespace Nethermind.Network.Rlpx
             _remoteNodeId = remoteNodeId;
             _macSecret = secrets.MacSecret;
             _egressMac = secrets.EgressMac;
+            _egressMacCopy = (KeccakDigest)_egressMac.Copy();
             _ingressMac = secrets.IngressMac;
+            _ingressMacCopy = (KeccakDigest)_ingressMac.Copy();
+            _aesEngine = MakeMacCipher();
+            _checkMacBuffer = new byte[_ingressMac.GetDigestSize()];
+            _addMacBuffer = new byte[_ingressMac.GetDigestSize()];
+            _ingressAesBlockBuffer = new byte[_ingressMac.GetDigestSize()];
+            _egressAesBlockBuffer = new byte[_ingressMac.GetDigestSize()];
+        }
+        
+        private AesEngine MakeMacCipher()
+        {
+            AesEngine aesFastEngine = new AesEngine();
+            aesFastEngine.Init(true, new KeyParameter(_macSecret));
+            return aesFastEngine;
         }
 
         public void AddMac(byte[] input, int offset, int length, bool isHeader)
         {
             if (isHeader)
             {
-                UpdateMac(_egressMac, input, offset, input, offset + length, true); // TODO: confirm header is seed 
+                input.AsSpan().Slice(0, 32).CopyTo(_addMacBuffer);
+                UpdateMac(_egressMac, _egressMacCopy,_addMacBuffer, offset, input, offset + length, true); // TODO: confirm header is seed 
             }
             else
             {
                 _egressMac.BlockUpdate(input, offset, length);
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-                byte[] buffer = new byte[_egressMac.GetDigestSize()];
-                DoFinalNoReset(_egressMac, buffer, 0); // frame MAC seed
-                UpdateMac(_egressMac, buffer, 0, input, offset + length, true);
+                DoFinalNoReset(_egressMac, _egressMacCopy, _addMacBuffer, 0); // frame MAC seed
+                UpdateMac(_egressMac, _egressMacCopy,_addMacBuffer, 0, input, offset + length, true);
             }
         }
 
+        private byte[] _addMacBuffer;
+        private byte[] _checkMacBuffer;
+        private byte[] _ingressAesBlockBuffer;
+        private byte[] _egressAesBlockBuffer;
+        
         public void CheckMac(byte[] input, int offset, int length, bool isHeader)
         {
             if (isHeader)
             {
-                UpdateMac(_ingressMac, input, offset, input, offset + length, false); // TODO: confirm header is seed 
+                input.AsSpan().Slice(0,32).CopyTo(_checkMacBuffer.AsSpan());
+                UpdateMac(_ingressMac, _ingressMacCopy,_checkMacBuffer, offset, input, offset + length, false); 
             }
             else
             {
                 _ingressMac.BlockUpdate(input, offset, length);
 
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
-                byte[] buffer = new byte[_ingressMac.GetDigestSize()];
-                DoFinalNoReset(_ingressMac, buffer, 0); // frame MAC seed
-                UpdateMac(_ingressMac, buffer, 0, input, offset + length, false);
+                DoFinalNoReset(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0); // frame MAC seed
+                UpdateMac(_ingressMac, _ingressMacCopy, _checkMacBuffer, 0, input, offset + length, false);
             }
         }
 
@@ -82,13 +105,12 @@ namespace Nethermind.Network.Rlpx
         /// <summary>
         /// adapted from ethereumJ
         /// </summary>
-        private byte[] UpdateMac(KeccakDigest mac, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
+        private void UpdateMac(KeccakDigest mac, KeccakDigest macCopy, byte[] seed, int offset, byte[] output, int outOffset, bool egress)
         {
-            byte[] aesBlock = new byte[mac.GetDigestSize()];
-            DoFinalNoReset(mac, aesBlock, 0);
-
-            // TODO: check if need to make a new one each time
-            MakeMacCipher().ProcessBlock(aesBlock, 0, aesBlock, 0);
+            byte[] aesBlock = egress ? _egressAesBlockBuffer : _ingressAesBlockBuffer;
+            DoFinalNoReset(mac, macCopy, aesBlock, 0);
+            
+            _aesEngine.ProcessBlock(aesBlock, 0, aesBlock, 0);
 
             // Note that although the mac digest size is 32 bytes, we only use 16 bytes in the computation
             int length = 16;
@@ -98,9 +120,8 @@ namespace Nethermind.Network.Rlpx
             }
 
             mac.BlockUpdate(aesBlock, 0, length);
-
-            byte[] result = new byte[mac.GetDigestSize()];
-            DoFinalNoReset(mac, result, 0);
+            byte[] result = seed;
+            DoFinalNoReset(mac, macCopy, result, 0);
 
             if (egress)
             {
@@ -123,20 +144,13 @@ namespace Nethermind.Network.Rlpx
                    throw new IOException($"MAC mismatch from {_remoteNodeId}");
                 }
             }
-
-            return result;
         }
 
-        private void DoFinalNoReset(KeccakDigest mac, byte[] output, int offset)
+        [Todo(Improve.Performance, "Ideally we would use our own implementation of Keccak here")]
+        private void DoFinalNoReset(KeccakDigest mac, KeccakDigest macCopy, byte[] output, int offset)
         {
-            new KeccakDigest(mac).DoFinal(output, offset);
-        }
-
-        private AesEngine MakeMacCipher()
-        {
-            AesEngine aesFastEngine = new AesEngine();
-            aesFastEngine.Init(true, new KeyParameter(_macSecret));
-            return aesFastEngine;
+            macCopy.Reset(mac);
+            macCopy.DoFinal(output, offset);
         }
     }
 }

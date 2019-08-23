@@ -65,5 +65,9 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         public long? ByzantiumBlockNumber { get; set; }
 
         public long? ConstantinopleBlockNumber { get; set; }
+        
+        public long? ConstantinopleFixBlockNumber { get; set; }
+
+        public long? IstanbulBlockNumber { get; set; }
     }
 }
