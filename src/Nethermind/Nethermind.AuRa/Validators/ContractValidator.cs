@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.AuRa.Contracts;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
@@ -23,7 +25,7 @@ namespace Nethermind.AuRa.Validators
         
         private HashSet<Address> _validators;
         private PendingValidators _pendingValidators;
-        private readonly HashSet<Address> _validatedSinceFinalized = new HashSet<Address>();
+        private readonly ValidationStampCollection _validatedSinceFinalized = new ValidationStampCollection();
 
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
@@ -56,12 +58,34 @@ namespace Nethermind.AuRa.Validators
 
         public virtual void PreProcess(Block block)
         {
-            if (!IsInitialized)
+            var isStartBlock = StartBlockNumber == block.Number;
+            if (isStartBlock || !IsInitialized)
             {
-                Initialize(block);
+                Initialize(block, isStartBlock);
+            }
+            else
+            {
+                ClearPendingValidatorsAfterReorganisation(block);                
             }
 
             FinalizePendingValidatorsIfNeeded(block);
+        }
+
+        private void ClearPendingValidatorsAfterReorganisation(Block block)
+        {
+            bool reorganisationHappened = block.Number <= _validatedSinceFinalized.LastBlockNumber;
+            if (reorganisationHappened)
+            {
+                bool reorganisationBeforeInitChange = block.Number <= _pendingValidators.BlockNumber;
+                if (reorganisationBeforeInitChange)
+                {
+                    ClearPendingValidators();
+                }
+                else
+                {
+                    _validatedSinceFinalized.RemoveFromBlock(block.Number);
+                }
+            }
         }
 
         private void FinalizePendingValidatorsIfNeeded(Block block)
@@ -76,12 +100,11 @@ namespace Nethermind.AuRa.Validators
                     ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
                     
                     _validators = new HashSet<Address>(_pendingValidators.Addresses);
-                    _pendingValidators = null;
-                    _validatedSinceFinalized.Clear();
+                    ClearPendingValidators();
                 }
                 else
                 {
-                    _validatedSinceFinalized.Add(block.Beneficiary);                    
+                    _validatedSinceFinalized.Add(new ValidationStamp(block));                    
                 }
             }
         }
@@ -97,16 +120,12 @@ namespace Nethermind.AuRa.Validators
 
         public virtual AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Contract;
         
-        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress)
-        {
-            return new ValidatorContract(AbiEncoder, contractAddress);
-        }
+        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => 
+            new ValidatorContract(AbiEncoder, contractAddress);
 
-        private void Initialize(Block block)
+        private void Initialize(Block block, bool isStartBlock)
         {
-            var startBlockInitialize = StartBlockNumber == block.Number;
-            
-            if (startBlockInitialize)
+            if (isStartBlock)
             {
                 CreateSystemAccount();
             }
@@ -114,7 +133,7 @@ namespace Nethermind.AuRa.Validators
             // Todo if last InitiateChange is not finalized we need to load potential validators.
             var validators = LoadValidatorsFromContract(block);
             
-            if (startBlockInitialize)
+            if (isStartBlock)
             {
                 InitiateChange(block, validators);
                 if(_logger.IsInfo) _logger.Info($"Signal for switch to contract based validator set at block {block.Number}. Initial contract validators: [{string.Join<Address>(", ", validators)}].");
@@ -127,7 +146,7 @@ namespace Nethermind.AuRa.Validators
             if (_pendingValidators == null && potentialValidators.Length > 0)
             {
                 _pendingValidators = new PendingValidators(block.Number, potentialValidators);
-                _validatedSinceFinalized.Add(block.Beneficiary);
+                _validatedSinceFinalized.Add(new ValidationStamp(block));
             }
         }
 
@@ -148,8 +167,17 @@ namespace Nethermind.AuRa.Validators
 
         private void CreateSystemAccount()
         {
-            _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-            _stateProvider.Commit(Homestead.Instance);
+            if (!_stateProvider.AccountExists(Address.SystemUser))
+            {
+                _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
+                _stateProvider.Commit(Homestead.Instance);
+            }
+        }
+        
+        private void ClearPendingValidators()
+        {
+            _pendingValidators = null;
+            _validatedSinceFinalized.Clear();
         }
 
         private class PendingValidators
@@ -163,6 +191,85 @@ namespace Nethermind.AuRa.Validators
             public Address[] Addresses { get; }
             
             public long BlockNumber { get; }
+        }
+        
+        private class ValidationStamp : IEquatable<ValidationStamp>
+        {
+
+            public ValidationStamp(long blockNumber, Address address)
+            {
+                BlockNumber = blockNumber;
+                Address = address;
+            }
+
+            public long BlockNumber { get; }
+            
+            public Address Address { get; }
+
+            public ValidationStamp(Block block) : this(block.Number, block.Beneficiary) { }
+
+            public bool Equals(ValidationStamp other)
+            {
+                if (ReferenceEquals(null, other)) return false;
+                if (ReferenceEquals(this, other)) return true;
+                return Equals(Address, other.Address);
+            }
+            
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                if (ReferenceEquals(this, obj)) return true;
+                if (obj.GetType() != GetType()) return false;
+                return Equals((ValidationStamp) obj);
+            }
+
+            public override int GetHashCode()
+            {
+                return Address?.GetHashCode() ?? 0;
+            }
+        }
+        
+        private class ValidationStampCollection
+        {
+            private readonly ISet<ValidationStamp> _set;
+            private readonly List<ValidationStamp> _list;
+
+            public ValidationStampCollection() : this(new HashSet<ValidationStamp>()) { }
+
+            public ValidationStampCollection(ISet<ValidationStamp> set)
+            {
+                _set = set;
+                _list = new List<ValidationStamp>(set);
+            }
+
+            public int Count => _set.Count;
+
+            public long? LastBlockNumber => _list.LastOrDefault()?.BlockNumber;
+
+            public void Add(ValidationStamp item)
+            {
+                if (_set.Add(item))
+                {
+                    _list.Add(item);                    
+                }
+            }
+
+            public void Clear()
+            {
+                _list.Clear();
+                _set.Clear();
+            }
+
+            public void RemoveFromBlock(long blockNumber)
+            {
+                var removeFromIndex = _list.FindLastIndex(i => i.BlockNumber < blockNumber) + 1;
+                for (int i = removeFromIndex; i < _list.Count; i++)
+                {
+                    _set.Remove(_list[i]);
+                }
+                
+                _list.RemoveRange(removeFromIndex, _list.Count - removeFromIndex);
+            }
         }
     }
 }

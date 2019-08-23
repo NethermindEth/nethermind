@@ -20,7 +20,7 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(Include2, ExpectedResult = true)]
         [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", ExpectedResult = false)]
         [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", ExpectedResult = false)]
-        public bool Should_validate_correctly(string address)
+        public bool should_validate_correctly(string address)
         {
             var validator = new ListValidator(
                 new AuRaParameters.Validator()
@@ -32,14 +32,14 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void Throws_ArgumentNullException_on_empty_validator()
+        public void throws_ArgumentNullException_on_empty_validator()
         {
             Action act = () => new ListValidator(null);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
-        public void Throws_ArgumentException_on_wrong_validator_type()
+        public void throws_ArgumentException_on_wrong_validator_type()
         {
             Action act = () => new ListValidator(
                 new AuRaParameters.Validator()
@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
         
         [Test]
-        public void Throws_ArgumentException_on_empty_addresses()
+        public void throws_ArgumentException_on_empty_addresses()
         {
             Action act = () => new ListValidator(
                 new AuRaParameters.Validator()

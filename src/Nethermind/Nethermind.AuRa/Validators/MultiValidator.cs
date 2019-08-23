@@ -25,7 +25,7 @@ namespace Nethermind.AuRa.Validators
             _validators = validator.Validators?.Count > 0
                 ? validator.Validators
                     .Select(kvp => new KeyValuePair<long, IAuRaValidatorProcessor>(kvp.Key,
-                        validatorFactory.CreateValidatorProcessor(kvp.Value, Math.Max(1, kvp.Key)))) // we need to make init block at least 1.
+                        validatorFactory.CreateValidatorProcessor(kvp.Value, Math.Max(1, kvp.Key)))) // we need to make init block at least 1 as 0 is genesis.
                     .ToArray()
                 : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
 
@@ -50,16 +50,27 @@ namespace Nethermind.AuRa.Validators
         
         private bool TryUpdateValidator(Block block)
         {
-            var result = false;
+            var validatorUpdated = false;
             
+            // Check next validators as blocks are proceeding
             while (_validators.Length > _nextValidator && block.Number >= _validators[_nextValidator].Key)
             {
                 _currentValidator = _validators[_nextValidator].Value;
                 _nextValidator++;
-                result = true;
+                validatorUpdated = true;
             }
 
-            return result;
+            // Check previous validators if reorganisation happened
+            var currentValidator = _nextValidator - 1;
+            while (currentValidator >= 0 && block.Number < _validators[currentValidator].Key)
+            {
+                _nextValidator = currentValidator;
+                currentValidator--;
+                _currentValidator = _validators[currentValidator].Value;
+                validatorUpdated = true;
+            }
+
+            return validatorUpdated;
         }
 
         public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Multi;

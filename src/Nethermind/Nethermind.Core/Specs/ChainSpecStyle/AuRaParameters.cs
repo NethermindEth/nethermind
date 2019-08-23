@@ -55,8 +55,23 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         {
             public ValidatorType ValidatorType { get; set; }
         
+            /// <summary>
+            /// Dictionary of Validators per their starting block.
+            /// </summary>
+            /// <remarks>
+            /// Only Valid for <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/>.
+            /// 
+            /// This has to sorted in order of starting blocks.
+            /// </remarks>
             public IDictionary<long, Validator> Validators { get; set; }
 
+            /// <summary>
+            /// Addresses for validator.
+            /// </summary>
+            /// <remarks>
+            /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Contract"/> and <see cref="AuRaParameters.ValidatorType.ReportingContract"/> we expect only one address.
+            /// For <seealso cref="ValidatorType"/> of type <see cref="AuRaParameters.ValidatorType.Multi"/> will be empty.
+            /// </remarks>
             public Address[] Addresses { get; set; }
         }
     }

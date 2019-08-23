@@ -19,7 +19,7 @@ namespace Nethermind.AuRa.Test
         [TestCase(AuRaParameters.ValidatorType.Contract, typeof(ContractValidator))]
         [TestCase(AuRaParameters.ValidatorType.ReportingContract, typeof(ReportingContractValidator))]
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
-        public void Returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
+        public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
             var factory = new AuRaAdditionalBlockProcessorFactory(
                 Substitute.For<IStateProvider>(),

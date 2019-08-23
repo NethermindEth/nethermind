@@ -7,6 +7,7 @@ using Nethermind.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Test;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NSubstitute;
@@ -24,17 +25,7 @@ namespace Nethermind.AuRa.Test.Contract
         [SetUp]
         public void SetUp()
         {
-            _block = new Block(
-                new BlockHeader(
-                    Keccak.Zero,
-                    Keccak.Zero,
-                    Address.Zero,
-                    UInt256.One,
-                    1,
-                    1,
-                    UInt256.One
-                    , new byte[0]),
-                new BlockBody());
+            _block = new Block(Prepare.A.BlockHeader().TestObject, new BlockBody());
         }
 
         [Test]

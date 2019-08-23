@@ -6,6 +6,7 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Test;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -41,42 +42,32 @@ namespace Nethermind.AuRa.Test.Validators
                     return innerValidator;
                 });
 
-            _block = new Block(
-                new BlockHeader(
-                    Keccak.Zero,
-                    Keccak.Zero,
-                    Address.Zero,
-                    UInt256.One,
-                    1,
-                    0,
-                    UInt256.One,
-                    Array.Empty<byte>()
-                    ), new BlockBody());
+            _block = new Block(Prepare.A.BlockHeader().WithNumber(1).TestObject, new BlockBody());
         }
         
         [Test]
-        public void Throws_ArgumentNullException_on_empty_validator()
+        public void throws_ArgumentNullException_on_empty_validator()
         {
             Action act = () => new MultiValidator(null, _factory, _logManager);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
-        public void Throws_ArgumentNullException_on_empty_validatorFactory()
+        public void throws_ArgumentNullException_on_empty_validatorFactory()
         {
             Action act = () => new MultiValidator(_validator, null, _logManager);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
-        public void Throws_ArgumentNullException_on_empty_logManager()
+        public void throws_ArgumentNullException_on_empty_logManager()
         {
             Action act = () => new MultiValidator(_validator,_factory,null);
             act.Should().Throw<ArgumentNullException>();
         }
 
         [Test]
-        public void Throws_ArgumentException_on_wrong_validator_type()
+        public void throws_ArgumentException_on_wrong_validator_type()
         {
             _validator.ValidatorType = AuRaParameters.ValidatorType.Contract;
             Action act = () => new MultiValidator(_validator, _factory, _logManager);
@@ -84,7 +75,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
         
         [Test]
-        public void Throws_ArgumentException_on_empty_inner_validators()
+        public void throws_ArgumentException_on_empty_inner_validators()
         {
             _validator.Validators.Clear();
             Action act = () => new MultiValidator(_validator, _factory, _logManager);            
@@ -92,14 +83,14 @@ namespace Nethermind.AuRa.Test.Validators
         }
         
         [Test]
-        public void Creates_inner_validators()
+        public void creates_inner_validators()
         {
             new MultiValidator(_validator, _factory, _logManager);
             _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(x => Math.Max(x, 1)));
         }
         
         [Test]
-        public void Correctly_consecutively_calls_inner_validators()
+        public void correctly_consecutively_calls_inner_validators()
         {
             // Arrange
             var validator = new MultiValidator(_validator, _factory, _logManager);
@@ -118,7 +109,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void Doesnt_call_inner_validators_before_start_block()
+        public void doesnt_call_inner_validators_before_start_block()
         {
             // Arrange
             _validator.Validators.Remove(0);
@@ -132,7 +123,7 @@ namespace Nethermind.AuRa.Test.Validators
         }
 
         [Test]
-        public void First_call_jumps_to_right_validator()
+        public void first_call_jumps_to_right_validator()
         {
             _validator.Validators.Remove(0);
             var validator = new MultiValidator(_validator, _factory, _logManager);
@@ -143,6 +134,43 @@ namespace Nethermind.AuRa.Test.Validators
             
             _innerValidators.First().Value.Received(1).PreProcess(Arg.Any<Block>());
         }
+        
+        [Test]
+        public void reorganisation_call_jumps_to_right_validator_if_needed()
+        {
+            var validator = new MultiValidator(_validator, _factory, _logManager);
+            var validatorsKeys = _validator.Validators.Keys;
+            
+            // block after 2nd validator 
+            _block.Number = (validatorsKeys.Skip(1).First() + validatorsKeys.Skip(2).First()) / 2;
+            validator.PreProcess(_block);
+            
+            // block before 2nd validator
+            _block.Number = (validatorsKeys.First() + validatorsKeys.Skip(1).First()) / 2;
+            validator.PreProcess(_block);
+            
+            // reorganisation should call first validator
+            _innerValidators.First().Value.Received(1).PreProcess(Arg.Any<Block>());
+        }
+        
+        [Test]
+        public void reorganisation_call_doesnt_jump_to_previous_validator_if_not_needed()
+        {
+            var validator = new MultiValidator(_validator, _factory, _logManager);
+            var validatorsKeys = _validator.Validators.Keys;
+            
+            // block after 2nd validator 
+            _block.Number = (validatorsKeys.Skip(1).First() + validatorsKeys.Skip(2).First()) / 2;
+            validator.PreProcess(_block);
+            
+            // still block for 2nd validator but earlier
+            _block.Number = validatorsKeys.Skip(1).First();
+            validator.PreProcess(_block);
+            
+            // reorganisation shouldn't call first validator
+            _innerValidators.First().Value.Received(0).PreProcess(Arg.Any<Block>());
+        }
+
         
         private void ProcessBlocks(long count, MultiValidator validator)
         {
