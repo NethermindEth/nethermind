@@ -1867,8 +1867,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
                         
-                        // fail fast before the first storage read if gas is not enough even for reset
-                        if (!spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
+                        if (spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
                         {
                             Metrics.EvmExceptions++;
                             EndInstructionTraceError(OutOfGasErrorText);
