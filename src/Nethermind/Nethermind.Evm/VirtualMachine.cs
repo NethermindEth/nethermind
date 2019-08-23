@@ -1843,12 +1843,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-
-                        if (spec.IsEip1884Enabled)
-                        {
-
-                        }
-
+                        
                         PopUInt256(out UInt256 storageIndex, bytesOnStack);
                         byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
                         PushBytes(value, bytesOnStack);
