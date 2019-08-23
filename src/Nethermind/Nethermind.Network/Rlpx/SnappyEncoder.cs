@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -28,9 +29,9 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly ILogger _logger;
 
-        public SnappyEncoder(ILogger logger)
+        public SnappyEncoder(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
         protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)

@@ -185,7 +185,7 @@ namespace Nethermind.Network.Benchmarks
         public class TestSnappy : SnappyEncoder
         {
             public TestSnappy()
-                : base(NullLogger.Instance)
+                : base(LimboLogs.Instance)
             {
             }
 

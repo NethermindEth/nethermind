@@ -50,7 +50,7 @@ namespace Nethermind.Network.Test.Rlpx
         public class SnappyEncoderForTest : SnappyEncoder
         {
             public SnappyEncoderForTest()
-                : base(NullLogger.Instance)
+                : base(LimboLogs.Instance)
             {
                 
             }

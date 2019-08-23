@@ -135,7 +135,7 @@ namespace Nethermind.Network.Test.Rlpx
             
             Packet packet = new Packet("eth", 5, data);
 
-            Packet decoded = RunHobbitTest(packet);
+            Packet decoded = RunAll(packet);
         }
         
         [Test]
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new Packet("eth", 7, data);
 
-            Packet decoded = RunHobbitTest(packet);
+            Packet decoded = RunAll(packet);
         }
 
         [Test]
@@ -166,23 +166,27 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new Packet("eth", 7, data);
 
-            Packet decoded = RunHobbitTest(packet);
+            Packet decoded = RunAll(packet);
             
             NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
         }
 
-        private Packet RunHobbitTest(Packet packet)
+        private Packet RunAll(Packet packet)
         {
             Packet zeroDecoded = RunZeroHobbitTest(packet);
             Packet decoded = RunOldHobbitTest(packet);
             Packet mixedDecoded = RunMixedHobbitTest(packet);
+            Packet noFramingDecoded = RunZeroHobbitNoFramingTest(packet);
 
             Assert.AreEqual(decoded.Data.ToHexString(), zeroDecoded.Data.ToHexString(), "data");
             Assert.AreEqual(zeroDecoded.PacketType, zeroDecoded.PacketType, "packet type");
             
             Assert.AreEqual(decoded.PacketType, mixedDecoded.PacketType, "packet type mixed");
             Assert.AreEqual(decoded.Data.ToHexString(), mixedDecoded.Data.ToHexString(), "data mixed");
+            
+            Assert.AreEqual(decoded.PacketType, noFramingDecoded.PacketType, "packet type mixed");
+            Assert.AreEqual(decoded.Data.ToHexString(), noFramingDecoded.Data.ToHexString(), "data mixed");
 
             return packet;
         }
@@ -305,6 +309,41 @@ namespace Nethermind.Network.Test.Rlpx
             ZeroPacketSplitterTest packetSplitter = new ZeroPacketSplitterTest();
             _splitterBuffer.WriteByte(packet.PacketType);
             _splitterBuffer.WriteBytes(packet.Data);
+            packetSplitter.Encode(_splitterBuffer, _encoderBuffer);
+
+            ZeroFrameEncoderTest frameEncoder = new ZeroFrameEncoderTest(_frameCipherA, _macProcessorA);
+            frameEncoder.Encode(_encoderBuffer, hobbitBuffer);
+//                TestContext.Out.WriteLine("encoded frame: " + frame.ToHexString());
+
+            TestContext.Out.WriteLine(hobbitBuffer.Array.Slice(hobbitBuffer.ArrayOffset + hobbitBuffer.ReaderIndex, hobbitBuffer.ReadableBytes).ToHexString());
+
+            /***** AND BACK AGAIN *****/
+
+            ZeroFrameDecoderTest frameDecoder = new ZeroFrameDecoderTest(_frameCipherB, _macProcessorB);
+            var decoderBuffer = frameDecoder.Decode(hobbitBuffer);
+
+            ZeroFrameMergerTest frameMergerTest = new ZeroFrameMergerTest();
+//                TestContext.Out.WriteLine("decoded frame: " + frame.ToHexString());
+            var mergerBuffer = frameMergerTest.Decode(decoderBuffer);
+
+            Packet decodedPacket = new Packet("???", mergerBuffer.ReadByte(), mergerBuffer.ReadAllBytes());
+
+            Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
+            Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
+
+            return packet;
+        }
+        
+        private Packet RunZeroHobbitNoFramingTest(Packet packet)
+        {
+            IByteBuffer hobbitBuffer = PooledByteBufferAllocator.Default.Buffer();
+
+            /***** THERE *****/
+
+            ZeroPacketSplitterTest packetSplitter = new ZeroPacketSplitterTest();
+            _splitterBuffer.WriteByte(packet.PacketType);
+            _splitterBuffer.WriteBytes(packet.Data);
+            packetSplitter.DisableFraming();
             packetSplitter.Encode(_splitterBuffer, _encoderBuffer);
 
             ZeroFrameEncoderTest frameEncoder = new ZeroFrameEncoderTest(_frameCipherA, _macProcessorA);
