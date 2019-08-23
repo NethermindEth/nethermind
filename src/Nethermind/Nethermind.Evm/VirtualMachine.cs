@@ -1439,7 +1439,13 @@ namespace Nethermind.Evm
                     }
                     case Instruction.BALANCE:
                     {
-                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable))
+                        var gasCost = spec.IsEip1884Enabled
+                            ? GasCostOf.BalanceEip1884
+                            : spec.IsEip150Enabled
+                                ? GasCostOf.BalanceEip150
+                                : GasCostOf.Balance;
+                        
+                        if (!UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
@@ -1745,6 +1751,25 @@ namespace Nethermind.Evm
                         PushBytes(_chainId, bytesOnStack);
                         break;
                     }
+                    case Instruction.SELFBALANCE:
+                    {
+                        if (!spec.IsEip1884Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
+                        if (!UpdateGas(GasCostOf.SelfBalance, ref gasAvailable))
+                        {
+                            EndInstructionTraceError(OutOfGasErrorText);
+                            return CallResult.OutOfGasException;
+                        }
+                        
+                        UInt256 balance = _state.GetBalance(env.ExecutingAccount);
+                        PushUInt256(ref balance, bytesOnStack);
+                        break;
+                    }
                     case Instruction.POP:
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
@@ -1807,11 +1832,21 @@ namespace Nethermind.Evm
                     case Instruction.SLOAD:
                     {
                         Metrics.SloadOpcode++;
+                        var gasCost = spec.IsEip1884Enabled
+                            ? GasCostOf.SLoadEip1884
+                            : spec.IsEip150Enabled
+                                ? GasCostOf.SLoadEip150
+                                : GasCostOf.SLoad;
                         
-                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable))
+                        if (!UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
+                        }
+
+                        if (spec.IsEip1884Enabled)
+                        {
+
                         }
 
                         PopUInt256(out UInt256 storageIndex, bytesOnStack);
@@ -2750,8 +2785,9 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
-                        
-                        if (!UpdateGas(GasCostOf.ExtCodeHash, ref gasAvailable))
+
+                        var gasCost = spec.IsEip1884Enabled ? GasCostOf.ExtCodeHashEip1884 : GasCostOf.ExtCodeHash;
+                        if (!UpdateGas(gasCost, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
