@@ -91,7 +91,7 @@ namespace Nethermind.Network.Benchmarks
             _secrets = NetTestVectors.GetSecretsPair();
             FrameCipher frameCipher = new FrameCipher(_secrets.B.AesSecret);
             FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, _secrets.B);
-            _decoder = new TestDecoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
+            _decoder = new TestDecoder(frameCipher, frameMacProcessor);
             _zeroDecoder = new TestZeroDecoder(frameCipher, frameMacProcessor);
         }
 
@@ -127,8 +127,8 @@ namespace Nethermind.Network.Benchmarks
                 return result.Cast<byte[]>().ToList();
             }
 
-            public TestDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
-                : base(frameCipher, frameMacProcessor, logger)
+            public TestDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
             }
         }
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Benchmarks
         private class TestMerger : Rlpx.NettyFrameMerger
         {
             public TestMerger()
-                : base(LimboNoErrorLogger.Instance)
+                : base(LimboLogs.Instance)
             {
             }
 

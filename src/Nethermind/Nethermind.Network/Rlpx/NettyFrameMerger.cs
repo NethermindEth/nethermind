@@ -38,9 +38,9 @@ namespace Nethermind.Network.Rlpx
         private readonly Dictionary<int, List<byte[]>> _payloads = new Dictionary<int, List<byte[]>>();
         private readonly Dictionary<int, int> _totalPayloadSizes = new Dictionary<int, int>();
 
-        public NettyFrameMerger(ILogger logger)
+        public NettyFrameMerger(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException();
         }
 
         protected override void Decode(IChannelHandlerContext context, byte[] input, List<object> output)

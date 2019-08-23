@@ -22,11 +22,13 @@ using System.Threading;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Encoding;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
     public class NettyPacketSplitter : MessageToMessageEncoder<Packet>
     {
+        private readonly ILogManager _logManager;
         public const int FrameBoundary = 16;
 
         public int MaxFrameSize = FrameBoundary * 64;
@@ -37,6 +39,11 @@ namespace Nethermind.Network.Rlpx
             MaxFrameSize = int.MaxValue;
         }
 
+        public NettyPacketSplitter(ILogManager logManager)
+        {
+            _logManager = logManager;
+        }
+        
         protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
         {
             Interlocked.Increment(ref _contextId);

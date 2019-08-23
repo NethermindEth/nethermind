@@ -83,6 +83,7 @@ namespace Nethermind.Network.Rlpx
                     {
                         _remaining[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
                         _payloads[contextId.Value] = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
+                        _payloads[contextId.Value].Retain();
                         _payloads[contextId.Value].WriteByte(input.ReadByte());
                     }
 
@@ -113,6 +114,7 @@ namespace Nethermind.Network.Rlpx
                     }
 
                     IByteBuffer outputBuffer = PooledByteBufferAllocator.Default.Buffer(totalBodySize);
+                    outputBuffer.Retain();
                     outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
                     input.ReadBytes(outputBuffer, totalBodySize - 1);
                     input.SkipBytes(FramePadding.Calculate16(totalBodySize));

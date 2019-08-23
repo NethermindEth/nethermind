@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test.Rlpx
         private class FrameMerger : NettyFrameMerger
         {
             public FrameMerger()
-                : base(Substitute.For<ILogger>())
+                : base(LimboLogs.Instance)
             {
             }
 
@@ -55,6 +55,10 @@ namespace Nethermind.Network.Test.Rlpx
             public void Encode(Packet message, List<object> output)
             {
                 base.Encode(_context, message, output);
+            }
+
+            public PacketSplitter() : base(LimboLogs.Instance)
+            {
             }
         }
 

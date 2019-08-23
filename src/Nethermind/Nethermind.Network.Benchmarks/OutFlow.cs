@@ -80,7 +80,7 @@ namespace Nethermind.Network.Benchmarks
             
             FrameCipher frameCipher = new FrameCipher(secrets.A.AesSecret);
             FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
-            _encoder = new TestEncoder(frameCipher, frameMacProcessor, LimboTraceLogger.Instance);
+            _encoder = new TestEncoder(frameCipher, frameMacProcessor);
             _splitter = new TestSplitter();
             _splitter.DisableFraming();
             _zeroSplitter = new TestZeroSplitter();
@@ -113,8 +113,8 @@ namespace Nethermind.Network.Benchmarks
                 base.Encode(null, message, buffer);
             }
 
-            public TestEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
-                : base(frameCipher, frameMacProcessor, logger)
+            public TestEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
             }
         }
@@ -137,6 +137,10 @@ namespace Nethermind.Network.Benchmarks
             public void Encode(Packet message, List<object> output)
             {
                 base.Encode(null, message, output);
+            }
+
+            public TestSplitter() : base(LimboLogs.Instance)
+            {
             }
         }
 

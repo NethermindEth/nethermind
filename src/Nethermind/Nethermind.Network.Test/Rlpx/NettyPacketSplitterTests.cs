@@ -22,6 +22,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
@@ -39,6 +40,10 @@ namespace Nethermind.Network.Test.Rlpx
             public void Encode(Packet message, List<object> output)
             {
                 base.Encode(_context, message, output);
+            }
+
+            public UnderTest() : base(LimboLogs.Instance)
+            {
             }
         }
 

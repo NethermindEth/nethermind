@@ -61,7 +61,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             private readonly IChannelHandlerContext _context;
 
-            public FrameDecoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, Substitute.For<ILogger>())
+            public FrameDecoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
                 _context = Substitute.For<IChannelHandlerContext>();
             }
@@ -78,7 +78,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             private readonly IChannelHandlerContext _context;
 
-            public FrameEncoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, NullLogger.Instance)
+            public FrameEncoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
                 _context = Substitute.For<IChannelHandlerContext>();
             }
@@ -97,12 +97,16 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 base.Encode(_context, message, output);
             }
+
+            public PacketSplitterTest() : base(LimboLogs.Instance)
+            {
+            }
         }
 
         private class FrameMerger : NettyFrameMerger
         {
             public FrameMerger()
-                : base(Substitute.For<ILogger>())
+                : base(LimboLogs.Instance)
             {
             }
 
