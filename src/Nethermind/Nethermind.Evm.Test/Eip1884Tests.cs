@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test
     public class Eip1884Tests : VirtualMachineTestsBase
     {
         protected override long BlockNumber => MainNetSpecProvider.IstanbulBlockNumber;
-        protected override ISpecProvider SpecProvider => new CustomSpecProvider(0, (0, Istanbul.Instance));
+        protected override ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
         
         [Test]
         public void after_istanbul_selfbalance_opcode_puts_current_address_balance_onto_the_stack()
@@ -59,12 +59,98 @@ namespace Nethermind.Evm.Test
             
             var result = Execute(code);
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
-            AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 29 + 26 + GasCostOf.VeryLow + GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
+            AssertGas(result, 21000 + 2 * GasCostOf.CallEip150 + 24 + 21 + GasCostOf.VeryLow + 3 * GasCostOf.SelfBalance + 3 * GasCostOf.SSet);
             var balanceB = TestState.GetBalance(TestItem.AddressB);
             var balanceC = TestState.GetBalance(TestItem.AddressC);
             AssertStorage(new StorageAddress(TestItem.AddressB, UInt256.Zero), balanceB);
             AssertStorage(new StorageAddress(TestItem.AddressB, UInt256.One), balanceB);
             AssertStorage(new StorageAddress(TestItem.AddressC, UInt256.Zero), balanceC);
+        }
+
+        [Test]
+        public void after_istanbul_extcodehash_cost_is_increased()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.EXTCODEHASH)
+                .Done;
+
+            var result = Execute(code);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHashEip1884);
+        }
+        
+        [Test]
+        public void after_istanbul_balance_cost_is_increased()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.BALANCE)
+                .Done;
+
+            var result = Execute(code);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip1884);
+        }
+        
+        [Test]
+        public void after_istanbul_sload_cost_is_increased()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .PushData(0)
+                .Op(Instruction.SLOAD)
+                .Done;
+
+            var result = Execute(code);
+            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip1884);
+        }
+        
+        [Test]
+        public void just_before_istanbul_extcodehash_cost_is_increased()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.EXTCODEHASH)
+                .Done;
+
+            var result = Execute(BlockNumber - 1, 100000, code);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ExtCodeHash);
+        }
+        
+        [Test]
+        public void just_before_istanbul_balance_cost_is_increased()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .Op(Instruction.BALANCE)
+                .Done;
+
+            var result = Execute(BlockNumber - 1, 100000, code);
+            AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.BalanceEip150);
+        }
+        
+        [Test]
+        public void just_before_istanbul_sload_cost_is_increased()
+        {
+            TestState.CreateAccount(TestItem.AddressC, 100.Ether());
+
+            byte[] code = Prepare.EvmCode
+                .PushData(TestItem.AddressC)
+                .PushData(0)
+                .Op(Instruction.SLOAD)
+                .Done;
+
+            var result = Execute(BlockNumber - 1, 100000, code);
+            AssertGas(result, 21000 + 2 * GasCostOf.VeryLow + GasCostOf.SLoadEip150);
         }
     }
 }
