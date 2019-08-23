@@ -17,8 +17,6 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto.ZkSnarks;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using SauceControl.Blake2Fast;
 
@@ -27,7 +25,7 @@ namespace Nethermind.Evm.Precompiles
     public class Blake2BPrecompiledContract : IPrecompiledContract
     {
         public static readonly IPrecompiledContract Instance = new Blake2BPrecompiledContract();
-        
+
         public Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
@@ -37,8 +35,13 @@ namespace Nethermind.Evm.Precompiles
         public (byte[], bool) Run(byte[] inputData)
         {
             Metrics.Blake2BPrecompile++;
+            var context = default(Blake2bContext);
+            //TODO: compression function
+//            context.Init(digestLength, key);
+//            context.compress();
+            var result = context.Finish();
 
-            return (inputData, true);
+            return (result, true);
         }
     }
 }

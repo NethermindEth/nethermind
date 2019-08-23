@@ -172,6 +172,10 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataMarketplace.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{47B19E0D-5DED-436D-9BFB-17EF887634D3}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Cryptography", "Cryptography", "{B5079215-2D69-4345-8B57-0057F3806D32}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Blake2Fast", "..\Blake2Fast\src\Blake2Fast\Blake2Fast.csproj", "{28A17F0D-B148-4185-9DE5-74DD5A2589F3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -450,6 +454,10 @@ Global
 		{47B19E0D-5DED-436D-9BFB-17EF887634D3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{47B19E0D-5DED-436D-9BFB-17EF887634D3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{47B19E0D-5DED-436D-9BFB-17EF887634D3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{28A17F0D-B148-4185-9DE5-74DD5A2589F3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{28A17F0D-B148-4185-9DE5-74DD5A2589F3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{28A17F0D-B148-4185-9DE5-74DD5A2589F3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{28A17F0D-B148-4185-9DE5-74DD5A2589F3}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -499,6 +507,7 @@ Global
 		{6708432B-C547-44B0-ADCB-8396B916B26F} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{5A0D6198-E28A-4B19-AA61-9F983B6031D3} = {568F4A96-2AA2-4B80-A58A-36950E13A242}
 		{47B19E0D-5DED-436D-9BFB-17EF887634D3} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
+		{28A17F0D-B148-4185-9DE5-74DD5A2589F3} = {B5079215-2D69-4345-8B57-0057F3806D32}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
