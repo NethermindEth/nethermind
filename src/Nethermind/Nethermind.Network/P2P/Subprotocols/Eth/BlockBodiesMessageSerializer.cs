@@ -37,34 +37,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public BlockBodiesMessage Deserialize(byte[] bytes)
         {
-            Console.WriteLine($"DESERILIZING A MESSAGE OF LENGHT {bytes.Length}");
-
-            try
+            RlpStream rlpStream = bytes.AsRlpStream();
+            BlockBodiesMessage message = new BlockBodiesMessage();
+            message.Bodies = rlpStream.DecodeArray(ctx =>
             {
-                RlpStream rlpStream = bytes.AsRlpStream();
-                BlockBodiesMessage message = new BlockBodiesMessage();
-                message.Bodies = rlpStream.DecodeArray(ctx =>
+                int sequenceLength = rlpStream.ReadSequenceLength();
+                if (sequenceLength == 0)
                 {
-                    int sequenceLength = rlpStream.ReadSequenceLength();
-                    if (sequenceLength == 0)
-                    {
-                        return null;
-                    }
+                    return null;
+                }
 
-                    Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
-                    BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
-                    return new BlockBody(transactions, ommers);
-                });
+                Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
+                BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
+                return new BlockBody(transactions, ommers);
+            });
 
-                Console.WriteLine($"SUCCESS DESERILIZING A MESSAGE OF LENGHT {bytes.Length}");
-                return message;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"FAILURE DESERILIZING A MESSAGE OF LENGHT {bytes.Length}");
-                Console.WriteLine(e);
-                throw;
-            }
+            return message;
         }
     }
 }
