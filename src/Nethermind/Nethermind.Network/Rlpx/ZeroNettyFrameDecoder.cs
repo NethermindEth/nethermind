@@ -18,13 +18,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
@@ -169,27 +166,6 @@ namespace Nethermind.Network.Rlpx
             _cipher.Decrypt(_frameBlockBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
             _innerBuffer.WriteBytes(_decryptedBytes);
             _remainingPayloadBlocks--;
-        }
-
-        public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
-        {
-            _logger.Warn(exception.ToString());
-
-            //In case of SocketException we log it as debug to avoid noise
-            if (exception is SocketException)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Frame decoding failed (SocketException): {exception}");
-            }
-            else if (exception.Message?.Contains("MAC mismatch") ?? false)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{GetType().Name} MAC mismatch error: {exception}");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error: {exception}");
-            }
-
-            base.ExceptionCaught(context, exception);
         }
 
         private enum FrameDecoderState

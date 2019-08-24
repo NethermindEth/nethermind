@@ -107,10 +107,8 @@ namespace Nethermind.Network.P2P
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            _logger.Warn(exception.ToString());
-
             //In case of SocketException we log it as debug to avoid noise
-            string clientId = _session?.Node.ClientId ?? $"unknown {_session?.RemoteHost}";
+            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
             if (exception is SocketException)
             {
                 if (_logger.IsTrace) _logger.Trace($"Error in communication with {clientId} (SocketException): {exception}");
@@ -120,7 +118,7 @@ namespace Nethermind.Network.P2P
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
             }
 
-            base.ExceptionCaught(context, exception);
+            context.DisconnectAsync();
         }
 
         public bool SnappyEnabled { get; private set; }

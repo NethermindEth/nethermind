@@ -121,28 +121,5 @@ namespace Nethermind.Network.Rlpx
         {
             return packetTypeRlp == 128 ? (byte) 0 : packetTypeRlp;
         }
-
-        public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
-        {
-            _logger.Warn(exception.ToString());
-
-            //In case of SocketException we log it as debug to avoid noise
-            if (exception is SocketException)
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Error when merging frames (SocketException): {exception}");
-                }
-            }
-            else
-            {
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Error when merging frames: {exception}");
-                }
-            }
-
-            base.ExceptionCaught(context, exception);
-        }
     }
 }

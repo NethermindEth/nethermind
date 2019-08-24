@@ -53,8 +53,6 @@ namespace Nethermind.Network.Discovery
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            _logger.Warn(exception.ToString());
-            
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -65,7 +63,7 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsError) _logger.Error("Exception when processing discovery messages", exception);
             }
 
-            base.ExceptionCaught(context, exception);
+            context.DisconnectAsync();
         }
 
         public override void ChannelReadComplete(IChannelHandlerContext context)

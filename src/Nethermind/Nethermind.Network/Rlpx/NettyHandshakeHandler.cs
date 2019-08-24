@@ -116,9 +116,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            _logger.Warn(exception.ToString());
-            
-            string clientId = _session.Node?.ClientId ?? $"unknown {_session?.RemoteHost}";
+            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -138,66 +136,60 @@ namespace Nethermind.Network.Rlpx
             base.ExceptionCaught(context, exception);
         }
 
-        protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer message)
+        protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer input)
         {
             if (_logger.IsTrace) _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
-            if (message is IByteBuffer byteBuffer)
+
+            if (_role == HandshakeRole.Recipient)
             {
-                if (_role == HandshakeRole.Recipient)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"AUTH received from {context.Channel.RemoteAddress}");
-                    byte[] authData = new byte[byteBuffer.ReadableBytes];
-                    byteBuffer.ReadBytes(authData);
-                    Packet ack = _service.Ack(_handshake, new Packet(authData));
+                if (_logger.IsTrace) _logger.Trace($"AUTH received from {context.Channel.RemoteAddress}");
+                byte[] authData = new byte[input.ReadableBytes];
+                input.ReadBytes(authData);
+                Packet ack = _service.Ack(_handshake, new Packet(authData));
 
-                    //_p2PSession.RemoteNodeId = _remoteId;
-                    if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
-                    IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
-                    buffer.WriteBytes(ack.Data);
-                    context.WriteAndFlushAsync(buffer);
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Received ACK from {RemoteId} @ {context.Channel.RemoteAddress}");
-                    byte[] ackData = new byte[byteBuffer.ReadableBytes];
-                    byteBuffer.ReadBytes(ackData);
-                    _service.Agree(_handshake, new Packet(ackData));
-                }
-
-                _initCompletionSource?.SetResult(message);
-                _session.Handshake(_handshake.RemoteNodeId);
-
-                FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
-                FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
-
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
-
-                PacketSender packetSender = new PacketSender(_serializationService, _logManager);
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(packetSender);
-
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
-                ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(_session, _logManager);
-                context.Channel.Pipeline.AddLast(_group, handler);
-
-                handler.Init(packetSender, context);
-
-                if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
-                context.Channel.Pipeline.Remove(this);
-                if (_logger.IsTrace) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
-                context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
+                //_p2PSession.RemoteNodeId = _remoteId;
+                if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId} @ {context.Channel.RemoteAddress}");
+                IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer();
+                buffer.WriteBytes(ack.Data);
+                context.WriteAndFlushAsync(buffer);
             }
             else
             {
-                if (_logger.IsError) _logger.Error($"DIFFERENT TYPE OF DATA {message.GetType()}");
+                if (_logger.IsTrace) _logger.Trace($"Received ACK from {RemoteId} @ {context.Channel.RemoteAddress}");
+                byte[] ackData = new byte[input.ReadableBytes];
+                input.ReadBytes(ackData);
+                _service.Agree(_handshake, new Packet(ackData));
             }
+
+            _initCompletionSource?.SetResult(input);
+            _session.Handshake(_handshake.RemoteNodeId);
+
+            FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
+            FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
+
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+            context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+            context.Channel.Pipeline.AddLast(new ZeroFrameEncoder(frameCipher, macProcessor, _logManager));
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+            context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroPacketSplitter)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+            context.Channel.Pipeline.AddLast(new ZeroPacketSplitter(_logManager));
+
+            PacketSender packetSender = new PacketSender(_serializationService, _logManager);
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId} @ {context.Channel.RemoteAddress}");
+            context.Channel.Pipeline.AddLast(packetSender);
+
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+            ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(_session, _logManager);
+            context.Channel.Pipeline.AddLast(_group, handler);
+
+            handler.Init(packetSender, context);
+
+            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
+            context.Channel.Pipeline.Remove(this);
+            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
+            context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
         }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
