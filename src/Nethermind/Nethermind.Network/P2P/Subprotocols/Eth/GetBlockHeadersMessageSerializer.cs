@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using DotNetty.Buffers;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class GetBlockHeadersMessageSerializer : IMessageSerializer<GetBlockHeadersMessage>
+    public class GetBlockHeadersMessageSerializer : IMessageSerializer<GetBlockHeadersMessage>, IZeroMessageSerializer<GetBlockHeadersMessage>
     {
         public byte[] Serialize(GetBlockHeadersMessage message)
         {
@@ -35,9 +36,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public GetBlockHeadersMessage Deserialize(byte[] bytes)
         {
-            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
-
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
+        {
+            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             rlpStream.ReadSequenceLength();
             int position = rlpStream.Position;
             byte[] startingBytes = rlpStream.DecodeByteArray();
@@ -48,13 +53,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
             else
             {
-                message.StartingBlockNumber = (long)rlpStream.DecodeUInt256();
+                message.StartingBlockNumber = (long) rlpStream.DecodeUInt256();
             }
 
             message.MaxHeaders = rlpStream.DecodeInt();
             message.Skip = rlpStream.DecodeInt();
             message.Reverse = rlpStream.DecodeByte();
             return message;
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

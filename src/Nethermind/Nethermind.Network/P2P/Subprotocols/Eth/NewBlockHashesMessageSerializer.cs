@@ -18,13 +18,14 @@
 
 
 using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>
+    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>, IZeroMessageSerializer<NewBlockHashesMessage>
     {
         public byte[] Serialize(NewBlockHashesMessage message)
         {
@@ -39,12 +40,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public NewBlockHashesMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static NewBlockHashesMessage Deserialize(RlpStream rlpStream)
+        {
             (Keccak, long)[] blockHashes = rlpStream.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
-                return (ctx.DecodeKeccak(), (long)ctx.DecodeUInt256());
-            });
+                return (ctx.DecodeKeccak(), (long) ctx.DecodeUInt256());
+            }, false);
+            
             return new NewBlockHashesMessage(blockHashes);
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

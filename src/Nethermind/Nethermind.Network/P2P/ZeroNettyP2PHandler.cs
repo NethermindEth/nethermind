@@ -27,7 +27,7 @@ using Snappy;
 
 namespace Nethermind.Network.P2P
 {
-    public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<NettyPacket>
+    public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
     {
         private readonly ISession _session;
         private readonly ILogger _logger;
@@ -49,60 +49,66 @@ namespace Nethermind.Network.P2P
             base.ChannelRegistered(context);
         }
 
-        protected override void ChannelRead0(IChannelHandlerContext ctx, NettyPacket input)
+        protected override void ChannelRead0(IChannelHandlerContext ctx, ZeroPacket input)
         {
-            byte packetType = input.PacketType;
-            Packet packet = new Packet("???", packetType, null);
-            IByteBuffer content = input.Content;
-
-            if (SnappyEnabled)
+            try
             {
-                int uncompressedLength = SnappyCodec.GetUncompressedLength(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes);
-                if (uncompressedLength > SnappyParameters.MaxSnappyLength)
-                {
-                    throw new Exception("Max message size exceeeded"); // TODO: disconnect here
-                }
+                byte packetType = input.PacketType;
+                Packet packet = new Packet("???", packetType, null);
+                IByteBuffer content = input.Content;
 
-                if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
+                if (SnappyEnabled)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
-                }
-                else
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
-                }
-
-
-                byte[] output = new byte[uncompressedLength];
-                try
-                {
-                    SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output, 0);
-                    
-                }
-                catch (Exception e)
-                {
-                    if (content.ReadableBytes == 2 && content.ReadByte() == 193)
+                    int uncompressedLength = SnappyCodec.GetUncompressedLength(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes);
+                    if (uncompressedLength > SnappyParameters.MaxSnappyLength)
                     {
-                        // this is a Parity disconnect sent as a non-snappy-encoded message
-                        // e.g. 0xc103
+                        throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+                    }
+
+                    if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
                     }
                     else
                     {
-                        content.SkipBytes(content.ReadableBytes);
-                        throw;
+                        if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
                     }
-                }
 
-                content.SkipBytes(content.ReadableBytes);
-                packet.Data = output;
+
+                    byte[] output = new byte[uncompressedLength];
+                    try
+                    {
+                        SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output, 0);
+
+                    }
+                    catch (Exception e)
+                    {
+                        if (content.ReadableBytes == 2 && content.ReadByte() == 193)
+                        {
+                            // this is a Parity disconnect sent as a non-snappy-encoded message
+                            // e.g. 0xc103
+                        }
+                        else
+                        {
+                            content.SkipBytes(content.ReadableBytes);
+                            throw;
+                        }
+                    }
+
+                    content.SkipBytes(content.ReadableBytes);
+                    packet.Data = output;
+                }
+                else
+                {
+                    packet.Data = content.ReadAllBytes();
+                }
+                
+                _session.ReceiveMessage(packet);
             }
-            else
+            finally
             {
-                packet.Data = content.ReadAllBytes();
+                ReferenceCountUtil.Release(input);    
             }
-            
-//            input.SafeRelease();
-            _session.ReceiveMessage(packet);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)

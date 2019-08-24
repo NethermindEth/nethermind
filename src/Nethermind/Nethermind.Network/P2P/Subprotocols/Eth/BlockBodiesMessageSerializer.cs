@@ -18,13 +18,14 @@
 
 using System;
 using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class BlockBodiesMessageSerializer : IMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer : IMessageSerializer<BlockBodiesMessage>, IZeroMessageSerializer<BlockBodiesMessage>
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
@@ -38,6 +39,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public BlockBodiesMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static BlockBodiesMessage Deserialize(RlpStream rlpStream)
+        {
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = rlpStream.DecodeArray(ctx =>
             {
@@ -50,9 +56,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Transaction[] transactions = rlpStream.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] ommers = rlpStream.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
                 return new BlockBody(transactions, ommers);
-            });
+            }, false);
 
             return message;
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        {
+            throw new NotImplementedException();
+        }
+
+        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

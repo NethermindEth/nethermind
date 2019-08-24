@@ -159,7 +159,7 @@ namespace Nethermind.Network.Test.Rlpx
 
                 if (inbound == StackType.Zero)
                 {
-                    NettyPacket decodedPacket = embeddedChannel.ReadInbound<NettyPacket>();
+                    ZeroPacket decodedPacket = embeddedChannel.ReadInbound<ZeroPacket>();
                     Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Content.ReadAllHex());
                     Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
                 }

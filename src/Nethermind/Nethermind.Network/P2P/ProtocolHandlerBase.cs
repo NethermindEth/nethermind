@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -51,6 +52,11 @@ namespace Nethermind.Network.P2P
             return _serializer.Deserialize<T>(data);
         }
 
+        protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
+        {
+            return _serializer.Deserialize<T>(data);
+        }
+        
         protected void Send<T>(T message) where T : P2PMessage
         {
             if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");

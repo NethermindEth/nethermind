@@ -156,7 +156,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected long _counter = 0;
 
-        public virtual void HandleMessage(Packet message)
+        public void HandleMessage(ZeroPacket message)
         {
             if (Logger.IsTrace)
             {
@@ -171,21 +171,21 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
-                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Data);
+                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
                     Interlocked.Increment(ref _counter);
                     if (Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlockHashes from {Node:c}");
                     Metrics.Eth62NewBlockHashesReceived++;
-                    Handle(Deserialize<NewBlockHashesMessage>(message.Data));
+                    Handle(Deserialize<NewBlockHashesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.Transactions:
                     Interlocked.Increment(ref _counter);
                     Metrics.Eth62TransactionsReceived++;
                     if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
-                        Handle(Deserialize<TransactionsMessage>(message.Data));
+                        Handle(Deserialize<TransactionsMessage>(message.Content));
                     }
 
                     break;
@@ -193,33 +193,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Interlocked.Increment(ref _counter);
                     if (Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockHeaders from {Node:c}");
                     Metrics.Eth62GetBlockHeadersReceived++;
-                    Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
+                    Handle(Deserialize<GetBlockHeadersMessage>(message.Content));
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     Interlocked.Increment(ref _counter);
                     if (Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockHeaders from {Node:c}");
                     Metrics.Eth62BlockHeadersReceived++;
-                    Handle(Deserialize<BlockHeadersMessage>(message.Data));
+                    Handle(Deserialize<BlockHeadersMessage>(message.Content));
                     break;
                 case Eth62MessageCode.GetBlockBodies:
                     Interlocked.Increment(ref _counter);
                     if (Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockBodies from {Node:c}");
                     Metrics.Eth62GetBlockBodiesReceived++;
-                    Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
+                    Handle(Deserialize<GetBlockBodiesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.BlockBodies:
                     Interlocked.Increment(ref _counter);
                     if (Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockBodies from {Node:c}");
                     Metrics.Eth62BlockBodiesReceived++;
-                    Handle(Deserialize<BlockBodiesMessage>(message.Data));
+                    Handle(Deserialize<BlockBodiesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.NewBlock:
                     Interlocked.Increment(ref _counter);
                     if (Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlock from {Node:c}");
                     Metrics.Eth62NewBlockReceived++;
-                    Handle(Deserialize<NewBlockMessage>(message.Data));
+                    Handle(Deserialize<NewBlockMessage>(message.Content));
                     break;
             }
+        }
+        
+        public virtual void HandleMessage(Packet message)
+        {
+           HandleMessage(new ZeroPacket(message));
         }
 
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details)

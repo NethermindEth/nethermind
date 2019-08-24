@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             IByteBuffer input = BuildFrames(3);
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
-            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            ZeroPacket output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.NotNull(output);
         }
 
@@ -83,7 +83,7 @@ namespace Nethermind.Network.Test.Rlpx
             IByteBuffer input = BuildFrames(1);
             
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
-            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            ZeroPacket output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.NotNull(output);
             Assert.AreEqual(1, output.Content.ReadableBytes);
         }
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Test.Rlpx
             IByteBuffer input = BuildFrames(3);
             
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
-            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            ZeroPacket output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.NotNull(output);
             Assert.AreEqual(2049, output.Content.ReadableBytes);
         }
@@ -105,7 +105,7 @@ namespace Nethermind.Network.Test.Rlpx
             IByteBuffer input = BuildFrames(1);
 
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
-            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            ZeroPacket output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.NotNull(output);
             Assert.AreEqual((byte)2, output.PacketType);
         }
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Test.Rlpx
             input.WriteBytes(frame);
             
             ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
-            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            ZeroPacket output = zeroFrameMergerTestWrapper.Decode(input);
             Assert.NotNull(output);
 
             Assert.AreEqual(0, output.PacketType);

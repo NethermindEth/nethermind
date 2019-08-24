@@ -33,7 +33,7 @@ namespace Nethermind.Network.Rlpx
     {
         private ILogger _logger;
 
-        private NettyPacket _nettyPacket;
+        private ZeroPacket _zeroPacket;
         private FrameHeaderReader _headerReader = new FrameHeaderReader();
 
         public ZeroFrameMerger(ILogManager logManager)
@@ -66,11 +66,11 @@ namespace Nethermind.Network.Rlpx
                 ReadChunk(input, frame);
             }
 
-            if (!_nettyPacket.Content.IsWritable())
+            if (!_zeroPacket.Content.IsWritable())
             {
                 input.SkipBytes(frame.Padding);
-                output.Add(_nettyPacket);
-                _nettyPacket = null;
+                output.Add(_zeroPacket);
+                _zeroPacket = null;
 
                 if (input.IsReadable())
                 {
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadChunk(IByteBuffer input, FrameHeaderReader.FrameInfo frame)
         {
-            input.ReadBytes(_nettyPacket.Content, frame.Size);
+            input.ReadBytes(_zeroPacket.Content, frame.Size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -104,14 +104,14 @@ namespace Nethermind.Network.Rlpx
                 content.Retain();
             }
 
-            _nettyPacket = new NettyPacket(content);
-            _nettyPacket.PacketType = GetPacketType(packetTypeRlp);
+            _zeroPacket = new ZeroPacket(content);
+            _zeroPacket.PacketType = GetPacketType(packetTypeRlp);
 
             // If not chunked then we already used a slice of the input,
             // otherwise we need to read into the freshly allocated buffer.
             if (frame.IsChunked)
             {
-                input.ReadBytes(_nettyPacket.Content, frame.Size - 1);
+                input.ReadBytes(_zeroPacket.Content, frame.Size - 1);
                 // do not call Release since the input buffer is managed by 
             }
         }

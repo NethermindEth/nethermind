@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
 
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 
-        public NettyPacket Decode(IByteBuffer input)
+        public ZeroPacket Decode(IByteBuffer input)
         {
             List<object> result = new List<object>();
             while (input.IsReadable())
@@ -50,7 +50,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
                 return null;
             }
 
-            return (NettyPacket) result[0];
+            return (ZeroPacket) result[0];
         }
     }
 }

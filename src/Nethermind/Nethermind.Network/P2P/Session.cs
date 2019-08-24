@@ -151,6 +151,46 @@ namespace Nethermind.Network.P2P
 
         public IPingSender PingSender { get; set; }
 
+        public void ReceiveMessage(ZeroPacket zeroPacket)
+        {
+            lock (_sessionStateLock)
+            {
+                if (State < SessionState.Initialized)
+                {
+                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on {this}");
+                }
+
+                if (IsClosing)
+                {
+                    return;
+                }
+            }
+
+            int dynamicMessageCode = zeroPacket.PacketType;
+            (string protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
+            zeroPacket.Protocol = protocol;
+
+            if (_logger.IsTrace) _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} ({dynamicMessageCode} => {protocol}.{messageId})");
+
+            if (protocol == null)
+            {
+                if (_logger.IsTrace) _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): {string.Join(", ", _protocols.Select(x => $"{x.Key}.{x.Value.ProtocolVersion} {x.Value.MessageIdSpaceSize}"))}");
+                return;
+            }
+
+            zeroPacket.PacketType = (byte)messageId;
+            IProtocolHandler protocolHandler = _protocols[protocol];
+            IZeroProtocolHandler zeroProtocolHandler = protocolHandler as IZeroProtocolHandler;
+            if (zeroProtocolHandler != null)
+            {
+                zeroProtocolHandler.HandleMessage(zeroPacket);
+            }
+            else
+            {
+                protocolHandler.HandleMessage(new Packet(zeroPacket));
+            }
+        }
+
         public void DeliverMessage<T>(T message) where T : P2PMessage
         {
             lock (_sessionStateLock)

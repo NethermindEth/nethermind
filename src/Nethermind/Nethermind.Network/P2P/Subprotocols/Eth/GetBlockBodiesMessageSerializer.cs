@@ -16,13 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class GetBlockBodiesMessageSerializer : IMessageSerializer<GetBlockBodiesMessage>
+    public class GetBlockBodiesMessageSerializer : IMessageSerializer<GetBlockBodiesMessage>, IZeroMessageSerializer<GetBlockBodiesMessage>
     {
         public byte[] Serialize(GetBlockBodiesMessage message)
         {
@@ -32,8 +33,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public GetBlockBodiesMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
-            Keccak[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak());
+            return Deserialize(rlpStream);
+        }
+
+        private static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
+        {
+            Keccak[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
             return new GetBlockBodiesMessage(hashes);
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

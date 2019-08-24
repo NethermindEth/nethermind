@@ -20,11 +20,18 @@ using DotNetty.Buffers;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NettyPacket : DefaultByteBufferHolder
+    public class ZeroPacket : DefaultByteBufferHolder
     {
+        public ZeroPacket(Packet packet) : base(Unpooled.CopiedBuffer(packet.Data))
+        {
+            Protocol = packet.Protocol;
+            PacketType = (byte)packet.PacketType;
+        }
+        
+        public string Protocol { get; set; }
         public byte PacketType { get; set; }
 
-        public NettyPacket(IByteBuffer data) : base(data)
+        public ZeroPacket(IByteBuffer data) : base(data)
         {
         }
     }

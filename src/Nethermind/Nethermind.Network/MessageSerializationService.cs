@@ -33,6 +33,18 @@ namespace Nethermind.Network
             IMessageSerializer<T> serializer = GetSerializer<T>();
             return serializer.Deserialize(bytes);
         }
+        
+        public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
+        {
+            IMessageSerializer<T> serializer = GetSerializer<T>();
+            IZeroMessageSerializer<T> zeroSerializer = serializer as IZeroMessageSerializer<T>;
+            if (zeroSerializer != null)
+            {
+                return zeroSerializer.Deserialize(buffer);
+            }
+            
+            return serializer.Deserialize(buffer.ReadAllBytes());
+        }
 
         public void Register(Assembly assembly)
         {

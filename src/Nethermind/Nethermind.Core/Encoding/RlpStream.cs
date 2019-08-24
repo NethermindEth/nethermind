@@ -741,10 +741,10 @@ namespace Nethermind.Core.Encoding
             throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Data.Length)).ToHexString()}");
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem)
+        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true)
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = ReadNumberOfItemsRemaining(positionCheck);
+            int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
