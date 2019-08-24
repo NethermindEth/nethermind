@@ -48,7 +48,7 @@ namespace Nethermind.Network.Benchmarks
         private NewBlockMessage _outputMessage;
 
         private NewBlockMessageSerializer _newBlockMessageSerializer;
-        private ZeroNewBlockMessageSerializer _zeroNewBlockMessageSerializer;
+        private NewBlockMessageSerializer _zeroNewBlockMessageSerializer;
         private Block _block;
         private TestMerger _merger;
         private TestZeroMerger _zeroMerger;
@@ -105,7 +105,6 @@ namespace Nethermind.Network.Benchmarks
             Transaction b = Build.A.Transaction.TestObject;
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
-            _zeroNewBlockMessageSerializer = new ZeroNewBlockMessageSerializer();
 
             _newBlockMessage = new NewBlockMessage();
             _newBlockMessage.Block = _block;

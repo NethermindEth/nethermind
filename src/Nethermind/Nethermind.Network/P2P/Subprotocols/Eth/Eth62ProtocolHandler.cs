@@ -35,7 +35,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISyncPeer
+    public class Eth62ProtocolHandler : ProtocolHandlerBase, IZeroProtocolHandler, ISyncPeer
     {
         private System.Timers.Timer _txFloodCheckTimer;
         protected ISyncServer SyncServer { get; }
@@ -105,9 +105,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public Node Node => Session.Node;
         public string ClientId { get; set; }
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
-        
+
         public bool HasAvailableCapability(Capability capability) => false;
         public bool HasAgreedCapability(Capability capability) => false;
+
         public void AddSupportedCapability(Capability capability)
         {
         }
@@ -221,10 +222,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     break;
             }
         }
-        
+
         public virtual void HandleMessage(Packet message)
         {
-           HandleMessage(new ZeroPacket(message));
+            ZeroPacket zeroPacket = new ZeroPacket(message);
+            HandleMessage(zeroPacket);
+            zeroPacket.Release();
         }
 
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details)
@@ -355,7 +358,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 Logger.Trace($"Received bodies request of length {request.BlockHashes.Length} from {Session.Node:c}:");
             }
-            
+
             Stopwatch stopwatch = Stopwatch.StartNew();
             Keccak[] hashes = request.BlockHashes;
             Block[] blocks = new Block[hashes.Length];
@@ -385,7 +388,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             Interlocked.Increment(ref _counter);
-            
+
             // to clearly state that this client is an ETH client and not ETC (and avoid disconnections on reversed sync)
             // also to improve performance as this is the most common request
 //            if (getBlockHeadersMessage.StartingBlockNumber == 1920000 && getBlockHeadersMessage.MaxHeaders == 1)
@@ -629,7 +632,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             catch (ObjectDisposedException)
             {
             }
-            
+
             try
             {
                 _bodiesRequests?.CompleteAdding();
@@ -637,7 +640,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             catch (ObjectDisposedException)
             {
             }
-            
+
             _isDisposed = true;
         }
 

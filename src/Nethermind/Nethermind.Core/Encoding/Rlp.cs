@@ -122,13 +122,13 @@ namespace Nethermind.Core.Encoding
             return Decode<T>(bytes.AsRlpStream(), rlpBehaviors);
         }
 
-        public static T[] DecodeArray<T>(RlpStream rlpStream, bool checkPositions, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
                 IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];
                 int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
-                T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPositions ? checkPosition : (int?)null)];
+                T[] result = new T[rlpStream.ReadNumberOfItemsRemaining(checkPosition)];
                 for (int i = 0; i < result.Length; i++)
                 {
                     result[i] = decoder.Decode(rlpStream, rlpBehaviors);
@@ -138,11 +138,6 @@ namespace Nethermind.Core.Encoding
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
-        }
-        
-        public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            return DecodeArray<T>(rlpStream, true, rlpBehaviors);
         }
 
         public static T Decode<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

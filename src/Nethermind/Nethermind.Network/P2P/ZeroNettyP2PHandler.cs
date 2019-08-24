@@ -51,63 +51,54 @@ namespace Nethermind.Network.P2P
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, ZeroPacket input)
         {
-            try
+            IByteBuffer content = input.Content;
+            if (SnappyEnabled)
             {
-                byte packetType = input.PacketType;
-                Packet packet = new Packet("???", packetType, null);
-                IByteBuffer content = input.Content;
-
-                if (SnappyEnabled)
+                int uncompressedLength = SnappyCodec.GetUncompressedLength(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes);
+                if (uncompressedLength > SnappyParameters.MaxSnappyLength)
                 {
-                    int uncompressedLength = SnappyCodec.GetUncompressedLength(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes);
-                    if (uncompressedLength > SnappyParameters.MaxSnappyLength)
-                    {
-                        throw new Exception("Max message size exceeeded"); // TODO: disconnect here
-                    }
+                    throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+                }
 
-                    if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
-                    {
-                        if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
-                    }
-
-
-                    byte[] output = new byte[uncompressedLength];
-                    try
-                    {
-                        SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output, 0);
-
-                    }
-                    catch (Exception e)
-                    {
-                        if (content.ReadableBytes == 2 && content.ReadByte() == 193)
-                        {
-                            // this is a Parity disconnect sent as a non-snappy-encoded message
-                            // e.g. 0xc103
-                        }
-                        else
-                        {
-                            content.SkipBytes(content.ReadableBytes);
-                            throw;
-                        }
-                    }
-
-                    content.SkipBytes(content.ReadableBytes);
-                    packet.Data = output;
+                if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
                 }
                 else
                 {
-                    packet.Data = content.ReadAllBytes();
+                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
                 }
-                
-                _session.ReceiveMessage(packet);
+
+
+                IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(uncompressedLength);
+                try
+                {
+                    int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
+                    output.SetWriterIndex(output.WriterIndex + length);
+                }
+                catch (Exception e)
+                {
+                    if (content.ReadableBytes == 2 && content.ReadByte() == 193)
+                    {
+                        // this is a Parity disconnect sent as a non-snappy-encoded message
+                        // e.g. 0xc103
+                    }
+                    else
+                    {
+                        content.SkipBytes(content.ReadableBytes);
+                        throw;
+                    }
+                }
+
+                content.SkipBytes(content.ReadableBytes);
+                ZeroPacket outputPacket = new ZeroPacket(output);
+                outputPacket.PacketType = input.PacketType;
+                _session.ReceiveMessage(outputPacket);
+                outputPacket.Release();
             }
-            finally
+            else
             {
-                ReferenceCountUtil.Release(input);    
+                _session.ReceiveMessage(input);
             }
         }
 

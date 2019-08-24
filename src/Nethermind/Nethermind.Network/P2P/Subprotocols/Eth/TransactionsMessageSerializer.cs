@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private static TransactionsMessage Deserialize(RlpStream rlpStream)
         {
-            Transaction[] txs = Rlp.DecodeArray<Transaction>(rlpStream, false);
+            Transaction[] txs = Rlp.DecodeArray<Transaction>(rlpStream);
             return new TransactionsMessage(txs);
         }
 

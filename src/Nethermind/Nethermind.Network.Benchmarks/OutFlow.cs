@@ -50,7 +50,6 @@ namespace Nethermind.Network.Benchmarks
         private IByteBuffer _outputBuffer = PooledByteBufferAllocator.Default.Buffer(1024 * 1024);
 
         private NewBlockMessageSerializer _newBlockMessageSerializer;
-        private ZeroNewBlockMessageSerializer _zeroNewBlockMessageSerializer;
         private Block _block;
         private TestSplitter _splitter;
         private TestZeroSplitter _zeroSplitter;
@@ -92,7 +91,6 @@ namespace Nethermind.Network.Benchmarks
             Transaction b = Build.A.Transaction.TestObject;
             _block = Build.A.Block.WithTransactions(a, b).TestObject;
             _newBlockMessageSerializer = new NewBlockMessageSerializer();
-            _zeroNewBlockMessageSerializer = new ZeroNewBlockMessageSerializer();
             if (useLimboOutput)
             {
                 _outputBuffer = new MockBuffer();
@@ -202,7 +200,7 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public void Improved()
         {
-            _zeroNewBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
+            _newBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
             _zeroSnappyEncoder.TestEncode(_snappyBuffer, _splitterBuffer);
             _zeroSplitter.Encode(_splitterBuffer, _encoderBuffer);
             _zeroEncoder.Encode(_encoderBuffer, _outputBuffer);

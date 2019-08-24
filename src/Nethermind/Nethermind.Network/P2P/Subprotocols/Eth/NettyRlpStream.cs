@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.Security.Cryptography;
 using DotNetty.Buffers;
+using Nethermind.Core;
 using Nethermind.Core.Encoding;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -26,9 +28,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         private readonly IByteBuffer _byteBuffer;
 
+        private int _initialPosition;
+        
         public NettyRlpStream(IByteBuffer byteBuffer)
         {
             _byteBuffer = byteBuffer;
+            _initialPosition = byteBuffer.ReaderIndex;
         }
 
         protected override void Write(Span<byte> bytesToWrite)
@@ -52,5 +57,47 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _byteBuffer.MakeSpace(length);
             _byteBuffer.WriteZero(length);
         }
+
+        public override byte ReadByte()
+        {
+            return _byteBuffer.ReadByte();
+        }
+
+        [Todo(Improve.Allocations, "work in progress")]
+        protected override Span<byte> Read(int length)
+        {
+            return _byteBuffer.ReadBytes(length).ReadAllBytes().AsSpan();
+        }
+
+        protected override byte PeekByte()
+        {
+            byte result = _byteBuffer.ReadByte();
+            _byteBuffer.SetReaderIndex(_byteBuffer.ReaderIndex - 1);
+            return result;
+        }
+
+        protected override byte PeekByte(int offset)
+        {
+            _byteBuffer.MarkReaderIndex();
+            _byteBuffer.SkipBytes(offset);
+            byte result = _byteBuffer.ReadByte();
+            _byteBuffer.ResetReaderIndex();
+            return result;
+        }
+
+        protected override void SkipBytes(int length)
+        {
+            _byteBuffer.SkipBytes(length);
+        }
+
+        public override int Position
+        {
+            get => _byteBuffer.ReaderIndex - _initialPosition;
+            set => _byteBuffer.SetReaderIndex(_initialPosition + value);
+        }
+
+        public override int Length => _byteBuffer.ReadableBytes + (_byteBuffer.ReaderIndex - _initialPosition);
+
+        protected override string Description => "|NettyRlpStream|description missing|";
     }
 }
