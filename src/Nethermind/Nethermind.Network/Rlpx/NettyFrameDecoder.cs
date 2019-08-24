@@ -51,81 +51,69 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            try
+            if (_state == FrameDecoderState.WaitingForHeader)
             {
-                if (_state == FrameDecoderState.WaitingForHeader)
+                if (_logger.IsTrace) _logger.Trace($"Decoding frame header {input.ReadableBytes}");
+
+                if (input.ReadableBytes == 0)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Decoding frame header {input.ReadableBytes}");
-
-                    if (input.ReadableBytes == 0)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
-                        context.CloseAsync();
-                        return;
-                    }
-
-                    if (input.ReadableBytes >= 32)
-                    {
-                        input.ReadBytes(_headerBuffer);
-                        if (_logger.IsTrace) _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
-
-                        _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
-                        _frameCipher.Decrypt(_headerBuffer, 0, 16, _headerBuffer, 0);
-
-                        _totalBodySize = _headerBuffer[0] & 0xFF;
-                        _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[1] & 0xFF);
-                        _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
-                        _state = FrameDecoderState.WaitingForPayload;
-
-                        int paddingSize = FrameParams.CalculatePadding(_totalBodySize);
-                        if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
-                    }
-                    else
-                    {
-                        if (_logger.IsTrace) _logger.Trace("Waiting for full 32 bytes of the header");
-                        return;
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
+                    context.CloseAsync();
+                    return;
                 }
 
-                if (_state == FrameDecoderState.WaitingForPayload)
+                if (input.ReadableBytes >= 32)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Decoding payload {input.ReadableBytes}");
+                    input.ReadBytes(_headerBuffer);
+                    if (_logger.IsTrace) _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
+
+                    _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
+                    _frameCipher.Decrypt(_headerBuffer, 0, 16, _headerBuffer, 0);
+
+                    _totalBodySize = _headerBuffer[0] & 0xFF;
+                    _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[1] & 0xFF);
+                    _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
+                    _state = FrameDecoderState.WaitingForPayload;
 
                     int paddingSize = FrameParams.CalculatePadding(_totalBodySize);
-                    int expectedSize = _totalBodySize + paddingSize + MacSize;
-                    byte[] buffer;
-                    if (input.ReadableBytes >= expectedSize)
-                    {
-                        buffer = new byte[expectedSize + _headerBuffer.Length];
-                        input.ReadBytes(buffer, 32, expectedSize);
-                    }
-                    else
-                    {
-                        return;
-                    }
-
-                    if (_logger.IsTrace) _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
-
-                    int frameSize = buffer.Length - MacSize - _headerBuffer.Length;
-                    _frameMacProcessor.CheckMac(buffer, 32, frameSize, false);
-                    _frameCipher.Decrypt(buffer, 32, frameSize, buffer, 32);
-
-                    _headerBuffer.AsSpan().CopyTo(buffer.AsSpan().Slice(0, 32));
-                    output.Add(buffer);
-
-                    if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[]) output.Last()).ToHexString()}");
-
-                    _state = FrameDecoderState.WaitingForHeader;
+                    if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace("Waiting for full 32 bytes of the header");
+                    return;
                 }
             }
-            finally
+
+            if (_state == FrameDecoderState.WaitingForPayload)
             {
-                if (input.ReferenceCount != 1)
+                if (_logger.IsTrace) _logger.Trace($"Decoding payload {input.ReadableBytes}");
+
+                int paddingSize = FrameParams.CalculatePadding(_totalBodySize);
+                int expectedSize = _totalBodySize + paddingSize + MacSize;
+                byte[] buffer;
+                if (input.ReadableBytes >= expectedSize)
                 {
-                    throw new IllegalReferenceCountException(input.ReferenceCount);
+                    buffer = new byte[expectedSize + _headerBuffer.Length];
+                    input.ReadBytes(buffer, 32, expectedSize);
                 }
-                
-                ReferenceCountUtil.Release(input);
+                else
+                {
+                    return;
+                }
+
+                if (_logger.IsTrace) _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
+
+                int frameSize = buffer.Length - MacSize - _headerBuffer.Length;
+                _frameMacProcessor.CheckMac(buffer, 32, frameSize, false);
+                _frameCipher.Decrypt(buffer, 32, frameSize, buffer, 32);
+
+                _headerBuffer.AsSpan().CopyTo(buffer.AsSpan().Slice(0, 32));
+                output.Add(buffer);
+
+                if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[]) output.Last()).ToHexString()}");
+
+                _state = FrameDecoderState.WaitingForHeader;
             }
         }
 

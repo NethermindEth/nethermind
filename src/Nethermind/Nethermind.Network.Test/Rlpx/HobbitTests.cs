@@ -27,6 +27,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,6 +36,14 @@ namespace Nethermind.Network.Test.Rlpx
     [TestFixture]
     public class HobbitTests
     {
+        private byte[] _frame;
+
+        private IFrameCipher _frameCipherA;
+        private IFrameMacProcessor _macProcessorA;
+
+        private IFrameCipher _frameCipherB;
+        private IFrameMacProcessor _macProcessorB;
+        
         [SetUp]
         public void Setup()
         {
@@ -50,75 +59,6 @@ namespace Nethermind.Network.Test.Rlpx
             _frame[2] = 16; // size   
         }
 
-        private byte[] _frame;
-
-        private IFrameCipher _frameCipherA;
-        private IFrameMacProcessor _macProcessorA;
-
-        private IFrameCipher _frameCipherB;
-        private IFrameMacProcessor _macProcessorB;
-
-        private class FrameDecoderTest : NettyFrameDecoder
-        {
-            private readonly IChannelHandlerContext _context;
-
-            public FrameDecoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-                _context = Substitute.For<IChannelHandlerContext>();
-            }
-
-            public List<byte[]> Decode(IByteBuffer buffer)
-            {
-                List<object> result = new List<object>();
-                base.Decode(_context, buffer, result);
-                return result.Cast<byte[]>().ToList();
-            }
-        }
-
-        private class FrameEncoderTest : NettyFrameEncoder
-        {
-            private readonly IChannelHandlerContext _context;
-
-            public FrameEncoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-                _context = Substitute.For<IChannelHandlerContext>();
-            }
-
-            public void Encode(byte[] message, IByteBuffer buffer)
-            {
-                base.Encode(_context, message, buffer);
-            }
-        }
-
-        private class PacketSplitterTest : NettyPacketSplitter
-        {
-            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
-
-            public void Encode(Packet message, List<object> output)
-            {
-                base.Encode(_context, message, output);
-            }
-
-            public PacketSplitterTest() : base(LimboLogs.Instance)
-            {
-            }
-        }
-
-        private class FrameMerger : NettyFrameMerger
-        {
-            public FrameMerger()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
-
-            public void Decode(byte[] message, List<object> output)
-            {
-                base.Decode(_context, message, output);
-            }
-        }
-
         [Test]
         public void Get_block_bodies_there_and_back()
         {
@@ -127,17 +67,16 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 hashes[i] = Keccak.Compute(i.ToString());
             }
-            
+
             GetBlockBodiesMessage message = new GetBlockBodiesMessage(hashes);
-            
+
             GetBlockBodiesMessageSerializer serializer = new GetBlockBodiesMessageSerializer();
             byte[] data = serializer.Serialize(message);
-            
-            Packet packet = new Packet("eth", 5, data);
 
+            Packet packet = new Packet("eth", 5, data);
             Packet decoded = RunAll(packet);
         }
-        
+
         [Test]
         public void Block_there_and_back()
         {
@@ -150,7 +89,6 @@ namespace Nethermind.Network.Test.Rlpx
             NewBlockMessageSerializer newBlockMessageSerializer = new NewBlockMessageSerializer();
             byte[] data = newBlockMessageSerializer.Serialize(newBlockMessage);
             Packet packet = new Packet("eth", 7, data);
-
             Packet decoded = RunAll(packet);
         }
 
@@ -167,7 +105,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet packet = new Packet("eth", 7, data);
 
             Packet decoded = RunAll(packet);
-            
+
             NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
         }
@@ -190,7 +128,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             return packet;
         }
-        
+
         private Packet RunOldHobbitTest(Packet packet)
         {
             IByteBuffer hobbitBuffer = PooledByteBufferAllocator.Default.Buffer();
@@ -233,70 +171,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             return packet;
         }
-        
-          private class ZeroFrameDecoderTest : ZeroNettyFrameDecoder
-        {
-            private readonly IChannelHandlerContext _context;
 
-            public ZeroFrameDecoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-                _context = Substitute.For<IChannelHandlerContext>();
-            }
-
-            public IByteBuffer Decode(IByteBuffer input)
-            {
-                var output = new List<object>();
-                base.Decode(_context, input, output);
-                return (IByteBuffer) output[0];
-            }
-        }
-
-        private class ZeroFrameEncoderTest : ZeroNettyFrameEncoder
-        {
-            private readonly IChannelHandlerContext _context;
-
-            public ZeroFrameEncoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-                _context = Substitute.For<IChannelHandlerContext>();
-            }
-
-            public void Encode(IByteBuffer input, IByteBuffer output)
-            {
-                base.Encode(_context, input, output);
-            }
-        }
-
-        private class ZeroPacketSplitterTest : ZeroNettyPacketSplitter
-        {
-            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
-
-            public void Encode(IByteBuffer input, IByteBuffer output)
-            {
-                base.Encode(_context, input, output);
-            }
-
-            public ZeroPacketSplitterTest() : base(LimboLogs.Instance)
-            {
-            }
-        }
-
-        private class ZeroFrameMergerTest : ZeroNettyFrameMerger
-        {
-            public ZeroFrameMergerTest()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
-
-            public IByteBuffer Decode(IByteBuffer input)
-            {
-                var output = new List<object>();
-                base.Decode(_context, input, output);
-                return (IByteBuffer) output[0];
-            }
-        }
-        
         private IByteBuffer _splitterBuffer = PooledByteBufferAllocator.Default.Buffer();
         private IByteBuffer _encoderBuffer = PooledByteBufferAllocator.Default.Buffer();
 
@@ -306,12 +181,12 @@ namespace Nethermind.Network.Test.Rlpx
 
             /***** THERE *****/
 
-            ZeroPacketSplitterTest packetSplitter = new ZeroPacketSplitterTest();
+            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
             _splitterBuffer.WriteByte(packet.PacketType);
             _splitterBuffer.WriteBytes(packet.Data);
-            packetSplitter.Encode(_splitterBuffer, _encoderBuffer);
+            _encoderBuffer = packetSplitter.Encode(_splitterBuffer);
 
-            ZeroFrameEncoderTest frameEncoder = new ZeroFrameEncoderTest(_frameCipherA, _macProcessorA);
+            ZeroFrameEncoderTestWrapper frameEncoder = new ZeroFrameEncoderTestWrapper(_frameCipherA, _macProcessorA);
             frameEncoder.Encode(_encoderBuffer, hobbitBuffer);
 //                TestContext.Out.WriteLine("encoded frame: " + frame.ToHexString());
 
@@ -319,70 +194,70 @@ namespace Nethermind.Network.Test.Rlpx
 
             /***** AND BACK AGAIN *****/
 
-            ZeroFrameDecoderTest frameDecoder = new ZeroFrameDecoderTest(_frameCipherB, _macProcessorB);
+            ZeroFrameDecoderTestWrapper frameDecoder = new ZeroFrameDecoderTestWrapper(_frameCipherB, _macProcessorB);
             var decoderBuffer = frameDecoder.Decode(hobbitBuffer);
 
-            ZeroFrameMergerTest frameMergerTest = new ZeroFrameMergerTest();
+            ZeroFrameMergerTestWrapper frameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
 //                TestContext.Out.WriteLine("decoded frame: " + frame.ToHexString());
-            var mergerBuffer = frameMergerTest.Decode(decoderBuffer);
+            var mergerBuffer = frameMergerTestWrapper.Decode(decoderBuffer);
 
-            Packet decodedPacket = new Packet("???", mergerBuffer.ReadByte(), mergerBuffer.ReadAllBytes());
+            Packet decodedPacket = new Packet("???", mergerBuffer.PacketType, mergerBuffer.Content.ReadAllBytes());
 
             Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
             Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
 
             return packet;
         }
-        
+
         private Packet RunZeroHobbitNoFramingTest(Packet packet)
         {
             IByteBuffer hobbitBuffer = PooledByteBufferAllocator.Default.Buffer();
 
             /***** THERE *****/
 
-            ZeroPacketSplitterTest packetSplitter = new ZeroPacketSplitterTest();
+            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
             _splitterBuffer.WriteByte(packet.PacketType);
             _splitterBuffer.WriteBytes(packet.Data);
             packetSplitter.DisableFraming();
-            packetSplitter.Encode(_splitterBuffer, _encoderBuffer);
+            _encoderBuffer = packetSplitter.Encode(_splitterBuffer);
 
-            ZeroFrameEncoderTest frameEncoder = new ZeroFrameEncoderTest(_frameCipherA, _macProcessorA);
+            ZeroFrameEncoderTestWrapper frameEncoder = new ZeroFrameEncoderTestWrapper(_frameCipherA, _macProcessorA);
             frameEncoder.DisableFraming();
             frameEncoder.Encode(_encoderBuffer, hobbitBuffer);
-            
+
 //                TestContext.Out.WriteLine("encoded frame: " + frame.ToHexString());
 
             TestContext.Out.WriteLine(hobbitBuffer.Array.Slice(hobbitBuffer.ArrayOffset + hobbitBuffer.ReaderIndex, hobbitBuffer.ReadableBytes).ToHexString());
 
             /***** AND BACK AGAIN *****/
 
-            ZeroFrameDecoderTest frameDecoder = new ZeroFrameDecoderTest(_frameCipherB, _macProcessorB);
+            ZeroFrameDecoderTestWrapper frameDecoder = new ZeroFrameDecoderTestWrapper(_frameCipherB, _macProcessorB);
             var decoderBuffer = frameDecoder.Decode(hobbitBuffer);
 
-            ZeroFrameMergerTest frameMergerTest = new ZeroFrameMergerTest();
+            ZeroFrameMergerTestWrapper frameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
 //                TestContext.Out.WriteLine("decoded frame: " + frame.ToHexString());
-            var mergerBuffer = frameMergerTest.Decode(decoderBuffer);
+            var mergerBuffer = frameMergerTestWrapper.Decode(decoderBuffer);
 
-            Packet decodedPacket = new Packet("???", mergerBuffer.ReadByte(), mergerBuffer.ReadAllBytes());
+            Packet decodedPacket = new Packet("???", mergerBuffer.PacketType, mergerBuffer.Content.ReadAllBytes());
 
             Assert.AreEqual(packet.Data.ToHexString(), decodedPacket.Data.ToHexString());
             Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
 
             return packet;
         }
-        
+
         private Packet RunMixedHobbitTest(Packet packet)
         {
             IByteBuffer hobbitBuffer = PooledByteBufferAllocator.Default.Buffer();
 
             /***** THERE *****/
 
-            ZeroPacketSplitterTest packetSplitter = new ZeroPacketSplitterTest();
+            ZeroPacketSplitterTestWrapper packetSplitter = new ZeroPacketSplitterTestWrapper();
             _splitterBuffer.WriteByte(packet.PacketType);
             _splitterBuffer.WriteBytes(packet.Data);
-            packetSplitter.Encode(_splitterBuffer, _encoderBuffer);
+            _encoderBuffer = packetSplitter.Encode(_splitterBuffer);
 
-            ZeroFrameEncoderTest frameEncoder = new ZeroFrameEncoderTest(_frameCipherA, _macProcessorA);
+            ZeroFrameEncoderTestWrapper frameEncoder = new ZeroFrameEncoderTestWrapper(_frameCipherA, _macProcessorA);
             frameEncoder.Encode(_encoderBuffer, hobbitBuffer);
 //                TestContext.Out.WriteLine("encoded frame: " + frame.ToHexString());
 
@@ -392,7 +267,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             FrameDecoderTest frameDecoder = new FrameDecoderTest(_frameCipherB, _macProcessorB);
             List<byte[]> decodedFrames = new List<byte[]>();
-            while(hobbitBuffer.ReadableBytes > 0)
+            while (hobbitBuffer.ReadableBytes > 0)
             {
                 decodedFrames.AddRange(frameDecoder.Decode(hobbitBuffer));
             }
@@ -411,6 +286,71 @@ namespace Nethermind.Network.Test.Rlpx
             Assert.AreEqual(packet.PacketType, decodedPacket.PacketType);
 
             return packet;
+        }
+
+        private class FrameDecoderTest : NettyFrameDecoder
+        {
+            private readonly IChannelHandlerContext _context;
+
+            public FrameDecoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
+            {
+                _context = Substitute.For<IChannelHandlerContext>();
+                _context.Allocator.Returns(PooledByteBufferAllocator.Default);
+            }
+
+            public List<byte[]> Decode(IByteBuffer buffer)
+            {
+                List<object> result = new List<object>();
+                base.Decode(_context, buffer, result);
+                return result.Cast<byte[]>().ToList();
+            }
+        }
+
+        private class FrameEncoderTest : NettyFrameEncoder
+        {
+            private readonly IChannelHandlerContext _context;
+
+            public FrameEncoderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
+            {
+                _context = Substitute.For<IChannelHandlerContext>();
+                _context.Allocator.Returns(PooledByteBufferAllocator.Default);
+            }
+
+            public void Encode(byte[] message, IByteBuffer buffer)
+            {
+                base.Encode(_context, message, buffer);
+            }
+        }
+
+        private class PacketSplitterTest : NettyPacketSplitter
+        {
+            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
+
+            public void Encode(Packet message, List<object> output)
+            {
+                base.Encode(_context, message, output);
+            }
+
+            public PacketSplitterTest() : base(LimboLogs.Instance)
+            {
+                _context.Allocator.Returns(PooledByteBufferAllocator.Default);
+            }
+        }
+
+        private class FrameMerger : NettyFrameMerger
+        {
+            public FrameMerger()
+                : base(LimboLogs.Instance)
+            {
+                _context.Allocator.Returns(PooledByteBufferAllocator.Default);
+            }
+
+            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
+
+            public void Decode(byte[] message, List<object> output)
+            {
+                base.Decode(_context, message, output);
+            }
         }
     }
 }

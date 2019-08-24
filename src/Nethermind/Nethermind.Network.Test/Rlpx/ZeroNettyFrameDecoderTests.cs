@@ -17,16 +17,11 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using DotNetty.Buffers;
-using DotNetty.Codecs;
-using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
-using NSubstitute;
+using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx
@@ -62,40 +57,6 @@ namespace Nethermind.Network.Test.Rlpx
             _shortFrame[2] = ShortFrameSize - 15; // size (total - padding)
         }
 
-        private class FrameDecoder : ZeroNettyFrameDecoder
-        {
-            private readonly IChannelHandlerContext _context;
-
-            public FrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-                _context = Substitute.For<IChannelHandlerContext>();
-                _context.Allocator.Returns(PooledByteBufferAllocator.Default);
-            }
-
-            public IByteBuffer Decode(IByteBuffer input, bool throwOnCorruptedFrames = true)
-            {
-                List<object> result = new List<object>();
-                try
-                {
-                    base.Decode(_context, input, result);
-                }
-                catch (CorruptedFrameException e)
-                {
-                    if (throwOnCorruptedFrames)
-                    {
-                        throw;
-                    }
-                }
-
-                if (result.Any())
-                {
-                    return (IByteBuffer) result[0];
-                }
-
-                return null;
-            }
-        }
-
         [Test]
         public void Check_and_decrypt_block()
         {
@@ -126,13 +87,13 @@ namespace Nethermind.Network.Test.Rlpx
             Test(BigNewBlockSingleFrame, DeliverBlockByBlock, BigNewBlockSingleFrameDecrypted);
         }
 
-        private void Test(string frame, Func<byte[], IByteBuffer, FrameDecoder, IByteBuffer> deliveryStrategy, string expectedOutput)
+        private void Test(string frame, Func<byte[], IByteBuffer, ZeroFrameDecoderTestWrapper, IByteBuffer> deliveryStrategy, string expectedOutput)
         {
             byte[] frameBytes = Bytes.FromHexString(frame);
             IByteBuffer input = Unpooled.Buffer(256);
-            FrameDecoder frameDecoder = new FrameDecoder(_frameCipher, _macProcessor);
+            ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper = new ZeroFrameDecoderTestWrapper(_frameCipher, _macProcessor);
 
-            IByteBuffer result = deliveryStrategy(frameBytes, input, frameDecoder);
+            IByteBuffer result = deliveryStrategy(frameBytes, input, zeroFrameDecoderTestWrapper);
             Assert.NotNull(result, "did not decode frame");
 
             byte[] resultBytes = new byte[result.ReadableBytes];
@@ -144,26 +105,26 @@ namespace Nethermind.Network.Test.Rlpx
             Assert.AreEqual(input.ReaderIndex, input.WriterIndex, "reader index == writer index");
         }
 
-        private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, FrameDecoder frameDecoder)
+        private static IByteBuffer DeliverAllAtOnce(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)
         {
             input.WriteBytes(frame);
-            return frameDecoder.Decode(input);
+            return zeroFrameDecoderTestWrapper.Decode(input);
         }
 
-        private static IByteBuffer DeliverAllAtOnceFollowedByACorruptedHeader(byte[] frame, IByteBuffer input, FrameDecoder frameDecoder)
+        private static IByteBuffer DeliverAllAtOnceFollowedByACorruptedHeader(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)
         {
             byte[] corruptedHeader = new byte[32];
             input.WriteBytes(Bytes.Concat(frame, corruptedHeader));
-            return frameDecoder.Decode(input, false);
+            return zeroFrameDecoderTestWrapper.Decode(input, false);
         }
 
-        private static IByteBuffer DeliverByteByByte(byte[] frame, IByteBuffer input, FrameDecoder frameDecoder)
+        private static IByteBuffer DeliverByteByByte(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)
         {
             IByteBuffer result = null;
             for (int i = 0; i < frame.Length; i++)
             {
                 input.WriteByte(frame[i]);
-                result = frameDecoder.Decode(input);
+                result = zeroFrameDecoderTestWrapper.Decode(input);
                 if (result != null)
                 {
                     break;
@@ -173,13 +134,13 @@ namespace Nethermind.Network.Test.Rlpx
             return result;
         }
 
-        private static IByteBuffer DeliverBlockByBlock(byte[] frame, IByteBuffer input, FrameDecoder frameDecoder)
+        private static IByteBuffer DeliverBlockByBlock(byte[] frame, IByteBuffer input, ZeroFrameDecoderTestWrapper zeroFrameDecoderTestWrapper)
         {
             IByteBuffer result = null;
             for (int i = 0; i < frame.Length; i += 16)
             {
                 input.WriteBytes(frame.Slice(i, 16));
-                result = frameDecoder.Decode(input);
+                result = zeroFrameDecoderTestWrapper.Decode(input);
                 if (result != null)
                 {
                     break;

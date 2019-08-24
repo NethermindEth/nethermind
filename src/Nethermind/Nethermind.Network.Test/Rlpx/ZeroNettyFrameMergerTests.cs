@@ -16,15 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -33,23 +31,6 @@ namespace Nethermind.Network.Test.Rlpx
     [TestFixture]
     public class ZeroNettyFrameMergerTests
     {
-        private class UnderTest : ZeroNettyFrameMerger
-        {
-            public UnderTest()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
-
-            public List<IByteBuffer> Decode(IByteBuffer input)
-            {
-                List<object> result = new List<object>();
-                base.Decode(_context, input, result);
-                return result.Cast<IByteBuffer>().ToList();
-            }
-        }
-
         private class TestFrameHelper : ZeroNettyPacketSplitter
         {
             private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
@@ -81,19 +62,19 @@ namespace Nethermind.Network.Test.Rlpx
         public void Handles_non_chunked_frames()
         {
             IByteBuffer input = BuildFrames(1);
-            UnderTest underTest = new UnderTest();
-            var output = underTest.Decode(input);
+            ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+            var output = zeroFrameMergerTestWrapper.Decode(input);
 
-            Assert.AreEqual(1, output.Count);
+            Assert.NotNull(output);
         }
 
         [Test]
         public void Merges_frames_with_same_context_id()
         {
             IByteBuffer input = BuildFrames(3);
-            UnderTest underTest = new UnderTest();
-            List<IByteBuffer> output = underTest.Decode(input);
-            Assert.AreEqual(1, output.Count);
+            ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            Assert.NotNull(output);
         }
 
         [Test]
@@ -101,10 +82,10 @@ namespace Nethermind.Network.Test.Rlpx
         {
             IByteBuffer input = BuildFrames(1);
             
-            UnderTest underTest = new UnderTest();
-            List<IByteBuffer> output = underTest.Decode(input);
-
-            Assert.AreEqual(2, output[0].ReadAllBytes().Length);
+            ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            Assert.NotNull(output);
+            Assert.AreEqual(1, output.Content.ReadableBytes);
         }
 
         [Test]
@@ -112,11 +93,10 @@ namespace Nethermind.Network.Test.Rlpx
         {
             IByteBuffer input = BuildFrames(3);
             
-            UnderTest underTest = new UnderTest();
-            List<IByteBuffer> output = null;
-            output = underTest.Decode(input);
-            byte[] outputBytes = output?[0].ReadAllBytes();
-            Assert.AreEqual(1 + 2049, outputBytes?.Length);
+            ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            Assert.NotNull(output);
+            Assert.AreEqual(2049, output.Content.ReadableBytes);
         }
 
         [Test]
@@ -124,10 +104,10 @@ namespace Nethermind.Network.Test.Rlpx
         {
             IByteBuffer input = BuildFrames(1);
 
-            UnderTest underTest = new UnderTest();
-            List<IByteBuffer> output = underTest.Decode(input);
-
-            Assert.AreEqual((byte)2, output[0].ReadByte());
+            ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            Assert.NotNull(output);
+            Assert.AreEqual((byte)2, output.PacketType);
         }
 
         [Test]
@@ -137,13 +117,13 @@ namespace Nethermind.Network.Test.Rlpx
             IByteBuffer input = PooledByteBufferAllocator.Default.Buffer();
             input.WriteBytes(frame);
             
-            UnderTest underTest = new UnderTest();
-            List<IByteBuffer> output = underTest.Decode(input);
+            ZeroFrameMergerTestWrapper zeroFrameMergerTestWrapper = new ZeroFrameMergerTestWrapper();
+            NettyPacket output = zeroFrameMergerTestWrapper.Decode(input);
+            Assert.NotNull(output);
 
-            byte packetType = output[0].ReadByte();
-            Assert.AreEqual(0, packetType);
+            Assert.AreEqual(0, output.PacketType);
             
-            byte[] outputBytes = output[0].ReadAllBytes();
+            byte[] outputBytes = output.Content.ReadAllBytes();
             HelloMessageSerializer serializer = new HelloMessageSerializer();
             HelloMessage helloMessage = serializer.Deserialize(outputBytes);
 

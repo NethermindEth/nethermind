@@ -27,7 +27,7 @@ using Snappy;
 
 namespace Nethermind.Network.P2P
 {
-    public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<IByteBuffer>
+    public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<NettyPacket>
     {
         private readonly ISession _session;
         private readonly ILogger _logger;
@@ -49,55 +49,56 @@ namespace Nethermind.Network.P2P
             base.ChannelRegistered(context);
         }
 
-        protected override void ChannelRead0(IChannelHandlerContext ctx, IByteBuffer input)
+        protected override void ChannelRead0(IChannelHandlerContext ctx, NettyPacket input)
         {
-            byte packetType = input.ReadByte();
+            byte packetType = input.PacketType;
             Packet packet = new Packet("???", packetType, null);
+            IByteBuffer content = input.Content;
 
             if (SnappyEnabled)
             {
-                int uncompressedLength = SnappyCodec.GetUncompressedLength(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes);
+                int uncompressedLength = SnappyCodec.GetUncompressedLength(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes);
                 if (uncompressedLength > SnappyParameters.MaxSnappyLength)
                 {
                     throw new Exception("Max message size exceeeded"); // TODO: disconnect here
                 }
 
-                if (input.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
+                if (content.ReadableBytes > SnappyParameters.MaxSnappyLength / 4)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {input.ReadableBytes}");
+                    if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {content.ReadableBytes}");
                 }
                 else
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {input.ReadableBytes}");
+                    if (_logger.IsTrace) _logger.Trace($"Uncompressing with Snappy a message of length {content.ReadableBytes}");
                 }
 
 
                 byte[] output = new byte[uncompressedLength];
                 try
                 {
-                    SnappyCodec.Uncompress(input.Array, input.ArrayOffset + input.ReaderIndex, input.ReadableBytes, output, 0);
+                    SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output, 0);
                     
                 }
                 catch (Exception e)
                 {
-                    if (input.ReadableBytes == 2 && input.ReadByte() == 193)
+                    if (content.ReadableBytes == 2 && content.ReadByte() == 193)
                     {
                         // this is a Parity disconnect sent as a non-snappy-encoded message
                         // e.g. 0xc103
                     }
                     else
                     {
-                        input.SkipBytes(input.ReadableBytes);
+                        content.SkipBytes(content.ReadableBytes);
                         throw;
                     }
                 }
 
-                input.SkipBytes(input.ReadableBytes);
+                content.SkipBytes(content.ReadableBytes);
                 packet.Data = output;
             }
             else
             {
-                packet.Data = input.ReadAllBytes();
+                packet.Data = content.ReadAllBytes();
             }
             
 //            input.SafeRelease();
