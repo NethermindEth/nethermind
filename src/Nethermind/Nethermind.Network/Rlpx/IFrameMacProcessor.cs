@@ -22,7 +22,11 @@ namespace Nethermind.Network.Rlpx
     {
         void AddMac(byte[] input, int offset, int length, bool isHeader);
 
-        void EgressUpdate(byte[] input);
+        void UpdateEgressMac(byte[] input);
+        
+        void UpdateIngressMac(byte[] input, bool isHeader);
+
+        bool CheckMac(byte[] mac, bool isHeader);
         
         void CalculateMac(byte[] output);
         

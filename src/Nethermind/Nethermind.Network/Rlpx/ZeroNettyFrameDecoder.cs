@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -30,98 +31,145 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroNettyFrameDecoder : ByteToMessageDecoder
     {
-        private const int HeaderSize = 16;
-        private const int MacSize = 16;
-
-        private readonly IFrameCipher _frameCipher;
-        private readonly IFrameMacProcessor _frameMacProcessor;
         private readonly ILogger _logger;
+        private readonly IFrameCipher _cipher;
+        private readonly IFrameMacProcessor _authenticator;
 
-        private readonly byte[] _headerBuffer = new byte[HeaderSize + MacSize];
+        private readonly byte[] _headerBytes = new byte[FrameParams.HeaderSize];
+        private readonly byte[] _macBytes = new byte[FrameParams.MacSize];
+        private readonly byte[] _frameBlockBytes = new byte[FrameParams.BlockSize];
+        private readonly byte[] _decryptedBytes = new byte[FrameParams.BlockSize];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
+        private IByteBuffer _innerBuffer;
         private int _frameSize;
+        private int _remainingPayloadBlocks;
 
         public ZeroNettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
-            _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
-            _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
+            _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+            _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            IByteBuffer buffer = null;
-            while (input.ReadableBytes > 0)
+            while (input.ReadableBytes >= FrameParams.BlockSize)
             {
-                if (_state == FrameDecoderState.WaitingForHeader)
+                switch (_state)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Decoding frame header {input.ReadableBytes}");
-
-                    if (input.ReadableBytes == 0)
+                    case FrameDecoderState.WaitingForHeader:
                     {
-                        if (_logger.IsTrace) _logger.Trace($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
-                        context.CloseAsync();
-                        return;
+                        ReadHeader(input);
+                        _state = FrameDecoderState.WaitingForHeaderMac;
+                        break;
                     }
-
-                    if (input.ReadableBytes >= HeaderSize + MacSize)
+                    case FrameDecoderState.WaitingForHeaderMac:
                     {
-                        input.ReadBytes(_headerBuffer);
-                        if (_logger.IsTrace) _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
-
-                        _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
-                        _frameCipher.Decrypt(_headerBuffer, 0, 16, _headerBuffer, 0);
-
-                        _frameSize = _headerBuffer[0] & 0xFF;
-                        _frameSize = (_frameSize << 8) + (_headerBuffer[1] & 0xFF);
-                        _frameSize = (_frameSize << 8) + (_headerBuffer[2] & 0xFF);
-                        int paddingSize = FrameParams.CalculatePadding(_frameSize);
-                        _frameSize += paddingSize;
+                        AuthenticateHeader(input);
+                        DecryptHeader();
+                        ReadFrameSize();
+                        AllocateFrameBuffer(context);
                         _state = FrameDecoderState.WaitingForPayload;
-
-                        if (_logger.IsTrace) _logger.Trace($"Expecting a message {_frameSize - paddingSize} + {paddingSize} + 16");
+                        break;
                     }
-                    else
+                    case FrameDecoderState.WaitingForPayload:
                     {
-                        if (_logger.IsTrace) _logger.Trace("Waiting for full 32 bytes of the header");
-                        return;
+                        ProcessOneBlock(input);
+                        if (_remainingPayloadBlocks == 0)
+                        {
+                            _state = FrameDecoderState.WaitingForPayloadMac;
+                        }
+                        break;
                     }
-                }
-
-                if (_state == FrameDecoderState.WaitingForPayload)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Decoding payload {input.ReadableBytes}");
-                    
-                    if (input.ReadableBytes < _frameSize + MacSize)
+                    case FrameDecoderState.WaitingForPayloadMac:
                     {
-                        return;
+                        AuthenticatePayload(input);
+                        PassFrame(output);
+                        _state = FrameDecoderState.WaitingForHeader;
+                        break;
                     }
-                    
-                    if (buffer == null)
-                    {
-                        buffer = PooledByteBufferAllocator.Default.Buffer(HeaderSize + _frameSize);
-                    }
-                    
-                    buffer.MakeSpace(HeaderSize + _frameSize);
-                    buffer.WriteBytes(_headerBuffer, 0, HeaderSize);
-
-                    _frameMacProcessor.CheckMac(input.Array, input.ArrayOffset + input.ReaderIndex, _frameSize, false);
-                    _frameCipher.Decrypt(input.Array, input.ArrayOffset + input.ReaderIndex, _frameSize, buffer.Array, buffer.ArrayOffset + buffer.WriterIndex);
-
-                    input.SetReaderIndex(input.ReaderIndex + _frameSize + MacSize);
-                    buffer.SetWriterIndex(buffer.WriterIndex + _frameSize);
-                    output.Add(buffer);
-                    
-                    _state = FrameDecoderState.WaitingForHeader;
+                    default:
+                        throw new NotImplementedException($"{nameof(ZeroNettyFrameDecoder)} does not support {_state} state.");
                 }
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void PassFrame(List<object> output)
+        {
+            output.Add(_innerBuffer);
+            _innerBuffer = null;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ReadHeader(IByteBuffer input)
+        {
+            input.ReadBytes(_headerBytes);
+            _authenticator.UpdateIngressMac(_headerBytes, true);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AllocateFrameBuffer(IChannelHandlerContext context)
+        {
+            _innerBuffer = context.Allocator.Buffer(FrameParams.HeaderSize + _frameSize);
+            _innerBuffer.WriteBytes(_decryptedBytes, 0, FrameParams.HeaderSize);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ReadFrameSize()
+        {
+            _frameSize = _decryptedBytes[0] & 0xFF;
+            _frameSize = (_frameSize << 8) + (_decryptedBytes[1] & 0xFF);
+            _frameSize = (_frameSize << 8) + (_decryptedBytes[2] & 0xFF);
+
+            int paddingSize = FrameParams.CalculatePadding(_frameSize);
+            _frameSize += paddingSize;
+            _remainingPayloadBlocks = _frameSize / FrameParams.BlockSize;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void DecryptHeader()
+        {
+            _cipher.Decrypt(_headerBytes, 0, FrameParams.BlockSize, _decryptedBytes, 0);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AuthenticateHeader(IByteBuffer input)
+        {
+            input.ReadBytes(_macBytes);
+            bool isValidMac = _authenticator.CheckMac(_macBytes, true);
+            if (!isValidMac)
+            {
+                throw new CorruptedFrameException("Sender delivered a frame with an invalid header MAC");
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void AuthenticatePayload(IByteBuffer input)
+        {
+            input.ReadBytes(_macBytes);
+            bool isValidMac = _authenticator.CheckMac(_macBytes, false);
+            if (!isValidMac)
+            {
+                throw new CorruptedFrameException("Sender delivered a frame with an invalid payload MAC");
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void ProcessOneBlock(IByteBuffer input)
+        {
+            input.ReadBytes(_frameBlockBytes);
+            _authenticator.UpdateIngressMac(_frameBlockBytes, false);
+            _cipher.Decrypt(_frameBlockBytes, 0, FrameParams.BlockSize, _decryptedBytes, 0);
+            _innerBuffer.WriteBytes(_decryptedBytes);
+            _remainingPayloadBlocks--;
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             _logger.Warn(exception.ToString());
-            
+
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -138,11 +186,13 @@ namespace Nethermind.Network.Rlpx
 
             base.ExceptionCaught(context, exception);
         }
-        
+
         private enum FrameDecoderState
         {
             WaitingForHeader,
-            WaitingForPayload
+            WaitingForHeaderMac,
+            WaitingForPayload,
+            WaitingForPayloadMac
         }
     }
 }

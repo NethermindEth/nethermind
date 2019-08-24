@@ -30,17 +30,17 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroNettyFrameMerger : MessageToMessageDecoder<IByteBuffer>
+    public class ZeroNettyFrameMerger : ByteToMessageDecoder
     {
         public const int MaxChunkedFrameSize = FrameBoundary * 64;
         private const int FrameBoundary = 16;
         private const int HeaderSize = 16;
         private const int MacSize = 16;
-        private  int _remaining;
+        private int _remaining;
         private int? _currentContextId;
         private ILogger _logger;
 
-        private IByteBuffer _payload; // spec used to say that the chunks can come mixed but probably not needed any more
+        private IByteBuffer _innerBuffer; // spec used to say that the chunks can come mixed but probably not needed any more
 
         public ZeroNettyFrameMerger(ILogManager logManager)
         {
@@ -49,73 +49,85 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            while (input.ReadableBytes > 0)
+            try
             {
-                if (_logger.IsTrace)
+                if (input.ReferenceCount != 1)
                 {
-                    _logger.Trace("Merging frames");
+                    throw new IllegalReferenceCountException(input.ReferenceCount);
                 }
-
-                byte[] header = new byte[HeaderSize];
-                input.ReadBytes(header);
-
-                Rlp.ValueDecoderContext headerBodyItems = header.Slice(3, 13).AsRlpValueContext();
-                int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-                int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
-                headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-                int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
-                int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
-
-                bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
-                _currentContextId = contextId;
-                if (isChunked)
+                
+                while (input.IsReadable())
                 {
-                    Debug.Assert(contextId.HasValue);
                     if (_logger.IsTrace)
                     {
-                        _logger.Trace("Merging chunked packet");
+                        _logger.Trace("Merging frames");
                     }
 
-                    bool isFirstChunk = totalPacketSize.HasValue;
-                    if (isFirstChunk)
+                    byte[] header = new byte[HeaderSize];
+                    input.ReadBytes(header);
+
+                    Rlp.ValueDecoderContext headerBodyItems = header.Slice(3, 13).AsRlpValueContext();
+                    int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
+                    int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
+                    headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
+                    int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
+                    int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
+
+                    bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
+                    _currentContextId = contextId;
+                    if (isChunked)
                     {
-                        _remaining = totalPacketSize.Value - 1; // packet type data size
-                        _payload = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
-                        _payload.WriteByte(input.ReadByte());
+                        Debug.Assert(contextId.HasValue);
+                        if (_logger.IsTrace)
+                        {
+                            _logger.Trace("Merging chunked packet");
+                        }
+
+                        bool isFirstChunk = totalPacketSize.HasValue;
+                        if (isFirstChunk)
+                        {
+                            _remaining = totalPacketSize.Value - 1; // packet type data size
+                            _innerBuffer = PooledByteBufferAllocator.Default.Buffer(totalPacketSize.Value);
+                            _innerBuffer.WriteByte(input.ReadByte());
+                        }
+
+                        _logger.Error($"{totalPacketSize}");
+                        Debug.Assert(_innerBuffer != null, $"TPS {totalPacketSize} CID {contextId} CCID {_currentContextId}");
+                        int frameSize = Math.Min(_remaining, MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
+
+                        input.ReadBytes(_innerBuffer, frameSize);
+                        _remaining -= frameSize;
+                        if (_remaining == 0)
+                        {
+                            input.SkipBytes(FrameParams.CalculatePadding(frameSize));
+                            output.Add(_innerBuffer);
+                            _innerBuffer = null;
+                        }
                     }
-
-                    _logger.Error($"{totalPacketSize}");
-                    Debug.Assert(_payload != null, $"TPS {totalPacketSize} CID {contextId} CCID {_currentContextId}");
-                    int frameSize = Math.Min(_remaining, MaxChunkedFrameSize) - (isFirstChunk ? 1 : 0);
-
-                    input.ReadBytes(_payload, frameSize);
-                    _remaining -= frameSize;
-                    if (_remaining == 0)
+                    else
                     {
-                        input.SkipBytes(FrameParams.CalculatePadding(frameSize));
-                        IByteBuffer outputBuffer = _payload;
+                        int totalBodySize = header[0] & 0xFF;
+                        totalBodySize = (totalBodySize << 8) + (header[1] & 0xFF);
+                        totalBodySize = (totalBodySize << 8) + (header[2] & 0xFF);
+
+                        byte packetTypeRlp = input.ReadByte();
+
+                        if (_logger.IsTrace)
+                        {
+                            _logger.Trace($"Merging single frame packet of length {totalBodySize - 1}");
+                        }
+
+                        IByteBuffer outputBuffer = PooledByteBufferAllocator.Default.Buffer(totalBodySize);
+                        outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
+                        input.ReadBytes(outputBuffer, totalBodySize - 1);
+                        input.SkipBytes(FrameParams.CalculatePadding(totalBodySize));
                         output.Add(outputBuffer);
                     }
                 }
-                else
-                {
-                    int totalBodySize = header[0] & 0xFF;
-                    totalBodySize = (totalBodySize << 8) + (header[1] & 0xFF);
-                    totalBodySize = (totalBodySize << 8) + (header[2] & 0xFF);
-
-                    byte packetTypeRlp = input.ReadByte();
-
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Merging single frame packet of length {totalBodySize - 1}");
-                    }
-
-                    IByteBuffer outputBuffer = PooledByteBufferAllocator.Default.Buffer(totalBodySize);
-                    outputBuffer.WriteByte(GetPacketType(packetTypeRlp));
-                    input.ReadBytes(outputBuffer, totalBodySize - 1);
-                    input.SkipBytes(FrameParams.CalculatePadding(totalBodySize));
-                    output.Add(outputBuffer);
-                }
+            }
+            catch (Exception ex)
+            {
+                throw new CorruptedFrameException(ex);
             }
         }
 

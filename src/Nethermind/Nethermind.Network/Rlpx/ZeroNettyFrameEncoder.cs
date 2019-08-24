@@ -46,7 +46,7 @@ namespace Nethermind.Network.Rlpx
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private byte[] _encryptBuffer = new byte[FrameParams.FrameBlockSize];
+        private byte[] _encryptBuffer = new byte[FrameParams.BlockSize];
         private byte[] _macBuffer = new byte[16];
 
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
@@ -55,7 +55,7 @@ namespace Nethermind.Network.Rlpx
             {
                 int frameLength = Math.Min(MaxFrameSize, input.ReadableBytes - 16);
                 
-                if (input.ReadableBytes % FrameParams.FrameBlockSize != 0)
+                if (input.ReadableBytes % FrameParams.BlockSize != 0)
                 {
                     throw new InvalidOperationException($"Frame length should be a multiple of 16");
                 }
@@ -70,11 +70,11 @@ namespace Nethermind.Network.Rlpx
                 _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
                 output.WriteBytes(_macBuffer);
                 
-                for (int i = 0; i < frameLength / FrameParams.FrameBlockSize; i++)
+                for (int i = 0; i < frameLength / FrameParams.BlockSize; i++)
                 {
                     input.ReadBytes(_encryptBuffer);
                     _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
-                    _frameMacProcessor.EgressUpdate(_encryptBuffer);
+                    _frameMacProcessor.UpdateEgressMac(_encryptBuffer);
                     output.WriteBytes(_encryptBuffer);
                 }
 
