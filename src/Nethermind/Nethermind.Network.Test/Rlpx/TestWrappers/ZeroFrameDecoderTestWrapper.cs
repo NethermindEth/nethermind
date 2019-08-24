@@ -27,7 +27,7 @@ using NSubstitute;
 
 namespace Nethermind.Network.Test.Rlpx.TestWrappers
 {
-    internal class ZeroFrameDecoderTestWrapper : ZeroNettyFrameDecoder
+    internal class ZeroFrameDecoderTestWrapper : ZeroFrameDecoder
     {
         private readonly IChannelHandlerContext _context;
 

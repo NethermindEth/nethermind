@@ -133,7 +133,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestZeroDecoder : ZeroNettyFrameDecoder
+        private class TestZeroDecoder : ZeroFrameDecoder
         {
             public IByteBuffer Decode(IByteBuffer input)
             {
@@ -167,7 +167,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestZeroMerger : Rlpx.ZeroNettyFrameMerger
+        private class TestZeroMerger : Rlpx.ZeroFrameMerger
         {
             public TestZeroMerger()
                 : base(LimboLogs.Instance)

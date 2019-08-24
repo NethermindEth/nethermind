@@ -20,13 +20,14 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Local;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 
 namespace Nethermind.Network.Test.Rlpx.TestWrappers
 {
-    internal class ZeroFrameMergerTestWrapper : ZeroNettyFrameMerger
+    internal class ZeroFrameMergerTestWrapper : ZeroFrameMerger
     {
         public ZeroFrameMergerTestWrapper()
             : base(LimboLogs.Instance)
@@ -48,8 +49,8 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
             {
                 return null;
             }
-                
-            return (NettyPacket)result[0];
+
+            return (NettyPacket) result[0];
         }
     }
 }

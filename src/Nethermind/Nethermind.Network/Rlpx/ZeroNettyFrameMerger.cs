@@ -25,30 +25,18 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NettyPacket : DefaultByteBufferHolder
-    {
-        public byte PacketType { get; set; }
-
-        public NettyPacket(IByteBuffer data) : base(data)
-        {
-        }
-    }
-
-    public class ZeroNettyFrameMerger : ByteToMessageDecoder
+    public class ZeroFrameMerger : ByteToMessageDecoder
     {
         private ILogger _logger;
-        private int? _currentContextId;
 
         private NettyPacket _nettyPacket;
-        private byte[] _headerBytes = new byte[FrameParams.HeaderSize];
+        private FrameHeaderReader _headerReader = new FrameHeaderReader();
 
-        public ZeroNettyFrameMerger(ILogManager logManager)
+        public ZeroFrameMerger(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -68,7 +56,7 @@ namespace Nethermind.Network.Rlpx
                 throw new IllegalReferenceCountException(input.ReferenceCount);
             }
 
-            FrameInfo frame = ReadFrameHeader(input);
+            FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
             if (frame.IsFirst)
             {
                 ReadFirstChunk(context, input, frame);
@@ -86,19 +74,19 @@ namespace Nethermind.Network.Rlpx
 
                 if (input.IsReadable())
                 {
-                    throw new CorruptedFrameException($"{nameof(ZeroNettyFrameMerger)} received a corrupted frame - {input.ReadableBytes} longer than expected");
+                    throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a corrupted frame - {input.ReadableBytes} longer than expected");
                 }
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadChunk(IByteBuffer input, FrameInfo frame)
+        private void ReadChunk(IByteBuffer input, FrameHeaderReader.FrameInfo frame)
         {
             input.ReadBytes(_nettyPacket.Content, frame.Size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, FrameInfo frame)
+        private void ReadFirstChunk(IChannelHandlerContext context, IByteBuffer input, FrameHeaderReader.FrameInfo frame)
         {
             byte packetTypeRlp = input.ReadByte();
             IByteBuffer content;
@@ -109,12 +97,11 @@ namespace Nethermind.Network.Rlpx
             else
             {
                 content = input.ReadSlice(frame.Size - 1);
-                
+
                 // Since we will call release in the next handler and we use a derived buffer here
                 // we need to call Retain to prevent the buffer from being released twice
                 // (once in the next handler and once in the base class).
                 content.Retain();
-                
             }
 
             _nettyPacket = new NettyPacket(content);
@@ -133,26 +120,6 @@ namespace Nethermind.Network.Rlpx
         private static byte GetPacketType(byte packetTypeRlp)
         {
             return packetTypeRlp == 128 ? (byte) 0 : packetTypeRlp;
-        }
-
-        private FrameInfo ReadFrameHeader(IByteBuffer input)
-        {
-            input.ReadBytes(_headerBytes);
-            int frameSize = _headerBytes[0] & 0xFF;
-            frameSize = (frameSize << 8) + (_headerBytes[1] & 0xFF);
-            frameSize = (frameSize << 8) + (_headerBytes[2] & 0xFF);
-
-            Rlp.ValueDecoderContext headerBodyItems = _headerBytes.AsSpan().Slice(3, 13).AsRlpValueContext();
-            int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
-            int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
-            headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
-            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?) null;
-            _currentContextId = contextId;
-            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?) null;
-
-            bool isChunked = totalPacketSize.HasValue || contextId.HasValue && _currentContextId == contextId && contextId != 0;
-            bool isFirst = totalPacketSize.HasValue || !isChunked;
-            return new FrameInfo(isChunked, isFirst, frameSize, totalPacketSize ?? frameSize);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
@@ -176,23 +143,6 @@ namespace Nethermind.Network.Rlpx
             }
 
             base.ExceptionCaught(context, exception);
-        }
-
-        private struct FrameInfo
-        {
-            public FrameInfo(bool isChunked, bool isFirst, int size, int totalPacketSize)
-            {
-                IsChunked = isChunked;
-                IsFirst = isFirst;
-                Size = size;
-                TotalPacketSize = totalPacketSize;
-            }
-
-            public bool IsChunked { get; }
-            public bool IsFirst { get; }
-            public int Size { get; }
-            public int TotalPacketSize { get; }
-            public int Padding => FrameParams.CalculatePadding(Size);
         }
     }
 }

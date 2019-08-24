@@ -27,13 +27,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroNettyPacketSplitter : MessageToByteEncoder<IByteBuffer>
+    public class ZeroPacketSplitter : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        public int MaxFrameSize = FrameParams.DefaultMaxFrameSize;
+        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private ILogger _logger;
 
-        public ZeroNettyPacketSplitter(ILogManager logManager)
+        public ZeroPacketSplitter(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -61,8 +61,8 @@ namespace Nethermind.Network.Rlpx
             {
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
-                int paddingSize = i == framesCount - 1 ? FrameParams.CalculatePadding(totalPayloadSize) : 0;
-                output.MakeSpace(FrameParams.HeaderSize + framePayloadSize + paddingSize, "splitter");
+                int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
+                output.MakeSpace(Frame.HeaderSize + framePayloadSize + paddingSize, "splitter");
 
                 // 000 - 016 | header
                 // 016 - 01x | packet type
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Rlpx
                     headerDataItems[0] = Rlp.Encode(0);
                     byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
                     output.WriteBytes(headerDataBytes);
-                    output.WriteZero(FrameParams.HeaderSize - headerDataBytes.Length - 3);
+                    output.WriteZero(Frame.HeaderSize - headerDataBytes.Length - 3);
                 }
 
                 int framePacketTypeSize = 0;

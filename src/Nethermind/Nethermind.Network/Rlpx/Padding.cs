@@ -20,7 +20,7 @@ using System.Runtime.CompilerServices;
 
 namespace Nethermind.Network.Rlpx
 {
-    public static class FrameParams
+    public static class Frame
     {
         public const int MacSize = 16;
         

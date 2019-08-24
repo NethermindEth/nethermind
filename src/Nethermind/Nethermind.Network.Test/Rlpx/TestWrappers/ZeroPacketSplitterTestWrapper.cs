@@ -24,7 +24,7 @@ using NSubstitute;
 
 namespace Nethermind.Network.Test.Rlpx.TestWrappers
 {
-    internal class ZeroPacketSplitterTestWrapper : ZeroNettyPacketSplitter
+    internal class ZeroPacketSplitterTestWrapper : ZeroPacketSplitter
     {
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 

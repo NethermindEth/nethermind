@@ -26,12 +26,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class NettyPacketSplitter : MessageToMessageEncoder<Packet>
+    public class NettyPacketSplitter : MessageToMessageEncoder<Packet>, IFramingAware
     {
         private readonly ILogManager _logManager;
-        public const int FrameBoundary = 16;
 
-        public int MaxFrameSize = FrameBoundary * 64;
+        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
+        
         private int _contextId;
 
         public void DisableFraming()
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Rlpx
             {
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
-                int paddingSize = i == framesCount - 1 ? FrameParams.CalculatePadding(totalPayloadSize) : 0;
+                int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
                 byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + padding + frame MAC
 
                 frame[0] = (byte) (framePayloadSize >> 16);

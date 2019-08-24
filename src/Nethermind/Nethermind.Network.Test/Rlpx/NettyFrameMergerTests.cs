@@ -65,7 +65,7 @@ namespace Nethermind.Network.Test.Rlpx
         private static List<object> BuildFrames(int count)
         {
             PacketSplitter frameBuilder = new PacketSplitter();
-            Packet packet = new Packet("eth", 2, new byte[(count - 1) * NettyPacketSplitter.FrameBoundary * 64 + 1]);
+            Packet packet = new Packet("eth", 2, new byte[(count - 1) * Frame.DefaultMaxFrameSize + 1]);
             List<object> frames = new List<object>();
             frameBuilder.Encode(packet, frames);
             return frames;

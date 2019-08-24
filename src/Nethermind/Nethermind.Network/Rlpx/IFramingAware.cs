@@ -16,26 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
-using Nethermind.Logging;
-using Nethermind.Network.Rlpx;
-using NSubstitute;
 
-namespace Nethermind.Network.Test.Rlpx.TestWrappers
+namespace Nethermind.Network.Rlpx
 {
-    internal class ZeroFrameEncoderTestWrapper : ZeroFrameEncoder
+    public interface IFramingAware : IChannelHandler
     {
-        private readonly IChannelHandlerContext _context;
-
-        public ZeroFrameEncoderTestWrapper(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-        {
-            _context = Substitute.For<IChannelHandlerContext>();
-        }
-
-        public void Encode(IByteBuffer input, IByteBuffer output)
-        {
-            base.Encode(_context, input, output);
-        }
+        void DisableFraming();
+        
+        int MaxFrameSize { get; }
     }
 }

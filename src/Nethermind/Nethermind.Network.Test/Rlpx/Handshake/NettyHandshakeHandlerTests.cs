@@ -92,8 +92,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Initiator, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameEncoder>());
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameDecoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameEncoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameDecoder>());
         }
 
         [Test]
@@ -102,8 +102,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Initiator, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyPacketSplitter>());
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameMerger>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroPacketSplitter>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameMerger>());
         }
 
         [Test]
@@ -150,8 +150,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Recipient, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameEncoder>());
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameDecoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameEncoder>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameDecoder>());
         }
 
         [Test]
@@ -160,8 +160,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_serializationService, _handshakeService, _session, HandshakeRole.Recipient, _logger, _group);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyPacketSplitter>());
-            _pipeline.Received(1).AddLast(Arg.Any<ZeroNettyFrameMerger>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroPacketSplitter>());
+            _pipeline.Received(1).AddLast(Arg.Any<ZeroFrameMerger>());
         }
 
         [Test]

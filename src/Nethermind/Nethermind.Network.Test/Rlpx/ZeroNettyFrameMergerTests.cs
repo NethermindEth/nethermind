@@ -31,7 +31,7 @@ namespace Nethermind.Network.Test.Rlpx
     [TestFixture]
     public class ZeroNettyFrameMergerTests
     {
-        private class TestFrameHelper : ZeroNettyPacketSplitter
+        private class TestFrameHelper : ZeroPacketSplitter
         {
             private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 
@@ -48,12 +48,12 @@ namespace Nethermind.Network.Test.Rlpx
         private static IByteBuffer BuildFrames(int count)
         {
             TestFrameHelper frameBuilder = new TestFrameHelper();
-            int totalLength = (count - 1) * FrameParams.DefaultMaxFrameSize + 1;
+            int totalLength = (count - 1) * Frame.DefaultMaxFrameSize + 1;
             IByteBuffer input = PooledByteBufferAllocator.Default.Buffer(1 +  totalLength);
             input.WriteByte(2);
             input.WriteZero(totalLength);
             
-            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(totalLength + FrameParams.CalculatePadding(totalLength) + count * 16);
+            IByteBuffer output = PooledByteBufferAllocator.Default.Buffer(totalLength + Frame.CalculatePadding(totalLength) + count * 16);
             frameBuilder.Encode(input, output);
             return output;
         }

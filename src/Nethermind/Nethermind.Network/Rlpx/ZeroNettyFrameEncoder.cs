@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
@@ -26,61 +27,79 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroNettyFrameEncoder : MessageToByteEncoder<IByteBuffer>
+    public class ZeroFrameEncoder : MessageToByteEncoder<IByteBuffer>
     {
         private readonly ILogger _logger;
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
-        
-        public int MaxFrameSize = FrameParams.DefaultMaxFrameSize;
+        private readonly FrameHeaderReader _headerReader = new FrameHeaderReader();
 
-        public void DisableFraming()
-        {
-            MaxFrameSize = int.MaxValue;
-        }
-        
-        public ZeroNettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
+        private byte[] _encryptBuffer = new byte[Frame.BlockSize];
+        private byte[] _macBuffer = new byte[16];
+
+        public ZeroFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
             _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private byte[] _encryptBuffer = new byte[FrameParams.BlockSize];
-        private byte[] _macBuffer = new byte[16];
-
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
-            while (input.ReadableBytes > 0)
+            while (input.IsReadable())
             {
-                int frameLength = Math.Min(MaxFrameSize, input.ReadableBytes - 16);
-                
-                if (input.ReadableBytes % FrameParams.BlockSize != 0)
+                if (input.ReadableBytes % Frame.BlockSize != 0)
                 {
-                    throw new InvalidOperationException($"Frame length should be a multiple of 16");
+                    throw new CorruptedFrameException($"Frame prepared for sending was in incorrect format: length was {input.ReadableBytes}");
                 }
 
-                // header | header MAC | payload | payload MAC
-                output.MakeSpace(16 + 16 + frameLength + 16, "encoder");
-
-                input.ReadBytes(_encryptBuffer);
-                _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
-                output.WriteBytes(_encryptBuffer);
-
-                _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
-                output.WriteBytes(_macBuffer);
+                FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
                 
-                for (int i = 0; i < frameLength / FrameParams.BlockSize; i++)
+                // 0 if the buffer has enough writable bytes, and its capacity is unchanged.
+                // 1 if the buffer does not have enough bytes, and its capacity is unchanged.
+                // 2 if the buffer has enough writable bytes, and its capacity has been increased.
+                // 3 if the buffer does not have enough bytes, but its capacity has been increased to its maximum.
+                int code = output.EnsureWritable(Frame.HeaderSize + Frame.MacSize + frame.PayloadSize + Frame.MacSize, true);
+
+                WriteHeader(output);
+                WriteHeaderMac(output);
+                for (int i = 0; i < frame.PayloadSize / Frame.BlockSize; i++)
                 {
-                    input.ReadBytes(_encryptBuffer);
-                    _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
-                    _frameMacProcessor.UpdateEgressMac(_encryptBuffer);
-                    output.WriteBytes(_encryptBuffer);
+                    WritePayloadBlock(input, output);
                 }
 
-                _frameMacProcessor.CalculateMac(_macBuffer);
-                output.WriteBytes(_macBuffer);
+                WritePayloadMac(output);
             }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteHeader(IByteBuffer output)
+        {
+            _frameCipher.Encrypt(_headerReader.HeaderBytes, 0, 16, _encryptBuffer, 0);
+            output.WriteBytes(_encryptBuffer);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteHeaderMac(IByteBuffer output)
+        {
+            _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
+            output.WriteBytes(_macBuffer);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WritePayloadMac(IByteBuffer output)
+        {
+            _frameMacProcessor.CalculateMac(_macBuffer);
+            output.WriteBytes(_macBuffer);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WritePayloadBlock(IByteBuffer input, IByteBuffer output)
+        {
+            input.ReadBytes(_encryptBuffer);
+            _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
+            _frameMacProcessor.UpdateEgressMac(_encryptBuffer);
+            output.WriteBytes(_encryptBuffer);
         }
     }
 }

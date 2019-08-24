@@ -119,7 +119,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestZeroEncoder : Rlpx.ZeroNettyFrameEncoder
+        private class TestZeroEncoder : Rlpx.ZeroFrameEncoder
         {
             public void Encode(IByteBuffer message, IByteBuffer buffer)
             {
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestZeroSplitter : Rlpx.ZeroNettyPacketSplitter
+        private class TestZeroSplitter : Rlpx.ZeroPacketSplitter
         {
             public TestZeroSplitter()
                 : base(LimboLogs.Instance)

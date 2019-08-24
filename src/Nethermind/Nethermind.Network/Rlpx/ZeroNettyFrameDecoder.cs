@@ -29,23 +29,23 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class ZeroNettyFrameDecoder : ByteToMessageDecoder
+    public class ZeroFrameDecoder : ByteToMessageDecoder
     {
         private readonly ILogger _logger;
         private readonly IFrameCipher _cipher;
         private readonly IFrameMacProcessor _authenticator;
 
-        private readonly byte[] _headerBytes = new byte[FrameParams.HeaderSize];
-        private readonly byte[] _macBytes = new byte[FrameParams.MacSize];
-        private readonly byte[] _frameBlockBytes = new byte[FrameParams.BlockSize];
-        private readonly byte[] _decryptedBytes = new byte[FrameParams.BlockSize];
+        private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
+        private readonly byte[] _macBytes = new byte[Frame.MacSize];
+        private readonly byte[] _frameBlockBytes = new byte[Frame.BlockSize];
+        private readonly byte[] _decryptedBytes = new byte[Frame.BlockSize];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
         private IByteBuffer _innerBuffer;
         private int _frameSize;
         private int _remainingPayloadBlocks;
 
-        public ZeroNettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
+        public ZeroFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
             _cipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
             _authenticator = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
@@ -59,7 +59,7 @@ namespace Nethermind.Network.Rlpx
             // that is being built by its cumulator.
             
             // Output buffers that we create will be released by the next handler in the pipeline.
-            while (input.ReadableBytes >= FrameParams.BlockSize)
+            while (input.ReadableBytes >= Frame.BlockSize)
             {
                 switch (_state)
                 {
@@ -95,7 +95,7 @@ namespace Nethermind.Network.Rlpx
                         break;
                     }
                     default:
-                        throw new NotImplementedException($"{nameof(ZeroNettyFrameDecoder)} does not support {_state} state.");
+                        throw new NotImplementedException($"{nameof(ZeroFrameDecoder)} does not support {_state} state.");
                 }
             }
         }
@@ -117,8 +117,8 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AllocateFrameBuffer(IChannelHandlerContext context)
         {
-            _innerBuffer = context.Allocator.Buffer(FrameParams.HeaderSize + _frameSize);
-            _innerBuffer.WriteBytes(_decryptedBytes, 0, FrameParams.HeaderSize);
+            _innerBuffer = context.Allocator.Buffer(Frame.HeaderSize + _frameSize);
+            _innerBuffer.WriteBytes(_decryptedBytes, 0, Frame.HeaderSize);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -128,15 +128,15 @@ namespace Nethermind.Network.Rlpx
             _frameSize = (_frameSize << 8) + (_decryptedBytes[1] & 0xFF);
             _frameSize = (_frameSize << 8) + (_decryptedBytes[2] & 0xFF);
 
-            int paddingSize = FrameParams.CalculatePadding(_frameSize);
+            int paddingSize = Frame.CalculatePadding(_frameSize);
             _frameSize += paddingSize;
-            _remainingPayloadBlocks = _frameSize / FrameParams.BlockSize;
+            _remainingPayloadBlocks = _frameSize / Frame.BlockSize;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void DecryptHeader()
         {
-            _cipher.Decrypt(_headerBytes, 0, FrameParams.BlockSize, _decryptedBytes, 0);
+            _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -166,7 +166,7 @@ namespace Nethermind.Network.Rlpx
         {
             input.ReadBytes(_frameBlockBytes);
             _authenticator.UpdateIngressMac(_frameBlockBytes, false);
-            _cipher.Decrypt(_frameBlockBytes, 0, FrameParams.BlockSize, _decryptedBytes, 0);
+            _cipher.Decrypt(_frameBlockBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
             _innerBuffer.WriteBytes(_decryptedBytes);
             _remainingPayloadBlocks--;
         }

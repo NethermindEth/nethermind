@@ -135,7 +135,7 @@ namespace Nethermind.Network.Benchmarks
 
         public int EnsureWritable(int minWritableBytes, bool force)
         {
-            throw new NotImplementedException();
+            return 0;
         }
 
         public bool GetBoolean(int index)
