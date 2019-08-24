@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
 
-        public override void HandleMessage(Packet message)
+        public override void HandleMessage(ZeroPacket message)
         {
             base.HandleMessage(message);
 
@@ -66,29 +66,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     Interlocked.Increment(ref _counter);
                     if(Logger.IsTrace) Logger.Trace($"{_counter:D5} GetReceipts from {Node:c}");
                     Metrics.Eth63GetReceiptsReceived++;
-                    Handle(Deserialize<GetReceiptsMessage>(message.Data));
+                    Handle(Deserialize<GetReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.Receipts:
                     Interlocked.Increment(ref _counter);
                     if(Logger.IsTrace) Logger.Trace($"{_counter:D5} Receipts from {Node:c}");
                     Metrics.Eth63ReceiptsReceived++;
-                    Handle(Deserialize<ReceiptsMessage>(message.Data));
+                    Handle(Deserialize<ReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.GetNodeData:
                     Interlocked.Increment(ref _counter);
                     if(Logger.IsTrace) Logger.Trace($"{_counter:D5} GetNodeData from {Node:c}");
                     Metrics.Eth63GetNodeDataReceived++;
-                    Handle(Deserialize<GetNodeDataMessage>(message.Data));
+                    Handle(Deserialize<GetNodeDataMessage>(message.Content));
                     break;
                 case Eth63MessageCode.NodeData:
                     Interlocked.Increment(ref _counter);
                     if(Logger.IsTrace) Logger.Trace($"{_counter:D5} NodeData from {Node:c}");
                     Metrics.Eth63NodeDataReceived++;
-                    Handle(Deserialize<NodeDataMessage>(message.Data));
+                    Handle(Deserialize<NodeDataMessage>(message.Content));
                     break;
             }
         }
-        
+
         private void Handle(GetReceiptsMessage msg)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();

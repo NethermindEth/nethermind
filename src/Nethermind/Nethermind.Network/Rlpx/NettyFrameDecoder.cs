@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -33,7 +32,6 @@ namespace Nethermind.Network.Rlpx
         private const int MacSize = 16;
 
         private readonly IFrameCipher _frameCipher;
-
         private readonly IFrameMacProcessor _frameMacProcessor;
         private readonly ILogger _logger;
 
@@ -42,11 +40,11 @@ namespace Nethermind.Network.Rlpx
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
         private int _totalBodySize;
 
-        public NettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
+        public NettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogManager logManager)
         {
-            _frameCipher = frameCipher;
-            _frameMacProcessor = frameMacProcessor;
-            _logger = logger;
+            _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
+            _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
@@ -57,7 +55,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (input.ReadableBytes == 0)
                 {
-                    if(_logger.IsTrace) _logger.Trace($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
+                    if (_logger.IsTrace) _logger.Trace($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
                     context.CloseAsync();
                     return;
                 }
@@ -74,13 +72,8 @@ namespace Nethermind.Network.Rlpx
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[1] & 0xFF);
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
                     _state = FrameDecoderState.WaitingForPayload;
-                    
-                    int paddingSize = 16 - _totalBodySize % 16;
-                    if (paddingSize == 16)
-                    {
-                        paddingSize = 0;
-                    }
 
+                    int paddingSize = Frame.CalculatePadding(_totalBodySize);
                     if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
                 }
                 else
@@ -92,14 +85,9 @@ namespace Nethermind.Network.Rlpx
 
             if (_state == FrameDecoderState.WaitingForPayload)
             {
-                if (_logger.IsTrace)_logger.Trace($"Decoding payload {input.ReadableBytes}");
+                if (_logger.IsTrace) _logger.Trace($"Decoding payload {input.ReadableBytes}");
 
-                int paddingSize = 16 - _totalBodySize % 16;
-                if (paddingSize == 16)
-                {
-                    paddingSize = 0;
-                }
-
+                int paddingSize = Frame.CalculatePadding(_totalBodySize);
                 int expectedSize = _totalBodySize + paddingSize + MacSize;
                 byte[] buffer;
                 if (input.ReadableBytes >= expectedSize)
@@ -118,34 +106,15 @@ namespace Nethermind.Network.Rlpx
                 _frameMacProcessor.CheckMac(buffer, 32, frameSize, false);
                 _frameCipher.Decrypt(buffer, 32, frameSize, buffer, 32);
 
-                _headerBuffer.AsSpan().CopyTo(buffer.AsSpan().Slice(0,32));
+                _headerBuffer.AsSpan().CopyTo(buffer.AsSpan().Slice(0, 32));
                 output.Add(buffer);
-                
-                if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
-                
+
+                if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[]) output.Last()).ToHexString()}");
+
                 _state = FrameDecoderState.WaitingForHeader;
             }
         }
 
-        public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
-        {
-            //In case of SocketException we log it as debug to avoid noise
-            if (exception is SocketException)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Frame decoding failed (SocketException): {exception}");
-            }
-            else if (exception.Message?.Contains("MAC mismatch") ?? false)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{GetType().Name} MAC mismatch error: {exception}");
-            }
-            else
-            {
-                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error: {exception}");
-            }
-
-            base.ExceptionCaught(context, exception);
-        }
-        
         private enum FrameDecoderState
         {
             WaitingForHeader,

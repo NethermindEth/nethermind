@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Reflection;
+using DotNetty.Buffers;
+using Nethermind.Core;
 
 namespace Nethermind.Network
 {
@@ -30,6 +32,18 @@ namespace Nethermind.Network
         {
             IMessageSerializer<T> serializer = GetSerializer<T>();
             return serializer.Deserialize(bytes);
+        }
+
+        public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
+        {
+            IMessageSerializer<T> serializer = GetSerializer<T>();
+            IZeroMessageSerializer<T> zeroSerializer = serializer as IZeroMessageSerializer<T>;
+            if (zeroSerializer != null)
+            {
+                return zeroSerializer.Deserialize(buffer);
+            }
+
+            return serializer.Deserialize(buffer.ReadAllBytes());
         }
 
         public void Register(Assembly assembly)
@@ -67,6 +81,24 @@ namespace Nethermind.Network
         public void Register<T>(IMessageSerializer<T> messageSerializer) where T : MessageBase
         {
             _serializers[typeof(T).TypeHandle] = messageSerializer;
+        }
+
+        [Todo(Improve.Performance, "WIP - will add a zero serializers here")]
+        public void Serialize<T>(T message, IByteBuffer byteBuffer) where T : MessageBase
+        {
+            IMessageSerializer<T> serializer = GetSerializer<T>();
+            IZeroMessageSerializer<T> zeroSerializer = serializer as IZeroMessageSerializer<T>;
+            
+            if (zeroSerializer != null)
+            {
+                zeroSerializer.Serialize(byteBuffer, message);
+            }
+            else
+            {
+                byte[] serialized = serializer.Serialize(message);
+                byteBuffer.EnsureWritable(serialized.Length, true);
+                byteBuffer.WriteBytes(serialized);
+            }
         }
 
         public byte[] Serialize<T>(T messageBase) where T : MessageBase

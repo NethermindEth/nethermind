@@ -22,6 +22,11 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {
+    public interface IZeroProtocolHandler : IProtocolHandler
+    {
+        void HandleMessage(ZeroPacket message);
+    }
+    
     public interface IProtocolHandler : IDisposable
     {
         byte ProtocolVersion { get; }

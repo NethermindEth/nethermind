@@ -51,12 +51,12 @@ namespace Nethermind.Network.P2P
         {
             if (SnappyEnabled)
             {
-                if (SnappyCodec.GetUncompressedLength(msg.Data) > SnappyDecoder.MaxSnappyLength)
+                if (SnappyCodec.GetUncompressedLength(msg.Data) > SnappyParameters.MaxSnappyLength)
                 {
                     throw new Exception("Max message size exceeeded"); // TODO: disconnect here
                 }
 
-                if (msg.Data.Length > SnappyDecoder.MaxSnappyLength / 4)
+                if (msg.Data.Length > SnappyParameters.MaxSnappyLength / 4)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {msg.Data.Length}");
                 }
@@ -98,12 +98,12 @@ namespace Nethermind.Network.P2P
             else
             {
                 if (_logger.IsDebug) _logger.Debug($"Error in communication with {clientId}: {exception}");
-            } 
+            }
 
-            base.ExceptionCaught(context, exception);
+            context.DisconnectAsync();
         }
 
-        public bool SnappyEnabled { get; set; }
+        public bool SnappyEnabled { get; private set; }
         
         public void EnableSnappy()
         {

@@ -38,9 +38,9 @@ namespace Nethermind.Network.Rlpx
         private readonly Dictionary<int, List<byte[]>> _payloads = new Dictionary<int, List<byte[]>>();
         private readonly Dictionary<int, int> _totalPayloadSizes = new Dictionary<int, int>();
 
-        public NettyFrameMerger(ILogger logger)
+        public NettyFrameMerger(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException();
         }
 
         protected override void Decode(IChannelHandlerContext context, byte[] input, List<object> output)
@@ -50,7 +50,7 @@ namespace Nethermind.Network.Rlpx
                 _logger.Trace("Merging frames");
             }
 
-            Rlp.ValueDecoderContext headerBodyItems = input.AsSpan().Slice(3, 13).AsRlpValueContext(); 
+            Rlp.ValueDecoderContext headerBodyItems = input.AsSpan(3, 13).AsRlpValueContext(); 
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
             int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
             headerBodyItems.DecodeInt(); // not needed - adaptive IDs - DO NOT COMMENT OUT!!! - decode takes int of the RLP sequence and moves the position
@@ -112,27 +112,6 @@ namespace Nethermind.Network.Rlpx
 
                 output.Add(new Packet("???", GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1))); // ??? protocol because of adaptive IDs
             }
-        }
-
-        public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
-        {
-            //In case of SocketException we log it as debug to avoid noise
-            if (exception is SocketException)
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Error when merging frames (SocketException): {exception}");
-                }
-            }
-            else
-            {
-                if (_logger.IsDebug)
-                {
-                    _logger.Debug($"Error when merging frames: {exception}");
-                }
-            }
-
-            base.ExceptionCaught(context, exception);
         }
 
         private static int GetPacketType(byte[] input)

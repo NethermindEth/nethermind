@@ -17,7 +17,10 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -106,6 +109,14 @@ namespace Nethermind.Core.Test.Builders
         {
             ecdsa.Sign(privateKey, TestObjectInternal, blockNumber);
             TestObjectInternal.SenderAddress = privateKey.Address;
+            return this;
+        }
+        
+        public TransactionBuilder SignedAndResolved()
+        {
+            EthereumEcdsa ecdsa = new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance);
+            ecdsa.Sign(TestItem.IgnoredPrivateKey, TestObjectInternal, 10000000);
+            TestObjectInternal.SenderAddress = TestItem.IgnoredPrivateKey.Address;
             return this;
         }
 

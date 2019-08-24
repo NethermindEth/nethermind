@@ -22,19 +22,26 @@ using System.Threading;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Encoding;
+using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx
-{   
-    public class NettyPacketSplitter : MessageToMessageEncoder<Packet>
+{
+    public class NettyPacketSplitter : MessageToMessageEncoder<Packet>, IFramingAware
     {
-        public const int FrameBoundary = 16;
+        private readonly ILogManager _logManager;
 
-        public int MaxFrameSize = FrameBoundary * 64;
+        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
+        
         private int _contextId;
 
         public void DisableFraming()
         {
             MaxFrameSize = int.MaxValue;
+        }
+
+        public NettyPacketSplitter(ILogManager logManager)
+        {
+            _logManager = logManager;
         }
         
         protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
@@ -44,24 +51,19 @@ namespace Nethermind.Network.Rlpx
             byte[] packetTypeData = Rlp.Encode(message.PacketType).Bytes;
             int packetTypeSize = packetTypeData.Length;
             int totalPayloadSize = packetTypeSize + message.Data.Length;
-            
+
             int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
-                int paddingSize = 0;
-                if (i == framesCount - 1)
-                {
-                    paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
-                }
-
+                int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
                 byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + padding + frame MAC
 
-                frame[0] = (byte)(framePayloadSize >> 16);
-                frame[1] = (byte)(framePayloadSize >> 8);
-                frame[2] = (byte)framePayloadSize;
-                
+                frame[0] = (byte) (framePayloadSize >> 16);
+                frame[1] = (byte) (framePayloadSize >> 8);
+                frame[2] = (byte) framePayloadSize;
+
                 Rlp[] headerDataItems;
                 if (framesCount > 1)
                 {

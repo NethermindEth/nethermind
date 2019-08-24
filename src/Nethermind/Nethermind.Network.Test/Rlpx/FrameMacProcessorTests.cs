@@ -32,9 +32,10 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] frame = new byte[128];
 
-            FrameMacProcessor macProcessor = new FrameMacProcessor(TestItem.PublicKeyA,NetTestVectors.BuildSecretsWithSameIngressAndEgress());
-            macProcessor.AddMac(frame, 0, 112, false);
-            macProcessor.CheckMac(frame, 0, 112, false);
+            FrameMacProcessor macProcessorA = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
+            FrameMacProcessor macProcessorB = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
+            macProcessorA.AddMac(frame, 0, 112, false);
+            macProcessorB.CheckMac(frame, 0, 112, false);
         }
 
         [Test]
@@ -42,23 +43,25 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] header = new byte[32];
 
-            FrameMacProcessor macProcessor = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.BuildSecretsWithSameIngressAndEgress());
-            macProcessor.AddMac(header, 0, 16, true);
-            macProcessor.CheckMac(header, 0, 16, true);
+            FrameMacProcessor macProcessorA = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
+            FrameMacProcessor macProcessorB = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
+            macProcessorA.AddMac(header, 0, 16, true);
+            macProcessorB.CheckMac(header, 0, 16, true);
         }
-        
+
         [Test]
         public void Can_add_and_check_both()
         {
             byte[] full = new byte[160];
 
-            FrameMacProcessor macProcessor = new FrameMacProcessor(TestItem.PublicKeyA,NetTestVectors.BuildSecretsWithSameIngressAndEgress());
-            macProcessor.AddMac(full, 0, 16, true);
-            macProcessor.AddMac(full, 32, 112, false);
-            macProcessor.CheckMac(full, 0, 16, true);
-            macProcessor.CheckMac(full, 32, 112, false);
+            FrameMacProcessor macProcessorA = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
+            FrameMacProcessor macProcessorB = new FrameMacProcessor(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
+            macProcessorA.AddMac(full, 0, 16, true);
+            macProcessorA.AddMac(full, 32, 112, false);
+            macProcessorB.CheckMac(full, 0, 16, true);
+            macProcessorB.CheckMac(full, 32, 112, false);
         }
-        
+
         [Test]
         public void Egress_update_chunks_should_not_matter()
         {
@@ -68,20 +71,20 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] egressUpdate = new byte[32];
             for (int i = 0; i < egressUpdate.Length; i++)
             {
-                egressUpdate[i] = (byte)i;
+                egressUpdate[i] = (byte) i;
             }
-            
+
             var secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(0, 16), 0, 16);
             secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(16, 16), 0, 16);
-            FrameMacProcessor macProcessorA = new FrameMacProcessor(TestItem.PublicKeyA,secretsA);
+            FrameMacProcessor macProcessorA = new FrameMacProcessor(TestItem.PublicKeyA, secretsA);
             macProcessorA.AddMac(a1, 0, 16, false);
-            
+
             var secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsB.EgressMac.BlockUpdate(egressUpdate, 0, 32);
             FrameMacProcessor macProcessorB = new FrameMacProcessor(TestItem.PublicKeyA, secretsB);
             macProcessorB.AddMac(b1, 0, 16, false);
-            
+
             Assert.AreEqual(a1.Slice(16, 16), b1.Slice(16, 16));
         }
     }

@@ -290,9 +290,9 @@ namespace Nethermind.DataMarketplace.Test
                 throw new System.NotImplementedException();
             }
 
-            Dictionary<Address, BigInteger> _nonces = new Dictionary<Address, BigInteger>();
+            Dictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>();
 
-            public BigInteger GetNonce(Address address)
+            public UInt256 GetNonce(Address address)
             {
                 if (!_nonces.ContainsKey(address))
                 {
@@ -308,17 +308,17 @@ namespace Nethermind.DataMarketplace.Test
                 _nonces[address] = nonce + 1;
             }
 
-            public BigInteger GetBalance(Address address)
+            public UInt256 GetBalance(Address address)
             {
                 throw new System.NotImplementedException();
             }
 
-            public byte[] GetStorage(Address address, BigInteger index)
+            public byte[] GetStorage(Address address, UInt256 index)
             {
                 throw new System.NotImplementedException();
             }
 
-            public byte[] GetStorage(Address address, BigInteger index, Keccak storageRoot)
+            public byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot)
             {
                 throw new System.NotImplementedException();
             }

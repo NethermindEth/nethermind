@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
-    public interface IEncryptionHandshakeService
+    public interface IHandshakeService
     {
         Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake);
         Packet Ack(EncryptionHandshake handshake, Packet auth);

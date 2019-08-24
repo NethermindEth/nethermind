@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -31,6 +30,7 @@ namespace Nethermind.Core.Encoding
         {
             if (rlpStream.IsNextItemNull())
             {
+                rlpStream.ReadByte();
                 return null;
             }
             
@@ -69,7 +69,20 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(MemoryStream stream, Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            throw new NotSupportedException("Use RlpStream instead");
+            (int contentLength, int txsLength, int ommersLength) = GetContentLength(item, rlpBehaviors);
+            Rlp.StartSequence(stream, contentLength);
+            _headerDecoder.Encode(stream, item.Header);
+            Rlp.StartSequence(stream, txsLength);
+            for (int i = 0; i < item.Transactions.Length; i++)
+            {
+                _txDecoder.Encode(stream, item.Transactions[i]);
+            }
+            
+            Rlp.StartSequence(stream, ommersLength);
+            for (int i = 0; i < item.Ommers.Length; i++)
+            {
+                _headerDecoder.Encode(stream, item.Ommers[i]);
+            }
         }
 
         private (int Total, int Txs, int Ommers) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
