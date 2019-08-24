@@ -157,7 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         protected long _counter = 0;
 
-        public void HandleMessage(ZeroPacket message)
+        public virtual void HandleMessage(ZeroPacket message)
         {
             if (Logger.IsTrace)
             {

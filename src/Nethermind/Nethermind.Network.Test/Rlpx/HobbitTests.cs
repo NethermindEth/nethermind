@@ -29,6 +29,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
 
@@ -130,6 +131,59 @@ namespace Nethermind.Network.Test.Rlpx
 
             NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
+        }
+        
+        [TestCase(StackType.Allocating, StackType.Allocating, true)]
+        [TestCase(StackType.Allocating, StackType.Zero, true)]
+        [TestCase(StackType.Zero, StackType.Allocating, true)]
+        [TestCase(StackType.Zero, StackType.Zero, true)]
+        [TestCase(StackType.Allocating, StackType.Allocating, false)]
+        [TestCase(StackType.Allocating, StackType.Zero, false)]
+        [TestCase(StackType.Zero, StackType.Allocating, false)]
+        [TestCase(StackType.Zero, StackType.Zero, false)]
+        public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
+        {
+            Keccak[] hashes = new Keccak[256];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                hashes[i] = Keccak.Compute(i.ToString());
+            }
+            
+            GetReceiptsMessage message = new GetReceiptsMessage(hashes);
+
+            GetReceiptsMessageSerializer serializer = new GetReceiptsMessageSerializer();
+            byte[] data = serializer.Serialize(message);
+            Packet packet = new Packet("eth", 7, data);
+            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+
+            GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
+            Assert.AreEqual(message.BlockHashes.Length, decodedMessage.BlockHashes.Length);
+        }
+        
+        [TestCase(StackType.Allocating, StackType.Allocating, true)]
+        [TestCase(StackType.Allocating, StackType.Zero, true)]
+        [TestCase(StackType.Zero, StackType.Allocating, true)]
+        [TestCase(StackType.Zero, StackType.Zero, true)]
+        [TestCase(StackType.Allocating, StackType.Allocating, false)]
+        [TestCase(StackType.Allocating, StackType.Zero, false)]
+        [TestCase(StackType.Zero, StackType.Allocating, false)]
+        [TestCase(StackType.Zero, StackType.Zero, false)]
+        public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
+        {
+            StatusMessage message = new StatusMessage();
+            message.BestHash = Keccak.Zero;
+            message.GenesisHash = Keccak.Zero;
+            message.ProtocolVersion = 63;
+            message.TotalDifficulty = 10000000000;
+            message.ChainId = 5;
+
+            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            byte[] data = serializer.Serialize(message);
+            Packet packet = new Packet("eth", 7, data);
+            Packet decoded = Run(packet, inbound, outbound, framingEnabled);
+
+            StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
+            Assert.AreEqual(message.TotalDifficulty, decodedMessage.TotalDifficulty);
         }
 
         private Packet Run(Packet packet, StackType inbound, StackType outbound, bool framingEnabled)
