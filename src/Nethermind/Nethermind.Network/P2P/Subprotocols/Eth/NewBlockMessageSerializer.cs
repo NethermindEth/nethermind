@@ -56,9 +56,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockMessage message)
         {
-            byteBuffer.WriteByte(message.PacketType);
             int contentLength = _blockDecoder.GetLength(message.Block, RlpBehaviors.None) + Rlp.LengthOf(message.TotalDifficulty);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.Block);
             rlpStream.Encode(message.TotalDifficulty);

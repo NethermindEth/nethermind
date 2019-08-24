@@ -63,7 +63,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
         {
-            throw new NotImplementedException();
+            byte[] oldWay = Serialize(message);
+            byteBuffer.EnsureWritable(oldWay.Length, true);
+            byteBuffer.WriteBytes(oldWay);
         }
 
         public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)

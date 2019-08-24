@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 
@@ -31,6 +30,7 @@ namespace Nethermind.Core.Encoding
         {
             if (rlpStream.IsNextItemNull())
             {
+                rlpStream.ReadByte();
                 return null;
             }
             

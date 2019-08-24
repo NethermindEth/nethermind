@@ -42,9 +42,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return new TransactionsMessage(txs);
         }
 
+        private TransactionDecoder _decoder = new TransactionDecoder();
+        
         public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
         {
-            throw new System.NotImplementedException();
+            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+
+            int contentLength = 0;
+            for (int i = 0; i < message.Transactions.Length; i++)
+            {
+                contentLength += _decoder.GetLength(message.Transactions[i], RlpBehaviors.None);
+            }
+
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
+            nettyRlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.Transactions.Length; i++)
+            {
+                nettyRlpStream.Encode(message.Transactions[i]);
+            }
         }
 
         public TransactionsMessage Deserialize(IByteBuffer byteBuffer)

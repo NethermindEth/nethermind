@@ -42,6 +42,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             {
                 Assert.AreEqual(message.BlockHashes[i], deserialized.BlockHashes[i], $"hash {i}");
             }
+            
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
     }
 }

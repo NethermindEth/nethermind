@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc.Test
             };
 
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_newFilter", JsonConvert.SerializeObject(parameters));
-            Assert.AreEqual(BigInteger.One, response.Result);
+            Assert.AreEqual(UInt256.One, response.Result);
         }
 
         [Test]

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Extensions;
@@ -411,56 +412,21 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(aaa);
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
-            
-            throw new NotImplementedException();
-//
-//            session.DeliverMessage(new Packet("p2p", 3, Bytes.Empty));
-//            _packetSender.Received().Enqueue(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
-//
-//            session.DeliverMessage(new Packet("aaa", 1, Bytes.Empty));
-//            _packetSender.Received().Enqueue(Arg.Is<Packet>(p => p.Protocol == "aaa" && p.PacketType == 11));
-//
-//            session.DeliverMessage(new Packet("bbb", 1, Bytes.Empty));
-//            _packetSender.Received().Enqueue(Arg.Is<Packet>(p => p.Protocol == "bbb" && p.PacketType == 21));
-//
-//            session.DeliverMessage(new Packet("ccc", 0, Bytes.Empty));
-//            _packetSender.Received().Enqueue(Arg.Is<Packet>(p => p.Protocol == "ccc" && p.PacketType == 25));
-        }
 
-        [Test]
-        public void Cannot_deliver_invalid_messages()
-        {
-            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
-            session.Handshake(TestItem.PublicKeyA);
-            session.Init(5, _channelHandlerContext, _packetSender);
-            IProtocolHandler p2p = BuildHandler("p2p", 10);
-            IProtocolHandler aaa = BuildHandler("aaa", 10);
-            IProtocolHandler bbb = BuildHandler("bbb", 5);
-            IProtocolHandler ccc = BuildHandler("ccc", 1);
-            session.AddProtocolHandler(p2p);
-            session.AddProtocolHandler(aaa);
-            session.AddProtocolHandler(bbb);
-            session.AddProtocolHandler(ccc);
-            
-            throw new NotImplementedException();
-//
-//            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("p2p", 11, Bytes.Empty)), "p2p.11");
-//            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("ccc", 100, Bytes.Empty)), "ccc.100");
-//            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("ddd", 0, Bytes.Empty)), "ddd.0");
+            session.DeliverMessage(PingMessage.Instance);
+            _packetSender.Received().Enqueue(PingMessage.Instance);
         }
 
         [Test]
         public void Cannot_deliver_before_initialized()
         {
-            throw new NotImplementedException();
-//            
-//            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
-//            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("p2p", 1, Bytes.Empty)));
-//            session.Handshake(TestItem.PublicKeyA);
-//            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(new Packet("p2p", 1, Bytes.Empty)));
-//            session.Init(5, _channelHandlerContext, _packetSender);
-//            IProtocolHandler p2p = BuildHandler("p2p", 10);
-//            session.AddProtocolHandler(p2p);
+            Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
+            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(PingMessage.Instance));
+            session.Handshake(TestItem.PublicKeyA);
+            Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(PingMessage.Instance));
+            session.Init(5, _channelHandlerContext, _packetSender);
+            IProtocolHandler p2p = BuildHandler("p2p", 10);
+            session.AddProtocolHandler(p2p);
         }
 
         [Test]
@@ -486,9 +452,8 @@ namespace Nethermind.Network.Test.P2P
 
             session.InitiateDisconnect(DisconnectReason.Other);
 
-            throw new NotImplementedException();
-//            session.DeliverMessage(new Packet("p2p", 3, Bytes.Empty));
-//            _packetSender.DidNotReceive().Enqueue(Arg.Is<Packet>(p => p.Protocol == "p2p" && p.PacketType == 3));
+            session.DeliverMessage(PingMessage.Instance);
+            _packetSender.DidNotReceive().Enqueue(Arg.Any<PingMessage>());
         }
 
         [Test]
@@ -535,7 +500,7 @@ namespace Nethermind.Network.Test.P2P
 
             session.ReceiveMessage(new Packet("---", 100, Bytes.Empty));
         }
-        
+
         [Test]
         public void Updates_local_and_remote_metrics_on_disconnects()
         {
@@ -552,7 +517,7 @@ namespace Nethermind.Network.Test.P2P
             long afterRemote = Network.Metrics.OtherDisconnects;
             Assert.AreEqual(beforeLocal + 1, afterLocal);
             Assert.AreEqual(beforeRemote, afterRemote);
-            
+
             session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);

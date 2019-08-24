@@ -50,13 +50,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 ctx.ReadSequenceLength();
                 return (ctx.DecodeKeccak(), (long) ctx.DecodeUInt256());
             }, false);
-            
+
             return new NewBlockHashesMessage(blockHashes);
         }
 
         public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
         {
-            throw new System.NotImplementedException();
+            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+
+            int contentLength = 0;
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
+                miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
+                contentLength += Rlp.GetSequenceRlpLength(miniContentLength);
+            }
+
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
+            nettyRlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
+                miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
+                nettyRlpStream.StartSequence(miniContentLength);
+                nettyRlpStream.Encode(message.BlockHashes[i].Item1);
+                nettyRlpStream.Encode(message.BlockHashes[i].Item2);
+            }
         }
 
         public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer)

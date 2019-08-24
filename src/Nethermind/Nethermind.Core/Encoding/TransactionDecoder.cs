@@ -28,6 +28,12 @@ namespace Nethermind.Core.Encoding
     {
         public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (rlpStream.IsNextItemNull())
+            {
+                rlpStream.ReadByte();
+                return null;
+            }
+            
             var transactionSequence = rlpStream.PeekNextItem();
 
             int transactionLength = rlpStream.ReadSequenceLength();

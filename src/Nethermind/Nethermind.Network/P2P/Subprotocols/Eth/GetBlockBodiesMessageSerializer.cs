@@ -44,7 +44,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
-            throw new System.NotImplementedException();
+            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+
+            int contentLength = 0;
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                contentLength += Rlp.LengthOf(message.BlockHashes[i]);
+            }
+
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
+            nettyRlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                nettyRlpStream.Encode(message.BlockHashes[i]);
+            }
         }
 
         public GetBlockBodiesMessage Deserialize(IByteBuffer byteBuffer)

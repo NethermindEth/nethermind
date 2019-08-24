@@ -33,7 +33,7 @@ namespace Nethermind.Network
             IMessageSerializer<T> serializer = GetSerializer<T>();
             return serializer.Deserialize(bytes);
         }
-        
+
         public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
         {
             IMessageSerializer<T> serializer = GetSerializer<T>();
@@ -42,7 +42,7 @@ namespace Nethermind.Network
             {
                 return zeroSerializer.Deserialize(buffer);
             }
-            
+
             return serializer.Deserialize(buffer.ReadAllBytes());
         }
 
@@ -87,9 +87,18 @@ namespace Nethermind.Network
         public void Serialize<T>(T message, IByteBuffer byteBuffer) where T : MessageBase
         {
             IMessageSerializer<T> serializer = GetSerializer<T>();
-            byte[] serialized = serializer.Serialize(message);
-            byteBuffer.MakeSpace(serialized.Length, "serialization");
-            byteBuffer.WriteBytes(serialized);
+            IZeroMessageSerializer<T> zeroSerializer = serializer as IZeroMessageSerializer<T>;
+            
+            if (zeroSerializer != null)
+            {
+                zeroSerializer.Serialize(byteBuffer, message);
+            }
+            else
+            {
+                byte[] serialized = serializer.Serialize(message);
+                byteBuffer.EnsureWritable(serialized.Length, true);
+                byteBuffer.WriteBytes(serialized);
+            }
         }
 
         public byte[] Serialize<T>(T messageBase) where T : MessageBase
