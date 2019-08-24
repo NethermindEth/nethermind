@@ -54,6 +54,11 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
+            // Note that ByteToMessageDecoder handles input.Release calls for us.
+            // In fact, we receive here a potentially surviving _internalBuffer of the base class
+            // that is being built by its cumulator.
+            
+            // Output buffers that we create will be released by the next handler in the pipeline.
             while (input.ReadableBytes >= FrameParams.BlockSize)
             {
                 switch (_state)
@@ -69,7 +74,7 @@ namespace Nethermind.Network.Rlpx
                         AuthenticateHeader(input);
                         DecryptHeader();
                         ReadFrameSize();
-                        AllocateFrameBuffer(context);
+                        AllocateFrameBuffer(context); // it will be released by the next handler in the pipeline
                         _state = FrameDecoderState.WaitingForPayload;
                         break;
                     }
