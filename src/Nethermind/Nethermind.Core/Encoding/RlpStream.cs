@@ -105,7 +105,7 @@ namespace Nethermind.Core.Encoding
 
         protected virtual void Write(Span<byte> bytesToWrite)
         {
-            bytesToWrite.CopyTo(Data.AsSpan().Slice(Position, bytesToWrite.Length));
+            bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
         }
         
@@ -638,6 +638,13 @@ namespace Nethermind.Core.Encoding
 
         public UInt256 DecodeUInt256()
         {
+            byte byteValue = PeekByte();
+            if (byteValue < 128)
+            {
+                SkipBytes(1);
+                return byteValue;
+            }
+
             Span<byte> byteSpan = DecodeByteArraySpan();
             if (byteSpan.Length > 32)
             {
@@ -784,6 +791,13 @@ namespace Nethermind.Core.Encoding
 
         public byte DecodeByte()
         {
+            byte byteValue = PeekByte();
+            if (byteValue < 128)
+            {
+                SkipBytes(1);
+                return byteValue;
+            }
+            
             Span<byte> bytes = DecodeByteArraySpan();
             return bytes.Length == 0 ? (byte) 0
                 : bytes.Length == 1 ? bytes[0] == (byte) 128

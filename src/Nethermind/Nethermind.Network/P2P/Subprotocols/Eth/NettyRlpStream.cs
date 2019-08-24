@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             _byteBuffer.MakeSpace(bytesToWrite.Length);
 
-            bytesToWrite.CopyTo(_byteBuffer.Array.AsSpan().Slice(_byteBuffer.ArrayOffset + _byteBuffer.WriterIndex, bytesToWrite.Length));
+            bytesToWrite.CopyTo(_byteBuffer.Array.AsSpan(_byteBuffer.ArrayOffset + _byteBuffer.WriterIndex, bytesToWrite.Length));
             int newWriterIndex = _byteBuffer.WriterIndex + bytesToWrite.Length;
 
             _byteBuffer.SetWriterIndex(newWriterIndex);

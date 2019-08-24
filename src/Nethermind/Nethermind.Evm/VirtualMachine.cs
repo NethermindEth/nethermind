@@ -1129,11 +1129,11 @@ namespace Nethermind.Evm
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
+                            BytesZero32.AsSpan(0, position).CopyTo(b.Slice(0, position));
                         }
                         else
                         {
-                            BytesMax32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
+                            BytesMax32.AsSpan(0, position).CopyTo(b.Slice(0, position));
                         }
 
                         PushBytes(b, bytesOnStack);
