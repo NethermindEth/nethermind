@@ -29,8 +29,6 @@ namespace Nethermind.Network.Rlpx
 {
     public class ZeroPacketSplitter : MessageToByteEncoder<IByteBuffer>, IFramingAware
     {
-        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
-
         private ILogger _logger;
 
         public ZeroPacketSplitter(ILogManager logManager)
@@ -42,17 +40,17 @@ namespace Nethermind.Network.Rlpx
         {
             MaxFrameSize = int.MaxValue;
         }
+        
+        public int MaxFrameSize { get; private set; } = Frame.DefaultMaxFrameSize;
 
         private int _contextId;
-        private byte packetType = 1;
 
         [Todo(Improve.Refactor, "We can remove MAC space from here later and move it to encoder")]
         protected override void Encode(IChannelHandlerContext context, IByteBuffer input, IByteBuffer output)
         {
             Interlocked.Increment(ref _contextId);
 
-            packetType = input.ReadByte();
-
+            int packetType = input.ReadByte();
             int packetTypeSize = packetType >= 128 ? 2 : 1;
             int totalPayloadSize = packetTypeSize + input.ReadableBytes;
 
@@ -62,7 +60,7 @@ namespace Nethermind.Network.Rlpx
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
-                output.MakeSpace(Frame.HeaderSize + framePayloadSize + paddingSize, "splitter");
+                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
 
                 // 000 - 016 | header
                 // 016 - 01x | packet type
@@ -111,7 +109,7 @@ namespace Nethermind.Network.Rlpx
                 if (i == 0)
                 {
                     /*33 or 33-34*/
-                    framePacketTypeSize = WritePacketType(output);
+                    framePacketTypeSize = WritePacketType(packetType, output);
                 }
 
                 /*message*/
@@ -121,7 +119,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private int WritePacketType(IByteBuffer output)
+        private int WritePacketType(int packetType, IByteBuffer output)
         {
             if (packetType == 0)
             {

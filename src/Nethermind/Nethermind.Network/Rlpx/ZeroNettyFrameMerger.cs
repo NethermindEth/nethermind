@@ -43,7 +43,7 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
         {
-            // Note that each input is a full frame header16|payload that we should release after reading.
+            // Note that each input is a full frame header16|payload that are automatically released by the base class.
             // If the input is not a full and valid frame we can throw as this is an unexpected behaviour from the
             // decoder up the pipeline.
 
