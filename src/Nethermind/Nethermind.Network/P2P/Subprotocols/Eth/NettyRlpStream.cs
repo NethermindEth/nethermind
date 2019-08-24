@@ -62,11 +62,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             return _byteBuffer.ReadByte();
         }
-
-        [Todo(Improve.Allocations, "work in progress")]
+        
         protected override Span<byte> Read(int length)
         {
-            return _byteBuffer.ReadBytes(length).ReadAllBytes().AsSpan();
+            Span<byte> span = _byteBuffer.Array.AsSpan(_byteBuffer.ArrayOffset + _byteBuffer.ReaderIndex, length);
+             _byteBuffer.SkipBytes(span.Length);
+             return span;
         }
 
         protected override byte PeekByte()
