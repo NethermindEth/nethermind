@@ -25,6 +25,5 @@ namespace Nethermind.JsonRpc.Client
         public static Uri Localhost = new Uri("http://127.0.0.1:8545");
         public static Uri NethVm1 = new Uri("http://127.0.0.1:8345");
         public static Uri GethVm4 = new Uri("http://127.0.0.1:8345");
-        public static Uri SokolVm1 = new Uri("http://167.71.138.237:8545");
     }
 }

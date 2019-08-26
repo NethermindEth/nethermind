@@ -95,25 +95,10 @@ namespace Nethermind.AuRa.Contracts
                 Array.Empty<byte>(),
                 new[] {Definition.initiateChangeEventHash, block.ParentHash});
 
-            if (block.Bloom.IsMatch(logEntry))
+            if (block.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {
-                 // iterating backwards, we are interested only in the last one
-                for (int i = receipts.Length - 1; i >= 0; i--)
-                {
-                    var receipt = receipts[i];
-                    if (receipt.Bloom.IsMatch(logEntry))
-                    {
-                        for (int j = receipt.Logs.Length - 1; j >= 0; j--)
-                        {
-                            var receiptLog = receipt.Logs[j];
-                            if (LogEntryEqualityComparer.Equals(logEntry, receiptLog))
-                            {
-                                addresses = DecodeAddresses(receiptLog.Data);
-                                return true;                                
-                            }
-                        }
-                    }
-                }
+                addresses = DecodeAddresses(foundEntry.Data);
+                return true;                
             }
 
             addresses = null;

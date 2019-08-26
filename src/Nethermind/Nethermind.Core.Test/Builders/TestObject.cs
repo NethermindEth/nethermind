@@ -30,6 +30,7 @@ namespace Nethermind.Core.Test.Builders
             PrivateKeys = new PrivateKey[256];
             PublicKeys = new PublicKey[256];
             Addresses = new Address[256];
+            Keccaks = new Keccak[256];
 
             for (byte i = 1; i > 0; i++) // this will wrap around
             {
@@ -38,6 +39,7 @@ namespace Nethermind.Core.Test.Builders
                 PrivateKeys[i - 1] = new PrivateKey(bytes);
                 PublicKeys[i - 1] = PrivateKeys[i - 1].PublicKey;
                 Addresses[i - 1] = PublicKeys[i - 1].Address;
+                Keccaks[i - 1] = Keccak.Compute(PublicKeys[i - 1].Bytes);
             }
         }
         
@@ -70,6 +72,7 @@ namespace Nethermind.Core.Test.Builders
         public static PrivateKey[] PrivateKeys;
         public static PublicKey[] PublicKeys;
         public static Address[] Addresses;
+        public static Keccak[] Keccaks;
 
         public static Address AddressA = PublicKeyA.Address;
         public static Address AddressB = PublicKeyB.Address;

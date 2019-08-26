@@ -23,6 +23,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
@@ -52,7 +53,6 @@ namespace Nethermind.Core.Test
             MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
         }
 
-        [Explicit("As bloom filter can have false matches this test can lead to false negatives.")]
         [TestCase(1, 1)]
         [TestCase(1, 10)]
         [TestCase(10, 1)]
@@ -60,7 +60,9 @@ namespace Nethermind.Core.Test
         [TestCase(100, 1)]
         public void doesnt_match_not_added_item(int count, int topicMax)
         {
-            MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => GetLogEntries(count, topicMax), false);
+            MatchingTest(() => GetLogEntries(count, topicMax),
+                addedEntries => GetLogEntries(count, topicMax, 
+                addedEntries.Sum(a => a.Topics.Length)), false);
         }
         
         [Test]
@@ -80,34 +82,23 @@ namespace Nethermind.Core.Test
             results.Should().AllBeEquivalentTo(isMatchExpectation);
         }
 
-        private static LogEntry[] GetLogEntries(int count, int topicsMax)
+        private static LogEntry[] GetLogEntries(int count, int topicsMax, int start = 0)
         {
-            var random = new Random();
-            var keccakGenerator = GetRandomKeccaks(random);
+            var keccakGenerator = TestItem.Keccaks;
             var entries = new LogEntry[count];
-            for (int i = 0; i < count; i++)
+            for (int i = start; i < count + start; i++)
             {
-                var topicsCount = random.Next(topicsMax);
+                var topicsCount = i % topicsMax + 1;
                 var topics = new Keccak[topicsCount];
                 for (int j = 0; j < topicsCount; j++)
                 {
-                    topics[j] = keccakGenerator.First();
+                    topics[j] = keccakGenerator[i + j];
                 }
 
-                entries[i] = new LogEntry(Address.FromNumber((UInt256) random.Next()), Array.Empty<byte>(), topics);
+                entries[i - start] = new LogEntry(TestItem.Addresses[i], Array.Empty<byte>(), topics);
             }
 
             return entries;
-        }
-
-        private static IEnumerable<Keccak> GetRandomKeccaks(Random random)
-        {
-            byte[] buffer = new byte[32];
-            while (true)
-            {
-                random.NextBytes(buffer);
-                yield return Keccak.Compute(buffer);
-            }
         }
     }
 }
