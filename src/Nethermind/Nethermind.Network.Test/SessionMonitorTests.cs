@@ -17,12 +17,9 @@
  */
 
 
-using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -56,7 +53,7 @@ namespace Nethermind.Network.Test
             ISession session = CreateSession();
 
             TestRandom testRandom = new TestRandom((i) => 1);
-            SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), testRandom, LimboLogs.Instance);
+            SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
             session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
@@ -72,7 +69,7 @@ namespace Nethermind.Network.Test
             NetworkConfig networkConfig = new NetworkConfig();
             networkConfig.P2PPingInterval = 50;
             TestRandom testRandom = new TestRandom((i) => randomResult);
-            SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, testRandom, LimboLogs.Instance);
+            SessionMonitor sessionMonitor = new SessionMonitor(networkConfig, LimboLogs.Instance);
             sessionMonitor.AddSession(session1);
             sessionMonitor.AddSession(session2);
             sessionMonitor.Start();

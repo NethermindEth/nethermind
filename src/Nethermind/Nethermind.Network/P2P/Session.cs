@@ -32,19 +32,16 @@ namespace Nethermind.Network.P2P
 {
     public class Session : ISession
     {
-        public override string ToString()
-        {
-            string formattedRemoteHost = RemoteHost?.Replace("::ffff:", string.Empty);
-            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {formattedRemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{formattedRemoteHost}:{RemotePort}";
-        }
-
-        private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
-        private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
-        private readonly IChannel _channel;
-        private IChannelHandlerContext _context;
-
+        private static ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new ConcurrentDictionary<string, AdaptiveCodeResolver>();
+        
+        private ILogger _logger;
+        private ILogManager _logManager;
+        
         private Node _node;
+        private IChannel _channel;
+        private IChannelHandlerContext _context;
+        
+        private Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
 
         public Session(int localPort, ILogManager logManager, IChannel channel)
         {
@@ -83,6 +80,8 @@ namespace Nethermind.Network.P2P
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int RemotePort { get; set; }
+        public DateTime LastPingUtc { get; set; } = DateTime.UtcNow;
+        public DateTime LastPongUtc { get; set; } = DateTime.UtcNow;
         public ConnectionDirection Direction { get; }
         public Guid SessionId { get; }
 
@@ -548,8 +547,6 @@ namespace Nethermind.Network.P2P
             _resolver = GetOrCreateResolver();
         }
 
-        private AdaptiveCodeResolver _resolver;
-
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
             string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
@@ -561,8 +558,14 @@ namespace Nethermind.Network.P2P
             return _resolvers[key];
         }
 
-        private static ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new ConcurrentDictionary<string, AdaptiveCodeResolver>();
-
+        public override string ToString()
+        {
+            string formattedRemoteHost = RemoteHost?.Replace("::ffff:", string.Empty);
+            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {formattedRemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{formattedRemoteHost}:{RemotePort}";
+        }
+        
+        private AdaptiveCodeResolver _resolver;
+        
         private class AdaptiveCodeResolver
         {
             private readonly (string ProtocolCode, int SpaceSize)[] _alphabetically;

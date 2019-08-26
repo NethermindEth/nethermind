@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
+using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -167,6 +168,8 @@ namespace Nethermind.Network.Rlpx
             FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
             FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
+            if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
+            context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ZeroFrameDecoder(frameCipher, macProcessor, _logManager));
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameEncoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
