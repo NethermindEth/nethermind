@@ -45,7 +45,6 @@ namespace Nethermind.Evm
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
-            _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
             _ecdsa = new EthereumEcdsa(specProvider, logManager);

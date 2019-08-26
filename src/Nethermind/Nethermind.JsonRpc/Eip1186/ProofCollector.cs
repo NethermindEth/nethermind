@@ -23,7 +23,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Eip1186.Nethermind.JsonRpc.Eip1186;
 using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Eip1186

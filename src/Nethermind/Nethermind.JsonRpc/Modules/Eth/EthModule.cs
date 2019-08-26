@@ -30,6 +30,7 @@ using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -607,6 +608,26 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             return ResultWrapper<bool?>.Fail("eth_submitHashrate not supported", ErrorType.MethodNotFound, null);
         }
+        
+        // https://github.com/ethereum/EIPs/issues/1186	
+        public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] storageKeys, BlockParameter blockParameter)	
+        {	
+            Block block;	
+            try	
+            {	
+                block = _blockchainBridge.GetBlock(blockParameter);	
+            }	
+            catch (JsonRpcException ex)	
+            {	
+                return ResultWrapper<AccountProof>.Fail(ex.Message, ex.ErrorType, null);	
+            }	
+
+            ProofCollector proofCollector = new ProofCollector(accountAddress, storageKeys);	
+            _blockchainBridge.RunTreeVisitor(proofCollector, block.StateRoot);	
+
+            return ResultWrapper<AccountProof>.Success(proofCollector.BuildResult());	
+        }	
+
 
         private ResultWrapper<BigInteger?> GetOmmersCount(BlockParameter blockParameter)
         {

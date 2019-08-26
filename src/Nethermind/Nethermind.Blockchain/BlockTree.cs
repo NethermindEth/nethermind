@@ -1038,7 +1038,8 @@ namespace Nethermind.Blockchain
                 _txPool.RemoveTransaction(block.Transactions[i].Hash, block.Number);
             }
 
-            if (hashOfThePreviousMainBlock != null)
+            // the hash will only be the same during perf test runs / modified DB states
+            if (hashOfThePreviousMainBlock != null && hashOfThePreviousMainBlock != block.Hash)
             {
                 Block previous = FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 for (int i = 0; i < previous.Transactions.Length; i++)

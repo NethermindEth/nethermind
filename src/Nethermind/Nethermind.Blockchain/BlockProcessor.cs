@@ -286,17 +286,28 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
 
-            BlockHeader s = suggestedBlock.Header;
-            BlockHeader header = new BlockHeader(s.ParentHash, s.OmmersHash, s.Beneficiary, s.Difficulty, s.Number, s.GasLimit, s.Timestamp, s.ExtraData);
-            Block processedBlock = new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
-            header.Bloom = Bloom.Empty;
-            header.Author = suggestedBlock.Header.Author;
-            header.Hash = s.Hash;
-            header.MixHash = s.MixHash;
-            header.Nonce = s.Nonce;
-            header.TxRoot = suggestedBlock.TransactionsRoot;
-            header.TotalDifficulty = suggestedBlock.TotalDifficulty;
-            return processedBlock;
+            BlockHeader bh = suggestedBlock.Header;
+            BlockHeader header = new BlockHeader(
+                bh.ParentHash,
+                bh.OmmersHash,
+                bh.Beneficiary,
+                bh.Difficulty,
+                bh.Number,
+                bh.GasLimit,
+                bh.Timestamp,
+                bh.ExtraData)
+            {
+                Bloom = Bloom.Empty,
+                Author = bh.Author,
+                Hash = bh.Hash,
+                MixHash = bh.MixHash,
+                Nonce = bh.Nonce,
+                TxRoot = bh.TxRoot,
+                TotalDifficulty = bh.TotalDifficulty,
+                AuRaStep = bh.AuRaStep,
+                AuRaSignature = bh.AuRaSignature                
+            };
+            return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);;
         }
 
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)

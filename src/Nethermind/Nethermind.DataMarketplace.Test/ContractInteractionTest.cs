@@ -388,6 +388,11 @@ namespace Nethermind.DataMarketplace.Test
                 throw new System.NotImplementedException();
             }
 
+            public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
+            {
+                throw new NotImplementedException();
+            }
+
             public TxPoolInfo GetTxPoolInfo()
             {
                 throw new System.NotImplementedException();

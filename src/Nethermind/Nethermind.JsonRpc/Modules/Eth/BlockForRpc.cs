@@ -48,18 +48,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 MixHash = block.MixHash;
                 Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
             }
+            else
+            {
+                Step = block.Header.AuRaStep;
+                Signature = block.Header.AuRaSignature;                    
+            }
 
             Number = block.Number;
             ParentHash = block.ParentHash;
             ReceiptsRoot = block.ReceiptsRoot;
             Sha3Uncles = block.OmmersHash;
-            Signature = block.Header.AuRaSignature;
-            Size =  _blockDecoder.GetLength(block, RlpBehaviors.None);
+            Size = _blockDecoder.GetLength(block, RlpBehaviors.None);
             StateRoot = block.StateRoot;
-            if (isAuRaBlock)
-            {
-                Step = block.Header.AuRaStep;    
-            }
+
             
             Timestamp = block.Timestamp;
             TotalDifficulty = block.TotalDifficulty ?? 0;

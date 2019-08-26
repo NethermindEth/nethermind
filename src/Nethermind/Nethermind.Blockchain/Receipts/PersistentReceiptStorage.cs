@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Receipts
                 RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
                 _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
             }
-            
+
             LowestInsertedReceiptBlock = blockNumber;
 //            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);

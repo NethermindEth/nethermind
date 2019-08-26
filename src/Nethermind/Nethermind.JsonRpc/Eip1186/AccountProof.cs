@@ -19,7 +19,7 @@
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.JsonRpc.Eip1186.Nethermind.JsonRpc.Eip1186
+namespace Nethermind.JsonRpc.Eip1186
 {
     public class AccountProof
     {

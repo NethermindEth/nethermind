@@ -71,11 +71,11 @@ namespace Nethermind.Blockchain.Test
                 GetTransaction(3, 4000, 5, Address.Zero, new byte[0], TestItem.PrivateKeyC)
             };
 
-        private Transaction GetTransaction(UInt256 nonce, UInt256 gasLimit,
+        private Transaction GetTransaction(UInt256 nonce, long gasLimit,
             UInt256 gasPrice, Address to, byte[] data, PrivateKey privateKey)
             => Build.A.Transaction
                 .WithNonce(nonce)
-                .WithGasLimit((long)gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(gasPrice)
                 .WithData(data)
                 .To(to)

@@ -198,7 +198,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
 
-        private const int BlocksToLoad = 6_000_000;
+        private const int BlocksToLoad = 100_000;
 
         private static async Task RunBenchmarkBlocks()
         {
