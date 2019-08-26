@@ -24,6 +24,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class DepositApprovalForRpc
     {
+        public Keccak Id { get; set; }
         public Keccak AssetId { get; set; }
         public string AssetName { get; set; }
         public string Kyc { get; set; }
@@ -38,6 +39,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 
         public DepositApprovalForRpc(DepositApproval depositApproval)
         {
+            Id = depositApproval.Id;
             AssetId = depositApproval.AssetId;
             AssetName = depositApproval.AssetName;
             Kyc = depositApproval.Kyc;
