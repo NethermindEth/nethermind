@@ -136,6 +136,8 @@ namespace Nethermind.Network
                 {
                     if(_logger.IsDebug) _logger.Debug($"No pong received from {session?.Node:c}");
                 }
+
+                return false;
             }
 
             return true;
