@@ -42,7 +42,14 @@
     "eip1014Transition": 6464300,
     "eip1052Transition": 6464300,
     "eip1283Transition": 6464300,
-    "eip1283DisableTransition": 7026400
+    "eip1283DisableTransition": 7026400,
+
+    "eip152Transition": "0xFFFFFFFF",
+    "eip1108Transition": "0xFFFFFFFF",
+    "eip1344Transition": "0xFFFFFFFF",
+    "eip1884Transition": "0xFFFFFFFF",
+    "eip2028Transition": "0xFFFFFFFF",
+    "eip2200Transition": "0xFFFFFFFF"
   },
   "genesis": {
     "seal": {
