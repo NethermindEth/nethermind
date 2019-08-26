@@ -107,14 +107,14 @@ namespace Nethermind.Network
                 if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Received {successes} pongs.");
                 if (failures > tasks.Length / 3)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"More tahn 33% of nodes did not respond to a Ping message - {failures}/{successes + failures}");    
+                    if (_logger.IsWarn) _logger.Warn($"More tahn 33% of nodes did not respond to a Ping message - {failures}/{successes + failures}");
                 }
-                
+
                 _pingTasks.Clear();
             }
             else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
-        
+
         private async Task<bool> SendPingMessage(ISession session)
         {
             if (session.PingSender == null)
@@ -129,15 +129,19 @@ namespace Nethermind.Network
                 return true;
             }
 
-            if (DateTime.UtcNow - session.LastPingUtc > _pingInterval)
+            var pingTime = DateTime.UtcNow;
+            if (pingTime - session.LastPingUtc > _pingInterval)
             {
+                session.LastPingUtc = pingTime;
                 bool pongReceived = await session.PingSender.SendPing();
                 if (!pongReceived)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"No pong received from {session?.Node:c}");
+                    if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                    return false;
                 }
-
-                return false;
+                
+                session.LastPongUtc = DateTime.Now;
+                return true;
             }
 
             return true;
