@@ -21,5 +21,7 @@ namespace Nethermind.Abi
     public interface IAbiEncoder
     {
         byte[] Encode(AbiEncodingStyle encodingStyle, AbiSignature signature, params object[] arguments);
+        
+        object[] Decode(AbiEncodingStyle encodingStyle, AbiSignature signature, byte[] data);
     }
 }

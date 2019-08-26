@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
         public Address To { get; set; }
         public UInt256? Value { get; set; }
         public UInt256? GasPrice { get; set; }
-        public UInt256? Gas { get; set; }
+        public long? Gas { get; set; }
         public byte[] Input { get; set; }
         public byte[] Raw { get; set; }
         public Address Creates { get; set; }

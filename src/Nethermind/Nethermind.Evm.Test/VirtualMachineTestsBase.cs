@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
-                .WithGasLimit((ulong) gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .To(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
-                .WithGasLimit((ulong) gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithData(input)
                 .WithValue(value)
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.Test
             Transaction transaction = Build.A.Transaction
                 .WithTo(null)
                 .WithData(Bytes.Empty)
-                .WithGasLimit((ulong) gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)

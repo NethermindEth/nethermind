@@ -46,8 +46,8 @@ namespace Nethermind.Blockchain
         public ProcessingStats(ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-#if DEBUG
-            _isDebugMode = true;
+#if DEBUG	
+            _isDebugMode = true;	
 #endif
         }
 
@@ -55,12 +55,12 @@ namespace Nethermind.Blockchain
         {
             if (_lastBlockNumber == 0)
             {
-                _lastBlockNumber = (long) block.Number;
+                _lastBlockNumber = block.Number;
             }
 
             Metrics.Mgas += block.GasUsed / 1_000_000m;
             Metrics.Transactions += block.Transactions.Length;
-            Metrics.Blocks = (long) block.Number;
+            Metrics.Blocks = (long)block.Number;
             Metrics.RecoveryQueueSize = recoveryQueueSize;
             Metrics.ProcessingQueueSize = blockQueueSize;
 
@@ -95,6 +95,7 @@ namespace Nethermind.Blockchain
                 decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000m * 1000m;
 
                 string debugModePrefix = _isDebugMode ? "DEBUG " : ""; 
+
                 if (_logger.IsInfo) _logger.Info($"{debugModePrefix}Full Sync | Processed  {block.Number,9} |  {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
                 if (_logger.IsDebug) _logger.Trace($"Gen0 {currentGen0 - _lastGen0,6}, Gen1 {currentGen1 - _lastGen1,6}, Gen2 {currentGen2 - _lastGen2,6}, maxmem {_maxMemory / 1000000,5}, mem {currentMemory / 1000000,5}, reads {currentStateDbReads - _lastStateDbReads,9}, writes {currentStateDbWrites - _lastStateDbWrites,9}, rlp {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions {evmExceptions - _lastEvmExceptions}, selfdstrcs {currentSelfDestructs - _lastSelfDestructs}");
 

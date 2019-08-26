@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,11 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpecStyle
+using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Mining;
+
+namespace Nethermind.AuRa
 {
-    internal class GenesisFileConfigCliqueJson
+    public class AuRaSealer : ISealer
     {
-        public ulong Period { get; set; }
-        public ulong Epoch { get; set; }
+        public Task<Block> SealBlock(Block block, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool CanSeal(long blockNumber, Keccak parentHash)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

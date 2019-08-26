@@ -92,6 +92,7 @@ namespace Nethermind.Facade
 
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
+
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }
 }

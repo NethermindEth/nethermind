@@ -70,7 +70,7 @@ namespace Nethermind.JsonRpc.Test
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
-            Assert.AreEqual((BigInteger)2, (response.Result as BlockForRpc)?.Number);
+            Assert.AreEqual(2L, (response.Result as BlockForRpc)?.Number);
         }
         
         [Test]

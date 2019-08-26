@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test.Builders
                 new byte[] {1, 2, 3});
             TestObjectInternal.Bloom = Bloom.Empty;
             TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
-            TestObjectInternal.Nonce = 1000;
+            TestObjectInternal.Nonce = 1000;            
             TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.TxRoot = Keccak.EmptyTreeHash;
@@ -163,6 +163,13 @@ namespace Nethermind.Core.Test.Builders
         public BlockHeaderBuilder WithNonce(ulong nonce)
         {
             TestObjectInternal.Nonce = nonce;
+            return this;
+        }
+        
+        public BlockHeaderBuilder WithAura(long step, byte[] signature)
+        {
+            TestObjectInternal.AuRaStep = step;
+            TestObjectInternal.AuRaSignature = signature;
             return this;
         }
     }

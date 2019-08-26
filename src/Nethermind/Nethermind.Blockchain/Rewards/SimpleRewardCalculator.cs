@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,29 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Rewards
 {
-    public class RewardCalculator : IRewardCalculator
-    {
-        private readonly ISpecProvider _specProvider;
-
-        public RewardCalculator(ISpecProvider specProvider)
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        }
-
-        [Todo(Improve.MissingFunctionality, "Use ChainSpec for block rewards")]
+    public abstract class SimpleRewardCalculator : IRewardCalculator {
+        
         public BlockReward[] CalculateRewards(Block block)
         {
-            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
-            UInt256 blockReward = spec.IsEip649Enabled ? spec.IsEip1234Enabled ? 2.Ether() : 3.Ether() : 5.Ether();
+            UInt256 blockReward = GetBlockReward(block);
             BlockReward[] rewards = new BlockReward[1 + block.Ommers.Length];
 
             BlockHeader blockHeader = block.Header;
@@ -47,11 +35,18 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < block.Ommers.Length; i++)
             {
-                BigInteger ommerReward = blockReward - ((uint) (blockHeader.Number - block.Ommers[i].Number) * blockReward >> 3);
+                BigInteger ommerReward = GetOmmerReward(blockReward, blockHeader, block.Ommers[i]);
                 rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward, BlockRewardType.Uncle);
             }
 
             return rewards;
+        }
+
+        protected abstract UInt256 GetBlockReward(Block block);
+        
+        protected virtual UInt256 GetOmmerReward(UInt256 blockReward, BlockHeader blockHeader, BlockHeader ommer)
+        {
+            return blockReward - ((uint) (blockHeader.Number - ommer.Number) * blockReward >> 3);
         }
     }
 }

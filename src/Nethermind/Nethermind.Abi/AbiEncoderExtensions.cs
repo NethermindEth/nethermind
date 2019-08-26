@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Abi
 {
-    public interface IRewardCalculator
+    public static class AbiEncoderExtensions
     {
-        BlockReward[] CalculateRewards(Block block);
+        public static byte[] Encode(this IAbiEncoder encoder, AbiEncodingInfo abiEncodingInfo, params object[] arguments) 
+            => encoder.Encode(abiEncodingInfo.EncodingStyle, abiEncodingInfo.Signature, arguments);
+
+        public static object[] Decode(this IAbiEncoder encoder, AbiEncodingInfo abiEncodingInfo, byte[] data) 
+            => encoder.Decode(abiEncodingInfo.EncodingStyle, abiEncodingInfo.Signature, data);
     }
 }

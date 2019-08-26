@@ -68,22 +68,21 @@ namespace Nethermind.Core
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
-
+        public byte[] AuRaSignature { get; set; }
+        public long? AuRaStep { get; set; }
+        
         public bool HasBody => OmmersHash != Keccak.OfAnEmptySequenceRlp || TxRoot != Keccak.EmptyTreeHash;
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
 
-        public static Keccak CalculateHash(BlockHeader header)
+        public static Keccak CalculateHash(BlockHeader header, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            Rlp buffer = _headerDecoder.Encode(header);
+            Rlp buffer = _headerDecoder.Encode(header, behaviors);
             return Keccak.Compute(buffer.Bytes);
         }
 
-        public static Keccak CalculateHash(Block block)
-        {
-            return CalculateHash(block.Header);
-        }
+        public static Keccak CalculateHash(Block block) => CalculateHash(block.Header);
 
         public string ToString(string indent)
         {

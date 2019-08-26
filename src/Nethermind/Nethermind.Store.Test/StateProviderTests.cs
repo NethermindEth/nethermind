@@ -17,9 +17,11 @@
  */
 
 using System;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
@@ -53,6 +55,22 @@ namespace Nethermind.Store.Test
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
             provider.Commit(SpuriousDragon.Instance);
             Assert.False(provider.AccountExists(_address1));
+        }
+
+        [Test]
+        public void Eip_158_touch_zero_value_system_account_is_not_deleted()
+        {
+            StateProvider provider = new StateProvider(new StateDb(new MemDb()), Substitute.For<IDb>(), Logger);
+            var systemUser = Address.SystemUser;
+            
+            provider.CreateAccount(systemUser, 0);
+            provider.Commit(Homestead.Instance);
+
+            var releaseSpec = new ReleaseSpec() {IsEip158Enabled = true};
+            provider.UpdateCodeHash(systemUser, Keccak.OfAnEmptyString, releaseSpec);
+            provider.Commit(releaseSpec);
+
+            provider.GetAccount(systemUser).Should().NotBeNull();
         }
 
         [Test]

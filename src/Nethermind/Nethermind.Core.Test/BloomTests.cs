@@ -18,8 +18,13 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Linq;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -36,6 +41,64 @@ namespace Nethermind.Core.Test
             BitArray bits = bytes.AsSpan().ToBigEndianBitArray2048();
             Bloom bloom2 = new Bloom(bits);
             Assert.AreEqual(bloom.ToString(), bloom2.ToString());
+        }
+
+        [TestCase(1, 1)]
+        [TestCase(1, 10)]
+        [TestCase(10, 1)]
+        [TestCase(10, 10)]
+        [TestCase(100, 1)]
+        public void matches_previously_added_item(int count, int topicMax)
+        {
+            MatchingTest(() => GetLogEntries(count, topicMax), addedEntries => addedEntries, true);
+        }
+
+        [TestCase(1, 1)]
+        [TestCase(1, 10)]
+        [TestCase(10, 1)]
+        [TestCase(10, 10)]
+        [TestCase(100, 1)]
+        public void doesnt_match_not_added_item(int count, int topicMax)
+        {
+            MatchingTest(() => GetLogEntries(count, topicMax),
+                addedEntries => GetLogEntries(count, topicMax, 
+                addedEntries.Sum(a => a.Topics.Length)), false);
+        }
+        
+        [Test]
+        public void empty_doesnt_match_any_item()
+        {
+            MatchingTest(() => new LogEntry[0], addedEntries => GetLogEntries(100, 10), false);
+        }
+
+        public void MatchingTest(Func<LogEntry[]> addedEntries, Func<LogEntry[], LogEntry[]> testedEntries, bool isMatchExpectation)
+        {
+            Bloom bloom = new Bloom();
+            var entries = addedEntries();
+            bloom.Add(entries);
+
+            var testEntries = testedEntries(entries);
+            var results = testEntries.Select(e => bloom.IsMatch(e));
+            results.Should().AllBeEquivalentTo(isMatchExpectation);
+        }
+
+        private static LogEntry[] GetLogEntries(int count, int topicsMax, int start = 0)
+        {
+            var keccakGenerator = TestItem.Keccaks;
+            var entries = new LogEntry[count];
+            for (int i = start; i < count + start; i++)
+            {
+                var topicsCount = i % topicsMax + 1;
+                var topics = new Keccak[topicsCount];
+                for (int j = 0; j < topicsCount; j++)
+                {
+                    topics[j] = keccakGenerator[i + j];
+                }
+
+                entries[i - start] = new LogEntry(TestItem.Addresses[i], Array.Empty<byte>(), topics);
+            }
+
+            return entries;
         }
     }
 }

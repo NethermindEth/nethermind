@@ -77,7 +77,7 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            (BigInteger nominator, int newPosition) = Int.DecodeInt(data, position, packed);
+            (BigInteger nominator, int newPosition) = Int256.DecodeInt(data, position, packed);
             BigRational rational = BigRational.FromBigInt(nominator) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), Precision));
             return (rational, newPosition);
         }
@@ -91,7 +91,7 @@ namespace Nethermind.Abi
                     throw new AbiException(AbiEncodingExceptionMessage);
                 }
 
-                return Int.Encode(input.Numerator, packed);
+                return Int256.Encode(input.Numerator, packed);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

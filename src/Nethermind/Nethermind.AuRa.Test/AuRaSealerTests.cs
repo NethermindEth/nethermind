@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Specs.ChainSpecStyle.Json
+using NUnit.Framework;
+
+namespace Nethermind.AuRa.Test
 {
-    internal class AllocationJson
+    public class AuRaSealerTests
     {
-        public string Balance { get; set; }
-        
-        public string Code { get; set; }
+        [SetUp]
+        public void Setup()
+        {
+        }
+
+        [Test]
+        public void Test()
+        {
+            Assert.Pass();
+        }
     }
 }

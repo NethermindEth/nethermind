@@ -16,29 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
-using Nethermind.Mining;
-using Nethermind.Mining.Difficulty;
-using NSubstitute;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    [Ignore("not yet ready")]
     public class BlockValidatorTests
     {
         [Test]
-        public void Test()
+        public void When_more_uncles_than_allowed_returns_false()
         {
-            IBlockTree blockchain = Substitute.For<IBlockTree>();
-
-            HeaderValidator headerValidator = new HeaderValidator(blockchain, NullSealEngine.Instance, null, null);
-            OmmersValidator ommersValidator = new OmmersValidator(blockchain, headerValidator, null);
             TxValidator txValidator = new TxValidator(ChainId.MainNet);
-            BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, RopstenSpecProvider.Instance, null);
+            ReleaseSpec releaseSpec = new ReleaseSpec();
+            releaseSpec.MaximumUncleCount = 0;
+            ISpecProvider specProvider = new CustomSpecProvider((0, releaseSpec));
+
+            BlockValidator blockValidator = new BlockValidator(txValidator, AlwaysValidHeaderValidator.Instance, AlwaysValidOmmersValidator.Instance, specProvider, LimboLogs.Instance);
+            bool noiseRemoved = blockValidator.ValidateSuggestedBlock(Build.A.Block.TestObject);
+            Assert.True(noiseRemoved);
+            
+            bool result = blockValidator.ValidateSuggestedBlock(Build.A.Block.WithOmmers(Build.A.BlockHeader.TestObject).TestObject);
+            Assert.False(result);
         }
     }
 }

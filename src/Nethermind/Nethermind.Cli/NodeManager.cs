@@ -36,9 +36,9 @@ namespace Nethermind.Cli
         private ILogManager _logManager;
         private IJsonSerializer _serializer;
         private JsonParser _jsonParser;
-        
+
         private Dictionary<Uri, IJsonRpcClient> _clients = new Dictionary<Uri, IJsonRpcClient>();
-        
+
         private IJsonRpcClient _currentClient;
 
         public NodeManager(ICliEngine cliEngine, IJsonSerializer serializer, ILogManager logManager)
@@ -46,7 +46,7 @@ namespace Nethermind.Cli
             _cliEngine = cliEngine ?? throw new ArgumentNullException(nameof(cliEngine));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            
+
             _jsonParser = new JsonParser(_cliEngine.JintEngine);
         }
 
@@ -72,7 +72,13 @@ namespace Nethermind.Cli
                 object result = await _currentClient.Post<object>(method, parameters);
                 stopwatch.Stop();
                 Console.WriteLine($"Request complete in {stopwatch.ElapsedMilliseconds}ms");
-                return result == null ? JsValue.Null : _jsonParser.Parse(result.ToString());
+                string resultString = result?.ToString();
+                if (resultString == "0x")
+                {
+                    return JsValue.Null;
+                }
+
+                return resultString == null ? JsValue.Null : _jsonParser.Parse(resultString);
             }
             catch (HttpRequestException e)
             {
@@ -85,7 +91,7 @@ namespace Nethermind.Cli
 
             return JsValue.Null;
         }
-        
+
         public async Task<string> Post(string method, params object[] parameters)
         {
             return await Post<string>(method, parameters);
@@ -110,7 +116,7 @@ namespace Nethermind.Cli
             {
                 CliConsole.WriteException(e);
             }
-            
+
             return default;
         }
     }

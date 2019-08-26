@@ -30,6 +30,7 @@ namespace Nethermind.Core.Specs
         public UInt256 BlockReward { get; set; }
         public long DifficultyBombDelay { get; set; }
         public long DifficultyBoundDivisor { get; set; }
+        public int MaximumUncleCount { get; set; }
         public bool IsTimeAdjustmentPostOlympic { get; set; }
         public bool IsEip2Enabled { get; set; }
         public bool IsEip7Enabled { get; set; }
@@ -58,5 +59,6 @@ namespace Nethermind.Core.Specs
         public bool IsEip1108Enabled { get; set; }
         public bool IsEip1884Enabled { get; set; }
         public bool IsEip2200Enabled { get; set; }
+        public bool IsEip158IgnoredAccount(Address address) => address == Address.SystemUser;		
     }
 }

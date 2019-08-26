@@ -438,7 +438,7 @@ namespace Nethermind.Store
 
                 case NodeType.Leaf:
                 {
-                    visitor.VisitLeaf(this, visitContext);
+                    visitor.VisitLeaf(this, visitContext, Value);
                     if (!visitContext.IsStorage)
                     {
                         Account account = _accountDecoder.Decode(Value.AsRlpStream());

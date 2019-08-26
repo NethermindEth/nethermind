@@ -16,32 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpecStyle.Json
+namespace Nethermind.Core.Specs.GenesisFileStyle.Json
 {
-    [SuppressMessage("ReSharper", "ClassNeverInstantiated.Global")]
-    [SuppressMessage("ReSharper", "UnusedAutoPropertyAccessor.Global")]
-    internal class GenesisFileConfigJson
+    internal class AllocationJson
     {
-        public UInt256 ChainId { get; set; }
+        public object BuiltIn { get; set; }
         
-        public long? HomesteadBlock { get; set; }
+        public UInt256 Balance { get; set; }
         
-        public long? Eip150Block { get; set; }
+        public byte[] Code { get; set; }
         
-        public Keccak Eip150Hash { get; set; }
-        
-        public long? Eip155Block { get; set; }
-        
-        public long? Eip158Block { get; set; }
-        
-        public long? ByzantiumBlock { get; set; }
-        
-        public long? ConstantinopleBlock { get; set; }
-        
-        public GenesisFileConfigCliqueJson Clique { get; set; }
+        public byte[] Constructor { get; set; }
     }
 }

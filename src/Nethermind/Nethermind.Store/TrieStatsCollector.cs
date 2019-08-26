@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -80,7 +79,7 @@ namespace Nethermind.Store
             }
         }
         
-        public void VisitLeaf(TrieNode node, VisitContext visitContext)
+        public void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value = null)
         {
             if (Stats.NodesCount - _lastAccountNodeCount > 100000)
             {

@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Core.Specs.GenesisFileStyle.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle.Json
@@ -80,9 +82,72 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
             public UInt256? BlockReward { get; set; }
         }
         
+        internal class AuraEngineParamsJson
+        {
+            public int StepDuration { get; set; }
+
+            public UInt256 BlockReward { get; set; }
+
+            public long MaximumUncleCountTransition { get; set; }
+        
+            public int MaximumUncleCount { get; set; }
+            
+            public Address BlockRewardContractAddress { get; set; }
+            
+            public long BlockRewardContractTransition { get; set; }
+            
+            public AuRaValidatorJson Validators { get; set; }
+        }
+
+        internal class AuRaValidatorJson
+        {
+            public Address[] List { get; set; }
+            public Address Contract { get; set; }
+            public Address SafeContract { get; set; }
+            public Dictionary<long, AuRaValidatorJson> Multi { get; set; }
+
+            public AuRaParameters.ValidatorType GetValidatorType()
+            {
+                if (List != null)
+                {
+                    return AuRaParameters.ValidatorType.List;
+                }
+                else if (Contract != null)
+                {
+                    return AuRaParameters.ValidatorType.Contract;
+                }
+                else if (SafeContract != null)
+                {
+                    return AuRaParameters.ValidatorType.ReportingContract;
+                }
+                else if (Multi != null)
+                {
+                    return AuRaParameters.ValidatorType.Multi;
+                }
+                else
+                {
+                    throw new NotSupportedException("AuRa validator type not supported.");
+                }
+            }
+        }
+
         internal class AuraEngineJson
         {
-            public Dictionary<string, object> Params { get; set; }
+            public int StepDuration  => Params.StepDuration;
+
+            public UInt256 BlockReward  => Params.BlockReward;
+
+            public long MaximumUncleCountTransition => Params.MaximumUncleCountTransition;
+
+            public int MaximumUncleCount => Params.MaximumUncleCount;
+            
+            public Address BlockRewardContractAddress => Params.BlockRewardContractAddress;
+            
+            public long BlockRewardContractTransition => Params.BlockRewardContractTransition;
+            
+            public AuRaValidatorJson Validator => Params.Validators;
+            
+            public AuraEngineParamsJson Params { get; set; }
         }
         
         internal class NethDevJson

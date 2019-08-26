@@ -103,7 +103,7 @@ namespace Ethereum.Basic.Test
             }
 
             test.Unsigned = new Rlp(unsigned.Slice(0, unsigned.Length - 3));
-            test.StartGas = (UInt256)testJson.StartGas;
+            test.StartGas = testJson.StartGas;
             test.To = string.IsNullOrEmpty(testJson.To) ? null : new Address(testJson.To);
             return test;
         }
@@ -127,7 +127,7 @@ namespace Ethereum.Basic.Test
             public PrivateKey PrivateKey { get; set; }
             public UInt256 Nonce { get; set; }
             public UInt256 GasPrice { get; set; }
-            public UInt256 StartGas { get; set; }
+            public long StartGas { get; set; }
             public Address To { get; set; }
             public UInt256 Value { get; set; }
             public byte[] Data { get; set; }

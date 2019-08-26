@@ -28,7 +28,7 @@ namespace Nethermind.Core.Crypto
 {
     public unsafe struct ValueKeccak
     {
-        private const int Size = 32;
+        internal const int Size = 32;
         public fixed byte Bytes[Size];
 
         public Span<byte> BytesAsSpan =>  MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
@@ -67,7 +67,7 @@ namespace Nethermind.Core.Crypto
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
-        private const int Size = 32;
+        internal const int Size = 32;
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString))

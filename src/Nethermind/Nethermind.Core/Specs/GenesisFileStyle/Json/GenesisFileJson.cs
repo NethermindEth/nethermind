@@ -20,7 +20,7 @@ using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Specs.ChainSpecStyle.Json
+namespace Nethermind.Core.Specs.GenesisFileStyle.Json
 {
     internal class GenesisFileJson
     {   

@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,19 +18,26 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Rewards
 {
-    public class NoBlockRewards : IRewardCalculator
-    {   
-        private NoBlockRewards()
+    public class RewardCalculator : SimpleRewardCalculator
+    {
+        private readonly ISpecProvider _specProvider;
+
+        public RewardCalculator(ISpecProvider specProvider)
         {
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
-        public static NoBlockRewards Instance { get; } = new NoBlockRewards();
-        
-        private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
-
-        public BlockReward[] CalculateRewards(Block block) => _noRewards;
+        [Todo(Improve.MissingFunctionality, "Use ChainSpec for block rewards")]
+        protected override UInt256 GetBlockReward(Block block)
+        {
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            return spec.IsEip649Enabled ? spec.IsEip1234Enabled ? 2.Ether() : 3.Ether() : 5.Ether();
+        }
     }
 }
