@@ -16,13 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class BlockHeadersMessageSerializer : IMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer : IMessageSerializer<BlockHeadersMessage>, IZeroMessageSerializer<BlockHeadersMessage>
     {
         private HeaderDecoder _headerDecoder = new HeaderDecoder();
         
@@ -47,10 +48,40 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public BlockHeadersMessage Deserialize(byte[] bytes)
         {
-            BlockHeadersMessage message = new BlockHeadersMessage();
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static BlockHeadersMessage Deserialize(RlpStream rlpStream)
+        {
+            BlockHeadersMessage message = new BlockHeadersMessage();
             message.BlockHeaders = Rlp.DecodeArray<BlockHeader>(rlpStream);
             return message;
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < message.BlockHeaders.Length; i++)
+            {
+                contentLength += _headerDecoder.GetLength(message.BlockHeaders[i], RlpBehaviors.None);
+            }
+            
+            int length = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(length, true);
+            
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.BlockHeaders.Length; i++)
+            {
+                rlpStream.Encode(message.BlockHeaders[i]);
+            }
+        }
+
+        public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

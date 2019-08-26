@@ -68,10 +68,10 @@ namespace Nethermind.Facade
 
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);
-        BigInteger GetNonce(Address address);
-        BigInteger GetBalance(Address address);
-        byte[] GetStorage(Address address, BigInteger index);
-        byte[] GetStorage(Address address, BigInteger index, Keccak storageRoot);
+        UInt256 GetNonce(Address address);
+        UInt256 GetBalance(Address address);
+        byte[] GetStorage(Address address, UInt256 index);
+        byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot);
         
         Account GetAccount(Address address);
         Account GetAccount(Address address, Keccak stateRoot);

@@ -20,8 +20,10 @@ using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test.Rlpx.Handshake;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,7 +34,7 @@ namespace Nethermind.Network.Test.Rlpx
     {
         private const int LongFrameSize = 48;
         private const int ShortFrameSize = 32;
-        
+
         [SetUp]
         public void Setup()
         {
@@ -55,7 +57,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             private readonly IChannelHandlerContext _context;
 
-            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, Substitute.For<ILogger>())
+            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
             {
                 _context = Substitute.For<IChannelHandlerContext>();
             }

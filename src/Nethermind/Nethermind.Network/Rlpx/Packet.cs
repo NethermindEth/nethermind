@@ -17,6 +17,7 @@
  */
 
 using System.Diagnostics;
+using System.IO;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -25,6 +26,13 @@ namespace Nethermind.Network.Rlpx
     {
         public byte[] Data;
 
+        public Packet(ZeroPacket zeroPacket)
+        {
+            Data = zeroPacket.Content.ReadAllBytes();
+            PacketType = zeroPacket.PacketType;
+            Protocol = zeroPacket.Protocol;
+        }
+        
         public Packet(string protocol, int packetType, byte[] data)
         {
             Data = data;

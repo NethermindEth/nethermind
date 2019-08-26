@@ -29,6 +29,12 @@ namespace Nethermind.Core.Encoding
     {
         public Transaction Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (rlpStream.IsNextItemNull())
+            {
+                rlpStream.ReadByte();
+                return null;
+            }
+            
             var transactionSequence = rlpStream.PeekNextItem();
 
             int transactionLength = rlpStream.ReadSequenceLength();
@@ -54,6 +60,16 @@ namespace Nethermind.Core.Encoding
                 Span<byte> rBytes = rlpStream.DecodeByteArraySpan();
                 Span<byte> sBytes = rlpStream.DecodeByteArraySpan();
 
+                if (vBytes == null || rBytes == null || sBytes == null)
+                {
+                    throw new RlpException("VRS null when decoding Transaction");
+                }
+                
+                if (vBytes.Length == 0 || rBytes.Length == 0 || sBytes.Length == 0)
+                {
+                    throw new RlpException("VRS is 0 length when decoding Transaction");
+                }
+                
                 if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
                 {
                     throw new RlpException("VRS starting with 0");

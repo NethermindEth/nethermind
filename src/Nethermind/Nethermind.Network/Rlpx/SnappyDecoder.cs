@@ -28,7 +28,6 @@ namespace Nethermind.Network.Rlpx
 {
     public class SnappyDecoder : MessageToMessageDecoder<Packet>
     {
-        public const int MaxSnappyLength = 1024 * 1024 * 16;
         private readonly ILogger _logger;
 
         public SnappyDecoder(ILogger logger)
@@ -38,12 +37,12 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, Packet message, List<object> output)
         {
-            if (SnappyCodec.GetUncompressedLength(message.Data) > MaxSnappyLength)
+            if (SnappyCodec.GetUncompressedLength(message.Data) > SnappyParameters.MaxSnappyLength)
             {
                 throw new Exception("Max message size exceeeded"); // TODO: disconnect here
             }
 
-            if (message.Data.Length > MaxSnappyLength / 4)
+            if (message.Data.Length > SnappyParameters.MaxSnappyLength / 4)
             {
                 if (_logger.IsWarn) _logger.Warn($"Big Snappy message of length {message.Data.Length}");
             }

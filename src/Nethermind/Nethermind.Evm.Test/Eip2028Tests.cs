@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Test
             {
                 var transaction = new Transaction {Data = new byte[] {1}};
                 var cost = _gasCalculator.Calculate(transaction, Spec);
-                cost.Should().Be(GasCostOf.Transaction + 16);
+                cost.Should().Be(GasCostOf.Transaction + GasCostOf.TxDataNonZeroEip2028);
             }
 
             [Test]

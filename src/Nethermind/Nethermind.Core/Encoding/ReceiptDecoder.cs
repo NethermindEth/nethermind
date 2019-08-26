@@ -26,6 +26,12 @@ namespace Nethermind.Core.Encoding
     {
         public TxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (rlpStream.IsNextItemNull())
+            {
+                rlpStream.ReadByte();
+                return null;
+            }
+            
             bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             TxReceipt txReceipt = new TxReceipt();
             rlpStream.ReadSequenceLength();

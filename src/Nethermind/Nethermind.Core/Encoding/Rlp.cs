@@ -769,7 +769,14 @@ namespace Nethermind.Core.Encoding
 
         public static void Encode(MemoryStream stream, Bloom bloom)
         {
-            if (bloom == null)
+            if (ReferenceEquals(bloom, Bloom.Empty))
+            {
+                stream.WriteByte(185);
+                stream.WriteByte(1);
+                stream.WriteByte(0);
+                stream.Position += 256;
+            }
+            else if (bloom == null)
             {
                 stream.WriteByte(OfEmptyByteArray.Bytes[0]);
             }

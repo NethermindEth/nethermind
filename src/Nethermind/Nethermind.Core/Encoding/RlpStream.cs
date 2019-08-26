@@ -14,16 +14,18 @@ namespace Nethermind.Core.Encoding
         private static ReceiptDecoder _receiptDecoder = new ReceiptDecoder();
         private static LogEntryDecoder _logEntryDecoder = new LogEntryDecoder();
 
+        protected RlpStream()
+        {
+        }
+        
         public RlpStream(int length)
         {
-            Data = new byte[length];
-            Position = 0;
+            Data = new byte[length]; ;
         }
 
         public RlpStream(byte[] data)
         {
             Data = data;
-            Position = 0;
         }
 
         public void Encode(Block value)
@@ -96,33 +98,35 @@ namespace Nethermind.Core.Encoding
             WriteByte((byte) value);
         }
 
-        private void WriteByte(byte byteToWrite)
+        protected virtual void WriteByte(byte byteToWrite)
         {
             Data[Position++] = byteToWrite;
         }
 
-        private void Write(Span<byte> bytesToWrite)
+        protected virtual void Write(Span<byte> bytesToWrite)
         {
-            bytesToWrite.CopyTo(Data.AsSpan().Slice(Position, bytesToWrite.Length));
+            bytesToWrite.CopyTo(Data.AsSpan(Position, bytesToWrite.Length));
             Position += bytesToWrite.Length;
         }
+        
+        protected virtual string Description => Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString();
 
         public byte[] Data { get; }
 
-        public int Position { get; set; }
+        public virtual int Position { get; set; }
 
-        public int Length => Data.Length;
+        public virtual int Length => Data.Length;
 
         public bool IsSequenceNext()
         {
-            return Data[Position] >= 192;
+            return PeekByte() >= 192;
         }
 
         public void Encode(Keccak keccak)
         {
             if (keccak == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else if (ReferenceEquals(keccak, Keccak.EmptyTreeHash))
             {
@@ -143,7 +147,7 @@ namespace Nethermind.Core.Encoding
         {
             if (address == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -156,7 +160,7 @@ namespace Nethermind.Core.Encoding
         {
             if (rlp == null)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -166,9 +170,16 @@ namespace Nethermind.Core.Encoding
 
         public void Encode(Bloom bloom)
         {
-            if (bloom == null)
+            if (ReferenceEquals(bloom, Bloom.Empty))
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(185);
+                WriteByte(1);
+                WriteByte(0);
+                WriteZero(256);
+            }
+            else if (bloom == null)
+            {
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -177,6 +188,11 @@ namespace Nethermind.Core.Encoding
                 WriteByte(0);
                 Write(bloom.Bytes);
             }
+        }
+
+        protected virtual void WriteZero(int length)
+        {
+            Position += 256;
         }
 
         public void Encode(byte value)
@@ -325,7 +341,7 @@ namespace Nethermind.Core.Encoding
         {
             if (value.IsZero && length == -1)
             {
-                WriteByte(Rlp.OfEmptyByteArray.Bytes[0]);
+                WriteByte(EmptyArrayByte);
             }
             else
             {
@@ -359,7 +375,7 @@ namespace Nethermind.Core.Encoding
         {
             if (input == null || input.Length == 0)
             {
-                Write(Rlp.OfEmptyByteArray.Bytes);
+                WriteByte(EmptyArrayByte);
             }
             else if (input.Length == 1 && input[0] < 128)
             {
@@ -385,7 +401,7 @@ namespace Nethermind.Core.Encoding
         {
             int positionStored = Position;
             int numberOfItems = 0;
-            while (Position < (beforePosition ?? Data.Length))
+            while (Position < (beforePosition ?? Length))
             {
                 int prefix = ReadByte();
                 if (prefix <= 128)
@@ -394,7 +410,7 @@ namespace Nethermind.Core.Encoding
                 else if (prefix <= 183)
                 {
                     int length = prefix - 128;
-                    Position += length;
+                    SkipBytes(length);
                 }
                 else if (prefix < 192)
                 {
@@ -405,13 +421,13 @@ namespace Nethermind.Core.Encoding
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
 
-                    Position += length;
+                    SkipBytes(length);
                 }
                 else
                 {
                     Position--;
                     int sequenceLength = ReadSequenceLength();
-                    Position += sequenceLength;
+                    SkipBytes(sequenceLength);
                 }
 
                 numberOfItems++;
@@ -423,7 +439,7 @@ namespace Nethermind.Core.Encoding
 
         public void SkipLength()
         {
-            Position += PeekPrefixAndContentLength().PrefixLength;
+            SkipBytes(PeekPrefixAndContentLength().PrefixLength);
         }
 
         public int PeekNextRlpLength()
@@ -488,7 +504,7 @@ namespace Nethermind.Core.Encoding
             int prefix = ReadByte();
             if (prefix < 192)
             {
-                throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Data.Length)).ToHexString()}");
+                throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             if (prefix <= 247)
@@ -509,27 +525,27 @@ namespace Nethermind.Core.Encoding
         private int DeserializeLength(int lengthOfLength)
         {
             int result;
-            if (Data[Position] == 0)
+            if (PeekByte() == 0)
             {
                 throw new RlpException("Length starts with 0");
             }
 
             if (lengthOfLength == 1)
             {
-                result = Data[Position];
+                result = PeekByte();
             }
             else if (lengthOfLength == 2)
             {
-                result = Data[Position + 1] | (Data[Position] << 8);
+                result = PeekByte(1) | (PeekByte() << 8);
             }
             else if (lengthOfLength == 3)
             {
-                result = Data[Position + 2] | (Data[Position + 1] << 8) | (Data[Position] << 16);
+                result = PeekByte(2) | (PeekByte(1) << 8) | (PeekByte()<< 16);
             }
             else if (lengthOfLength == 4)
             {
-                result = Data[Position + 3] | (Data[Position + 2] << 8) | (Data[Position + 1] << 16) |
-                         (Data[Position] << 24);
+                result = PeekByte(3) | (PeekByte(2) << 8) | (PeekByte(1) << 16) |
+                         (PeekByte() << 24);
             }
             else
             {
@@ -537,16 +553,31 @@ namespace Nethermind.Core.Encoding
                 throw new InvalidOperationException($"Invalid length of length = {lengthOfLength}");
             }
 
-            Position += lengthOfLength;
+            SkipBytes(lengthOfLength);
             return result;
         }
 
-        public byte ReadByte()
+        public virtual byte ReadByte()
         {
             return Data[Position++];
         }
+        
+        protected virtual byte PeekByte()
+        {
+            return Data[Position];
+        }
+        
+        protected virtual byte PeekByte(int offset)
+        {
+            return Data[Position + offset];
+        }
+        
+        protected virtual void SkipBytes(int length)
+        {
+            Position += length;
+        }
 
-        public Span<byte> Read(int length)
+        protected virtual Span<byte> Read(int length)
         {
             Span<byte> data = Data.AsSpan(Position, length);
             Position += length;
@@ -571,7 +602,7 @@ namespace Nethermind.Core.Encoding
 
             if (prefix != 128 + 32)
             {
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Data.Length)).ToHexString()}");
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             Span<byte> keccakSpan = Read(32);
@@ -598,7 +629,7 @@ namespace Nethermind.Core.Encoding
 
             if (prefix != 128 + 20)
             {
-                throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Data.Length)).ToHexString()}");
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)} at position {Position} in the message of length {Length} starting with {Description}");
             }
 
             byte[] buffer = Read(20).ToArray();
@@ -607,6 +638,13 @@ namespace Nethermind.Core.Encoding
 
         public UInt256 DecodeUInt256()
         {
+            byte byteValue = PeekByte();
+            if (byteValue < 128)
+            {
+                SkipBytes(1);
+                return byteValue;
+            }
+
             Span<byte> byteSpan = DecodeByteArraySpan();
             if (byteSpan.Length > 32)
             {
@@ -619,7 +657,7 @@ namespace Nethermind.Core.Encoding
 
         public UInt256? DecodeNullableUInt256()
         {
-            if (Data[Position] == 0)
+            if (PeekByte() == 0)
             {
                 Position++;
                 return null;
@@ -640,9 +678,9 @@ namespace Nethermind.Core.Encoding
 
             // tks: not sure why but some nodes send us Blooms in a sequence form
             // https://github.com/NethermindEth/nethermind/issues/113
-            if (Data[Position] == 249)
+            if (PeekByte() == 249)
             {
-                Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                SkipBytes(5); // tks: skip 249 1 2 129 127 and read 256 bytes 
                 bloomBytes = Read(256);
             }
             else
@@ -677,7 +715,7 @@ namespace Nethermind.Core.Encoding
 
         public bool IsNextItemNull()
         {
-            return Data[Position] == 192;
+            return PeekByte() == 192;
         }
 
         public bool DecodeBool()
@@ -691,13 +729,13 @@ namespace Nethermind.Core.Encoding
             if (prefix <= 183)
             {
                 int length = prefix - 128;
-                if (length == 1 && Data[Position] < 128)
+                if (length == 1 && PeekByte() < 128)
                 {
-                    throw new RlpException($"Unexpected byte value {Data[Position]}");
+                    throw new RlpException($"Unexpected byte value {PeekByte()}");
                 }
 
-                bool result = Data[Position] == 1;
-                Position += length;
+                bool result = PeekByte() == 1;
+                SkipBytes(length);
                 return result;
             }
 
@@ -716,22 +754,22 @@ namespace Nethermind.Core.Encoding
                     throw new RlpException("Expected length greater or equal 56 and was {length}");
                 }
 
-                bool result = Data[Position] == 1;
-                Position += length;
+                bool result = PeekByte() == 1;
+                SkipBytes(length);
                 return result;
             }
 
-            throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Data.Length} starting with {Data.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Data.Length)).ToHexString()}");
+            throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem)
+        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true)
         {
             int positionCheck = ReadSequenceLength() + Position;
-            int count = ReadNumberOfItemsRemaining(positionCheck);
+            int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
             {
-                if (Data[Position] == Rlp.OfEmptySequence[0])
+                if (PeekByte() == Rlp.OfEmptySequence[0])
                 {
                     result[i] = default;
                     Position++;
@@ -753,6 +791,13 @@ namespace Nethermind.Core.Encoding
 
         public byte DecodeByte()
         {
+            byte byteValue = PeekByte();
+            if (byteValue < 128)
+            {
+                SkipBytes(1);
+                return byteValue;
+            }
+            
             Span<byte> bytes = DecodeByteArraySpan();
             return bytes.Length == 0 ? (byte) 0
                 : bytes.Length == 1 ? bytes[0] == (byte) 128
@@ -786,11 +831,11 @@ namespace Nethermind.Core.Encoding
                 result = result << 8;
                 if (i <= length)
                 {
-                    result = result | Data[Position + length - i];
+                    result = result | PeekByte(length - i);
                 }
             }
 
-            Position += length;
+            SkipBytes(length);
 
             return result;
         }
@@ -826,11 +871,11 @@ namespace Nethermind.Core.Encoding
                 result = result << 8;
                 if (i <= length)
                 {
-                    result = result | Data[Position + length - i];
+                    result = result | PeekByte(length - i);
                 }
             }
 
-            Position += length;
+            SkipBytes(length);
 
             return result;
         }
@@ -900,7 +945,7 @@ namespace Nethermind.Core.Encoding
         public void SkipItem()
         {
             (int prefix, int content) = PeekPrefixAndContentLength();
-            Position += prefix + content;
+            SkipBytes(prefix + content);
         }
 
         public void Reset()

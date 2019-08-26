@@ -219,25 +219,25 @@ namespace Nethermind.Facade
             return _stateReader.GetCode(codeHash);
         }
 
-        public BigInteger GetNonce(Address address)
+        public UInt256 GetNonce(Address address)
         {
             return _stateReader.GetNonce(_blockTree.Head.StateRoot, address);
         }
 
-        public BigInteger GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             return _stateReader.GetBalance(_blockTree.Head.StateRoot, address);
         }
 
-        public byte[] GetStorage(Address address, BigInteger index)
+        public byte[] GetStorage(Address address, UInt256 index)
         {
             return GetStorage(address, index, _blockTree.Head.StateRoot);
         }
 
-        public byte[] GetStorage(Address address, BigInteger index, Keccak stateRoot)
+        public byte[] GetStorage(Address address, UInt256 index, Keccak stateRoot)
         {
             _stateProvider.StateRoot = stateRoot;
-            return _storageProvider.Get(new StorageAddress(address, (UInt256) index));
+            return _storageProvider.Get(new StorageAddress(address, index));
         }
 
         public Account GetAccount(Address address)

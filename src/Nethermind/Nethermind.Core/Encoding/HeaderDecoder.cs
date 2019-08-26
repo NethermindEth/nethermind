@@ -93,6 +93,7 @@ namespace Nethermind.Core.Encoding
         {
             if (rlpStream.IsNextItemNull())
             {
+                rlpStream.ReadByte();
                 return null;
             }
 

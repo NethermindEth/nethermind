@@ -56,8 +56,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and epehemeral key for testing
 
-            _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, NullLogManager.Instance);
-            _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, NullLogManager.Instance);
+            _initiatorService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyA, NullLogManager.Instance);
+            _recipientService = new HandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _ecdsa, NetTestVectors.StaticKeyB, NullLogManager.Instance);
 
             _initiatorHandshake = new EncryptionHandshake();
             _recipientHandshake = new EncryptionHandshake();
@@ -76,9 +76,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private IEciesCipher _eciesCipher;
 
-        private IEncryptionHandshakeService _initiatorService;
+        private IHandshakeService _initiatorService;
 
-        private IEncryptionHandshakeService _recipientService;
+        private IHandshakeService _recipientService;
 
         private EncryptionHandshake _initiatorHandshake;
         private EncryptionHandshake _recipientHandshake;

@@ -326,7 +326,6 @@ namespace Nethermind.Network
         public void SendNewCapability(Capability capability)
         {
             var message = new AddCapabilityMessage(capability);
-            var packet = new Packet(Protocol.P2P, P2PMessageCode.AddCapability, _serializer.Serialize(message));
             foreach (var (_, session) in _sessions)
             {
                 if (session.HasAgreedCapability(capability))
@@ -338,7 +337,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                session.DeliverMessage(packet);
+                session.DeliverMessage(message);
             }
         }
     }

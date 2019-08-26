@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test
                 _pipeline = Substitute.For<IChannelPipeline>();
                 _channelHandlerContext.Channel.Returns(_channel);
                 _channel.Pipeline.Returns(_pipeline);
-                _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter());
+                _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter(LimboLogs.Instance));
                 _packetSender = Substitute.For<IPacketSender>();
                 _syncServer = Substitute.For<ISyncServer>();
                 _syncServer = Substitute.For<ISyncServer>();
@@ -121,7 +121,7 @@ namespace Nethermind.Network.Test
             {
                 IChannel channel = Substitute.For<IChannel>();
                 _currentSession = new Session(_localPort,  LimboLogs.Instance, channel);
-                _pipeline.Get<NettyP2PHandler>().Returns(new NettyP2PHandler(_currentSession, LimboLogs.Instance));
+                _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test
             {
                 IChannel channel = Substitute.For<IChannel>();
                 _currentSession = new Session(_localPort, LimboLogs.Instance, channel, new Node(TestItem.PublicKeyB, _remoteHost, _remotePort) {AddedToDiscovery = true});
-                _pipeline.Get<NettyP2PHandler>().Returns(new NettyP2PHandler(_currentSession, LimboLogs.Instance));
+                _pipeline.Get<ZeroNettyP2PHandler>().Returns(new ZeroNettyP2PHandler(_currentSession, LimboLogs.Instance));
                 _localPeer.SessionCreated += Raise.EventWith(new object(), new SessionEventArgs(_currentSession));
                 return this;
             }

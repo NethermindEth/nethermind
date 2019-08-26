@@ -38,26 +38,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Transaction tx = Build.A.Transaction.WithTo(to).SignedAndResolved(new EthereumEcdsa(RopstenSpecProvider.Instance, NullLogManager.Instance), TestItem.PrivateKeyA, 1).TestObject;
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = new [] {new BlockBody(new [] {tx}, new [] {header})};
-
-            BlockBodiesMessageSerializer serializer = new BlockBodiesMessageSerializer();
-            byte[] bytes = serializer.Serialize(message);
-            byte[] expectedBytes = Bytes.FromHexString("f90245f90242f861f85f800182520894000000000000000000000000000000000000000101801ba0e82c81829818f96f1c53d0f283084f654d6207ccea2296122a365502c4782913a069f761f38649818a629edacc5fc0a269b4824a61356028ac4072acc9456d4f26f901dcf901d9a0ff483e972a04a9a62bb4b7d04ae403c615604e4090521ecc5bb7af67f71be09ca01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347940000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000830f424080833d090080830f42408301020380880000000000000000");
-
-            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
-
-            BlockBodiesMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.Bodies.Length, deserialized.Bodies.Length, "length");
+            
+            var serializer = new BlockBodiesMessageSerializer();
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
-
+        
         [Test]
         public void Roundtrip_with_nulls()
         {
             BlockBodiesMessage message = new BlockBodiesMessage {Bodies = new BlockBody[1] {null}};
-
-            BlockBodiesMessageSerializer serializer = new BlockBodiesMessageSerializer();
-            byte[] bytes = serializer.Serialize(message);
-            BlockBodiesMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.Bodies.Length, deserialized.Bodies.Length, "length");
+            var serializer = new BlockBodiesMessageSerializer();
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
     }
 }

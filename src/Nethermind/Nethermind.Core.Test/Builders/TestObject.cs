@@ -63,6 +63,9 @@ namespace Nethermind.Core.Test.Builders
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
         public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
         public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
+        
+        public static PrivateKey IgnoredPrivateKey = new PrivateKey("040102030405060708090a0b0c0d0e0f0001abe120919026fffff12155555555");
+        public static PublicKey IgnoredPublicKey = IgnoredPrivateKey.PublicKey;
 
         public static PrivateKey[] PrivateKeys;
         public static PublicKey[] PublicKeys;
