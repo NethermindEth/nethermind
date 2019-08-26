@@ -8,6 +8,3 @@
 	path = src/rocksdb-sharp
 	url = https://github.com/NethermindEth/rocksdb-sharp.git
 	branch = master
-[submodule "src/Blake2Fast"]
-	path = src/Blake2Fast
-	url = git@github.com:saucecontrol/Blake2Fast.git

@@ -41,6 +41,7 @@ namespace Nethermind.Evm
         public const long CodeDeposit = 200;
         public const long Call = 40;
         public const long CallEip150 = 700;
+        public const long CallEip152 = 12;
         public const long CallValue = 9000;
         public const long CallStipend = 2300;
         public const long NewAccount = 25000;

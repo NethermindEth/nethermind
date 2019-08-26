@@ -17,8 +17,8 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using SauceControl.Blake2Fast;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -34,12 +34,19 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            Metrics.Blake2BPrecompile++;
-            var context = default(Blake2bContext);
-            //TODO: compression function
-//            context.Init(digestLength, key);
-//            context.compress();
-            var result = context.Finish();
+            if (inputData.Length != 213)
+            {
+                return (Bytes.Empty, true);
+            }
+
+            var finalByte = inputData[212];
+            if (finalByte != 0 && finalByte != 1)
+            {
+                return (Bytes.Empty, true);
+            }
+            
+            var blake = new Blake2();
+            var result = blake.Compress(inputData);
 
             return (result, true);
         }
