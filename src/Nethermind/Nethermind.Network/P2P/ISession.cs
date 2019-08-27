@@ -38,6 +38,8 @@ namespace Nethermind.Network.P2P
         ConnectionDirection Direction { get; }
         Guid SessionId { get; }
         Node Node { get; }
+        DateTime LastPingUtc { get; set; }
+        DateTime LastPongUtc { get; set; }
         void ReceiveMessage(Packet packet);
         void ReceiveMessage(ZeroPacket zeroPacket);
         void DeliverMessage<T>(T message) where T : P2PMessage;

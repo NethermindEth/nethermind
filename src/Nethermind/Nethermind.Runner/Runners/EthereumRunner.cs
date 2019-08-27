@@ -881,7 +881,7 @@ namespace Nethermind.Runner.Runners
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
 
-            _sessionMonitor = new SessionMonitor(networkConfig, _cryptoRandom, _logManager);
+            _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
             _rlpxPeer = new RlpxPeer(
                 _messageSerializationService,
                 _nodeKey.PublicKey,
