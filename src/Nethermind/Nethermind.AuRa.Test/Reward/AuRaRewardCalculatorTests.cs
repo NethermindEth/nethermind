@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -123,6 +124,30 @@ namespace Nethermind.AuRa.Test.Reward
                 new BlockReward(_block.Beneficiary, expectedReward, BlockRewardType.Block),
                 new BlockReward(_block.Body.Ommers[0].Beneficiary, expectedReward, BlockRewardType.Uncle),
                 new BlockReward(_block.Body.Ommers[1].Beneficiary, expectedReward, BlockRewardType.Uncle),
+            };
+            
+            SetupBlockRewards(expected);
+            var calculator = new AuRaRewardCalculator(_auraParameters, _abiEncoder, _transactionProcessor);
+            var result =  calculator.CalculateRewards(_block);            
+            result.Should().BeEquivalentTo(expected);
+        }
+        
+        [Test]
+        public void calculates_rewards_correctly_for_external_addresses()
+        {
+            _block.Number = 10;
+            _block.Body.Ommers = new[]
+            {
+                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(777)).WithNumber(9).TestObject,
+                Prepare.A.BlockHeader().WithBeneficiary(Address.FromNumber(888)).WithNumber(8).TestObject
+            };
+            
+            var expected = new BlockReward[]
+            {
+                new BlockReward(TestItem.AddressA, 1, BlockRewardType.External),
+                new BlockReward(TestItem.AddressB, 3, BlockRewardType.External),
+                new BlockReward(TestItem.AddressC, 5, BlockRewardType.External),
+                new BlockReward(TestItem.AddressD, 8, BlockRewardType.External),
             };
             
             SetupBlockRewards(expected);

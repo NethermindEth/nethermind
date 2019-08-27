@@ -28,6 +28,10 @@
     "Sokol": {
       "commandName": "Project",
       "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
+    },
+    "Poacore": {
+      "commandName": "Project",
+      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
     }
   }
 }

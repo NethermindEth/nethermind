@@ -132,10 +132,10 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                         validator.Addresses = validatorJson.List;
                         break;
                     case AuRaParameters.ValidatorType.Contract:
-                        validator.Addresses = new[] {validatorJson.Contract};
+                        validator.Addresses = new[] {validatorJson.SafeContract};
                         break;
                     case AuRaParameters.ValidatorType.ReportingContract:
-                        validator.Addresses = new[] {validatorJson.SafeContract};
+                        validator.Addresses = new[] {validatorJson.Contract};
                         break;
                     case AuRaParameters.ValidatorType.Multi:
                         if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");

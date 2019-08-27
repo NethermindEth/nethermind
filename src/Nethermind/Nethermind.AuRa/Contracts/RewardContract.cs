@@ -81,6 +81,10 @@ namespace Nethermind.AuRa.Contracts
                     {
                         case Author:
                             return BlockRewardType.Block;
+                        case External:
+                            return BlockRewardType.External;
+                        case EmptyStep:
+                            return BlockRewardType.EmptyStep;
                         case ushort uncle when IsValidDistance(uncle - uncleOffset):
                             return BlockRewardType.Uncle;
                         default:
