@@ -18,13 +18,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs.ChainSpecStyle.Json;
+using Nethermind.Core.Specs.GenesisFileStyle.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle
@@ -56,8 +59,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 LoadEngine(chainSpecJson, chainSpec);
                 LoadAllocations(chainSpecJson, chainSpec);
                 LoadBootnodes(chainSpecJson, chainSpec);
-                LoadTransitions(chainSpecJson, chainSpec);
                 LoadParameters(chainSpecJson, chainSpec);
+                LoadTransitions(chainSpecJson, chainSpec);
 
                 return chainSpec;
             }
@@ -69,36 +72,38 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.Parameters.AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero;
-            chainSpec.Parameters.GasLimitBoundDivisor= chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400;
-            chainSpec.Parameters.MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32;
-            chainSpec.Parameters.MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000;
-            chainSpec.Parameters.MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? 24576;
-            chainSpec.Parameters.MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0;
-            chainSpec.Parameters.Registrar = chainSpecJson.Params.EnsRegistrar;
-            chainSpec.Parameters.ForkBlock = chainSpecJson.Params.ForkBlock;
-            chainSpec.Parameters.ForkCanonHash = chainSpecJson.Params.ForkCanonHash;
-            chainSpec.Parameters.Eip150Transition = chainSpecJson.Params.Eip150Transition;
-            chainSpec.Parameters.Eip152Transition = chainSpecJson.Params.Eip152Transition;
-            chainSpec.Parameters.Eip160Transition = chainSpecJson.Params.Eip160Transition;
-            chainSpec.Parameters.Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition;
-            chainSpec.Parameters.Eip161dTransition = chainSpecJson.Params.Eip161dTransition;
-            chainSpec.Parameters.Eip155Transition = chainSpecJson.Params.Eip155Transition;
-            chainSpec.Parameters.Eip140Transition = chainSpecJson.Params.Eip140Transition;
-            chainSpec.Parameters.Eip211Transition = chainSpecJson.Params.Eip211Transition;
-            chainSpec.Parameters.Eip214Transition = chainSpecJson.Params.Eip214Transition;
-            chainSpec.Parameters.Eip658Transition = chainSpecJson.Params.Eip658Transition;
-            chainSpec.Parameters.Eip145Transition = chainSpecJson.Params.Eip145Transition;
-            chainSpec.Parameters.Eip1014Transition = chainSpecJson.Params.Eip1014Transition;
-            chainSpec.Parameters.Eip1052Transition = chainSpecJson.Params.Eip1052Transition;
-            chainSpec.Parameters.Eip1108Transition = chainSpecJson.Params.Eip1108Transition;
-            chainSpec.Parameters.Eip1283Transition = chainSpecJson.Params.Eip1283Transition;
-            chainSpec.Parameters.Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition;
-            chainSpec.Parameters.Eip1344Transition = chainSpecJson.Params.Eip1344Transition;
-            chainSpec.Parameters.Eip1884Transition = chainSpecJson.Params.Eip1884Transition;
-            chainSpec.Parameters.Eip2028Transition = chainSpecJson.Params.Eip2028Transition;
-            chainSpec.Parameters.Eip2200Transition = chainSpecJson.Params.Eip2200Transition;
+            chainSpec.Parameters = new ChainParameters
+            {
+                AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero,
+                GasLimitBoundDivisor = chainSpecJson.Params.GasLimitBoundDivisor ?? 0x0400,
+                MaximumExtraDataSize = chainSpecJson.Params.MaximumExtraDataSize ?? 32,
+                MinGasLimit = chainSpecJson.Params.MinGasLimit ?? 5000,
+                MaxCodeSize = chainSpecJson.Params.MaxCodeSize ?? long.MaxValue,
+                MaxCodeSizeTransition = chainSpecJson.Params.MaxCodeSizeTransition ?? 0,
+                Registrar = chainSpecJson.Params.EnsRegistrar,
+                ForkBlock = chainSpecJson.Params.ForkBlock,
+                ForkCanonHash = chainSpecJson.Params.ForkCanonHash,
+                Eip150Transition = chainSpecJson.Params.Eip150Transition ?? 0,
+                Eip152Transition = chainSpecJson.Params.Eip152Transition,
+                Eip160Transition = chainSpecJson.Params.Eip160Transition ?? 0,
+                Eip161abcTransition = chainSpecJson.Params.Eip161abcTransition ?? 0,
+                Eip161dTransition = chainSpecJson.Params.Eip161dTransition ?? 0,
+                Eip155Transition = chainSpecJson.Params.Eip155Transition ?? 0,
+                Eip140Transition = chainSpecJson.Params.Eip140Transition,
+                Eip211Transition = chainSpecJson.Params.Eip211Transition,
+                Eip214Transition = chainSpecJson.Params.Eip214Transition,
+                Eip658Transition = chainSpecJson.Params.Eip658Transition,
+                Eip145Transition = chainSpecJson.Params.Eip145Transition,
+                Eip1014Transition = chainSpecJson.Params.Eip1014Transition,
+                Eip1052Transition = chainSpecJson.Params.Eip1052Transition,
+                Eip1108Transition = chainSpecJson.Params.Eip1108Transition,
+                Eip1283Transition = chainSpecJson.Params.Eip1283Transition,
+                Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition,
+                Eip1344Transition = chainSpecJson.Params.Eip1344Transition,
+                Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
+                Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
+                Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
+            };
         }
 
         private void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -109,40 +114,82 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 chainSpec.DaoForkBlockNumber = chainSpecJson.Engine.Ethash.DaoHardForkTransition;
             }
 
-            chainSpec.TangerineWhistleBlockNumber = chainSpecJson.Params.Eip150Transition;
-            chainSpec.SpuriousDragonBlockNumber = chainSpecJson.Params.Eip160Transition;
-            chainSpec.ByzantiumBlockNumber = chainSpecJson.Params.Eip140Transition;
-            chainSpec.ConstantinopleBlockNumber = chainSpecJson.Params.Eip145Transition;
+            chainSpec.TangerineWhistleBlockNumber = chainSpec.Parameters.Eip150Transition;
+            chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
+            chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
+            chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
         }
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
+            AuRaParameters.Validator LoadValidator(ChainSpecJson.AuRaValidatorJson validatorJson, int level = 0)
+            {
+                var validatorType = validatorJson.GetValidatorType();
+                var validator = new AuRaParameters.Validator() {ValidatorType = validatorType};
+                switch (validator.ValidatorType)
+                {
+                    case AuRaParameters.ValidatorType.List:
+                        validator.Addresses = validatorJson.List;
+                        break;
+                    case AuRaParameters.ValidatorType.Contract:
+                        validator.Addresses = new[] {validatorJson.Contract};
+                        break;
+                    case AuRaParameters.ValidatorType.ReportingContract:
+                        validator.Addresses = new[] {validatorJson.SafeContract};
+                        break;
+                    case AuRaParameters.ValidatorType.Multi:
+                        if (level != 0) throw new ArgumentException("AuRa multi validator cannot be inner validator.");
+                        validator.Validators = validatorJson.Multi
+                            .ToDictionary(kvp => kvp.Key, kvp => LoadValidator(kvp.Value, level + 1))
+                            .ToImmutableSortedDictionary();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                return validator;
+            }
+
             if (chainSpecJson.Engine?.AuthorityRound != null)
             {
                 chainSpec.SealEngineType = SealEngineType.AuRa;
+                chainSpec.AuRa = new AuRaParameters
+                {
+                    MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
+                    MaximumUncleCountTransition = chainSpecJson.Engine.AuthorityRound.MaximumUncleCountTransition,
+                    StepDuration = chainSpecJson.Engine.AuthorityRound.StepDuration,
+                    BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
+                    BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
+                    BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
+                    Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator)
+                };
             }
             else if (chainSpecJson.Engine?.Clique != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Clique;
-                chainSpec.Clique = new CliqueParameters();
-                chainSpec.Clique.Epoch = chainSpecJson.Engine.Clique.Epoch;
-                chainSpec.Clique.Period = chainSpecJson.Engine.Clique.Period;
-                chainSpec.Clique.Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero;
+                chainSpec.Clique = new CliqueParameters
+                {
+                    Epoch = chainSpecJson.Engine.Clique.Epoch,
+                    Period = chainSpecJson.Engine.Clique.Period,
+                    Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero
+                };
             }
             else if (chainSpecJson.Engine?.Ethash != null)
             {
                 chainSpec.SealEngineType = SealEngineType.Ethash;
-                chainSpec.Ethash = new EthashParameters();
-                chainSpec.Ethash.MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L;
-                chainSpec.Ethash.DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? 0x0800L;
-                chainSpec.Ethash.DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L;
-                chainSpec.Ethash.HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0;
-                chainSpec.Ethash.DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition;
-                chainSpec.Ethash.DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary;
-                chainSpec.Ethash.DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0];
-                chainSpec.Ethash.Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L;
+                chainSpec.Ethash = new EthashParameters
+                {
+                    MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L,
+                    DifficultyBoundDivisor = chainSpecJson.Engine.Ethash.DifficultyBoundDivisor ?? 0x0800L,
+                    DurationLimit = chainSpecJson.Engine.Ethash.DurationLimit ?? 13L,
+                    HomesteadTransition = chainSpecJson.Engine.Ethash.HomesteadTransition ?? 0,
+                    DaoHardforkTransition = chainSpecJson.Engine.Ethash.DaoHardforkTransition,
+                    DaoHardforkBeneficiary = chainSpecJson.Engine.Ethash.DaoHardforkBeneficiary,
+                    DaoHardforkAccounts = chainSpecJson.Engine.Ethash.DaoHardforkAccounts ?? new Address[0],
+                    Eip100bTransition = chainSpecJson.Engine.Ethash.Eip100bTransition ?? 0L,
+                    BlockRewards = new Dictionary<long, UInt256>()
+                };
 
-                chainSpec.Ethash.BlockRewards = new Dictionary<long, UInt256>();
                 foreach (KeyValuePair<string, UInt256> reward in chainSpecJson.Engine.Ethash.BlockReward)
                 {
                     chainSpec.Ethash.BlockRewards.Add(LongConverter.FromString(reward.Key), reward.Value);
@@ -173,10 +220,14 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
             var nonce = chainSpecJson.Genesis.Seal.Ethereum?.Nonce ?? 0;
             var mixHash = chainSpecJson.Genesis.Seal.Ethereum?.MixHash ?? Keccak.Zero;
-            var parentHash = chainSpecJson.Genesis.ParentHash;
+
+            var auRaSignature = chainSpecJson.Genesis.Seal.AuthorityRound?.Signature;
+            var step = chainSpecJson.Genesis.Seal.AuthorityRound?.Step;
+
+            var parentHash = chainSpecJson.Genesis.ParentHash ?? Keccak.Zero;
             var timestamp = chainSpecJson.Genesis.Timestamp;
             var difficulty = chainSpecJson.Genesis.Difficulty;
-            var extraData = chainSpecJson.Genesis.ExtraData;
+            var extraData = chainSpecJson.Genesis.ExtraData ?? new byte[0];
             var gasLimit = chainSpecJson.Genesis.GasLimit;
             var beneficiary = chainSpecJson.Genesis.Author ?? Address.Zero;
 
@@ -199,6 +250,9 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesisHeader.StateRoot = Keccak.EmptyTreeHash;
             genesisHeader.TxRoot = Keccak.EmptyTreeHash;
+            
+            genesisHeader.AuRaStep = step;
+            genesisHeader.AuRaSignature = auRaSignature;
 
             chainSpec.Genesis = new Block(genesisHeader);
         }
@@ -210,34 +264,18 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 return;
             }
 
-            chainSpec.Allocations = new Dictionary<Address, (UInt256 Balance, byte[] Code)>();
+            chainSpec.Allocations = new Dictionary<Address, ChainSpecAllocation>();
             foreach (KeyValuePair<string, AllocationJson> account in chainSpecJson.Accounts)
             {
-                byte[] codeValue = null;
-                UInt256 allocationValue = UInt256.Zero;
-                if (account.Value.Balance != null)
+                if (account.Value.BuiltIn != null && account.Value.Balance == UInt256.Zero)
                 {
-                    bool balanceParsingResult = UInt256.TryParse(account.Value.Balance, out allocationValue);
-                    if (!balanceParsingResult)
-                    {
-                        balanceParsingResult = UInt256.TryParse(account.Value.Balance.Replace("0x", string.Empty), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out allocationValue);
-                    }
-
-                    if (!balanceParsingResult)
-                    {
-                        throw new InvalidDataException($"Cannot recognize allocation value format in {account.Value.Balance}");
-                    }
+                    continue;
                 }
 
-                if (account.Value.Code != null)
-                {
-                    codeValue = Bytes.FromHexString(account.Value.Code);
-                }
-
-                if (account.Value.Balance != null || account.Value.Code != null)
-                {
-                    chainSpec.Allocations[new Address(account.Key)] = (allocationValue, codeValue);
-                }
+                chainSpec.Allocations[new Address(account.Key)] = new ChainSpecAllocation(
+                    account.Value.Balance,
+                    account.Value.Code,
+                    account.Value.Constructor);
             }
         }
 

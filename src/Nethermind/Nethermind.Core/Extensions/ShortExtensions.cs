@@ -22,10 +22,12 @@ namespace Nethermind.Core.Extensions
 {
     public static class ShortExtensions
     {
-        public static byte[] ToBigEndianByteArray(this short value)
-        {
-            return BitConverter.GetBytes(BitConverter.IsLittleEndian ? Swap(value) : value);
-        }
+        public static byte[] ToBigEndianByteArray(this short value) => 
+            BitConverter.GetBytes(BitConverter.IsLittleEndian ? Swap(value) : value);
+
+        public static byte[] ToBigEndianByteArray(this ushort value) => 
+            BitConverter.GetBytes(BitConverter.IsLittleEndian ? Swap(value) : value);
+
 
         private static ushort Swap(ushort val)
         {

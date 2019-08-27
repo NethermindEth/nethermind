@@ -40,6 +40,8 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg")]
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
+        [TestCase("sokol.cfg")]
+        [TestCase("poacore.cfg")]
         public void Required_config_files_exist(string configFile)
         {
             var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
@@ -54,6 +56,8 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg")]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
+        [TestCase("sokol.cfg")]
+        [TestCase("poacore.cfg", true)]
         public void Basic_config_are_as_expected(string configFile, bool isProduction = false)
         {
             ConfigProvider configProvider = new ConfigProvider();

@@ -52,6 +52,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         }
         
         [Test]
+        public void Hobbit()
+        {
+            StatusMessage message = new StatusMessage();            
+            message.ProtocolVersion = 63;
+            message.BestHash = Keccak.Compute("1");
+            message.GenesisHash = Keccak.Compute("0");
+            message.TotalDifficulty = 131200;
+            message.ChainId = 1;
+            
+            StatusMessageSerializer serializer = new StatusMessageSerializer();
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
+        }
+        
+        [Test]
         public void Can_deserialize_example_from_ethereumJ()
         {
             byte[] bytes = Bytes.FromHexString("f84927808425c60144a0832056d3c93ff2739ace7199952e5365aa29f18805be05634c4db125c5340216a0955f36d073ccb026b78ab3424c15cf966a7563aa270413859f78702b9e8e22cb");

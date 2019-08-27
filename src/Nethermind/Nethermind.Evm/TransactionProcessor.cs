@@ -72,6 +72,7 @@ namespace Nethermind.Evm
 
         private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
+            var notSystemTransaction = !transaction.IsSystem();
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
@@ -93,18 +94,22 @@ namespace Nethermind.Evm
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
             if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
-            if (gasLimit < intrinsicGas)
+            if (notSystemTransaction)
             {
-                TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                QuickFail(transaction, block, txTracer, readOnly);
-                return;
-            }
+                if (gasLimit < intrinsicGas)
+                {
+                    TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
+                    QuickFail(transaction, block, txTracer, readOnly);
+                    return;
+                }
 
-            if (gasLimit > block.GasLimit - block.GasUsed)
-            {
-                TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                QuickFail(transaction, block, txTracer, readOnly);
-                return;
+                if (gasLimit > block.GasLimit - block.GasUsed)
+                {
+                    TraceLogInvalidTx(transaction,
+                        $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
+                    QuickFail(transaction, block, txTracer, readOnly);
+                    return;
+                }
             }
 
             if (!_stateProvider.AccountExists(sender))
@@ -130,22 +135,26 @@ namespace Nethermind.Evm
                 }
             }
 
-            UInt256 senderBalance = _stateProvider.GetBalance(sender);
-            if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
+            if (notSystemTransaction)
             {
-                TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
-                QuickFail(transaction, block, txTracer, readOnly);
-                return;
+                UInt256 senderBalance = _stateProvider.GetBalance(sender);
+                if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
+                {
+                    TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
+                    QuickFail(transaction, block, txTracer, readOnly);
+                    return;
+                }
+
+                if (transaction.Nonce != _stateProvider.GetNonce(sender))
+                {
+                    TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
+                    QuickFail(transaction, block, txTracer, readOnly);
+                    return;
+                }
+
+                _stateProvider.IncrementNonce(sender);
             }
 
-            if (transaction.Nonce != _stateProvider.GetNonce(sender))
-            {
-                TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                QuickFail(transaction, block, txTracer, readOnly);
-                return;
-            }
-
-            _stateProvider.IncrementNonce(sender);
             _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
 
             // TODO: I think we can skip this commit and decrease the tree operations this way
@@ -166,6 +175,11 @@ namespace Nethermind.Evm
                 if (transaction.IsContractCreation)
                 {
                     recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
+                    if (transaction.IsSystem())
+                    {
+                        recipient = transaction.SenderAddress;
+                    }
+                    
                     if (_stateProvider.AccountExists(recipient))
                     {
                         if ((_virtualMachine.GetCachedCodeInfo(recipient)?.MachineCode?.Length ?? 0) != 0 || _stateProvider.GetNonce(recipient) != 0)
@@ -252,13 +266,16 @@ namespace Nethermind.Evm
             Address gasBeneficiary = block.GasBeneficiary;
             if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(gasBeneficiary) ?? false))
             {
-                if (!_stateProvider.AccountExists(gasBeneficiary))
+                if (notSystemTransaction)
                 {
-                    _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
-                }
-                else
-                {
-                    _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
+                    if (!_stateProvider.AccountExists(gasBeneficiary))
+                    {
+                        _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
+                    }
+                    else
+                    {
+                        _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
+                    }
                 }
             }
 
@@ -273,7 +290,7 @@ namespace Nethermind.Evm
                 _stateProvider.Reset();
             }
 
-            if (!readOnly)
+            if (!readOnly && notSystemTransaction)
             {
                 block.GasUsed += spentGas;
             }

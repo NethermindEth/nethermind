@@ -236,7 +236,7 @@ namespace Nethermind.Mining
                 _cacheStopwatch.Restart();
                 IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
                 _cacheStopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} with size {cacheSize} nd seed {seed.Bytes.ToHexString()} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
                 return dataSet;
             });
         }

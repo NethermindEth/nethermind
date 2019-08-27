@@ -32,26 +32,22 @@ namespace Nethermind.Network.P2P
 {
     public class Session : ISession
     {
-        public override string ToString()
-        {
-            string formattedRemoteHost = RemoteHost?.Replace("::ffff:", string.Empty);
-            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {formattedRemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{formattedRemoteHost}:{RemotePort}";
-        }
-
-        private readonly ILogger _logger;
-        private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
-        private readonly IChannel _channel;
-        private IChannelHandlerContext _context;
-
+        private static ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new ConcurrentDictionary<string, AdaptiveCodeResolver>();
+        
+        private ILogger _logger;
+        private ILogManager _logManager;
+        
         private Node _node;
+        private IChannel _channel;
+        private IChannelHandlerContext _context;
+        
+        private Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
 
-        public Session(
-            int localPort,
-            ILogManager logManager,
-            IChannel channel)
+        public Session(int localPort, ILogManager logManager, IChannel channel)
         {
             Direction = ConnectionDirection.In;
             State = SessionState.New;
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = null;
@@ -68,6 +64,7 @@ namespace Nethermind.Network.P2P
             State = SessionState.New;
             _node = node ?? throw new ArgumentNullException(nameof(node));
             _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = node.Id;
             RemoteHost = node.Host;
@@ -83,6 +80,8 @@ namespace Nethermind.Network.P2P
         public PublicKey ObsoleteRemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int RemotePort { get; set; }
+        public DateTime LastPingUtc { get; set; } = DateTime.UtcNow;
+        public DateTime LastPongUtc { get; set; } = DateTime.UtcNow;
         public ConnectionDirection Direction { get; }
         public Guid SessionId { get; }
 
@@ -122,13 +121,15 @@ namespace Nethermind.Network.P2P
             }
 
             if (_logger.IsTrace) _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
-
-            _context.Channel.Pipeline.Get<NettyPacketSplitter>().DisableFraming();
+            _context.Channel.Pipeline.Get<ZeroPacketSplitter>()?.DisableFraming();
+            _context.Channel.Pipeline.Get<NettyPacketSplitter>()?.DisableFraming();
+            
             // since groups were used, we are on a different thread
-            _context.Channel.Pipeline.Get<NettyP2PHandler>().EnableSnappy();
+            _context.Channel.Pipeline.Get<ZeroNettyP2PHandler>()?.EnableSnappy();
+            _context.Channel.Pipeline.Get<NettyP2PHandler>()?.EnableSnappy();
             // code in the next line does no longer work as if there is a packet waiting then it will skip the snappy decoder
             // _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyDecoder(_logger));
-            _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyEncoder(_logger));
+            _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new ZeroSnappyEncoder(_logManager));
         }
 
         public void AddSupportedCapability(Capability capability)
@@ -149,7 +150,47 @@ namespace Nethermind.Network.P2P
 
         public IPingSender PingSender { get; set; }
 
-        public void DeliverMessage(Packet packet)
+        public void ReceiveMessage(ZeroPacket zeroPacket)
+        {
+            lock (_sessionStateLock)
+            {
+                if (State < SessionState.Initialized)
+                {
+                    throw new InvalidOperationException($"{nameof(ReceiveMessage)} called on {this}");
+                }
+
+                if (IsClosing)
+                {
+                    return;
+                }
+            }
+
+            int dynamicMessageCode = zeroPacket.PacketType;
+            (string protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
+            zeroPacket.Protocol = protocol;
+
+            if (_logger.IsTrace) _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} ({dynamicMessageCode} => {protocol}.{messageId})");
+
+            if (protocol == null)
+            {
+                if (_logger.IsTrace) _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): {string.Join(", ", _protocols.Select(x => $"{x.Key}.{x.Value.ProtocolVersion} {x.Value.MessageIdSpaceSize}"))}");
+                return;
+            }
+
+            zeroPacket.PacketType = (byte)messageId;
+            IProtocolHandler protocolHandler = _protocols[protocol];
+            IZeroProtocolHandler zeroProtocolHandler = protocolHandler as IZeroProtocolHandler;
+            if (zeroProtocolHandler != null)
+            {
+                zeroProtocolHandler.HandleMessage(zeroPacket);
+            }
+            else
+            {
+                protocolHandler.HandleMessage(new Packet(zeroPacket));
+            }
+        }
+
+        public void DeliverMessage<T>(T message) where T : P2PMessage
         {
             lock (_sessionStateLock)
             {
@@ -164,10 +205,10 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()} on {this}");
+            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {message.Protocol}.{message.PacketType} on {this}");
 
-            packet.PacketType = _resolver.ResolveAdaptiveId(packet.Protocol, packet.PacketType);
-            _packetSender.Enqueue(packet);
+            message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
+            _packetSender.Enqueue(message);
         }
 
         public void ReceiveMessage(Packet packet)
@@ -506,8 +547,6 @@ namespace Nethermind.Network.P2P
             _resolver = GetOrCreateResolver();
         }
 
-        private AdaptiveCodeResolver _resolver;
-
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
             string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
@@ -519,8 +558,14 @@ namespace Nethermind.Network.P2P
             return _resolvers[key];
         }
 
-        private static ConcurrentDictionary<string, AdaptiveCodeResolver> _resolvers = new ConcurrentDictionary<string, AdaptiveCodeResolver>();
-
+        public override string ToString()
+        {
+            string formattedRemoteHost = RemoteHost?.Replace("::ffff:", string.Empty);
+            return Direction == ConnectionDirection.In ? $"{State} {Direction} session {formattedRemoteHost}:{RemotePort}->localhost:{LocalPort}" : $"{State} {Direction} session localhost:{LocalPort}->{formattedRemoteHost}:{RemotePort}";
+        }
+        
+        private AdaptiveCodeResolver _resolver;
+        
         private class AdaptiveCodeResolver
         {
             private readonly (string ProtocolCode, int SpaceSize)[] _alphabetically;

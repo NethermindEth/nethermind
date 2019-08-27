@@ -38,7 +38,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_array_of_dynamic_array_of_uint(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiArray(new AbiArray(AbiType.UInt));
+            AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] element = {1, 2, 3};
             BigInteger[][] data = {element, element};
@@ -53,7 +53,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_array_of_dynamic_array_of_uint_empty(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiArray(new AbiArray(AbiType.UInt));
+            AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] data = { };
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
@@ -81,7 +81,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Dynamic_array_of_uint(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiArray(AbiType.UInt);
+            AbiType type = new AbiArray(AbiType.UInt256);
             AbiSignature signature = new AbiSignature("abc", type);
             BigInteger[] data = {1, 2, 3};
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
@@ -95,7 +95,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Fixed_array_of_fixed_array_of_uint(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiFixedLengthArray(new AbiFixedLengthArray(AbiType.UInt, 2), 3);
+            AbiType type = new AbiFixedLengthArray(new AbiFixedLengthArray(AbiType.UInt256, 2), 3);
             BigInteger[] element = {1, 1};
             BigInteger[][] data = {element, element, element};
             AbiSignature signature = new AbiSignature("abc", type);
@@ -124,7 +124,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Fixed_array_of_uint(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = new AbiFixedLengthArray(AbiType.UInt, 2);
+            AbiType type = new AbiFixedLengthArray(AbiType.UInt256, 2);
             BigInteger[] data = {1, 1};
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, data);
@@ -233,7 +233,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Test_single_int(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = AbiType.Int;
+            AbiType type = AbiType.Int256;
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, BigInteger.MinusOne);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
@@ -246,7 +246,7 @@ namespace Nethermind.Abi.Test
         [TestCase(AbiEncodingStyle.None)]
         public void Test_single_uint(AbiEncodingStyle encodingStyle)
         {
-            AbiType type = AbiType.UInt;
+            AbiType type = AbiType.UInt256;
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(encodingStyle, signature, BigInteger.Zero);
             object[] arguments = _abiEncoder.Decode(encodingStyle, signature, encoded);
@@ -354,7 +354,7 @@ namespace Nethermind.Abi.Test
 
             AbiSignature signature = new AbiSignature(
                 "f",
-                AbiType.UInt,
+                AbiType.UInt256,
                 new AbiArray(new AbiUInt(32)),
                 new AbiBytes(10),
                 AbiType.DynamicBytes);

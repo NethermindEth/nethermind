@@ -45,6 +45,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
+            
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
 
         [Test]
@@ -66,6 +69,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
+            
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
         
         [Test]
@@ -87,6 +93,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
+            
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
     }
 }

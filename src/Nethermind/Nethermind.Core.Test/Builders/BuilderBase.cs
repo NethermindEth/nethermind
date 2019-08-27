@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -39,8 +40,11 @@ namespace Nethermind.Core.Test.Builders
             protected set => TestObjectInternal = value;
         }
 
-        public List<T> TestObjectAsList => new List<T> {TestObject};
-        public T[] TestObjectAsArray => new[] {TestObject};
+        public T[] TestObjectNTimes(int n)
+        {
+            T testObject = TestObject;
+            return Enumerable.Repeat(testObject, n).ToArray();
+        }
 
         protected virtual void BeforeReturn()
         {

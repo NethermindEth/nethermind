@@ -33,5 +33,7 @@ namespace Nethermind.Core
         
         public static Keccak RopstenGenesis = new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d");
         public static Keccak RopstenConstantinopleFix = new Keccak("0x8696d2eed8197e186d8d682756a0c2a1947ab5e71257475ebcce4fa3252ee9f7");
+        
+        public static Keccak SokolGenesis = new Keccak("0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f");
     }
 }

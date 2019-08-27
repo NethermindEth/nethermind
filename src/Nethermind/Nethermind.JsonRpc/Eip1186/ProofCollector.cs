@@ -217,7 +217,7 @@ namespace Nethermind.JsonRpc.Eip1186
             }
         }
 
-        public void VisitLeaf(TrieNode node, VisitContext visitContext)
+        public void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value)
         {
             AddProofBits(node, visitContext);
             _visitingFilter.Remove(node.Keccak);

@@ -39,6 +39,8 @@ namespace Nethermind.Core.Specs.Forks
         public UInt256 BlockReward => UInt256.Parse("5000000000000000000");
         public long DifficultyBombDelay => 0L;
         public long DifficultyBoundDivisor => 0x0800;
+        
+        public int MaximumUncleCount => 2;
 
         public bool IsTimeAdjustmentPostOlympic => false;
         public bool IsEip2Enabled => false;
@@ -68,5 +70,6 @@ namespace Nethermind.Core.Specs.Forks
         public bool IsEip1108Enabled => false;
         public bool IsEip1884Enabled => false;
         public bool IsEip2200Enabled => false;
+        public bool IsEip158IgnoredAccount(Address address) => false;
     }
 }

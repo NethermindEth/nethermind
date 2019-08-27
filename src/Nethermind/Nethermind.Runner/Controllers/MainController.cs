@@ -28,7 +28,7 @@ using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Runner.Controllers
 {
-    [Route("")]
+    [Route("{*url}")]
     [ApiController]
     public class MainController : ControllerBase
     {

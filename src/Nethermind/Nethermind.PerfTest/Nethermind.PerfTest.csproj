@@ -7,6 +7,8 @@
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+    <ProjectReference Include="..\Nethermind.AuRa\Nethermind.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
       <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
       <Name>Nethermind.Blockchain</Name>

@@ -1129,11 +1129,11 @@ namespace Nethermind.Evm
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
+                            BytesZero32.AsSpan(0, position).CopyTo(b.Slice(0, position));
                         }
                         else
                         {
-                            BytesMax32.AsSpan().Slice(0, position).CopyTo(b.Slice(0, position));
+                            BytesMax32.AsSpan(0, position).CopyTo(b.Slice(0, position));
                         }
 
                         PushBytes(b, bytesOnStack);
@@ -1867,8 +1867,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
                         
-                        // fail fast before the first storage read if gas is not enough even for reset
-                        if (!spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
+                        if (spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
                         {
                             Metrics.EvmExceptions++;
                             EndInstructionTraceError(OutOfGasErrorText);

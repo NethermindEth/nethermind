@@ -18,13 +18,14 @@
 
 
 using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>
+    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>, IZeroMessageSerializer<NewBlockHashesMessage>
     {
         public byte[] Serialize(NewBlockHashesMessage message)
         {
@@ -39,12 +40,50 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public NewBlockHashesMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static NewBlockHashesMessage Deserialize(RlpStream rlpStream)
+        {
             (Keccak, long)[] blockHashes = rlpStream.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
-                return (ctx.DecodeKeccak(), (long)ctx.DecodeUInt256());
-            });
+                return (ctx.DecodeKeccak(), (long) ctx.DecodeUInt256());
+            }, false);
+
             return new NewBlockHashesMessage(blockHashes);
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, NewBlockHashesMessage message)
+        {
+            NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
+
+            int contentLength = 0;
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
+                miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
+                contentLength += Rlp.GetSequenceRlpLength(miniContentLength);
+            }
+
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
+            nettyRlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.BlockHashes.Length; i++)
+            {
+                int miniContentLength = Rlp.LengthOf(message.BlockHashes[i].Item1);
+                miniContentLength += Rlp.LengthOf(message.BlockHashes[i].Item2);
+                nettyRlpStream.StartSequence(miniContentLength);
+                nettyRlpStream.Encode(message.BlockHashes[i].Item1);
+                nettyRlpStream.Encode(message.BlockHashes[i].Item2);
+            }
+        }
+
+        public NewBlockHashesMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

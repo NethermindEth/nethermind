@@ -48,7 +48,7 @@ namespace Nethermind.Evm
                 Array.Clear(_memory, (int)location, WordSize - word.Length);
             }
 
-            word.CopyTo(_memory.AsSpan().Slice((int)location + WordSize - word.Length, word.Length));
+            word.CopyTo(_memory.AsSpan((int)location + WordSize - word.Length, word.Length));
         }
 
         public void SaveByte(ref UInt256 location, byte value)
@@ -69,7 +69,7 @@ namespace Nethermind.Evm
             CheckMemoryAccessViolation(ref location, (UInt256)value.Length);
             UpdateSize(ref location, (UInt256)value.Length);
 
-            value.CopyTo(_memory.AsSpan().Slice((int)location, value.Length));
+            value.CopyTo(_memory.AsSpan((int)location, value.Length));
         }
 
         private static void CheckMemoryAccessViolation(ref UInt256 location, in UInt256 length)
@@ -100,7 +100,7 @@ namespace Nethermind.Evm
             CheckMemoryAccessViolation(ref location, WordSize);
             UpdateSize(ref location, WordSize);
             
-            return _memory.AsSpan().Slice((int)location, WordSize);
+            return _memory.AsSpan((int)location, WordSize);
         }
 
         public Span<byte> LoadSpan(ref UInt256 location, in UInt256 length)
@@ -113,7 +113,7 @@ namespace Nethermind.Evm
             CheckMemoryAccessViolation(ref location, length);
             UpdateSize(ref location, length);
 
-            return _memory.AsSpan().Slice((int)location, (int)length);
+            return _memory.AsSpan((int)location, (int)length);
         }
 
         public byte[] Load(ref UInt256 location, in UInt256 length)

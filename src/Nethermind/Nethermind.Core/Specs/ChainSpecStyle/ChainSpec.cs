@@ -44,13 +44,15 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         
         public SealEngineType SealEngineType { get; set; }
         
+        public AuRaParameters AuRa { get; set; }
+        
         public CliqueParameters Clique { get; set; }
         
         public EthashParameters Ethash { get; set; }
         
         public ChainParameters Parameters { get; set; }
 
-        public Dictionary<Address, (UInt256 Balance, byte[] Code)> Allocations { get; set; }
+        public Dictionary<Address, ChainSpecAllocation> Allocations { get; set; }
 
         public long? DaoForkBlockNumber { get; set; }
 

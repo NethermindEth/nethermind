@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using System.Numerics;
 using Jint.Native;
 using Nethermind.Core;
@@ -48,23 +47,23 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBlockByHash")]
-        public object GetBlockByHash(string hash, bool returnFullTransactionObjects)
+        public JsValue GetBlockByHash(string hash, bool returnFullTransactionObjects)
         {
-            return NodeManager.Post<object>("eth_getBlockByHash", CliParseHash(hash), returnFullTransactionObjects).Result;
+            return NodeManager.PostJint("eth_getBlockByHash", CliParseHash(hash), returnFullTransactionObjects).Result;
         }
-        
-        [CliFunction("eth", "getProof")]
-        public object GetProof(string address, string[] storage, string blockParameter)
+
+        [CliFunction("eth", "getTransactionCount")]
+        public string GetTransactionCount(string address, string blockParameter = null)
         {
-            return NodeManager.Post<object>("eth_getProof", CliParseAddress(address), storage, blockParameter).Result;
+            return NodeManager.Post<string>("eth_getTransactionCount", CliParseAddress(address), blockParameter).Result;
         }
 
         [CliFunction("eth", "getStorageAt")]
-        public object GetStorageAt(string address, string positionIndex, string blockParameter)
+        public string GetStorageAt(string address, string positionIndex, string blockParameter = null)
         {
-            return NodeManager.Post<object>("eth_getStorageAt", CliParseAddress(address), positionIndex, blockParameter).Result;
+            return NodeManager.Post<string>("eth_getStorageAt", CliParseAddress(address), positionIndex, blockParameter).Result;
         }
-        
+
         [CliFunction("eth", "getBlockByNumber")]
         public JsValue GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects)
         {
@@ -90,9 +89,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getCode")]
-        public JsValue GetCode(string address, string blockParameter)
+        public string GetCode(string address, string blockParameter)
         {
-            return NodeManager.PostJint("eth_getCode", address, blockParameter).Result;
+            return NodeManager.Post<string>("eth_getCode", address, blockParameter).Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]

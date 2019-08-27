@@ -22,16 +22,20 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Microsoft.Extensions.Logging.Console;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
+using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -44,24 +48,29 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        private readonly IEncryptionHandshakeService _encryptionHandshakeService;
+        private readonly IHandshakeService _handshakeService;
+        private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private IEventExecutorGroup _group;
 
         public RlpxPeer(
+            IMessageSerializationService serializationService,
             PublicKey localNodeId,
             int localPort,
-            IEncryptionHandshakeService encryptionHandshakeService,
+            IHandshakeService handshakeService,
             ILogManager logManager,
             ISessionMonitor sessionMonitor)
         {
+//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => level > LogLevel.Warning, false));
+//            ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
             _group = new SingleThreadEventLoop();
+            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
-            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
+            _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
         }
@@ -184,10 +193,10 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, _logManager, _group);
+            var handshakeHandler = new NettyHandshakeHandler(_serializationService, _handshakeService, session, role, _logManager, _group);
 
             IChannelPipeline pipeline = channel.Pipeline;
-            // pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+            pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
@@ -207,8 +216,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task Shutdown()
         {
-            // InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
-
+//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
             await _bootstrapChannel.CloseAsync().ContinueWith(t =>
             {
                 if (t.IsFaulted)
