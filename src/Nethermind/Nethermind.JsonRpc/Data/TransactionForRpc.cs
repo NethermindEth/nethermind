@@ -25,7 +25,7 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpc
-    {   
+    {
         public TransactionForRpc(Keccak blockHash, BigInteger? blockNumber, int? txIndex, Transaction transaction)
         {
             Hash = transaction.Hash;
@@ -39,8 +39,11 @@ namespace Nethermind.JsonRpc.Data
             GasPrice = transaction.GasPrice;
             Gas = transaction.GasLimit;
             Input = Data = transaction.Data ?? transaction.Init;
+            R = transaction.Signature.R;
+            S = transaction.Signature.S;
+            V = (UInt256) transaction.Signature.V;
         }
-        
+
         // ReSharper disable once UnusedMember.Global
         public TransactionForRpc()
         {
@@ -57,8 +60,12 @@ namespace Nethermind.JsonRpc.Data
         public BigInteger? GasPrice { get; set; }
         public BigInteger? Gas { get; set; }
         public byte[] Data { get; set; }
-        
         public byte[] Input { get; set; }
+        public UInt256 V { get; set; }
+
+        public byte[] S { get; set; }
+
+        public byte[] R { get; set; }
 
         public Transaction ToTransaction()
         {
