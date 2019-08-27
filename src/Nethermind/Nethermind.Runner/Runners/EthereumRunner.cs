@@ -406,7 +406,7 @@ namespace Nethermind.Runner.Runners
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
             
             // IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_initConfig.BaseDbPath, "debug"), dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts);
-            // _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(new Uri("http://167.71.138.237:8545"), _jsonSerializer, _logManager), _logManager, debugRecorder);
+            // _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _jsonSerializer, _logManager), _logManager, debugRecorder);
 
             // IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_initConfig.BaseDbPath, "debug"), dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts), false);
             // _dbProvider = debugReader;
