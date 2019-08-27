@@ -218,7 +218,7 @@ namespace Nethermind.PerfTest
 
             /* load spec */
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "sokol.json"));
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"chainspec", "ropsten.json"));
             _logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             _logger.Info($"ChainSpec loaded");
@@ -336,11 +336,7 @@ namespace Nethermind.PerfTest
             _logger.Info($"Finalizing genesis...");
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
-//            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
-//            {
-//                throw new Exception("Unexpected genesis hash");
-//            }
-//
+
             if (chainSpec.Genesis.Hash != blockTree.Genesis.Hash)
             {
                 throw new Exception("Unexpected genesis hash");
