@@ -24,25 +24,42 @@ namespace Nethermind.Evm.Precompiles
 {
     public class Blake2BPrecompiledContract : IPrecompiledContract
     {
+        private const int RequiredInputLength = 213;
         public static readonly IPrecompiledContract Instance = new Blake2BPrecompiledContract();
 
         public Address Address { get; } = Address.FromNumber(9);
 
         public long BaseGasCost(IReleaseSpec releaseSpec) => 0;
 
-        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec) => 12;
+        public long DataGasCost(byte[] inputData, IReleaseSpec releaseSpec)
+        {
+            if (inputData.Length != RequiredInputLength)
+            {
+                return 0;
+            }
+            
+            var finalByte = inputData[212];
+            if (finalByte != 0 && finalByte != 1)
+            {
+                return 0;
+            }
+            
+            var rounds = inputData.Slice(0, 4).ToUInt32();
+
+            return rounds;
+        }
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            if (inputData.Length != 213)
+            if (inputData.Length != RequiredInputLength)
             {
-                return (Bytes.Empty, true);
+                return (Bytes.Empty, false);
             }
 
             var finalByte = inputData[212];
             if (finalByte != 0 && finalByte != 1)
             {
-                return (Bytes.Empty, true);
+                return (Bytes.Empty, false);
             }
             
             var blake = new Blake2();

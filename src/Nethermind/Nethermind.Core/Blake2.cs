@@ -21,6 +21,9 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
+    /// <summary>
+    ///     Code adapted from pantheon (https://github.com/PegaSysEng/pantheon)
+    /// </summary>
     public class Blake2
     {
         private static readonly byte[][] Precomputed =
@@ -39,9 +42,9 @@ namespace Nethermind.Core
 
         private static readonly  ulong[] IV =
         {
-            0x6a09e667f3bcc908L, 0xbb67ae8584caa73bL, 0x3c6ef372fe94f82bL,
-            0xa54ff53a5f1d36f1L, 0x510e527fade682d1L, 0x9b05688c2b3e6c1fL,
-            0x1f83d9abfb41bd6bL, 0x5be0cd19137e2179L
+            0x6a09e667f3bcc908ul, 0xbb67ae8584caa73bul, 0x3c6ef372fe94f82bul,
+            0xa54ff53a5f1d36f1ul, 0x510e527fade682d1ul, 0x9b05688c2b3e6c1ful,
+            0x1f83d9abfb41bd6bul, 0x5be0cd19137e2179ul
         };
 
         private ulong[] _h = new ulong[8];
@@ -49,27 +52,24 @@ namespace Nethermind.Core
         private ulong[] _t = new ulong[2];
         private ulong[] _v = new ulong[16];
         private bool _f;
-        private uint _rounds;
+        private uint _rounds = 12;
 
         public byte[] Compress(byte[] input)
         {
             Init(input);
-
-            var t0 = _t[0];
-            var t1 = _t[1];
-
+            
             Array.Copy(_h, 0, _v, 0, 8);
             Array.Copy(IV, 0, _v, 8, 8);
 
-            _v[12] ^= t0;
-            _v[13] ^= t1;
+            _v[12] ^= _t[0];
+            _v[13] ^= _t[1];
 
             if (_f)
             {
-                _v[14] ^= 0xffffffffffffffffL;
+                _v[14] ^= 0xfffffffffffffffful;
             }
 
-            for (ulong i = 0; i < _rounds; ++i)
+            for (var i = 0; i < _rounds; ++i)
             {
                 var s = Precomputed[i % 10];
                 Compute(_m[s[0]], _m[s[4]], 0, 4, 8, 12);
@@ -87,7 +87,6 @@ namespace Nethermind.Core
                 _h[offset] ^= _v[offset] ^ _v[offset + 8];
             }
             
-
             var result = new byte[_h.Length * 8];
             for (var i = 0; i < _h.Length; i++)
             {
@@ -122,14 +121,19 @@ namespace Nethermind.Core
         private void Compute(ulong a, ulong b, int i, int j, int k, int l)
         {
             _v[i] += a + _v[j];
-            _v[l] = _v[l] >> 32 ^ _v[i] << 32;
+            _v[l] = RotateLeft(_v[l] ^ _v[i], -32);
             _v[k] += _v[l];
-            _v[j] = _v[j] >> 24 ^ _v[k] << 24;
+            _v[j] = RotateLeft(_v[j] ^ _v[k], -24);
 
             _v[i] += b + _v[j];
-            _v[l] = _v[l] >> 16 ^ _v[i] << 16;
+            _v[l] = RotateLeft(_v[l] ^ _v[i], -16);
             _v[k] += _v[l];
-            _v[j] = _v[j] >> 63 ^ _v[k] << 63;
+            _v[j] = RotateLeft(_v[j] ^ _v[k], -63);
+        }
+        
+        private static ulong RotateLeft(ulong value, int count)
+        {
+            return (value << count) | (value >> (64 - count));
         }
     }
 }

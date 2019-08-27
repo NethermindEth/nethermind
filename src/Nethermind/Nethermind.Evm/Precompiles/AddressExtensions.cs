@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Precompiles
             }
             
             BigInteger asInt = address.Bytes.ToUnsignedBigInteger();
-            if (asInt == 0 || asInt > 8)
+            if (asInt == 0 || asInt > 9)
             {
                 return false;
             }
@@ -52,8 +52,13 @@ namespace Nethermind.Evm.Precompiles
             {
                 return releaseSpec.IsEip196Enabled;
             }
+            
+            if (asInt == 8)
+            {
+                return releaseSpec.IsEip197Enabled;
+            }
 
-            return asInt == 8 && releaseSpec.IsEip197Enabled;
+            return asInt == 9 && releaseSpec.IsEip152Enabled;
         }
     }
 }
