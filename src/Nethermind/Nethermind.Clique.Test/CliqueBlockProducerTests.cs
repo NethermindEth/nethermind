@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;

@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -69,7 +70,7 @@ namespace Nethermind.JsonRpc.Test
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
-            Assert.AreEqual((BigInteger)2, (response.Result as BlockForRpc)?.Number);
+            Assert.AreEqual(2L, (response.Result as BlockForRpc)?.Number);
         }
         
         [Test]
@@ -96,7 +97,7 @@ namespace Nethermind.JsonRpc.Test
         public void GetNewFilterTest()
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<BigInteger?>.Success(1));
+            ethModule.eth_newFilter(Arg.Any<Filter>()).ReturnsForAnyArgs(x => ResultWrapper<UInt256?>.Success(1));
 
             var parameters = new
             {
@@ -115,7 +116,7 @@ namespace Nethermind.JsonRpc.Test
             };
 
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_newFilter", JsonConvert.SerializeObject(parameters));
-            Assert.AreEqual(BigInteger.One, response.Result);
+            Assert.AreEqual(UInt256.One, response.Result);
         }
 
         [Test]

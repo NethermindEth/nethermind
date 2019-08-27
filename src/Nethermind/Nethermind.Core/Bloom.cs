@@ -37,7 +37,7 @@ namespace Nethermind.Core
             _bits = new BitArray(2048);
         }
         
-        public Bloom(LogEntry[] logEntries, Bloom blockBloom)
+        public Bloom(LogEntry[] logEntries, Bloom blockBloom = null)
         {
             _bits = new BitArray(2048);
             Add(logEntries, blockBloom);
@@ -62,18 +62,24 @@ namespace Nethermind.Core
         
         private void Set(byte[] sequence, Bloom masterBloom)
         {
-            Span<byte> keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
-            for (int i = 0; i < 6; i += 2)
+            var indexes = GetIndexes(sequence);
+            _bits.Set(indexes.Index1, true);
+            _bits.Set(indexes.Index2, true);
+            _bits.Set(indexes.Index3, true);
+            if (masterBloom != null)
             {
-                int index = 2047 - ((keccakBytes[i] << 8) + keccakBytes[i + 1]) % 2048;
-                _bits.Set(index, true);
-                if (masterBloom != null)
-                {
-                    masterBloom._bits.Set(index, true);
-                }
+                masterBloom._bits.Set(indexes.Index1, true);
+                masterBloom._bits.Set(indexes.Index2, true);
+                masterBloom._bits.Set(indexes.Index3, true);
             }
         }
-
+        
+        public bool IsMatch(byte[] sequence)
+        {
+            var indexes = GetIndexes(sequence);
+            return _bits[indexes.Index1] && _bits[indexes.Index2] && _bits[indexes.Index3];
+        }
+        
         public override string ToString()
         {
             StringBuilder stringBuilder = new StringBuilder();
@@ -136,7 +142,7 @@ namespace Nethermind.Core
             return _bits != null ? _bits.GetHashCode() : 0;
         }
         
-        private void Add(LogEntry[] logEntries, Bloom blockBloom)
+        public void Add(LogEntry[] logEntries, Bloom blockBloom = null)
         {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
@@ -149,6 +155,37 @@ namespace Nethermind.Core
                     Set(topic.Bytes, blockBloom);
                 }
             }
+        }
+        
+        public bool IsMatch(LogEntry logEntry)
+        {
+            if (!IsMatch(logEntry.LoggersAddress.Bytes))
+            {
+                return false;
+            }
+            
+            for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+            {
+                Keccak topic = logEntry.Topics[topicIndex];
+                if (!IsMatch(topic.Bytes))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+
+        }
+        
+        private (int Index1, int Index2, int Index3) GetIndexes(byte[] sequence)
+        {
+            int GetIndex(Span<byte> bytes, int index1, int index2)
+            {
+                return 2047 - ((bytes[index1] << 8) + bytes[index2]) % 2048;
+            }
+
+            var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
+            return (GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
         }
     }
 }

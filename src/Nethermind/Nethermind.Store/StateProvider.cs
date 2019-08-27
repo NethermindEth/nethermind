@@ -143,19 +143,20 @@ namespace Nethermind.Store
             {
                 if (_logger.IsTrace) _logger.Trace($"  Touch {address} (code hash)");
                 Account touched = GetThroughCache(address);
-                PushTouch(address, touched);
+                PushTouch(address, touched, releaseSpec, touched.Balance.IsZero);
             }
         }
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
-            if (balanceChange.IsZero)
+            var isZero = balanceChange.IsZero;
+            if (isZero)
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     Account touched = GetThroughCache(address);
-                    PushTouch(address, touched);
+                    PushTouch(address, touched, releaseSpec, isZero);
                 }
 
                 return;
@@ -211,6 +212,14 @@ namespace Nethermind.Store
         {
             Account account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
+            if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
+            PushUpdate(address, changedAccount);
+        }
+        
+        public void DecrementNonce(Address address)
+        {
+            Account account = GetThroughCache(address);
+            Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
@@ -581,8 +590,9 @@ namespace Nethermind.Store
             Push(ChangeType.Update, address, account);
         }
 
-        private void PushTouch(Address address, Account account)
+        private void PushTouch(Address address, Account account, IReleaseSpec releaseSpec, bool isZero)
         {
+            if (isZero && releaseSpec.IsEip158IgnoredAccount(address)) return;
             Push(ChangeType.Touch, address, account);
         }
 

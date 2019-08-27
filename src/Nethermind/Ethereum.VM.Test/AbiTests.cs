@@ -29,7 +29,7 @@ namespace Ethereum.VM.Test
     {
         private static readonly Dictionary<string, AbiType> TypesByName = new Dictionary<string, AbiType>
         {
-            {"uint256", AbiType.UInt},
+            {"uint256", AbiType.UInt256},
             {"uint32[]", new AbiArray(new AbiUInt(32))},
             {"bytes10", new AbiBytes(10)},
             {"bytes", AbiType.DynamicBytes},

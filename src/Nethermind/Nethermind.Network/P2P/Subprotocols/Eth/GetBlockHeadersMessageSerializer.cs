@@ -16,12 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using DotNetty.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class GetBlockHeadersMessageSerializer : IMessageSerializer<GetBlockHeadersMessage>
+    public class GetBlockHeadersMessageSerializer : IMessageSerializer<GetBlockHeadersMessage>, IZeroMessageSerializer<GetBlockHeadersMessage>
     {
         public byte[] Serialize(GetBlockHeadersMessage message)
         {
@@ -35,26 +39,42 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public GetBlockHeadersMessage Deserialize(byte[] bytes)
         {
-            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
-
             RlpStream rlpStream = bytes.AsRlpStream();
+            return Deserialize(rlpStream);
+        }
+
+        private static GetBlockHeadersMessage Deserialize(RlpStream rlpStream)
+        {
+            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             rlpStream.ReadSequenceLength();
-            int position = rlpStream.Position;
             byte[] startingBytes = rlpStream.DecodeByteArray();
-            rlpStream.Position = position;
             if (startingBytes.Length == 32)
             {
-                message.StartingBlockHash = rlpStream.DecodeKeccak();
+                message.StartingBlockHash = new Keccak(startingBytes);
             }
             else
             {
-                message.StartingBlockNumber = (long)rlpStream.DecodeUInt256();
+                UInt256.CreateFromBigEndian(out UInt256 result, startingBytes);
+                message.StartingBlockNumber = (long)result;
             }
 
             message.MaxHeaders = rlpStream.DecodeInt();
             message.Skip = rlpStream.DecodeInt();
             message.Reverse = rlpStream.DecodeByte();
             return message;
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
+        {
+            byte[] oldWay = Serialize(message);
+            byteBuffer.EnsureWritable(oldWay.Length, true);
+            byteBuffer.WriteBytes(oldWay);
+        }
+
+        public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            NettyRlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            return Deserialize(rlpStream);
         }
     }
 }

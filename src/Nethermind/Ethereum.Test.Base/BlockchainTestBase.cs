@@ -27,6 +27,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
@@ -579,7 +580,7 @@ namespace Ethereum.Test.Base
         {
             Transaction transaction = new Transaction();
             transaction.Value = Bytes.FromHexString(transactionJson.Value).ToUInt256();
-            transaction.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256();
+            transaction.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToInt64();
             transaction.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256();
             transaction.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
             transaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(transactionJson.To);

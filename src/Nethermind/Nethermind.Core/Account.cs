@@ -82,6 +82,7 @@ namespace Nethermind.Core
         public Keccak CodeHash { get; }
         public bool IsTotallyEmpty { get; }
         public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce == _accountStartNonce && CodeHash == Keccak.OfAnEmptyString);
+        public bool IsContract => CodeHash != Keccak.OfAnEmptyString; 
 
         public Account WithChangedBalance(UInt256 newBalance)
         {

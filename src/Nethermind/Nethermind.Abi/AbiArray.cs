@@ -41,7 +41,7 @@ namespace Nethermind.Abi
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
             BigInteger length;
-            (length, position) = UInt.DecodeUInt(data, position, packed);
+            (length, position) = UInt256.DecodeUInt(data, position, packed);
 
             Array result = Array.CreateInstance(_elementType.CSharpType, (int)length);
             for (int i = 0; i < length; i++)
@@ -61,7 +61,7 @@ namespace Nethermind.Abi
             {
                 byte[][] encodedItems = new byte[input.Length + 1][];
                 int i = 0;
-                encodedItems[i++] = UInt.Encode((BigInteger)input.Length, packed);
+                encodedItems[i++] = UInt256.Encode((BigInteger)input.Length, packed);
                 foreach (object o in input)
                 {
                     encodedItems[i++] = _elementType.Encode(o, packed);

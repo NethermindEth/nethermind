@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

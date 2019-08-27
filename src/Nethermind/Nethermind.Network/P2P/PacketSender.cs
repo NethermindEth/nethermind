@@ -17,32 +17,51 @@
  */
 
 using System;
+using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
-{    
+{
     public class PacketSender : ChannelHandlerAdapter, IPacketSender
     {
-        private readonly ILogger _logger;        
+        private readonly IMessageSerializationService _messageSerializationService;
+        private readonly ILogger _logger;
         private IChannelHandlerContext _context;
 
-        public PacketSender(ILogManager logManager)
+        public PacketSender(IMessageSerializationService messageSerializationService, ILogManager logManager)
         {
+            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public void Enqueue(Packet packet)
+        public void Enqueue<T>(T message) where T : P2PMessage
         {
-            try
+            if (!_context.Channel.Active)
             {
-                Send(packet);
+                return;
             }
-            catch (Exception e)
+
+            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(512);
+            buffer.WriteByte(message.AdaptivePacketType);
+            _messageSerializationService.Serialize(message, buffer);
+            _context.WriteAndFlushAsync(buffer).ContinueWith(t =>
             {
-                _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) failed", e);
-            }
+                if (t.IsFaulted)
+                {
+                    if (_context.Channel != null && !_context.Channel.Active)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Channel is not active - {t.Exception.Message}");
+                    }
+                    else if (_logger.IsError) _logger.Error("Channel is active", t.Exception);
+                }
+                else if (t.IsCompleted)
+                {
+//                    if (_logger.IsTrace) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
+                }
+            });
         }
 
         private void Send(Packet packet)
@@ -51,7 +70,7 @@ namespace Nethermind.Network.P2P
             {
                 return;
             }
-         
+
             _context.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
                 if (t.IsFaulted)

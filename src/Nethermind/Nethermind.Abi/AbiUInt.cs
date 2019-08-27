@@ -60,8 +60,8 @@ namespace Nethermind.Abi
 
         public override (object, int) Decode(byte[] data, int position, bool packed)
         {
-            BigInteger lengthData = data.Slice(position, (packed ? LengthInBytes : UInt.LengthInBytes)).ToUnsignedBigInteger();
-            return (lengthData, position + (packed ? LengthInBytes : UInt.LengthInBytes));
+            BigInteger lengthData = data.Slice(position, (packed ? LengthInBytes : UInt256.LengthInBytes)).ToUnsignedBigInteger();
+            return (lengthData, position + (packed ? LengthInBytes : UInt256.LengthInBytes));
         }
 
         public (BigInteger, int) DecodeUInt(byte[] data, int position, bool packed)
@@ -92,12 +92,20 @@ namespace Nethermind.Abi
             {
                 bytes = longInput.ToBigEndianByteArray();
             }
+            else if (arg is short shortInput)
+            {
+                bytes = shortInput.ToBigEndianByteArray();
+            }
+            else if (arg is ushort ushortInput)
+            {
+                bytes = ushortInput.ToBigEndianByteArray();
+            }
             else
             {
                 throw new AbiException(AbiEncodingExceptionMessage);
             }
 
-            return bytes.PadLeft(packed ? LengthInBytes : UInt.LengthInBytes);
+            return bytes.PadLeft(packed ? LengthInBytes : UInt256.LengthInBytes);
         }
 
         public override Type CSharpType { get; } = typeof(BigInteger);

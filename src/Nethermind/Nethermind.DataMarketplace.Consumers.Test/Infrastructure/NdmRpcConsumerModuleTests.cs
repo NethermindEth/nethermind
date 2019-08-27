@@ -361,6 +361,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.TotalResults.Should().Be(1);
             result.Data.IsEmpty.Should().BeFalse();
             var rpcApproval = result.Data.Items.Single();
+            rpcApproval.Id.Should().Be(approval.Id);
             rpcApproval.AssetId.Should().Be(approval.AssetId);
             rpcApproval.AssetName.Should().Be(approval.AssetName);
             rpcApproval.Kyc.Should().Be(approval.Kyc);

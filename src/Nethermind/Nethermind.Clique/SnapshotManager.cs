@@ -343,7 +343,10 @@ namespace Nethermind.Clique
             }
 
             snapshot.Number += headers.Count;
-            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
+            
+            // was this needed?
+//            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
+            snapshot.Hash = headers[headers.Count - 1].Hash;
             return snapshot;
         }
 

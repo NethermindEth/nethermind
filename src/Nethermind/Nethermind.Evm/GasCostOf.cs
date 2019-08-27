@@ -31,8 +31,10 @@ namespace Nethermind.Evm
         public const long ExtCodeSizeEip150 = 700;
         public const long Balance = 20;
         public const long BalanceEip150 = 400;
+        public const long BalanceEip1884 = 700;
         public const long SLoad = 50;
         public const long SLoadEip150 = 200;
+        public const long SLoadEip1884 = 800;
         public const long JumpDest = 1;
         public const long SStoreNetMetered = 200;
         public const long SSet = 20000;
@@ -52,6 +54,7 @@ namespace Nethermind.Evm
         public const long TxCreate = 32000;
         public const long TxDataZero = 4;
         public const long TxDataNonZero = 68;
+        public const long TxDataNonZeroEip2028 = 16;
         public const long Transaction = 21000;
         public const long Log = 375;
         public const long LogTopic = 375;
@@ -62,5 +65,7 @@ namespace Nethermind.Evm
         public const long SelfDestruct = 0;
         public const long SelfDestructEip150 = 5000;
         public const long ExtCodeHash = 400;
+        public const long ExtCodeHashEip1884 = 700;
+        public const long SelfBalance = 5;
     }
 }

@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain.TxPools.Filters
                 return this;
             }
 
-            public Builder GasLimit(Predicate<UInt256> gasLimit)
+            public Builder GasLimit(Predicate<long> gasLimit)
             {
                 _filter.GasLimit = gasLimit;
 
@@ -203,7 +203,7 @@ namespace Nethermind.Blockchain.TxPools.Filters
         {
             public Predicate<UInt256> Nonce { get; set; }
             public Predicate<UInt256> GasPrice { get; set; }
-            public Predicate<UInt256> GasLimit { get; set; }
+            public Predicate<long> GasLimit { get; set; }
             public Predicate<Address> To { get; set; }
             public Predicate<UInt256> Value { get; set; }
             public Predicate<byte[]> Data { get; set; }

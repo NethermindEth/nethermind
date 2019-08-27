@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
-                .WithGasLimit((ulong) gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .To(TestItem.AddressB)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
-                .WithGasLimit((ulong) gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithData(input)
                 .WithValue(value)
@@ -179,7 +179,7 @@ namespace Nethermind.Evm.Test
             Transaction transaction = Build.A.Transaction
                 .WithTo(null)
                 .WithData(Bytes.Empty)
-                .WithGasLimit((ulong) gasLimit)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithInit(code)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
@@ -214,9 +214,16 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageAddress(Recipient, address)).PadLeft(32), "storage");
         }
 
-        protected void AssertStorage(UInt256 address, BigInteger value)
+        protected void AssertStorage(UInt256 address, BigInteger expectedValue)
         {
-            Assert.AreEqual(value.ToBigEndianByteArray(), Storage.Get(new StorageAddress(Recipient, address)), "storage");
+            byte[] actualValue = Storage.Get(new StorageAddress(Recipient, address));
+            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
+        }
+        
+        protected void AssertStorage(StorageAddress storageAddress, BigInteger expectedValue)
+        {
+            byte[] actualValue = Storage.Get(storageAddress);
+            Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, $"storage {storageAddress}");
         }
 
         protected void AssertCodeHash(Address address, Keccak codeHash)

@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp2.2</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
+      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+      <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+      <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj" />
+    </ItemGroup>
+
+</Project>

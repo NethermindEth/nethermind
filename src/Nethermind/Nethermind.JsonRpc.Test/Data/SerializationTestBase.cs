@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Data
             foreach (JsonConverter converter in EthModuleFactory.Converters)
             {
                 serializer.Converters.Add(converter);
-            }
+            }            
             
             foreach (JsonConverter converter in TraceModuleFactory.Converters)
             {

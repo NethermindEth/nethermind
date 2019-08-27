@@ -50,7 +50,7 @@ namespace Nethermind.Abi
 
             if (_elementType.IsDynamic)
             {
-                position += (Length - 1) * UInt.LengthInBytes;
+                position += (Length - 1) * UInt256.LengthInBytes;
             }
 
             for (int i = 0; i < Length; i++)
@@ -75,14 +75,14 @@ namespace Nethermind.Abi
                 if (_elementType.IsDynamic)
                 {
                     byte[][] encodedItems = new byte[Length * 2 - 1][];
-                    BigInteger currentOffset = (Length - 1) * UInt.LengthInBytes;
+                    BigInteger currentOffset = (Length - 1) * UInt256.LengthInBytes;
                     int i = 0;
                     foreach (object o in input)
                     {
                         encodedItems[Length + i - 1] = _elementType.Encode(o, packed);
                         if (i != 0)
                         {
-                            encodedItems[i - 1] = UInt.Encode(currentOffset, packed);
+                            encodedItems[i - 1] = UInt256.Encode(currentOffset, packed);
                             currentOffset += new BigInteger(encodedItems[Length + i - 1].Length);
                         }
 

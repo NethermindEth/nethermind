@@ -34,14 +34,17 @@ namespace Nethermind.Network
         private System.Timers.Timer _pingTimer;
 
         private readonly INetworkConfig _networkConfig;
-        private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
 
-        public SessionMonitor(INetworkConfig config, ICryptoRandom cryptoRandom, ILogManager logManager)
+        private TimeSpan _pingInterval;
+        private List<Task<bool>> _pingTasks = new List<Task<bool>>();
+
+        public SessionMonitor(INetworkConfig config, ILogManager logManager)
         {
-            _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
-            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
+
+            _pingInterval = TimeSpan.FromMilliseconds(_networkConfig.P2PPingInterval);
         }
 
         public void Start()
@@ -74,7 +77,7 @@ namespace Nethermind.Network
 
         private void SendPingMessages()
         {
-            var task = Task.Run(SendPingMessagesAsync).ContinueWith(x =>
+            Task task = Task.Run(SendPingMessagesAsync).ContinueWith(x =>
             {
                 if (x.IsFaulted && _logger.IsError)
                 {
@@ -87,25 +90,30 @@ namespace Nethermind.Network
 
         private async Task SendPingMessagesAsync()
         {
-            var pingTasks = new List<(ISession session, Task<bool> pingTask)>();
-            foreach (var session in _sessions.Values)
+            foreach (ISession session in _sessions.Values)
             {
-                if (session.State == SessionState.Initialized)
+                if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
                 {
-                    var pingTask = SendPingMessage(session);
-                    pingTasks.Add((session, pingTask));
+                    Task<bool> pingTask = SendPingMessage(session);
+                    _pingTasks.Add(pingTask);
                 }
             }
 
-            if (pingTasks.Any())
+            if (_pingTasks.Any())
             {
-                var tasks = await Task.WhenAll(pingTasks.Select(x => x.pingTask));
-                if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Disconnected: {tasks.Count(x => x == false)}");
+                bool[] tasks = await Task.WhenAll(_pingTasks);
+                int successes = tasks.Count(x => x == true);
+                int failures = tasks.Count(x => x == false);
+                if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Received {successes} pongs.");
+                if (failures > tasks.Length / 3)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"More than 33% of nodes did not respond to a Ping message - {failures}/{successes + failures}");
+                }
+
+                _pingTasks.Clear();
             }
             else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
-
-        private Random _random = new Random();
 
         private async Task<bool> SendPingMessage(ISession session)
         {
@@ -121,27 +129,19 @@ namespace Nethermind.Network
                 return true;
             }
 
-            for (var i = 0; i < _networkConfig.P2PPingRetryCount; i++)
+            var pingTime = DateTime.UtcNow;
+            if (pingTime - session.LastPingUtc > _pingInterval)
             {
-                var pongReceived = await session.PingSender.SendPing();
-                if (pongReceived)
+                session.LastPingUtc = pingTime;
+                bool pongReceived = await session.PingSender.SendPing();
+                if (!pongReceived)
                 {
-                    return true;
+                    if (_logger.IsDebug) _logger.Debug($"No pong received in response to the {pingTime:T} ping at {session?.Node:c} | last pong time {session.LastPongUtc:T}");
+                    return false;
                 }
-            }
-
-            // hacky-tricky solution to mass timeout disconnects - disconnect only some of the nodes
-            bool shallDisconnect;
-            lock (_random)
-            {
-                shallDisconnect = _cryptoRandom.NextInt(2) == 0;
-            }
-
-            if (shallDisconnect)
-            {
-                if (_logger.IsInfo) _logger.Info($"Disconnecting {session} due to missed {_networkConfig.P2PPingRetryCount} * {_networkConfig.P2PPingInterval}ms ping messages.");
-                session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "ping");
-                return false;
+                
+                session.LastPongUtc = DateTime.Now;
+                return true;
             }
 
             return true;

@@ -41,13 +41,13 @@ namespace Nethermind.Abi
             
             List<byte[]> dynamicParts = new List<byte[]>();
             List<byte[]> headerParts = new List<byte[]>();
-            BigInteger currentOffset = arguments.Length * AbiType.UInt.LengthInBytes;
+            BigInteger currentOffset = arguments.Length * AbiType.UInt256.LengthInBytes;
             for (int i = 0; i < arguments.Length; i++)
             {
                 AbiType type = signature.Types[i];
                 if (type.IsDynamic)
                 {
-                    headerParts.Add(AbiType.UInt.Encode(currentOffset, packed));
+                    headerParts.Add(AbiType.UInt256.Encode(currentOffset, packed));
                     byte[] encoded = type.Encode(arguments[i], packed);
                     currentOffset += encoded.Length;
                     dynamicParts.Add(encoded);
@@ -138,7 +138,7 @@ namespace Nethermind.Abi
                 if (type.IsDynamic)
                 {
                     // TODO: do not have to decode this - can just jump 32 and check if first call and use dynamic position
-                    (BigInteger offset, int nextPosition) = AbiType.UInt.DecodeUInt(data, position, packed);
+                    (BigInteger offset, int nextPosition) = AbiType.UInt256.DecodeUInt(data, position, packed);
                     (arguments[i], dynamicPosition) = type.Decode(data, sigOffset + (int)offset, packed);
                     position = nextPosition;
                 }

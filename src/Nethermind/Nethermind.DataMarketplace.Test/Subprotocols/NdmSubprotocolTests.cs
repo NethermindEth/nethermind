@@ -126,8 +126,8 @@ namespace Nethermind.DataMarketplace.Test.Subprotocols
             
             Received.InOrder(() =>
             {
-                _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDataAssets));
-                _session.DeliverMessage(Arg.Is<Packet>(p => p.PacketType == NdmMessageCode.GetDepositApprovals));
+                _session.DeliverMessage(Arg.Any<GetDataAssetsMessage>());
+                _session.DeliverMessage(Arg.Any<GetDepositApprovalsMessage>());
             });
         }
     }

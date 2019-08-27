@@ -24,5 +24,4 @@
       <ProjectReference Include="..\Nethermind.DataMarketplace.Core\Nethermind.DataMarketplace.Core.csproj" />
       <ProjectReference Include="..\Nethermind.JsonRpc.Client\Nethermind.JsonRpc.Client.csproj" />
     </ItemGroup>
-
 </Project>

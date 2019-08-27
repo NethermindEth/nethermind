@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -49,6 +50,7 @@ namespace Nethermind.Blockchain
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITxPool _txPool;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IAdditionalBlockProcessor _additionalBlockProcessor;
 
         public BlockProcessor(ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -61,7 +63,8 @@ namespace Nethermind.Blockchain
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
-            ILogManager logManager)
+            ILogManager logManager,
+            IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -76,6 +79,17 @@ namespace Nethermind.Blockchain
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
             _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
+
+            if (additionalBlockProcessors != null)
+            {
+                var additionalBlockProcessorsArray = additionalBlockProcessors.ToArray();
+                if (additionalBlockProcessorsArray.Length > 0)
+                {
+                    _additionalBlockProcessor = additionalBlockProcessorsArray.Length == 1
+                        ? additionalBlockProcessorsArray[0]
+                        : new CompositeAdditionalBlockProcessor(additionalBlockProcessorsArray);
+                }
+            }
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -186,17 +200,23 @@ namespace Nethermind.Blockchain
             }
 
             Block block = PrepareBlockForProcessing(suggestedBlock);
+            _additionalBlockProcessor?.PreProcess(block);
+            
             var receipts = ProcessTransactions(block, options, blockTracer);
             SetReceiptsRoot(block, receipts);
             ApplyMinerRewards(block, blockTracer);
+            
+            _additionalBlockProcessor?.PostProcess(block, receipts);
             
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
 
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+
             if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+                // if (_logger.IsError) _logger.Error($"State: {_stateProvider.DumpState()}");
                 throw new InvalidBlockException(suggestedBlock.Hash);
             }
 
@@ -266,17 +286,28 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
 
-            BlockHeader s = suggestedBlock.Header;
-            BlockHeader header = new BlockHeader(s.ParentHash, s.OmmersHash, s.Beneficiary, s.Difficulty, s.Number, s.GasLimit, s.Timestamp, s.ExtraData);
-            Block processedBlock = new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
-            header.Bloom = Bloom.Empty;
-            header.Author = suggestedBlock.Header.Author;
-            header.Hash = s.Hash;
-            header.MixHash = s.MixHash;
-            header.Nonce = s.Nonce;
-            header.TxRoot = suggestedBlock.TransactionsRoot;
-            header.TotalDifficulty = suggestedBlock.TotalDifficulty;
-            return processedBlock;
+            BlockHeader bh = suggestedBlock.Header;
+            BlockHeader header = new BlockHeader(
+                bh.ParentHash,
+                bh.OmmersHash,
+                bh.Beneficiary,
+                bh.Difficulty,
+                bh.Number,
+                bh.GasLimit,
+                bh.Timestamp,
+                bh.ExtraData)
+            {
+                Bloom = Bloom.Empty,
+                Author = bh.Author,
+                Hash = bh.Hash,
+                MixHash = bh.MixHash,
+                Nonce = bh.Nonce,
+                TxRoot = bh.TxRoot,
+                TotalDifficulty = bh.TotalDifficulty,
+                AuRaStep = bh.AuRaStep,
+                AuRaSignature = bh.AuRaSignature                
+            };
+            return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);;
         }
 
         private void ApplyMinerRewards(Block block, IBlockTracer tracer)
@@ -334,6 +365,32 @@ namespace Nethermind.Blockchain
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+            }
+        }
+        
+        private class CompositeAdditionalBlockProcessor : IAdditionalBlockProcessor
+        {
+            private readonly IAdditionalBlockProcessor[] _additionalBlockProcessors;
+
+            public CompositeAdditionalBlockProcessor(params IAdditionalBlockProcessor[] additionalBlockProcessors)
+            {
+                _additionalBlockProcessors = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
+            }
+            
+            public void PreProcess(Block block)
+            {
+                for (int i = 0; i < _additionalBlockProcessors.Length; i++)
+                {
+                    _additionalBlockProcessors[i].PreProcess(block);
+                }
+            }
+
+            public void PostProcess(Block block, TxReceipt[] receipts)
+            {
+                for (int i = 0; i < _additionalBlockProcessors.Length; i++)
+                {
+                    _additionalBlockProcessors[i].PostProcess(block, receipts);
+                }
             }
         }
     }
