@@ -16,11 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Blockchain
 {
     public enum BlockRewardType
     {
         Block = 0,
         Uncle = 1,
+        External = 2,
+        EmptyStep = 3
+    }
+
+    public static class BlockRewardTypeExtension
+    {
+        public static string ToLowerString(this BlockRewardType blockRewardType)
+        {
+            switch (blockRewardType)
+            {
+                case BlockRewardType.Block:
+                    return "block";
+                case BlockRewardType.Uncle:
+                    return "uncle";
+                case BlockRewardType.External:
+                    return "external";
+                case BlockRewardType.EmptyStep:
+                    return "emptystep";
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(blockRewardType), blockRewardType, null);
+            }
+        }
     }
 }

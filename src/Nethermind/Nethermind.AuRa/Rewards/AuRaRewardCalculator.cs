@@ -58,25 +58,23 @@ namespace Nethermind.AuRa.Rewards
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
                 var length = block.Ommers.Length + 1;
-                if (length > 1)
+                
+                Address[] beneficiariesList = new Address[length];
+                ushort[] kindsList = new ushort[length];
+                beneficiariesList[0] = block.Beneficiary;
+                kindsList[0] = RewardContract.Definition.BenefactorKind.Author;
+                
+                for (int i = 0; i < block.Ommers.Length; i++)
                 {
-                    List<Address> beneficiariesList = new List<Address>(length) {block.Beneficiary};
-                    List<ushort> kindsList = new List<ushort>(length) {RewardContract.Definition.BenefactorKind.Author};
-                    
-                    for (int i = 0; i < block.Ommers.Length; i++)
+                    var uncle = block.Ommers[i];
+                    if (RewardContract.Definition.BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
                     {
-                        var uncle = block.Ommers[i];
-                        if (RewardContract.Definition.BenefactorKind.TryGetUncle(block.Number - uncle.Number, out var kind))
-                        {
-                            beneficiariesList.Add(uncle.Beneficiary);
-                            kindsList.Add(kind);
-                        }
+                        beneficiariesList[i + 1] = uncle.Beneficiary;
+                        kindsList[i + 1] = kind;
                     }
-
-                    return (beneficiariesList.ToArray(), kindsList.ToArray());
                 }
 
-                return (new[] {block.Beneficiary}, new[] {RewardContract.Definition.BenefactorKind.Author});
+                return (beneficiariesList, kindsList);
             }
 
             var (beneficiaries, kinds) = GetBeneficiaries();
@@ -85,12 +83,42 @@ namespace Nethermind.AuRa.Rewards
             var (addresses, rewards) = _contract.DecodeRewards(_tracer.ReturnValue);
 
             var blockRewards = new BlockReward[addresses.Length];
-            for (int i = 0; i < addresses.Length; i++)
+            for (int index = 0; index < addresses.Length; index++)
             {
-                blockRewards[i] = new BlockReward(addresses[i], rewards[i], RewardContract.Definition.BenefactorKind.ToBlockRewardType(kinds[i]));
+                var address = addresses[index];
+                blockRewards[index] = new BlockReward(address, rewards[index], GetBlockRewardType(address, beneficiaries, kinds, index));
             }
 
             return blockRewards;
+        }
+
+        private BlockRewardType GetBlockRewardType(Address address, Address[] beneficiaries, ushort[] kinds, int index)
+        {
+            bool TryGetKind(int indexIn, ref ushort kindOut)
+            {
+                if (beneficiaries[indexIn] == address)
+                {
+                    kindOut = kinds[indexIn];
+                    return true;
+                }
+
+                return false;
+            }
+            
+            bool indexInBounds = index < beneficiaries.Length;
+            ushort kind = RewardContract.Definition.BenefactorKind.External;
+            if (!indexInBounds || !TryGetKind(index, ref kind))
+            {
+                for (int i = 0; i < beneficiaries.Length; i++)
+                {
+                    if (TryGetKind(i, ref kind))
+                    {
+                        break;
+                    }
+                }
+            }
+
+            return RewardContract.Definition.BenefactorKind.ToBlockRewardType(kind);
         }
     }
 }

@@ -329,7 +329,7 @@ namespace Nethermind.Blockchain
                 if (tracer.IsTracingRewards)
                 {
                     tracer.EndTxTrace();
-                    tracer.ReportReward(reward.Address, reward.RewardType == BlockRewardType.Block ? "block" : "uncle", (UInt256) reward.Value);
+                    tracer.ReportReward(reward.Address, reward.RewardType.ToLowerString(), (UInt256) reward.Value);
                     if (txTracer?.IsTracingState ?? false)
                     {
                         _stateProvider.Commit(_specProvider.GetSpec(block.Number), txTracer);

@@ -114,11 +114,11 @@ namespace Nethermind.Core.Specs.ChainSpecStyle.Json
                 }
                 else if (Contract != null)
                 {
-                    return AuRaParameters.ValidatorType.Contract;
+                    return AuRaParameters.ValidatorType.ReportingContract;   
                 }
                 else if (SafeContract != null)
                 {
-                    return AuRaParameters.ValidatorType.ReportingContract;
+                    return AuRaParameters.ValidatorType.Contract;
                 }
                 else if (Multi != null)
                 {
