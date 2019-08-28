@@ -188,12 +188,13 @@ namespace Nethermind.Blockchain.Synchronization
         {
             foreach ((SyncPeerAllocation allocation, _) in _allocations)
             {
-                if (allocation.Current == null)
+                PeerInfo currentPeer = allocation.Current;
+                if (currentPeer == null)
                 {
                     continue;
                 }
 
-                if (allocation.Current.TotalDifficulty < (e.Block.TotalDifficulty ?? 0))
+                if (currentPeer.TotalDifficulty < (e.Block.TotalDifficulty ?? 0))
                 {
                     allocation.Cancel();
                 }
