@@ -539,8 +539,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
             _pool.Start();
             _pool.AddPeer(peer);
 
-            _pool.ReportNoSyncProgress((SyncPeerAllocation)null);
-            _pool.ReportNoSyncProgress((PeerInfo)null);
+            _pool.ReportNoSyncProgress((SyncPeerAllocation) null);
+            _pool.ReportNoSyncProgress((PeerInfo) null);
+        }
+
+        [Test]
+        public void Does_not_fail_when_receiving_a_new_block_and_allocation_has_no_peer()
+        {
+            var peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+            
+            _pool.Start();
+            _pool.AddPeer(peer);
+            var allocation = _pool.Borrow();
+            allocation.Cancel();
+
+            _blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1).TestObject));
         }
     }
 }
