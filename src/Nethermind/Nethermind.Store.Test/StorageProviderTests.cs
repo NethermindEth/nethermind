@@ -224,7 +224,7 @@ namespace Nethermind.Store.Test
         {
             // block 1
             StorageProvider storageProvider = BuildStorageProvider();
-            for (int i = 0; i < StorageProvider.StartCapacity; i++)
+            for (int i = 0; i < Resettable.StartCapacity; i++)
             {
                 storageProvider.Set(new StorageAddress(_address1, 1), _values[i % 2]);
             }
@@ -233,7 +233,7 @@ namespace Nethermind.Store.Test
             _stateProvider.Commit(Frontier.Instance);
             
             byte[] valueAfter = storageProvider.Get(new StorageAddress(_address1, 1));
-            Assert.AreEqual(_values[(StorageProvider.StartCapacity + 1) % 2], valueAfter);
+            Assert.AreEqual(_values[(Resettable.StartCapacity + 1) % 2], valueAfter);
         }
     }
 }
