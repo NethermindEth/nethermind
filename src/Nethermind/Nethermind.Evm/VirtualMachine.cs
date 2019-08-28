@@ -2824,7 +2824,7 @@ namespace Nethermind.Evm
             return CallResult.Empty;
         }
         
-        private struct CallResult
+        internal struct CallResult
         {
             public static CallResult OutOfGasException = new CallResult(EvmExceptionType.OutOfGas);
             public static CallResult AccessViolationException = new CallResult(EvmExceptionType.AccessViolation);
@@ -2862,15 +2862,13 @@ namespace Nethermind.Evm
                 ExceptionType = exceptionType;
             }
 
-            public bool ShouldRevert { get; }
-            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-
             public EvmState StateToExecute { get; }
             public byte[] Output { get; }
+            public EvmExceptionType ExceptionType { get; }
+            public bool ShouldRevert { get; }
+            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
             public bool IsReturn => StateToExecute == null;
             public bool IsException => ExceptionType != EvmExceptionType.None;
-
-            public EvmExceptionType ExceptionType { get; }
         }
     }
 }
