@@ -329,11 +329,34 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void Eth_call()
+        public void Eth_call_no_sender()
         {
             var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            transaction.To = TestItem.AddressB;
+            
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32015,\"message\":\"VM Exception while processing transaction: invalid\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
+        }
+        
+        [Test]
+        public void Eth_call_no_recipient()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            transaction.From = TestItem.AddressA;
+            
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Recipient address not specified on the transaction.\",\"data\":null}}", serialized);
+        }
+        
+        [Test]
+        public void Eth_call_ok()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            transaction.From = TestItem.AddressA;
+            transaction.To = TestItem.AddressB;
+            
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
         }
 
         [Test]

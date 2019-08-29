@@ -182,7 +182,7 @@ namespace Nethermind.Facade
             {
                 transaction.SenderAddress = Address.Zero;
             }
-            
+
             BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
                 blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
 

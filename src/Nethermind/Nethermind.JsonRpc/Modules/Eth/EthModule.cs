@@ -297,7 +297,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
             BlockHeader block = blockParameter == null ? _blockchainBridge.Head : _blockchainBridge.GetBlock(blockParameter).Header;
-            BlockchainBridge.CallOutput result = _blockchainBridge.Call(block, transactionCall.ToTransaction());
+
+            var tx = transactionCall.ToTransaction();
+            if (tx.GasLimit < 21000)
+            {
+                tx.GasLimit = 10000000;    
+            }
+
+            if (tx.To == null)
+            {
+                return ResultWrapper<byte[]>.Fail($"Recipient address not specified on the transaction.", ErrorType.InvalidParams);
+            }
+            
+            BlockchainBridge.CallOutput result = _blockchainBridge.Call(block, tx);
 
             if (result.Error != null)
             {
