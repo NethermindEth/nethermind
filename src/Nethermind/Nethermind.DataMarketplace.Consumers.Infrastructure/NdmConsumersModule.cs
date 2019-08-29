@@ -116,7 +116,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
             var dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
             var transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
-            var depositProvider = new DepositProvider(depositRepository, sessionRepository, logManager);
+            var depositUnitsCalculator = new DepositUnitsCalculator(sessionRepository, timestamper);
+            var depositProvider = new DepositProvider(depositRepository, depositUnitsCalculator, logManager);
             var kycVerifier = new KycVerifier(depositApprovalRepository, logManager);
             var consumerNotifier = new ConsumerNotifier(ndmNotifier);
 
@@ -136,8 +137,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 depositApprovalRepository, timestamper, consumerNotifier, logManager);
             var depositConfirmationService = new DepositConfirmationService(blockchainBridge, consumerNotifier,
                 depositRepository, depositService, logManager, requiredBlockConfirmations);
-            var depositManager = new DepositManager(depositService, dataAssetService, kycVerifier,
-                providerService, abiEncoder, cryptoRandom, wallet, depositRepository, sessionRepository,
+            var depositManager = new DepositManager(depositService, depositUnitsCalculator, dataAssetService,
+                kycVerifier, providerService, abiEncoder, cryptoRandom, wallet, depositRepository, sessionRepository,
                 timestamper, logManager, requiredBlockConfirmations);
             var depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
                 timestamper);

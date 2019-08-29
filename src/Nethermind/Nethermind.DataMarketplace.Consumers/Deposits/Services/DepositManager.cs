@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Core;
@@ -26,7 +25,6 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Providers;
-using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
 using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
@@ -48,6 +46,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             AbiType.Address);
         
         private readonly IDepositService _depositService;
+        private readonly IDepositUnitsCalculator _depositUnitsCalculator;
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly IConsumerSessionRepository _sessionRepository;
         private readonly IDataAssetService _dataAssetService;
@@ -60,13 +59,14 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private readonly IWallet _wallet;
         private readonly ILogger _logger;
 
-        public DepositManager(IDepositService depositService, IDataAssetService dataAssetService,
-            IKycVerifier kycVerifier, IProviderService providerService, IAbiEncoder abiEncoder,
-            ICryptoRandom cryptoRandom, IWallet wallet, IDepositDetailsRepository depositRepository,
-            IConsumerSessionRepository sessionRepository,ITimestamper timestamper,ILogManager logManager,
-            uint requiredBlockConfirmations)
+        public DepositManager(IDepositService depositService, IDepositUnitsCalculator depositUnitsCalculator,
+            IDataAssetService dataAssetService, IKycVerifier kycVerifier, IProviderService providerService,
+            IAbiEncoder abiEncoder, ICryptoRandom cryptoRandom, IWallet wallet,
+            IDepositDetailsRepository depositRepository, IConsumerSessionRepository sessionRepository,
+            ITimestamper timestamper, ILogManager logManager, uint requiredBlockConfirmations)
         {
             _depositService = depositService;
+            _depositUnitsCalculator = depositUnitsCalculator;
             _depositRepository = depositRepository;
             _sessionRepository = sessionRepository;
             _dataAssetService = dataAssetService;
@@ -88,12 +88,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
-            {
-                DepositId = deposit.Id,
-                Results = int.MaxValue
-            });
-            var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+            var consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
             deposit.SetConsumedUnits(consumedUnits);
 
             return deposit;
@@ -104,12 +99,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             var deposits = await _depositRepository.BrowseAsync(query);
             foreach (var deposit in deposits.Items)
             {
-                var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
-                {
-                    DepositId = deposit.Id,
-                    Results = int.MaxValue
-                });
-                var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+                var consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
                 deposit.SetConsumedUnits(consumedUnits);
             }
 
