@@ -17,6 +17,7 @@
  */
 
 using System.Diagnostics;
+using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -29,12 +30,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -52,6 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
 
+            _ethSerializer = new EthereumJsonSerializer();
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
@@ -72,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             storageProvider.Commit();
 
             stateProvider.Commit(specProvider.GenesisSpec);
-            
+
             ITxPool txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
@@ -121,6 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockchainBridge _blockchainBridge;
         private IEthModule _ethModule;
         private IBlockTree _blockTree;
+        private IJsonSerializer _ethSerializer;
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5dea00000")]
@@ -321,6 +326,14 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getCode", TestItem.AddressA.ToString(), "latest");
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\"}", serialized);
+        }
+
+        [Test]
+        public void Eth_call()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"error\":{\"code\":-32015,\"message\":\"VM Exception while processing transaction: invalid\",\"data\":null}}", serialized);
         }
 
         [Test]

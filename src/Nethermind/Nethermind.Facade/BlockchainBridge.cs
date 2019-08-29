@@ -185,8 +185,8 @@ namespace Nethermind.Facade
             
             BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
                 blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
-            
-            _stateProvider.StateRoot = header.StateRoot;
+
+            _stateProvider.StateRoot = blockHeader.StateRoot;
             
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
             transaction.Hash = Transaction.CalculateHash(transaction);
