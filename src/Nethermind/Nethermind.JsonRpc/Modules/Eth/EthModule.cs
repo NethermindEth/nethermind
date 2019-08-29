@@ -299,6 +299,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockHeader block = blockParameter == null ? _blockchainBridge.Head : _blockchainBridge.GetBlock(blockParameter).Header;
 
             var tx = transactionCall.ToTransaction();
+            tx.GasPrice = 0;
             if (tx.GasLimit < 21000)
             {
                 tx.GasLimit = 10000000;    
