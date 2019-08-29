@@ -37,6 +37,10 @@ namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
     {
+        protected virtual bool IsPrecompiled(Address address, IReleaseSpec releaseSpec) { return address.IsPrecompiled(releaseSpec); }
+
+        protected void RegisterPrecompile(Address addres, IPrecompiledContract precompiledContract) { _precompiles[addres] = precompiledContract; }
+        
         private const EvmExceptionType BadInstructionErrorText = EvmExceptionType.BadInstruction;
         private const EvmExceptionType OutOfGasErrorText = EvmExceptionType.OutOfGas;
 
@@ -2443,7 +2447,7 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
-                        bool isPrecompile = codeSource.IsPrecompiled(spec);
+                        bool isPrecompile = IsPrecompiled(codeSource, spec);
                         Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
                         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
