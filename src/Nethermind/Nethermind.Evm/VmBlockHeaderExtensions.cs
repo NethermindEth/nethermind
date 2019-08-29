@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,34 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {
-    public class ExecutionEnvironment
+    public static class VmBlockHeaderExtensions
     {
-        public Address ExecutingAccount { get; set; }
-
-        public Address Originator { get; set; }
-
-        public Address Sender { get; set; }
-        
-        public Address CodeSource { get; set; }
-
-        public UInt256 GasPrice { get; set; }
-
-        public byte[] InputData { get; set; }
-
-        public UInt256 TransferValue { get; set; }
-
-        public UInt256 Value { get; set; }
-
-        public CodeInfo CodeInfo { get; set; }
-
-        public StateUpdate CurrentBlock { get; set; }
-
-        public int CallDepth { get; set; }
+        public static StateUpdate AsStateUpdate(this BlockHeader blockHeader)
+        {
+            StateUpdate stateUpdate = new StateUpdate();
+            stateUpdate.Number = blockHeader.Number;
+            stateUpdate.GasLimit = blockHeader.GasLimit;
+            stateUpdate.GasUsed = blockHeader.GasUsed;
+            stateUpdate.Difficulty = blockHeader.Difficulty;
+            stateUpdate.GasBeneficiary = blockHeader.GasBeneficiary;
+            stateUpdate.Timestamp = blockHeader.Timestamp;
+            return stateUpdate;
+        }
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,34 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.Evm
 {
-    public class ExecutionEnvironment
+    public static class VmParams
     {
-        public Address ExecutingAccount { get; set; }
-
-        public Address Originator { get; set; }
-
-        public Address Sender { get; set; }
-        
-        public Address CodeSource { get; set; }
-
-        public UInt256 GasPrice { get; set; }
-
-        public byte[] InputData { get; set; }
-
-        public UInt256 TransferValue { get; set; }
-
-        public UInt256 Value { get; set; }
-
-        public CodeInfo CodeInfo { get; set; }
-
-        public StateUpdate CurrentBlock { get; set; }
-
-        public int CallDepth { get; set; }
+        public const int MaxCallDepth = 1024;
+        public const int MaxStackSize = 1025;
     }
 }

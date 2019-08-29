@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,34 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {
-    public class ExecutionEnvironment
+    public struct StateUpdate
     {
-        public Address ExecutingAccount { get; set; }
-
-        public Address Originator { get; set; }
-
-        public Address Sender { get; set; }
-        
-        public Address CodeSource { get; set; }
-
-        public UInt256 GasPrice { get; set; }
-
-        public byte[] InputData { get; set; }
-
-        public UInt256 TransferValue { get; set; }
-
-        public UInt256 Value { get; set; }
-
-        public CodeInfo CodeInfo { get; set; }
-
-        public StateUpdate CurrentBlock { get; set; }
-
-        public int CallDepth { get; set; }
+        public long Number { get; set; }
+        public long GasLimit { get; set; }
+        public long GasUsed { get; set; }
+        public UInt256 Difficulty { get; set; }
+        public UInt256 Timestamp { get; set; }
+        public Address GasBeneficiary { get; set; }
     }
 }

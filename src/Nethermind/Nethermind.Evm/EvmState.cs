@@ -27,14 +27,14 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Evm
 {
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
-    public class EvmState : IDisposable
+    public class VmState : IDisposable
     {
         private class StackPool
         {
             private readonly int _capacity;
 
             // TODO: we have wrong call depth calculation somewhere
-            public StackPool(int capacity = VirtualMachine.MaxCallDepth * 2)
+            public StackPool(int capacity = VmParams.MaxCallDepth * 2)
             {
                 _capacity = capacity;
             }
@@ -58,7 +58,7 @@ namespace Nethermind.Evm
                         throw new Exception();
                     }
 
-                    _bytesOnStackPool.Push(new byte[VirtualMachine.MaxStackSize * 32]);
+                    _bytesOnStackPool.Push(new byte[VmParams.MaxStackSize * 32]);
                 }
 
                 _bytesOnStackPool.TryPop(out byte[] result);
@@ -74,14 +74,14 @@ namespace Nethermind.Evm
         private List<LogEntry> _logs;
         public int StackHead = 0;
 
-        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isPrecompile, bool isTopLevel, bool isContinuation)
+        public VmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isPrecompile, bool isTopLevel, bool isContinuation)
             : this(gasAvailable, env, executionType, isPrecompile, isTopLevel, -1, -1, 0L, 0L, false, isContinuation)
         {
             GasAvailable = gasAvailable;
             Env = env;
         }
 
-        internal EvmState(
+        internal VmState(
             long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,

@@ -53,15 +53,15 @@ namespace Nethermind.Evm
         [Todo("Wider work needed to split calls and execution properly")]
         public void CallAndRestore(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, true);
+            Execute(transaction, block.AsStateUpdate(), txTracer, true);
         }
 
         public void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer)
         {
-            Execute(transaction, block, txTracer, false);
+            Execute(transaction, block.AsStateUpdate(), txTracer, false);
         }
 
-        private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        private void QuickFail(Transaction tx, StateUpdate block, ITxTracer txTracer, bool readOnly)
         {
             block.GasUsed += (long) tx.GasLimit;
             Address recipient = tx.To ?? Address.OfContract(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
@@ -70,7 +70,7 @@ namespace Nethermind.Evm
 
         private EthereumEcdsa _ecdsa;
 
-        private void Execute(Transaction transaction, BlockHeader block, ITxTracer txTracer, bool readOnly)
+        private void Execute(Transaction transaction, StateUpdate block, ITxTracer txTracer, bool readOnly)
         {
             var notSystemTransaction = !transaction.IsSystem();
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
@@ -211,7 +211,7 @@ namespace Nethermind.Evm
                 env.Originator = sender;
 
                 ExecutionType executionType = transaction.IsContractCreation ? ExecutionType.Create : ExecutionType.Call;
-                using (EvmState state = new EvmState(unspentGas, env, executionType, isPrecompile, true, false))
+                using (VmState state = new VmState(unspentGas, env, executionType, isPrecompile, true, false))
                 {
                     substate = _virtualMachine.Run(state, txTracer);
                     unspentGas = state.GasAvailable;

@@ -22,8 +22,11 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {
-    public interface IBlockhashProvider
+    /// <summary>
+    /// For the given block it executes a lookup of a blockhash up to 256 predecessors.
+    /// </summary>
+    public interface IStateUpdateHashProvider
     {
-        Keccak GetBlockhash(BlockHeader currentBlock, in long number);
+        byte[] GetHash(StateUpdate currentStateUpdate, in long number);
     }
 }

@@ -22,12 +22,51 @@ namespace Nethermind.Store
 {
     public interface IDb : IDisposable
     {
+        /// <summary>
+        /// Name of the database for logging purposes only.
+        /// </summary>
         string Name { get; }
+        
+        /// <summary>
+        /// The most common method of retrieving data from the database or updating data in the database.
+        /// Simple key value store is expected as a backing DB for this interface.
+        /// </summary>
+        /// <param name="key"></param>
         byte[] this[byte[] key] { get; set; }
-        byte[][] GetAll();
+        
+        /// <summary>
+        /// Use only if batched updates introduce performance improvement when writing to the database.
+        /// Otherwise implementations can just do nothing here.
+        /// You are guaranteed to receive exactly one StartBatch before every CommitBatch.
+        /// You are guaranteed to receive exactly on CommitBatch after each StartBatch.
+        /// </summary>
         void StartBatch();
+        
+        /// <summary>
+        /// Use only if batched updates introduce performance improvement when writing to the database.
+        /// Otherwise implementations can just do nothing here.
+        /// You are guaranteed to receive exactly one StartBatch before every CommitBatch.
+        /// You are guaranteed to receive exactly on CommitBatch after each StartBatch.
+        /// </summary>
         void CommitBatch();
+
+        /// <summary>
+        /// Do not implement this - to be reviewed / removed from this interface
+        /// </summary>
+        /// <param name="key">ignore</param>
         void Remove(byte[] key);
+        
+        /// <summary>
+        /// Do not implement this - to be reviewed / removed from this interface
+        /// </summary>
+        /// <returns>ignore</returns>
+        byte[][] GetAll();
+        
+        /// <summary>
+        /// Do not implement this - to be reviewed / removed from this interface
+        /// </summary>
+        /// <param name="key">ignore</param>
+        /// <returns>ignore</returns>
         bool KeyExists(byte[] key);
     }
 
