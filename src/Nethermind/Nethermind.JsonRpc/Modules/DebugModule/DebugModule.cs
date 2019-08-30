@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
         {
-            long? blockNo = blockParameter.BlockId;
+            long? blockNo = blockParameter.BlockNumber;
             if (!blockNo.HasValue)
             {
                 throw new InvalidDataException("Block number value incorrect");

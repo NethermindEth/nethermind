@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
@@ -24,7 +25,10 @@ namespace Nethermind.Blockchain.Filters
     public class AddressFilter
     {
         public static AddressFilter AnyAddress = new AddressFilter((Address)null);
-
+        
+        private (int Index1, int Index2, int Index3)[] _addressesBloomIndexes;
+        private (int Index1, int Index2, int Index3)? _addressBloomIndexes;
+        
         public AddressFilter(Address address)
         {
             Address = address;
@@ -37,6 +41,7 @@ namespace Nethermind.Blockchain.Filters
         
         public Address Address { get; set; }
         public HashSet<Address> Addresses { get; set; }
+        private (int Index1, int Index2, int Index3)[] AddressesBloomIndexes => _addressesBloomIndexes ?? (_addressesBloomIndexes = CalculateBloomIndexes());
 
         public bool Accepts(Address address)
         {
@@ -47,5 +52,35 @@ namespace Nethermind.Blockchain.Filters
 
             return Address == null || Address == address;
         }
+
+        public bool Matches(Bloom bloom)
+        {
+            if (Addresses != null)
+            {
+                bool result = true;
+                var indexes = AddressesBloomIndexes;
+                for (var i = 0; i < indexes.Length; i++)
+                {
+                    var index = indexes[i];
+                    result = bloom.Matches(ref index); 
+                    if (result)
+                    {
+                        break;
+                    }
+                }
+
+                return result;
+            }
+            else if (Address == null)
+            {
+                return true;
+            }
+            else
+            {
+                return bloom.Matches(_addressBloomIndexes ?? (_addressBloomIndexes = Bloom.GetIndexes(Address)));
+            }
+        }
+
+        private (int Index1, int Index2, int Index3)[] CalculateBloomIndexes() => Addresses.Select(Bloom.GetIndexes).ToArray();
     }
 }

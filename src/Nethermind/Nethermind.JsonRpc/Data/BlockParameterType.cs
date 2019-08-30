@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain.Filters;
+
 namespace Nethermind.JsonRpc.Data
 {
     public enum BlockParameterType
@@ -23,6 +25,21 @@ namespace Nethermind.JsonRpc.Data
         Earliest,
         Latest,
         Pending,
-        BlockId
+        BlockNumber
+    }
+
+    public static class BlockParameterTypeExtensions
+    {
+        public static FilterBlockType ToFilterBlockType(this BlockParameterType type)
+        {
+            switch (type)
+            {
+                case BlockParameterType.Latest: return FilterBlockType.Latest;
+                case BlockParameterType.Earliest: return FilterBlockType.Earliest;
+                case BlockParameterType.Pending: return FilterBlockType.Pending;
+                case BlockParameterType.BlockNumber: return FilterBlockType.BlockNumber;
+                default: return FilterBlockType.Latest;
+            }
+        }
     }
 }

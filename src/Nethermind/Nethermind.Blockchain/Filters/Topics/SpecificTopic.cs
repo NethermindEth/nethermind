@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
@@ -23,15 +24,17 @@ namespace Nethermind.Blockchain.Filters.Topics
     public class SpecificTopic : TopicExpression
     {
         private readonly Keccak _topic;
+        private (int Index1, int Index2, int Index3)? _bloomIndexes;
 
         public SpecificTopic(Keccak topic)
         {
             _topic = topic;
         }
+        
+        public (int Index1, int Index2, int Index3)? BloomIndexes => _bloomIndexes ?? (_bloomIndexes = Bloom.GetIndexes(_topic));
 
-        public override bool Accepts(Keccak topic)
-        {
-            return topic == _topic;
-        }
+        public override bool Accepts(Keccak topic) => topic == _topic;
+
+        public override bool Matches(Bloom bloom) => bloom.Matches(BloomIndexes);
     }
 }

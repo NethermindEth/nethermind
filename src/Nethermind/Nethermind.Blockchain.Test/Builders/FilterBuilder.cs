@@ -37,6 +37,12 @@ namespace Nethermind.Blockchain.Test.Builders
         {
         }
 
+        public static FilterBuilder New()
+        {
+            int count = 0;
+            return New(ref count);
+        }
+
         public static FilterBuilder New(ref int currentFilterIndex)
         {
             _id = currentFilterIndex;
@@ -53,6 +59,13 @@ namespace Nethermind.Blockchain.Test.Builders
         public FilterBuilder FromBlock(long number)
         {
             _fromBlock = new FilterBlock(number);
+
+            return this;
+        }
+        
+        public FilterBuilder FromBlock(FilterBlockType blockType)
+        {
+            _fromBlock = new FilterBlock(blockType);
 
             return this;
         }
@@ -113,7 +126,7 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder WithAddresses(IEnumerable<Address> addresses)
+        public FilterBuilder WithAddresses(params Address[] addresses)
         {
             _address = new AddressFilter(addresses.ToHashSet());
 

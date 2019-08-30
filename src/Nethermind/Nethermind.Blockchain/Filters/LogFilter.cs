@@ -23,8 +23,8 @@ namespace Nethermind.Blockchain.Filters
 {
     public class LogFilter : FilterBase
     {
-        private readonly AddressFilter _addressFilter;
-        private readonly TopicsFilter _topicsFilter;
+        public AddressFilter AddressFilter { get; }
+        public TopicsFilter TopicsFilter { get; }
         public FilterBlock FromBlock { get; }
         public FilterBlock ToBlock { get; }
         
@@ -33,13 +33,16 @@ namespace Nethermind.Blockchain.Filters
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;
-            _addressFilter = addressFilter;
-            _topicsFilter = topicsFilter;
+            AddressFilter = addressFilter;
+            TopicsFilter = topicsFilter;
         }
 
-        public bool Accepts(LogEntry logEntry)
+        public bool Accepts(LogEntry logEntry) =>
+            AddressFilter.Accepts(logEntry.LoggersAddress) && TopicsFilter.Accepts(logEntry);
+
+        public bool Matches(Bloom bloom)
         {
-            return _addressFilter.Accepts(logEntry.LoggersAddress) && _topicsFilter.Accepts(logEntry);
+            return AddressFilter.Matches(bloom) && TopicsFilter.Matches(bloom);
         }
     }
 }

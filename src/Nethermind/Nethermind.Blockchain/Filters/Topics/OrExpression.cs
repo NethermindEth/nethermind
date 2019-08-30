@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
@@ -40,6 +41,19 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             return false;
+        }
+
+        public override bool Matches(Bloom bloom)
+        {
+            for (int i = 0; i < _subexpression.Length; i++)
+            {
+                if (_subexpression[i].Matches(bloom))
+                {
+                    return true;
+                }
+            }
+
+            return false;            
         }
     }
 }

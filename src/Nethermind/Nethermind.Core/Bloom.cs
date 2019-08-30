@@ -74,10 +74,10 @@ namespace Nethermind.Core
             }
         }
         
-        public bool IsMatch(byte[] sequence)
+        public bool Matches(byte[] sequence)
         {
             var indexes = GetIndexes(sequence);
-            return _bits[indexes.Index1] && _bits[indexes.Index2] && _bits[indexes.Index3];
+            return Matches(ref indexes);
         }
         
         public override string ToString()
@@ -157,27 +157,39 @@ namespace Nethermind.Core
             }
         }
         
-        public bool IsMatch(LogEntry logEntry)
+        public bool Matches(LogEntry logEntry)
         {
-            if (!IsMatch(logEntry.LoggersAddress.Bytes))
+            if (Matches(logEntry.LoggersAddress))
             {
-                return false;
-            }
-            
-            for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
-            {
-                Keccak topic = logEntry.Topics[topicIndex];
-                if (!IsMatch(topic.Bytes))
+                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
-                    return false;
+                    if (!Matches(logEntry.Topics[topicIndex]))
+                    {
+                        return false;
+                    }
                 }
+
+                return true;
             }
 
-            return true;
-
+            return false;
         }
+
+        public bool Matches(Address address) => Matches(address.Bytes);
         
-        private (int Index1, int Index2, int Index3) GetIndexes(byte[] sequence)
+        public bool Matches(Keccak topic) => Matches(topic.Bytes);
+        
+        public bool Matches(ref (int Index1, int Index2, int Index3) indexes) => _bits[indexes.Index1] && _bits[indexes.Index2] && _bits[indexes.Index3];
+        
+        public bool Matches((int Index1, int Index2, int Index3) indexes) => _bits[indexes.Index1] && _bits[indexes.Index2] && _bits[indexes.Index3];
+        
+        public bool Matches((int Index1, int Index2, int Index3)? indexes) => indexes.HasValue && _bits[indexes.Value.Index1] && _bits[indexes.Value.Index2] && _bits[indexes.Value.Index3];
+
+        public static (int Index1, int Index2, int Index3) GetIndexes(Address address) => GetIndexes(address.Bytes);
+        
+        public  static (int Index1, int Index2, int Index3) GetIndexes(Keccak topic) => GetIndexes(topic.Bytes);
+
+        private static (int Index1, int Index2, int Index3) GetIndexes(byte[] sequence)
         {
             int GetIndex(Span<byte> bytes, int index1, int index2)
             {
@@ -185,7 +197,8 @@ namespace Nethermind.Core
             }
 
             var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
-            return (GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
+            var indexes = (GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
+            return indexes;
         }
     }
 }

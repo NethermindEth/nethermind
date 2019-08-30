@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
@@ -30,37 +31,27 @@ namespace Nethermind.JsonRpc.Modules
             Block block;
             switch (blockParameter.Type)
             {
-                case BlockParameterType.Pending:
+                case BlockParameterType.BlockNumber:
                 {
-                    block = blockchainBridge.FindPendingBlock();
-                    break;
-                }
-
-                case BlockParameterType.Latest:
-                {
-                    block = blockchainBridge.FindLatestBlock();
-                    break;
-                }
-
-                case BlockParameterType.Earliest:
-                {
-                    block = blockchainBridge.FindEarliestBlock();
-                    break;
-                }
-
-                case BlockParameterType.BlockId:
-                {
-                    if (blockParameter.BlockId == null)
+                    if (blockParameter.BlockNumber == null)
                     {
-                        throw new JsonRpcException(ErrorType.InvalidParams, $"Block number is required for {BlockParameterType.BlockId}");
+                        throw new JsonRpcException(ErrorType.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
-                    block = blockchainBridge.FindBlock(blockParameter.BlockId.Value);
+                    block = blockchainBridge.GetBlock(blockParameter.ToFilterBlock());
+                    break;
+                }
+
+                case BlockParameterType.Pending:
+                case BlockParameterType.Latest:
+                case BlockParameterType.Earliest:
+                {
+                    block = blockchainBridge.GetBlock(blockParameter.ToFilterBlock());
                     break;
                 }
 
                 default:
-                    throw new Exception($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}");
+                    throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}");
             }
 
             if (block == null && !allowNulls)
