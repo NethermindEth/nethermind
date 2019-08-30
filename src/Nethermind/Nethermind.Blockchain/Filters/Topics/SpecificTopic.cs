@@ -24,17 +24,17 @@ namespace Nethermind.Blockchain.Filters.Topics
     public class SpecificTopic : TopicExpression
     {
         private readonly Keccak _topic;
-        private (int Index1, int Index2, int Index3)? _bloomIndexes;
+        private Bloom.BloomExtract? _bloomIndexes;
 
         public SpecificTopic(Keccak topic)
         {
             _topic = topic;
         }
         
-        public (int Index1, int Index2, int Index3)? BloomIndexes => _bloomIndexes ?? (_bloomIndexes = Bloom.GetIndexes(_topic));
+        public Bloom.BloomExtract? BloomExtract => _bloomIndexes ?? (_bloomIndexes = Bloom.GetExtract(_topic));
 
         public override bool Accepts(Keccak topic) => topic == _topic;
 
-        public override bool Matches(Bloom bloom) => bloom.Matches(BloomIndexes);
+        public override bool Matches(Bloom bloom) => bloom.Matches(BloomExtract);
     }
 }

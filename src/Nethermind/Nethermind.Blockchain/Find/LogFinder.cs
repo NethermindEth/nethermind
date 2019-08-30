@@ -46,27 +46,7 @@ namespace Nethermind.Blockchain.Find
             {
                 if (filter.Matches(currentBlock.Bloom))
                 {
-                    var receipts = GetReceiptsFromBlock(currentBlock);
-                    long logIndex = 0;
-                    foreach (var receipt in receipts)
-                    {
-                        if (filter.Matches(receipt.Bloom))
-                        {
-                            foreach (var log in receipt.Logs)
-                            {
-                                if (filter.Accepts(log))
-                                {
-                                    results.Add(new FilterLog(logIndex, receipt, log));
-                                }
-
-                                logIndex++;
-                            }
-                        }
-                        else
-                        {
-                            logIndex += receipt.Logs.Length;
-                        }
-                    }
+                    FindLogsInBlock(filter, currentBlock, results);
                 }
                 
                 if (!TryGetParentBlock(currentBlock, out currentBlock))
@@ -76,6 +56,31 @@ namespace Nethermind.Blockchain.Find
             }
 
             return results.ToArray();
+        }
+
+        private void FindLogsInBlock(LogFilter filter, Block currentBlock, List<FilterLog> results)
+        {
+            var receipts = GetReceiptsFromBlock(currentBlock);
+            long logIndexInBlock = 0;
+            foreach (var receipt in receipts)
+            {
+                if (filter.Matches(receipt.Bloom))
+                {
+                    foreach (var log in receipt.Logs)
+                    {
+                        if (filter.Accepts(log))
+                        {
+                            results.Add(new FilterLog(logIndexInBlock, receipt, log));
+                        }
+
+                        logIndexInBlock++;
+                    }
+                }
+                else
+                {
+                    logIndexInBlock += receipt.Logs.Length;
+                }
+            }
         }
 
         private IEnumerable<TxReceipt> GetReceiptsFromBlock(Block block) =>

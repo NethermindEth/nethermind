@@ -73,7 +73,7 @@ namespace Nethermind.Core.Test.Builders
 
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ecdsa;
-        private Func<Block, Transaction, IEnumerable<LogEntry>> _logsForBlockBuilder;
+        private Func<Block, Transaction, IEnumerable<LogEntry>> _logCreationFunction;
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0)
         {
@@ -134,7 +134,7 @@ namespace Nethermind.Core.Test.Builders
                 List<TxReceipt> receipts = new List<TxReceipt>();
                 foreach (var transaction in current.Transactions)
                 {
-                    var logEntries = _logsForBlockBuilder?.Invoke(current, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
+                    var logEntries = _logCreationFunction?.Invoke(current, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
                     TxReceipt receipt = new TxReceipt
                     {
                         Logs = logEntries,
@@ -192,7 +192,7 @@ namespace Nethermind.Core.Test.Builders
             _specProvider = specProvider;
             _ecdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
-            _logsForBlockBuilder = logsForBlockBuilder;
+            _logCreationFunction = logsForBlockBuilder;
             return this;
         }
     }

@@ -26,8 +26,8 @@ namespace Nethermind.Blockchain.Filters
     {
         public static AddressFilter AnyAddress = new AddressFilter((Address)null);
         
-        private (int Index1, int Index2, int Index3)[] _addressesBloomIndexes;
-        private (int Index1, int Index2, int Index3)? _addressBloomIndexes;
+        private Bloom.BloomExtract[] _addressesBloomIndexes;
+        private Bloom.BloomExtract? _addressBloomExtract;
         
         public AddressFilter(Address address)
         {
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Filters
         
         public Address Address { get; set; }
         public HashSet<Address> Addresses { get; set; }
-        private (int Index1, int Index2, int Index3)[] AddressesBloomIndexes => _addressesBloomIndexes ?? (_addressesBloomIndexes = CalculateBloomIndexes());
+        private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ?? (_addressesBloomIndexes = CalculateBloomExtracts());
 
         public bool Accepts(Address address)
         {
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Filters
             if (Addresses != null)
             {
                 bool result = true;
-                var indexes = AddressesBloomIndexes;
+                var indexes = AddressesBloomExtracts;
                 for (var i = 0; i < indexes.Length; i++)
                 {
                     var index = indexes[i];
@@ -77,10 +77,10 @@ namespace Nethermind.Blockchain.Filters
             }
             else
             {
-                return bloom.Matches(_addressBloomIndexes ?? (_addressBloomIndexes = Bloom.GetIndexes(Address)));
+                return bloom.Matches(_addressBloomExtract ?? (_addressBloomExtract = Bloom.GetExtract(Address)));
             }
         }
 
-        private (int Index1, int Index2, int Index3)[] CalculateBloomIndexes() => Addresses.Select(Bloom.GetIndexes).ToArray();
+        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(Bloom.GetExtract).ToArray();
     }
 }
