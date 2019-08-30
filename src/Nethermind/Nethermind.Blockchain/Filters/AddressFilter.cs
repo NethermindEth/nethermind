@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain.Filters
         public Address Address { get; set; }
         public HashSet<Address> Addresses { get; set; }
         private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ?? (_addressesBloomIndexes = CalculateBloomExtracts());
+        private Bloom.BloomExtract AddressBloomExtract => (_addressBloomExtract ?? (_addressBloomExtract = Bloom.GetExtract(Address))).Value;
 
         public bool Accepts(Address address)
         {
@@ -77,7 +78,7 @@ namespace Nethermind.Blockchain.Filters
             }
             else
             {
-                return bloom.Matches(_addressBloomExtract ?? (_addressBloomExtract = Bloom.GetExtract(Address)));
+                return bloom.Matches(AddressBloomExtract);
             }
         }
 

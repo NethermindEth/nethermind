@@ -180,11 +180,9 @@ namespace Nethermind.Core
         public bool Matches(Keccak topic) => Matches(topic.Bytes);
         
         public bool Matches(ref BloomExtract extract) => _bits[extract.Index1] && _bits[extract.Index2] && _bits[extract.Index3];
-        
-        public bool Matches(BloomExtract extract) => _bits[extract.Index1] && _bits[extract.Index2] && _bits[extract.Index3];
-        
-        public bool Matches(BloomExtract? extract) => extract.HasValue && _bits[extract.Value.Index1] && _bits[extract.Value.Index2] && _bits[extract.Value.Index3];
 
+        public bool Matches(BloomExtract extract) => Matches(ref extract);
+        
         public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
         
         public  static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
