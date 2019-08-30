@@ -158,8 +158,20 @@ namespace Nethermind.DataMarketplace.Initializers
             var webSocketsModule = webSocketsManager.GetModule("ndm");
             var notifier = new NdmNotifier(webSocketsModule);
             var ethRequestService = new EthRequestService(ndmConfig.FaucetHost, logManager);
+            if (baseDbPath.EndsWith("/") || baseDbPath.EndsWith("\\"))
+            {
+                baseDbPath = baseDbPath.Substring(0, baseDbPath.Length - 1);
+            }
+
+            var ndmDbPath = ndmConfig.DatabasePath;
+            if (ndmDbPath.StartsWith("/") || ndmDbPath.StartsWith("\\"))
+            {
+                ndmDbPath = ndmDbPath.Remove(0, 1);
+            }
+
+            var dbPath = $"{baseDbPath}/{ndmDbPath}";
             var services = _ndmModule.Init(new NdmRequiredServices(configProvider, configManager, ndmConfig,
-                baseDbPath, dbProvider, mongoProvider, logManager, blockTree, txPool, specProvider, receiptStorage,
+                dbPath, dbProvider, mongoProvider, logManager, blockTree, txPool, specProvider, receiptStorage,
                 filterStore, filterManager, wallet, timestamper, ecdsa, keyStore, rpcModuleProvider, jsonSerializer,
                 cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer, ethRequestService, notifier,
                 enableUnsecuredDevWallet, blockProcessor));

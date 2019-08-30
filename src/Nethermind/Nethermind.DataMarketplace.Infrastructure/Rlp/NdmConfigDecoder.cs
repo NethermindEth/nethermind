@@ -64,6 +64,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var filesPath = rlpStream.DecodeString();
             var fileMaxSize = rlpStream.DecodeUlong();
             var pluginsPath = rlpStream.DecodeString();
+            var databasePath = rlpStream.DecodeString();
 
             return new NdmConfig
             {
@@ -89,7 +90,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 BlockConfirmations = blockConfirmations,
                 FilesPath = filesPath,
                 FileMaxSize = fileMaxSize,
-                PluginsPath = pluginsPath
+                PluginsPath = pluginsPath,
+                DatabasePath = databasePath
             };
         }
 
@@ -123,7 +125,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.BlockConfirmations),
                 Nethermind.Core.Encoding.Rlp.Encode(item.FilesPath),
                 Nethermind.Core.Encoding.Rlp.Encode(item.FileMaxSize),
-                Nethermind.Core.Encoding.Rlp.Encode(item.PluginsPath));
+                Nethermind.Core.Encoding.Rlp.Encode(item.PluginsPath),
+                Nethermind.Core.Encoding.Rlp.Encode(item.DatabasePath));
         }
 
         public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
