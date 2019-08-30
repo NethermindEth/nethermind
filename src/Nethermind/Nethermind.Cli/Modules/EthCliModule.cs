@@ -138,9 +138,9 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("eth", "getLogs")]
-        public IEnumerable<LogEntryForRpc> GetLogs(string json)
+        public JsValue GetLogs(object json)
         {
-            return NodeManager.Post<IEnumerable<LogEntryForRpc>>("eth_getLogs", json).Result;
+            return NodeManager.PostJint("eth_getLogs", json).Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
