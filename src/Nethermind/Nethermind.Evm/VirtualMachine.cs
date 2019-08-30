@@ -37,10 +37,10 @@ namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
     {
+        // cannot just use the dictionary because of the release spec
         protected virtual bool IsPrecompiled(Address address, IReleaseSpec releaseSpec) { return address.IsPrecompiled(releaseSpec); }
+        protected Dictionary<Address, IPrecompiledContract> Precompiles { get; set; }
 
-        protected void RegisterPrecompile(Address addres, IPrecompiledContract precompiledContract) { _precompiles[addres] = precompiledContract; }
-        
         private const EvmExceptionType BadInstructionErrorText = EvmExceptionType.BadInstruction;
         private const EvmExceptionType OutOfGasErrorText = EvmExceptionType.OutOfGas;
 
@@ -53,7 +53,15 @@ namespace Nethermind.Evm
 
         internal byte[] BytesZero = {0};
 
-        internal static byte[] BytesZero32 =
+        public static byte[] BytesOne32 =
+        {
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 1
+        };
+        
+        public static byte[] BytesZero32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -81,7 +89,6 @@ namespace Nethermind.Evm
         private readonly Stack<VmState> _stateStack = new Stack<VmState>();
         private readonly IStorageProvider _storage;
         private Address _parityTouchBugAccount;
-        private Dictionary<Address, IPrecompiledContract> _precompiles;
         private byte[] _returnDataBuffer = new byte[0];
         private ITxTracer _txTracer;
 
@@ -387,9 +394,9 @@ namespace Nethermind.Evm
             _simdOperationsEnabled = false;
         }
 
-        private void InitializePrecompiledContracts()
+        protected virtual void InitializePrecompiledContracts()
         {
-            _precompiles = new Dictionary<Address, IPrecompiledContract>
+            Precompiles = new Dictionary<Address, IPrecompiledContract>
             {
                 [EcRecoverPrecompiledContract.Instance.Address] = EcRecoverPrecompiledContract.Instance,
                 [Sha256PrecompiledContract.Instance.Address] = Sha256PrecompiledContract.Instance,
@@ -426,7 +433,7 @@ namespace Nethermind.Evm
             UInt256 transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
-            IPrecompiledContract precompile = _precompiles[state.Env.CodeInfo.PrecompileAddress];
+            IPrecompiledContract precompile = Precompiles[state.Env.CodeInfo.PrecompileAddress];
             long baseGasCost = precompile.BaseGasCost(spec);
             long dataGasCost = precompile.DataGasCost(callData, spec);
 
