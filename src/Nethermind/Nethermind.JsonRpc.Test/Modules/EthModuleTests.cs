@@ -17,6 +17,7 @@
  */
 
 using System.Diagnostics;
+using System.Numerics;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -29,12 +30,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -52,6 +55,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
 
+            _ethSerializer = new EthereumJsonSerializer();
             ISpecProvider specProvider = MainNetSpecProvider.Instance;
             IEthereumEcdsa ethereumEcdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             ITxStorage txStorage = new InMemoryTxStorage();
@@ -72,7 +76,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             storageProvider.Commit();
 
             stateProvider.Commit(specProvider.GenesisSpec);
-            
+
             ITxPool txPool = new TxPool(txStorage, Timestamper.Default, ethereumEcdsa, specProvider, new TxPoolConfig(), stateProvider, LimboLogs.Instance);
 
             IDb blockDb = new MemDb();
@@ -121,6 +125,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private IBlockchainBridge _blockchainBridge;
         private IEthModule _ethModule;
         private IBlockTree _blockTree;
+        private IJsonSerializer _ethSerializer;
 
         [TestCase("earliest", "0x3635c9adc5dea00000")]
         [TestCase("latest", "0x3635c9adc5dea00000")]
@@ -321,6 +326,45 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getCode", TestItem.AddressA.ToString(), "latest");
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\"}", serialized);
+        }
+
+        [Test]
+        public void Eth_call_web3_sample()
+        {
+            var transaction = _ethSerializer.Deserialize<TransactionForRpc>("{\"data\": \"0x70a082310000000000000000000000006c1f09f6271fbe133db38db9c9280307f5d22160\", \"to\": \"0x0d8775f648430679a709e98d2b0cb6250d2887ef\"}");
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "0x0");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
+        }
+
+        [Test]
+        public void Eth_call_no_sender()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            transaction.To = TestItem.AddressB;
+
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
+        }
+
+        [Test]
+        public void Eth_call_no_recipient()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            transaction.From = TestItem.AddressA;
+
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Recipient address not specified on the transaction.\",\"data\":null}}", serialized);
+        }
+
+        [Test]
+        public void Eth_call_ok()
+        {
+            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            transaction.From = TestItem.AddressA;
+            transaction.To = TestItem.AddressB;
+
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
         }
 
         [Test]
