@@ -69,6 +69,8 @@ namespace Nethermind.JsonRpc
 
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
+            if (_logger.IsInfo) _logger.Info($"Handling JSON RPC request {request}");
+            
             Stopwatch stopwatch = Stopwatch.StartNew();
             (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest;
             try
