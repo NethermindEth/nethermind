@@ -295,7 +295,7 @@ namespace Nethermind.Blockchain
                         if (!shouldContinue)
                         {
                             break;
-                        }    
+                        }
                     }
                 }
                 else
@@ -304,7 +304,7 @@ namespace Nethermind.Blockchain
                     if (!shouldContinue)
                     {
                         break;
-                    }    
+                    }
                 }
 
                 blockNumber++;
@@ -357,14 +357,14 @@ namespace Nethermind.Blockchain
 
                 if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}");
 
-                Func<long, Task<bool>> noneFound = number =>
+                Task<bool> NoneFound(long number)
                 {
                     _blockInfoDb.Delete(number);
                     BestKnownNumber = number - 1;
                     return Task.FromResult(false);
-                };
+                }
 
-                Func<BlockHeader, Task<bool>> headerFound = header =>
+                Task<bool> HeaderFound(BlockHeader header)
                 {
                     BestSuggestedHeader = header;
                     long i = startBlockNumber.Value - header.Number;
@@ -375,9 +375,9 @@ namespace Nethermind.Blockchain
                     }
 
                     return Task.FromResult(true);
-                };
+                }
 
-                Func<Block, Task<bool>> blockFound = async block =>
+                async Task<bool> BlockFound(Block block)
                 {
                     BestSuggestedHeader = block.Header;
                     BestSuggestedBody = block;
@@ -400,9 +400,9 @@ namespace Nethermind.Blockchain
                     }
 
                     return true;
-                };
+                }
 
-                await VisitBlocks(startBlockNumber.Value, blocksToLoad, blockFound, headerFound, noneFound, cancellationToken);
+                await VisitBlocks(startBlockNumber.Value, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
             }
             finally
             {
@@ -1382,17 +1382,22 @@ namespace Nethermind.Blockchain
             try
             {
                 CanAcceptNewBlocks = false;
-                long blocksToLoad = CountKnownAheadOfHead();
                 long startNumber = Head?.Number ?? 0;
+                if (startNumber == 0)
+                {
+                    return;
+                }
+
+                long blocksToLoad = CountKnownAheadOfHead();
                 long? gapStart = null;
                 long? gapEnd = null;
 
                 Keccak firstInvalidHash = null;
                 bool shouldDelete = false;
 
-                Func<long, Task<bool>> noneFound = number => Task.FromResult(false);
+                Task<bool> NoneFound(long number) => Task.FromResult(false);
 
-                Func<BlockHeader, Task<bool>> headerFound = header =>
+                Task<bool> HeaderFound(BlockHeader header)
                 {
                     if (firstInvalidHash == null)
                     {
@@ -1401,24 +1406,24 @@ namespace Nethermind.Blockchain
                     }
 
                     return Task.FromResult(true);
-                };
+                }
 
-                Func<Block, Task<bool>> blockFound = block =>
+                Task<bool> BlockFound(Block block)
                 {
-                    if (firstInvalidHash != null && ! shouldDelete)
+                    if (firstInvalidHash != null && !shouldDelete)
                     {
                         gapEnd = block.Number;
                         shouldDelete = true;
                     }
 
                     return Task.FromResult(true);
-                };
+                }
 
-                await VisitBlocks(startNumber + 1, blocksToLoad, blockFound, headerFound, noneFound, cancellationToken);
+                await VisitBlocks(startNumber + 1, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
 
                 if (shouldDelete)
                 {
-                    if(_logger.IsWarn) _logger.Warn($"Deleting blocks starting with {firstInvalidHash} due to the gap found between {gapStart} and {gapEnd}");
+                    if (_logger.IsWarn) _logger.Warn($"Deleting blocks starting with {firstInvalidHash} due to the gap found between {gapStart} and {gapEnd}");
                     DeleteBlocks(firstInvalidHash);
                     BestSuggestedHeader = Head;
                     BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
