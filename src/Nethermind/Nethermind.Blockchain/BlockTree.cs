@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain
                 {
                     Keccak deletePointerHash = new Keccak(deletePointer);
                     if (_logger.IsInfo) _logger.Info($"Cleaning invalid blocks starting from {deletePointer}");
-                    CleanInvalidBlocks(deletePointerHash);
+                    DeleteBlocks(deletePointerHash);
                 }
 
                 if (startBlockNumber == null)
@@ -599,7 +599,7 @@ namespace Nethermind.Blockchain
                     {
                         return null;
                     }
-                    
+
                     header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
                     spanHeaderDb.DangerousReleaseMemory(data);
                 }
@@ -802,12 +802,12 @@ namespace Nethermind.Blockchain
             }
             finally
             {
-                CleanInvalidBlocks(invalidBlock.Hash);
+                DeleteBlocks(invalidBlock.Hash);
                 CanAcceptNewBlocks = true;
             }
         }
 
-        private void CleanInvalidBlocks(Keccak deletePointer)
+        private void DeleteBlocks(Keccak deletePointer)
         {
             BlockHeader deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             long currentNumber = deleteHeader.Number;
@@ -821,7 +821,6 @@ namespace Nethermind.Blockchain
                 nextLevel = LoadLevel(currentNumber + 1);
 
                 bool shouldRemoveLevel = false;
-
                 if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
                 {
                     if (currentLevel.BlockInfos.Length == 1)
@@ -841,31 +840,13 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (nextLevel != null) // just finding what the next descendant will be
+                // just finding what the next descendant will be
+                if (nextLevel != null)
                 {
-                    if (nextLevel.BlockInfos.Length == 1)
-                    {
-                        nextHash = nextLevel.BlockInfos[0].BlockHash;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < nextLevel.BlockInfos.Length; i++)
-                        {
-                            BlockHeader potentialDescendant = FindHeader(nextLevel.BlockInfos[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            if (potentialDescendant.ParentHash == currentHash)
-                            {
-                                nextHash = potentialDescendant.Hash;
-                                break;
-                            }
-                        }
-                    }
+                    nextHash = FindChild(nextLevel, currentHash);
+                }
 
-                    UpdateDeletePointer(nextHash);
-                }
-                else
-                {
-                    UpdateDeletePointer(null);
-                }
+                UpdateDeletePointer(nextHash);
 
                 try
                 {
@@ -901,6 +882,22 @@ namespace Nethermind.Blockchain
                 currentHash = nextHash;
                 nextHash = null;
             }
+        }
+
+        private Keccak FindChild(ChainLevelInfo level, Keccak parentHash)
+        {
+            Keccak childHash = null;
+            for (int i = 0; i < level.BlockInfos.Length; i++)
+            {
+                BlockHeader potentialChild = FindHeader(level.BlockInfos[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (potentialChild.ParentHash == parentHash)
+                {
+                    childHash = potentialChild.Hash;
+                    break;
+                }
+            }
+
+            return childHash;
         }
 
         public bool IsMainChain(Keccak blockHash)
