@@ -51,7 +51,7 @@ namespace Nethermind.Network
         {
             if (_networkConfig.ExternalIp != null)
             {
-                if(_logger.IsWarn) _logger.Warn($"Using overriden external IP: {_networkConfig.ExternalIp}");
+                if(_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.ExternalIp)} = {_networkConfig.ExternalIp}");
                 return IPAddress.Parse(_networkConfig.ExternalIp);
             }
             
