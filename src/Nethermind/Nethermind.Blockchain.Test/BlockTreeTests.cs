@@ -944,7 +944,7 @@ namespace Nethermind.Blockchain.Test
             tree.DeleteInvalidBlock(block3bad);
 
             Assert.AreEqual(5L, tree.BestKnownNumber, "best known");
-            Assert.AreEqual(block5, tree.Head, "head");
+            Assert.AreEqual(block5.Header, tree.Head, "head");
             Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader.Hash, "suggested");
         }
 
