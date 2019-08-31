@@ -17,7 +17,9 @@
  */
 
 
+using System.Net;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery
@@ -26,17 +28,28 @@ namespace Nethermind.Network.Test.Discovery
     public class NetworkHelperTests
     {
         [Test]
-        public void ExternalIpTest()
+        public void Can_resolve_external_ip()
         {
-            var networkHelper = new NetworkHelper(NullLogger.Instance);
+            var networkHelper = new NetworkHelper(new NetworkConfig(), LimboLogs.Instance);
             var address = networkHelper.GetExternalIp();
             Assert.IsNotNull(address);
         }
+        
+        [Test]
+        public void Can_resolve_external_ip_with_override()
+        {
+            string ipOverride = "99.99.99.99";
+            INetworkConfig networkConfig = new NetworkConfig();
+            networkConfig.ExternalIp = ipOverride;
+            var networkHelper = new NetworkHelper(networkConfig, LimboLogs.Instance);
+            var address = networkHelper.GetExternalIp();
+            Assert.AreEqual(IPAddress.Parse(ipOverride), address);
+        }
 
         [Test]
-        public void InternalIpTest()
+        public void Can_resolve_internal_ip()
         {
-            var networkHelper = new NetworkHelper(NullLogger.Instance);
+            var networkHelper = new NetworkHelper(new NetworkConfig(), LimboLogs.Instance);
             var address = networkHelper.GetLocalIp();
             Assert.IsNotNull(address);
         }

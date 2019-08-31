@@ -20,6 +20,7 @@ namespace Nethermind.Network.Config
 {
     public class NetworkConfig : INetworkConfig
     {
+        public string ExternalIp { get; set; } = null;
         public string StaticPeers { get; set; }
         public string TrustedPeers { get; set; } = string.Empty;
         public bool IsPeersPersistenceOn { get; set; } = true;
