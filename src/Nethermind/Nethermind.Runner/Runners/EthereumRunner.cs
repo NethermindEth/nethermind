@@ -359,6 +359,8 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Closing DBs...");
             _dbProvider.Dispose();
+            if (_logger.IsInfo) _logger.Info("All DBs closed.");
+            
             while (_disposeStack.Count != 0)
             {
                 var disposable = _disposeStack.Pop();
