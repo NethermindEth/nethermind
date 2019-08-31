@@ -20,23 +20,23 @@ using System.Collections.Generic;
 
 namespace Nethermind.Store
 {
-    public class ResettableDictionary<T1, T2> : IDictionary<T1, T2>
+    public class ResettableDictionary<TKey, TValue> : IDictionary<TKey, TValue>
     {
         private int _currentCapacity;
         private int _startCapacity;
         private int _resetRatio;
 
-        private IDictionary<T1, T2> _wrapped;
+        private IDictionary<TKey, TValue> _wrapped;
 
         public ResettableDictionary(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
         {
-            _wrapped = new Dictionary<T1, T2>(startCapacity);
+            _wrapped = new Dictionary<TKey, TValue>(startCapacity);
             _startCapacity = startCapacity;
             _resetRatio = resetRatio;
             _currentCapacity = _startCapacity;
         }
 
-        public IEnumerator<KeyValuePair<T1, T2>> GetEnumerator()
+        public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
         {
             return _wrapped.GetEnumerator();
         }
@@ -46,7 +46,7 @@ namespace Nethermind.Store
             return GetEnumerator();
         }
 
-        public void Add(KeyValuePair<T1, T2> item)
+        public void Add(KeyValuePair<TKey, TValue> item)
         {
             _wrapped.Add(item);
         }
@@ -56,17 +56,17 @@ namespace Nethermind.Store
             _wrapped.Clear();
         }
 
-        public bool Contains(KeyValuePair<T1, T2> item)
+        public bool Contains(KeyValuePair<TKey, TValue> item)
         {
             return _wrapped.Contains(item);
         }
 
-        public void CopyTo(KeyValuePair<T1, T2>[] array, int arrayIndex)
+        public void CopyTo(KeyValuePair<TKey, TValue>[] array, int arrayIndex)
         {
             _wrapped.CopyTo(array, arrayIndex);
         }
 
-        public bool Remove(KeyValuePair<T1, T2> item)
+        public bool Remove(KeyValuePair<TKey, TValue> item)
         {
             return _wrapped.Remove(item);
         }
@@ -74,34 +74,34 @@ namespace Nethermind.Store
         public int Count => _wrapped.Count;
         public bool IsReadOnly => false;
 
-        public void Add(T1 key, T2 value)
+        public void Add(TKey key, TValue value)
         {
             _wrapped.Add(key, value);
         }
 
-        public bool ContainsKey(T1 key)
+        public bool ContainsKey(TKey key)
         {
             return _wrapped.ContainsKey(key);
         }
 
-        public bool Remove(T1 key)
+        public bool Remove(TKey key)
         {
             return _wrapped.Remove(key);
         }
 
-        public bool TryGetValue(T1 key, out T2 value)
+        public bool TryGetValue(TKey key, out TValue value)
         {
             return _wrapped.TryGetValue(key, out value);
         }
 
-        public T2 this[T1 key]
+        public TValue this[TKey key]
         {
             get => _wrapped[key];
             set => _wrapped[key] = value;
         }
 
-        public ICollection<T1> Keys => _wrapped.Keys;
-        public ICollection<T2> Values => _wrapped.Values;
+        public ICollection<TKey> Keys => _wrapped.Keys;
+        public ICollection<TValue> Values => _wrapped.Values;
 
         public void Reset()
         {
@@ -113,7 +113,7 @@ namespace Nethermind.Store
             if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
             {
                 _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
-                _wrapped = new Dictionary<T1, T2>(_currentCapacity);
+                _wrapped = new Dictionary<TKey, TValue>(_currentCapacity);
             }
             else
             {
