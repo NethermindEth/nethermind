@@ -17,13 +17,10 @@
  */
 
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
-using Nethermind.DataMarketplace.Consumers.Sessions.Queries;
-using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
@@ -34,14 +31,14 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             new ConcurrentDictionary<Keccak, DepositDetails>();
 
         private readonly IDepositDetailsRepository _depositRepository;
-        private readonly IConsumerSessionRepository _sessionRepository;
+        private readonly IDepositUnitsCalculator _depositUnitsCalculator;
         private readonly ILogger _logger;
 
         public DepositProvider(IDepositDetailsRepository depositRepository,
-            IConsumerSessionRepository sessionRepository, ILogManager logManager)
+            IDepositUnitsCalculator depositUnitsCalculator, ILogManager logManager)
         {
             _depositRepository = depositRepository;
-            _sessionRepository = sessionRepository;
+            _depositUnitsCalculator = depositUnitsCalculator;
             _logger = logManager.GetClassLogger();
         }
 
@@ -72,12 +69,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            var sessions = await _sessionRepository.BrowseAsync(new GetConsumerSessions
-            {
-                DepositId = deposit.Id,
-                Results = int.MaxValue
-            });
-            var consumedUnits = sessions.Items.Any() ? (uint) sessions.Items.Sum(s => s.ConsumedUnits) : 0;
+            var consumedUnits = await _depositUnitsCalculator.GetConsumedAsync(deposit);
             deposit.SetConsumedUnits(consumedUnits);
 
             return deposit;

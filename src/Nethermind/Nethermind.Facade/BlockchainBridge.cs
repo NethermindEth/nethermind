@@ -183,10 +183,15 @@ namespace Nethermind.Facade
                 transaction.SenderAddress = Address.Zero;
             }
 
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
             BlockHeader header = new BlockHeader(blockHeader.Hash, Keccak.OfAnEmptySequenceRlp, blockHeader.Beneficiary,
                 blockHeader.Difficulty, blockHeader.Number + 1, (long) transaction.GasLimit, blockHeader.Timestamp + 1, Bytes.Empty);
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+
+            _stateProvider.StateRoot = blockHeader.StateRoot;
+            if (transaction.Nonce == 0)
+            {
+                transaction.Nonce = GetNonce(blockHeader.StateRoot, transaction.SenderAddress);
+            }
+            
             transaction.Hash = Transaction.CalculateHash(transaction);
             CallOutputTracer callOutputTracer = new CallOutputTracer();
             _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
@@ -221,7 +226,12 @@ namespace Nethermind.Facade
 
         public UInt256 GetNonce(Address address)
         {
-            return _stateReader.GetNonce(_blockTree.Head.StateRoot, address);
+            return GetNonce(_blockTree.Head.StateRoot, address);
+        }
+        
+        private UInt256 GetNonce(Keccak stateRoot, Address address)
+        {
+            return _stateReader.GetNonce(stateRoot, address);
         }
 
         public UInt256 GetBalance(Address address)
