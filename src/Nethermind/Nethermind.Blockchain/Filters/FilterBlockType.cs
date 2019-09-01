@@ -23,6 +23,6 @@ namespace Nethermind.Blockchain.Filters
         Earliest,
         Latest,
         Pending,
-        BlockId
+        BlockNumber
     }
 }

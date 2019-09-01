@@ -133,6 +133,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.StateRoot = stateRoot;
             return this;
         }
+        
+        public BlockBuilder WithBloom(Bloom bloom)
+        {
+            TestObjectInternal.Bloom = bloom;
+            return this;
+        }
 
         public BlockBuilder Genesis => WithNumber(0).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
 

@@ -16,15 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
 {
     public class AnyTopic : TopicExpression
     {
-        public override bool Accepts(Keccak topic)
-        {
-            return true;
-        }
+        public static readonly AnyTopic Instance = new AnyTopic(); 
+        
+        public override bool Accepts(Keccak topic) => true;
+
+        public override bool Matches(Bloom bloom) => true;
     }
 }

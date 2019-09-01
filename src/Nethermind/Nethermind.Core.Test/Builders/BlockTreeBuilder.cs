@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
@@ -71,6 +73,7 @@ namespace Nethermind.Core.Test.Builders
 
         private ISpecProvider _specProvider;
         private IEthereumEcdsa _ecdsa;
+        private Func<Block, Transaction, IEnumerable<LogEntry>> _logCreationFunction;
 
         public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0)
         {
@@ -109,32 +112,38 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        private Block CreateBlock(int splitVariant, int splitFrom, int i, Block parent)
+        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent)
         {
             Block current;
-            if (_receiptStorage != null && i % 3 == 0)
+            if (_receiptStorage != null && blockIndex % 3 == 0)
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithData(Rlp.Encode(i).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject,
-                    Build.A.Transaction.WithData(Rlp.Encode(i + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, i + 1).TestObject
+                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject,
+                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject
                 };
                 
                 current = Build.A.Block
-                    .WithNumber(i + 1)
+                    .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
                     .WithTransactions(transactions)
+                    .WithBloom(new Bloom())
                     .TestObject;
 
                 List<TxReceipt> receipts = new List<TxReceipt>();
-                foreach (Transaction transaction in current.Transactions)
+                foreach (var transaction in current.Transactions)
                 {
-                    TxReceipt receipt = new TxReceipt();
-                    receipt.Logs = new LogEntry[0];
-                    receipt.TxHash = transaction.Hash;
+                    var logEntries = _logCreationFunction?.Invoke(current, transaction)?.ToArray() ?? Array.Empty<LogEntry>();
+                    TxReceipt receipt = new TxReceipt
+                    {
+                        Logs = logEntries,
+                        TxHash = transaction.Hash,
+                        Bloom = new Bloom(logEntries)
+                    };
                     _receiptStorage.Add(receipt, false);
                     receipts.Add(receipt);
+                    current.Bloom.Add(receipt.Logs);
                 }
 
                 current.Header.TxRoot = current.CalculateTxRoot();
@@ -143,7 +152,7 @@ namespace Nethermind.Core.Test.Builders
             }
             else
             {
-                current = Build.A.Block.WithNumber(i + 1).WithParent(parent).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant)).TestObject;
+                current = Build.A.Block.WithNumber(blockIndex + 1).WithParent(parent).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant)).TestObject;
             }
 
             return current;
@@ -178,11 +187,12 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider)
+        public BlockTreeBuilder WithTransactions(IReceiptStorage receiptStorage, ISpecProvider specProvider, Func<Block, Transaction, IEnumerable<LogEntry>> logsForBlockBuilder = null)
         {
             _specProvider = specProvider;
             _ecdsa = new EthereumEcdsa(specProvider, LimboLogs.Instance);
             _receiptStorage = receiptStorage;
+            _logCreationFunction = logsForBlockBuilder;
             return this;
         }
     }

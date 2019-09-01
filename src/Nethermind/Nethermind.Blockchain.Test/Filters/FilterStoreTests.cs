@@ -17,7 +17,13 @@
  */
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
+using FluentAssertions;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Filters.Topics;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Filters
@@ -100,7 +106,48 @@ namespace Nethermind.Blockchain.Test.Filters
             Assert.AreEqual(1, logFilters[0].Id, "log filters ids");
             Assert.AreEqual(1, blockFilters.Length, "block Filters length");
             Assert.AreEqual(0, blockFilters[0].Id, "block filters ids");
-
+        }
+        
+        public static IEnumerable CorrectlyCreatesAddressFilterTestCases
+        {
+            get
+            {
+                yield return new TestCaseData(null, AddressFilter.AnyAddress);
+                yield return new TestCaseData(TestItem.AddressA.ToString(), new AddressFilter(TestItem.AddressA));
+                yield return new TestCaseData(new[] {TestItem.AddressA.ToString(), TestItem.AddressB.ToString()},
+                    new AddressFilter(new HashSet<Address>() {TestItem.AddressA, TestItem.AddressB}));
+            }
+        }
+        
+        [TestCaseSource(nameof(CorrectlyCreatesAddressFilterTestCases))]
+        public void Correctly_creates_address_filter(object address, AddressFilter expected)
+        {
+            FilterBlock from = new FilterBlock(100);
+            FilterBlock to = new FilterBlock(FilterBlockType.Latest);
+            FilterStore store = new FilterStore();
+            LogFilter filter = store.CreateLogFilter(from, to, address);
+            filter.AddressFilter.Should().BeEquivalentTo(expected);
+        }
+        
+        public static IEnumerable CorrectlyCreatesTopicsFilterTestCases
+        {
+            get
+            {
+                yield return new TestCaseData(null);
+                yield return new TestCaseData(new object[] {new string[] {TestItem.KeccakA.ToString()}});
+                yield return new TestCaseData(new object[] {new string[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString()}});
+                yield return new TestCaseData(new object[] {new string[] {null, TestItem.KeccakB.ToString()}});
+                yield return new TestCaseData(new object[] {new object[] {null, new string[] {TestItem.KeccakA.ToString(), TestItem.KeccakB.ToString(), TestItem.KeccakC.ToString()}, TestItem.KeccakD.ToString()}});
+            }
+        }
+        
+        [TestCaseSource(nameof(CorrectlyCreatesTopicsFilterTestCases))]
+        public void Correctly_creates_topics_filter(IEnumerable<object> topics)
+        {
+            FilterBlock from = new FilterBlock(100);
+            FilterBlock to = new FilterBlock(FilterBlockType.Latest);
+            FilterStore store = new FilterStore();
+            LogFilter filter = store.CreateLogFilter(from, to, null, topics);
         }
     }
 }

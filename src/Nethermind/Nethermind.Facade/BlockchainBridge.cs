@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -49,6 +50,9 @@ namespace Nethermind.Facade
         private readonly IReceiptStorage _receiptStorage;
         private readonly IStorageProvider _storageProvider;
         private readonly ITransactionProcessor _transactionProcessor;
+        private readonly ILogFinder _logFinder;
+        private readonly IBlockFinder _blockFinder;
+        private Timestamper _timestamper = new Timestamper();
 
         public BlockchainBridge(
             IStateReader stateReader,
@@ -74,6 +78,8 @@ namespace Nethermind.Facade
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
+            _blockFinder = new BlockFinder(_blockTree);
+            _logFinder = new LogFinder(_blockFinder, _receiptStorage);
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -98,23 +104,6 @@ namespace Nethermind.Facade
         public long BestKnown => _blockTree.BestKnownNumber;
         
         public bool IsSyncing => _blockTree.BestSuggestedHeader.Hash != _blockTree.Head.Hash;
-        
-        public Block FindBlock(Keccak blockHash) => _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
-        
-        public Block FindBlock(long blockNumber) => _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
-        
-        public Block FindGenesisBlock() => _blockTree.FindBlock(_blockTree.Genesis.Hash, BlockTreeLookupOptions.RequireCanonical);
-        
-        public Block FindHeadBlock() => _blockTree.FindBlock(_blockTree.Head.Hash, BlockTreeLookupOptions.None);
-        
-        public Block FindEarliestBlock() => FindGenesisBlock();
-        
-        public Block FindLatestBlock() => FindHeadBlock();
-
-        public Block FindPendingBlock()
-        {
-            return _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
-        }
 
         public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
@@ -126,8 +115,6 @@ namespace Nethermind.Facade
         }
 
         public Keccak GetBlockHash(Keccak transactionHash) => _receiptStorage.Find(transactionHash).BlockHash;
-
-        private Timestamper _timestamper = new Timestamper();
 
         public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
         {
@@ -269,7 +256,7 @@ namespace Nethermind.Facade
             IEnumerable<object> topics = null)
         {
             LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
-            return new FilterLog[0];
+            return _logFinder.FindLogs(filter);
         }
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)	
@@ -318,5 +305,19 @@ namespace Nethermind.Facade
         
         public Keccak[] GetPendingTransactionFilterChanges(int filterId) =>
             _filterManager.PollPendingTransactionHashes(filterId);
+
+        public Block FindBlock(Keccak blockHash) => _blockFinder.FindBlock(blockHash);
+
+        public Block FindBlock(long blockNumber) => _blockFinder.FindBlock(blockNumber);
+
+        public Block FindGenesisBlock() => _blockFinder.FindGenesisBlock();
+
+        public Block FindHeadBlock() => _blockFinder.FindHeadBlock();
+
+        public Block FindEarliestBlock() => _blockFinder.FindEarliestBlock();
+
+        public Block FindLatestBlock() => _blockFinder.FindLatestBlock();
+
+        public Block FindPendingBlock() => _blockFinder.FindPendingBlock();
     }
 }

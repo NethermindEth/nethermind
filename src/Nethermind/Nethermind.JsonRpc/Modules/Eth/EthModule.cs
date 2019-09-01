@@ -509,29 +509,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
         {
-            FilterBlock fromBlock = MapFilterBlock(filter.FromBlock);
-            FilterBlock toBlock = MapFilterBlock(filter.ToBlock);
+            FilterBlock fromBlock = filter.FromBlock.ToFilterBlock();
+            FilterBlock toBlock = filter.ToBlock.ToFilterBlock();
             int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
             return ResultWrapper<UInt256?>.Success((UInt256)filterId);
         }
-
-        private static FilterBlock MapFilterBlock(BlockParameter parameter)
-            => parameter.BlockId != null
-                ? new FilterBlock(parameter.BlockId ?? 0)
-                : new FilterBlock(MapFilterBlockType(parameter.Type));
-
-        private static FilterBlockType MapFilterBlockType(BlockParameterType type)
-        {
-            switch (type)
-            {
-                case BlockParameterType.Latest: return FilterBlockType.Latest;
-                case BlockParameterType.Earliest: return FilterBlockType.Earliest;
-                case BlockParameterType.Pending: return FilterBlockType.Pending;
-                case BlockParameterType.BlockId: return FilterBlockType.BlockId;
-                default: return FilterBlockType.Latest;
-            }
-        }
-
+        
         public ResultWrapper<UInt256?> eth_newBlockFilter()
         {
             int filterId = _blockchainBridge.NewBlockFilter();
@@ -599,8 +582,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            FilterBlock fromBlock = MapFilterBlock(filter.FromBlock);
-            FilterBlock toBlock = MapFilterBlock(filter.ToBlock);
+            FilterBlock fromBlock = filter.FromBlock.ToFilterBlock();
+            FilterBlock toBlock = filter.ToBlock.ToFilterBlock();
 
             return ResultWrapper<IEnumerable<FilterLog>>.Success(_blockchainBridge.GetLogs(fromBlock, toBlock,
                 filter.Address,

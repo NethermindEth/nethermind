@@ -78,7 +78,7 @@ namespace Nethermind.Core.Test
             bloom.Add(entries);
 
             var testEntries = testedEntries(entries);
-            var results = testEntries.Select(e => bloom.IsMatch(e));
+            var results = testEntries.Select(e => bloom.Matches(e));
             results.Should().AllBeEquivalentTo(isMatchExpectation);
         }
 

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Filters.Topics
@@ -23,5 +24,7 @@ namespace Nethermind.Blockchain.Filters.Topics
     public abstract class TopicExpression
     {
         public abstract bool Accepts(Keccak topic);
+
+        public abstract bool Matches(Bloom bloom);
     }
 }
