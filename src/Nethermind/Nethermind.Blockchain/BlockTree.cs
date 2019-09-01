@@ -367,7 +367,7 @@ namespace Nethermind.Blockchain
                 Task<bool> HeaderFound(BlockHeader header)
                 {
                     BestSuggestedHeader = header;
-                    long i = startBlockNumber.Value - header.Number;
+                    long i = header.Number - startBlockNumber.Value;
                     // copy paste from below less batching
                     if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < header.Number)
                     {
@@ -383,7 +383,7 @@ namespace Nethermind.Blockchain
                     BestSuggestedBody = block;
                     NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
-                    long i = startBlockNumber.Value - block.Number;
+                    long i = block.Number - startBlockNumber.Value;
                     if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < block.Number)
                     {
                         if (_logger.IsInfo)
