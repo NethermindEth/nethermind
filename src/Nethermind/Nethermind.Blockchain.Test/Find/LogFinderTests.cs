@@ -85,6 +85,17 @@ namespace Nethermind.Blockchain.Test.Find
             logs.Select(l => (int) l.LogIndex).Should().BeEquivalentTo(new []{0, 1, 0, 1, 2});
         }
         
+        [Test]
+        public void filter_all_logs_when_receipts_ar_missing()
+        {
+            _receiptStorage = NullReceiptStorage.Instance;
+            _logFinder = new LogFinder(new BlockFinder(_blockTree),  _receiptStorage);
+            
+            var logFilter = AllBlockFilter().Build();
+            var logs = _logFinder.FindLogs(logFilter);
+            logs.Length.Should().Be(0);
+        }
+        
         public static IEnumerable FilterByAddressTestsData
         {
             get

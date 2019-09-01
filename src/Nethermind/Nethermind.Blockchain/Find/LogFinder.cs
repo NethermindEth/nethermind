@@ -35,21 +35,21 @@ namespace Nethermind.Blockchain.Find
             _receiptStorage = receiptStorage;
             _blockFinder = blockFinder;
         }
-        
+
         public FilterLog[] FindLogs(LogFilter filter)
         {
-            var currentBlock = _blockFinder.GetBlock(filter.ToBlock);
+            var toBlock = _blockFinder.GetBlock(filter.ToBlock);
             var fromBlock = _blockFinder.GetBlock(filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
-            
-            while (currentBlock.Number >= fromBlock.Number)
+
+            while (toBlock.Number >= fromBlock.Number)
             {
-                if (filter.Matches(currentBlock.Bloom))
+                if (filter.Matches(toBlock.Bloom))
                 {
-                    FindLogsInBlock(filter, currentBlock, results);
+                    FindLogsInBlock(filter, toBlock, results);
                 }
-                
-                if (!TryGetParentBlock(currentBlock, out currentBlock))
+
+                if (!TryGetParentBlock(toBlock, out toBlock))
                 {
                     break;
                 }
@@ -64,6 +64,11 @@ namespace Nethermind.Blockchain.Find
             long logIndexInBlock = 0;
             foreach (var receipt in receipts)
             {
+                if (receipt == null)
+                {
+                    continue;
+                }
+
                 if (filter.Matches(receipt.Bloom))
                 {
                     foreach (var log in receipt.Logs)
@@ -83,9 +88,18 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        private IEnumerable<TxReceipt> GetReceiptsFromBlock(Block block) =>
-            block.Body.Transactions.Select(transaction => _receiptStorage.Find(transaction.Hash));
-        
+        private TxReceipt[] GetReceiptsFromBlock(Block block)
+        {
+            TxReceipt[] result = new TxReceipt[block.Body.Transactions.Length];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = _receiptStorage.Find(block.Body.Transactions[i].Hash);
+            }
+
+            return result;
+        }
+
+
         private bool TryGetParentBlock(Block currentBlock, out Block parentBlock)
         {
             if (currentBlock.IsGenesis)
@@ -96,7 +110,7 @@ namespace Nethermind.Blockchain.Find
             else
             {
                 parentBlock = _blockFinder.FindBlock(currentBlock.ParentHash);
-                return true;                
+                return true;
             }
         }
     }
