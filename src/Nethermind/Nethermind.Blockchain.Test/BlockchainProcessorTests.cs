@@ -178,10 +178,10 @@ namespace Nethermind.Blockchain.Test
                 MemDb blockDb = new MemDb();
                 MemDb blockInfoDb = new MemDb();
                 MemDb headersDb = new MemDb();
-                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, MainNetSpecProvider.Instance, NullTxPool.Instance, NullLogManager.Instance);
+                _blockTree = new BlockTree(blockDb, headersDb, blockInfoDb, MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
                 _blockProcessor = new BlockProcessorMock(_logManager);
                 _recoveryStep = new RecoveryStepMock(_logManager);
-                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, NullLogManager.Instance, true, true);
+                _processor = new BlockchainProcessor(_blockTree, _blockProcessor, _recoveryStep, LimboLogs.Instance, true, true);
                 _resetEvent = new AutoResetEvent(false);
 
                 _blockTree.NewHeadBlock += (sender, args) =>
@@ -258,6 +258,18 @@ namespace Nethermind.Blockchain.Test
                 if (result != AddBlockResult.Added)
                 {
                     _logger.Info($"Finished waiting for {block.ToString(Block.Format.Short)} as block was ignored");
+                    _resetEvent.Set();
+                }
+
+                return this;
+            }
+            
+            public ProcessingTestContext Suggested(BlockHeader block)
+            {
+                AddBlockResult result = _blockTree.SuggestHeader(block);
+                if (result != AddBlockResult.Added)
+                {
+                    _logger.Info($"Finished waiting for {block.ToString(BlockHeader.Format.Short)} as block was ignored");
                     _resetEvent.Set();
                 }
 
@@ -399,6 +411,17 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block1D2).BecomesNewHead()
                 .FullyProcessed(_block2D4).BecomesNewHead()
                 .FullyProcessed(_block3D6).BecomesNewHead()
+                .FullyProcessed(_block4D8).BecomesNewHead();
+        }
+        
+        [Test]
+        public void Can_process_fast_sync_transition()
+        {
+            When.ProcessingBlocks
+                .FullyProcessed(_block0).BecomesGenesis()
+                .FullyProcessed(_block1D2).BecomesNewHead()
+                .FullyProcessed(_block2D4).BecomesNewHead()
+                .Suggested(_block3D6.Header)
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
 

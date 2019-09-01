@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Return");
+            if (_logger.IsTrace) _logger.Trace($"Returns from processing loop");
         }
 
         public event EventHandler ProcessingQueueEmpty;
