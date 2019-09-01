@@ -1389,6 +1389,11 @@ namespace Nethermind.Blockchain
                 }
 
                 long blocksToLoad = CountKnownAheadOfHead();
+                if (blocksToLoad == 0)
+                {
+                    return;
+                }
+                
                 long? gapStart = null;
                 long? gapEnd = null;
 
