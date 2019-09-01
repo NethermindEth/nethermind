@@ -28,13 +28,13 @@ namespace Nethermind.Core.Extensions
 
         private static bool TryFindLog(this BlockHeader blockHeader, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer, out LogEntry foundEntry)
         {
-            if (blockHeader.Bloom.IsMatch(matchEntry))
+            if (blockHeader.Bloom.Matches(matchEntry))
             {
                 // iterating backwards, we are interested only in the last one
                 for (int i = receipts.Length - 1; i >= 0; i--)
                 {
                     var receipt = receipts[i];
-                    if (receipt.Bloom.IsMatch(matchEntry))
+                    if (receipt.Bloom.Matches(matchEntry))
                     {
                         for (int j = receipt.Logs.Length - 1; j >= 0; j--)
                         {

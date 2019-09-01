@@ -20,13 +20,13 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterBlock
     {
-        public long BlockId { get; }
+        public long BlockNumber { get; }
         public FilterBlockType Type { get; }
         
-        public FilterBlock(long blockId)
+        public FilterBlock(long blockNumber)
         {
-            BlockId = blockId;
-            Type = FilterBlockType.BlockId;
+            BlockNumber = blockNumber;
+            Type = FilterBlockType.BlockNumber;
         }
         
         public FilterBlock(FilterBlockType type)

@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +30,7 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    public interface IBlockchainBridge
+    public interface IBlockchainBridge : IBlockFinder
     {
         IReadOnlyCollection<Address> GetWalletAccounts();
         Signature Sign(Address address, Keccak message);
@@ -46,19 +47,6 @@ namespace Nethermind.Facade
 
         void RecoverTxSender(Transaction tx, long blockNumber);
         
-        Block FindBlock(Keccak blockHash);
-        
-        Block FindBlock(long blockNumber);
-        
-        Block FindLatestBlock();
-        
-        Block FindPendingBlock();
-        
-        Block FindEarliestBlock();
-        
-        Block FindHeadBlock();
-        Block FindGenesisBlock();
-
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction, bool isOwn = false);

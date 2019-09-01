@@ -914,6 +914,73 @@ namespace Nethermind.Blockchain.Test
             AddBlockResult result = tree.SuggestBlock(block1B);
             Assert.AreEqual(AddBlockResult.Added, result);
         }
+        
+        [Test]
+        public void When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(block3).TestObject;
+            Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(6).WithParent(block4).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestHeader(block3.Header);
+            tree.SuggestHeader(block4.Header);
+            tree.SuggestBlock(block5);
+            
+            tree.UpdateMainChain(block2);
+
+            tree.FixFastSyncGaps(CancellationToken.None);
+            
+            Assert.Null(blockInfosDb.Get(3), "level 3");
+            Assert.Null(blockInfosDb.Get(4), "level 4");
+            Assert.Null(blockInfosDb.Get(5), "level 5");
+            
+            Assert.AreEqual(2L, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(block2.Header, tree.Head, "head");
+            Assert.AreEqual(block2.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+        }
+        
+        [Test]
+        public void When_deleting_invalid_block_does_not_delete_blocks_that_are_not_its_descendants()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(block3).TestObject;
+            Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(6).WithParent(block4).TestObject;
+            
+            Block block3bad = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2).TestObject;
+            
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+            tree.SuggestBlock(block4);
+            tree.SuggestBlock(block5);
+            
+            tree.SuggestBlock(block3bad);
+            
+            tree.UpdateMainChain(block5);
+            tree.DeleteInvalidBlock(block3bad);
+
+            Assert.AreEqual(5L, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(block5.Header, tree.Head, "head");
+            Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+        }
 
         [Test]
         public async Task When_cleaning_descendants_of_invalid_does_not_touch_other_branches()

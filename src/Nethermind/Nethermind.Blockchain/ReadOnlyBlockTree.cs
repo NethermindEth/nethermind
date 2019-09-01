@@ -49,6 +49,11 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(LoadBlocksFromDb)} calls");
         }
 
+        public Task FixFastSyncGaps(CancellationToken cancellationToken)
+        {
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(FixFastSyncGaps)} calls");
+        }
+
         public AddBlockResult Insert(Block block)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
@@ -122,16 +127,6 @@ namespace Nethermind.Blockchain
         public bool WasProcessed(long number, Keccak blockHash)
         {
             return _wrapped.WasProcessed(number, blockHash);
-        }
-
-        public void MoveToMain(Block block)
-        {
-            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
-        }
-
-        public void MoveToMain(Keccak blockHash)
-        {
-            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
         }
 
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock

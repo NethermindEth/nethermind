@@ -359,6 +359,8 @@ namespace Nethermind.Runner.Runners
 
             if (_logger.IsInfo) _logger.Info("Closing DBs...");
             _dbProvider.Dispose();
+            if (_logger.IsInfo) _logger.Info("All DBs closed.");
+            
             while (_disposeStack.Count != 0)
             {
                 var disposable = _disposeStack.Pop();
@@ -523,7 +525,7 @@ namespace Nethermind.Runner.Runners
             if (_initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
-                LoadBlocksFromDb();
+                RunBlockTreeInitTasks();
 #pragma warning restore 4014
             }
             else
@@ -670,7 +672,7 @@ namespace Nethermind.Runner.Runners
             }
         }
 
-        private async Task LoadBlocksFromDb()
+        private async Task RunBlockTreeInitTasks()
         {
             if (!_initConfig.SynchronizationEnabled)
             {
@@ -688,6 +690,20 @@ namespace Nethermind.Runner.Runners
                     else if (t.IsCanceled)
                     {
                         if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
+                    }
+                });
+            }
+            else
+            {
+                await _blockTree.FixFastSyncGaps(_runnerCancellation.Token).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
                     }
                 });
             }

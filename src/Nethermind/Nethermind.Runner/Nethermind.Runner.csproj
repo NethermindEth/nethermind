@@ -50,6 +50,14 @@
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="..\..\..\Nethermind Data Marketplace - Terms and Conditions 20190831.pdf">
+      <Link>Nethermind Data Marketplace - Terms and Conditions 20190831.pdf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\..\..\Nethermind Ethereum Client - Terms and Conditions 20190831.pdf">
+      <Link>Nethermind Ethereum Client - Terms and Conditions 20190831.pdf</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="..\Chains\**\*.*">
       <Link>chainspec\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

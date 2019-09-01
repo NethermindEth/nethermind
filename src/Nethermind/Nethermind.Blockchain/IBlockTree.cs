@@ -131,6 +131,8 @@ namespace Nethermind.Blockchain
         bool CanAcceptNewBlocks { get; }
         
         Task LoadBlocksFromDb(CancellationToken cancellationToken, long? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
+
+        Task FixFastSyncGaps(CancellationToken cancellationToken);
         
         Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
         

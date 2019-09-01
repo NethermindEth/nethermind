@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Config
         public string[] JsonRpcEnabledModules { get; set; } = { "Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool" };
         public string LogDirectory { get; set; } = null;
         public bool StoreTraces { get; set; } = false;
-        public bool StoreReceipts { get; set; } = false;
+        public bool StoreReceipts { get; set; } = true;
         
         public bool EnableRc7Fix { get; set; } = false;
     }

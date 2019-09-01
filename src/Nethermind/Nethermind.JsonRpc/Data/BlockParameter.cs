@@ -18,6 +18,7 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 
@@ -32,7 +33,7 @@ namespace Nethermind.JsonRpc.Data
         public static BlockParameter Latest = new BlockParameter(BlockParameterType.Latest);
 
         public BlockParameterType Type { get; set; }
-        public long? BlockId { get; set; }
+        public long? BlockNumber { get; set; }
 
         public BlockParameter()
         {
@@ -41,7 +42,7 @@ namespace Nethermind.JsonRpc.Data
         public BlockParameter(BlockParameterType type)
         {
             Type = type;
-            BlockId = null;
+            BlockNumber = null;
         }
 
         public void FromJson(string jsonValue)
@@ -64,15 +65,20 @@ namespace Nethermind.JsonRpc.Data
                     Type = BlockParameterType.Latest;
                     return;
                 default:
-                    Type = BlockParameterType.BlockId;
-                    BlockId = LongConverter.FromString(jsonValue.Trim('"'));
+                    Type = BlockParameterType.BlockNumber;
+                    BlockNumber = LongConverter.FromString(jsonValue.Trim('"'));
                     return;
             }
         }
 
         public override string ToString()
         {
-            return $"{Type}, {BlockId}";
+            return $"{Type}, {BlockNumber}";
         }
+        
+        public FilterBlock ToFilterBlock()
+            => BlockNumber != null
+                ? new FilterBlock(BlockNumber ?? 0)
+                : new FilterBlock(Type.ToFilterBlockType());
     }
 }

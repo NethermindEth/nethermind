@@ -41,6 +41,7 @@ namespace Nethermind.Blockchain.Filters
         private Keccak _lastBlockHash;
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
+        private long _logIndex;
 
         public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ITxPool txPool,
             ILogManager logManager)
@@ -69,6 +70,7 @@ namespace Nethermind.Blockchain.Filters
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
+            _logIndex = 0;
             AddBlock(e.Block);
         }
 
@@ -190,7 +192,7 @@ namespace Nethermind.Blockchain.Filters
 
             for (var i = 0; i < txReceipts.Length; i++)
             {
-                StoreLogs(filters, txReceipts[i]);
+                StoreLogs(filters, txReceipts[i], ref _logIndex);
             }
         }
 
@@ -230,15 +232,15 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
         }
 
-        private void StoreLogs(LogFilter[] filters, TxReceipt txReceipt)
+        private void StoreLogs(LogFilter[] filters, TxReceipt txReceipt, ref long logIndex)
         {
             for (var i = 0; i < filters.Length; i++)
             {
-                StoreLogs(filters[i], txReceipt);
+                StoreLogs(filters[i], txReceipt, ref logIndex);
             }
         }
 
-        private void StoreLogs(LogFilter filter, TxReceipt txReceipt)
+        private void StoreLogs(LogFilter filter, TxReceipt txReceipt, ref long logIndex)
         {
             if (txReceipt.Logs == null || txReceipt.Logs.Length == 0)
             {
@@ -249,7 +251,7 @@ namespace Nethermind.Blockchain.Filters
             for (var i = 0; i < txReceipt.Logs.Length; i++)
             {
                 var logEntry = txReceipt.Logs[i];
-                var filterLog = CreateLog(filter, txReceipt, logEntry);
+                var filterLog = CreateLog(filter, txReceipt, logEntry, logIndex++);
                 if (!(filterLog is null))
                 {
                     logs.Add(filterLog);
@@ -264,15 +266,15 @@ namespace Nethermind.Blockchain.Filters
             if (_logger.IsDebug) _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
         }
 
-        private FilterLog CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry)
+        private FilterLog CreateLog(LogFilter logFilter, TxReceipt txReceipt, LogEntry logEntry, long index)
         {
-            if (logFilter.FromBlock.Type == FilterBlockType.BlockId &&
-                logFilter.FromBlock.BlockId > txReceipt.BlockNumber)
+            if (logFilter.FromBlock.Type == FilterBlockType.BlockNumber &&
+                logFilter.FromBlock.BlockNumber > txReceipt.BlockNumber)
             {
                 return null;
             }
 
-            if (logFilter.ToBlock.Type == FilterBlockType.BlockId && logFilter.ToBlock.BlockId < txReceipt.BlockNumber)
+            if (logFilter.ToBlock.Type == FilterBlockType.BlockNumber && logFilter.ToBlock.BlockNumber < txReceipt.BlockNumber)
             {
                 return null;
             }
@@ -287,24 +289,16 @@ namespace Nethermind.Blockchain.Filters
                 || logFilter.ToBlock.Type == FilterBlockType.Earliest
                 || logFilter.ToBlock.Type == FilterBlockType.Pending)
             {
-                return CreateLog(UInt256.One, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry);
             }
 
             if (logFilter.FromBlock.Type == FilterBlockType.Latest || logFilter.ToBlock.Type == FilterBlockType.Latest)
             {
                 //TODO: check if is last mined block
-                return CreateLog(UInt256.One, txReceipt, logEntry);
+                return new FilterLog(index, txReceipt, logEntry);
             }
 
-            return CreateLog(UInt256.One, txReceipt, logEntry);
-        }
-
-        //TODO: Pass a proper log index
-        private FilterLog CreateLog(UInt256 logIndex, TxReceipt txReceipt, LogEntry logEntry)
-        {
-            return new FilterLog(logIndex, txReceipt.BlockNumber, txReceipt.BlockHash,
-                (UInt256)txReceipt.Index, txReceipt.TxHash, logEntry.LoggersAddress,
-                logEntry.Data, logEntry.Topics);
+            return new FilterLog(index, txReceipt, logEntry);
         }
     }
 }
