@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -228,13 +229,15 @@ namespace Nethermind.Network.P2P
             _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
             var pingPerfCalcId = _perfService.StartPerfCalc(); 
 
-            var firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing));
+            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            var firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
             _pongCompletionSource = null;
             if (firstTask != pongTask)
             {
                 return false;
             }
 
+            delayCancellation.Cancel();
             var latency = _perfService.EndPerfCalc(pingPerfCalcId);
             if (latency.HasValue)
             {

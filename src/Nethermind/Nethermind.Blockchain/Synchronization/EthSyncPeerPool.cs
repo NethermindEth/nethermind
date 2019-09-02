@@ -335,7 +335,9 @@ namespace Nethermind.Blockchain.Synchronization
 
             ISyncPeer syncPeer = peerInfo.SyncPeer;
             Task<BlockHeader> getHeadHeaderTask = peerInfo.SyncPeer.GetHeadBlockHeader(peerInfo.HeadHash, token);
-            Task delayTask = Task.Delay(InitTimeout, token);
+            CancellationTokenSource delaySource = new CancellationTokenSource();
+            CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
+            Task delayTask = Task.Delay(InitTimeout, linkedSource.Token);
             Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
             await firstToComplete.ContinueWith(
                 t =>
@@ -354,6 +356,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                     else
                     {
+                        delaySource.Cancel();
                         BlockHeader header = getHeadHeaderTask.Result; 
                         if (header == null)
                         {

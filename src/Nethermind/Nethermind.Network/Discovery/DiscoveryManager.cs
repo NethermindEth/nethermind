@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -151,8 +152,16 @@ namespace Nethermind.Network.Discovery
         public async Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout)
         {
             var completionSource = GetCompletionSource(senderIdHash, (int)messageType);
-            var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout));
-            return firstTask == completionSource.Task;
+            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
+
+            bool result = firstTask == completionSource.Task;
+            if (result)
+            {
+                delayCancellation.Cancel();
+            }
+            
+            return result;
         }
 
         public event EventHandler<NodeEventArgs> NodeDiscovered;

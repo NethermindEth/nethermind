@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Logging;
@@ -66,7 +67,8 @@ namespace Nethermind.Network.P2P
         protected async Task CheckProtocolInitTimeout()
         {
             var receivedInitMsgTask = _initCompletionSource.Task;
-            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout));
+            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
             
             if (firstTask != receivedInitMsgTask)
             {
@@ -76,6 +78,10 @@ namespace Nethermind.Network.P2P
                 }
                 
                 Session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "protocol init timeout");
+            }
+            else
+            {
+                delayCancellation.Cancel();    
             }
         }
 
