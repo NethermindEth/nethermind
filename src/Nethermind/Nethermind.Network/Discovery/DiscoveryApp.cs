@@ -390,9 +390,14 @@ namespace Nethermind.Network.Discovery
                     return;
                 }
                 var closeTask = _channel.CloseAsync();
-                if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout)) != closeTask)
+                CancellationTokenSource delayCancellation = new CancellationTokenSource();
+                if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
                 {
                     _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} miliseconds");
+                }
+                else
+                {
+                    delayCancellation.Cancel();
                 }
             }
             catch (Exception e)
