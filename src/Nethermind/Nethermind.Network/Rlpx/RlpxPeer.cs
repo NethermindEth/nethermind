@@ -86,7 +86,7 @@ namespace Nethermind.Network.Rlpx
 
             try
             {
-                _bossGroup = new MultithreadEventLoopGroup(1);
+                _bossGroup = new MultithreadEventLoopGroup();
                 _workerGroup = new MultithreadEventLoopGroup();
 
                 ServerBootstrap bootstrap = new ServerBootstrap();
