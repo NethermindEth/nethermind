@@ -34,11 +34,9 @@ namespace Nethermind.Store
 {
     public class StateProvider : IStateProvider
     {
-        private const int StartCapacity = 8;
-
-        private readonly Dictionary<Address, Stack<int>> _intraBlockCache = new Dictionary<Address, Stack<int>>();
-
-        private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
+        private const int StartCapacity = 64;
+        private ResettableDictionary<Address, Stack<int>> _intraBlockCache = new ResettableDictionary<Address, Stack<int>>();
+        private ResettableHashSet<Address> _committedThisRound = new ResettableHashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly ILogger _logger;
@@ -66,7 +64,7 @@ namespace Nethermind.Store
             return dumper.ToString();
         }
 
-        
+
         public TrieStats CollectStats()
         {
             TrieStatsCollector collector = new TrieStatsCollector(_logManager);
@@ -215,7 +213,7 @@ namespace Nethermind.Store
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
-        
+
         public void DecrementNonce(Address address)
         {
             Account account = GetThroughCache(address);
@@ -269,7 +267,7 @@ namespace Nethermind.Store
             if (_logger.IsTrace) _logger.Trace($"State snapshot {_currentPosition}");
             return _currentPosition;
         }
-        
+
         public void Restore(int snapshot)
         {
             if (snapshot > _currentPosition)
@@ -345,17 +343,17 @@ namespace Nethermind.Store
                 After = after;
                 Before = before;
             }
-            
+
             public ChangeTrace(Account after)
             {
                 After = after;
                 Before = null;
             }
-            
+
             public Account Before { get; }
             public Account After { get; }
         }
-        
+
         public void Commit(IReleaseSpec releaseSpec, IStateTracer stateTracer)
         {
             if (_currentPosition == -1)
@@ -391,10 +389,10 @@ namespace Nethermind.Store
                     {
                         trace[change.Address] = new ChangeTrace(change.Account, trace[change.Address].After);
                     }
-                    
+
                     continue;
                 }
-                
+
                 int forAssertion = _intraBlockCache[change.Address].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
@@ -477,12 +475,10 @@ namespace Nethermind.Store
                 }
             }
 
-            _capacity = Math.Max(StartCapacity, _capacity / 2);
-            _changes = new Change[_capacity];
             _currentPosition = -1;
-            _committedThisRound.Clear();
-            _intraBlockCache.Clear();
-            //_state.UpdateRootHash(); // why here?
+            Resettable.Reset(ref _changes, ref _capacity, StartCapacity);
+            _committedThisRound.Reset();
+            _intraBlockCache.Reset();
 
             if (isTracing)
             {
@@ -496,27 +492,27 @@ namespace Nethermind.Store
             {
                 Account before = change.Before;
                 Account after = change.After;
-                
+
                 UInt256? beforeBalance = before?.Balance;
                 UInt256? afterBalance = after?.Balance;
-                
+
                 UInt256? beforeNonce = before?.Nonce;
                 UInt256? afterNonce = after?.Nonce;
-                
+
                 Keccak beforeCodeHash = before?.CodeHash;
                 Keccak afterCodeHash = after?.CodeHash;
-                
+
                 if (beforeCodeHash != afterCodeHash)
                 {
                     byte[] beforeCode = beforeCodeHash == null
                         ? null
                         : beforeCodeHash == Keccak.OfAnEmptyString
-                            ? Bytes.Empty 
+                            ? Bytes.Empty
                             : _codeDb.Get(beforeCodeHash);
                     byte[] afterCode = afterCodeHash == null
                         ? null
                         : afterCodeHash == Keccak.OfAnEmptyString
-                            ? Bytes.Empty 
+                            ? Bytes.Empty
                             : _codeDb.Get(afterCodeHash);
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
@@ -524,12 +520,12 @@ namespace Nethermind.Store
                         stateTracer.ReportCodeChange(address, beforeCode, afterCode);
                     }
                 }
-                
+
                 if (afterBalance != beforeBalance)
                 {
                     stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
                 }
-                
+
                 if (afterNonce != beforeNonce)
                 {
                     stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
@@ -661,9 +657,9 @@ namespace Nethermind.Store
         public void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-            _intraBlockCache.Clear();
+            _intraBlockCache.Reset();
+            _committedThisRound.Reset();
             _currentPosition = -1;
-            _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
         }
 
