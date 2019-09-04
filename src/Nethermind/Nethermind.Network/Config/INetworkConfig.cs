@@ -22,6 +22,9 @@ namespace Nethermind.Network.Config
 {
     public interface INetworkConfig : IConfig
     {
+        [ConfigItem(Description = "Use only if your node cannot resolve external IP automatically.", DefaultValue = "null")]
+        string ExternalIp { get; set; }
+        
         [ConfigItem(Description = "Currently ignored.", DefaultValue = "null")]
         string TrustedPeers { get; set; }
         

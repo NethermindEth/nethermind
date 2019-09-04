@@ -171,6 +171,7 @@ namespace Nethermind.Runner.Runners
         private IStaticNodesManager _staticNodesManager;
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
+        private INetworkConfig _networkConfig;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -195,7 +196,7 @@ namespace Nethermind.Runner.Runners
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
             _perfService = new PerfService(_logManager);
-            _networkHelper = new NetworkHelper(_logger);
+            _networkHelper = new NetworkHelper(_networkConfig, _logManager);
         }
 
         public async Task Start()
@@ -711,7 +712,8 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork()
         {
-            var maxPeersCount = _configProvider.GetConfig<INetworkConfig>().ActivePeersMaxCount;
+            _networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            var maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
@@ -893,11 +895,10 @@ namespace Nethermind.Runner.Runners
                 _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
             
             _messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
-
-            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            
             var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
 
-            _sessionMonitor = new SessionMonitor(networkConfig, _logManager);
+            _sessionMonitor = new SessionMonitor(_networkConfig, _logManager);
             _rlpxPeer = new RlpxPeer(
                 _messageSerializationService,
                 _nodeKey.PublicKey,
@@ -932,8 +933,8 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }
 
-            PeerLoader peerLoader = new PeerLoader(networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager, _staticNodesManager);
+            PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, _networkConfig, _logManager, _staticNodesManager);
             _peerManager.Init();
         }
 
