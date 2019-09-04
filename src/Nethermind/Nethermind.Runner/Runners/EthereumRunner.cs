@@ -933,8 +933,8 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }
 
-            PeerLoader peerLoader = new PeerLoader(networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, networkConfig, _logManager, _staticNodesManager);
+            PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, _networkConfig, _logManager, _staticNodesManager);
             _peerManager.Init();
         }
 
