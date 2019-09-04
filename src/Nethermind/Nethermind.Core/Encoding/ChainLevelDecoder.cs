@@ -65,7 +65,7 @@ namespace Nethermind.Core.Encoding
 
             if (item.BlockInfos.Any(bi => bi == null))
             {
-                throw new Exception();
+                throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
             }
             
             Rlp rlp = Rlp.Encode(elements);

@@ -47,8 +47,7 @@ namespace Nethermind.Blockchain
         private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize);
         private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize);
 
-        private const int MaxQueueSize = 10_000_000;
-
+        private const int BestKnownSearchLimit = 256_000_000;
         public const int DbLoadBatchSize = 4000;
 
         private long _currentDbLoadBatchEnd;
@@ -139,7 +138,7 @@ namespace Nethermind.Blockchain
         {
             long headNumber = Head?.Number ?? -1;
             long left = Math.Max(LowestInsertedHeader?.Number ?? 0, headNumber);
-            long right = headNumber + MaxQueueSize;
+            long right = headNumber + BestKnownSearchLimit;
 
             while (left != right)
             {
