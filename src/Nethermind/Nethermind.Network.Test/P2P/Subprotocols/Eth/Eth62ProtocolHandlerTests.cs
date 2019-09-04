@@ -21,6 +21,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -73,14 +74,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         }
         
         [Test]
-        public void Get_headers_when_blocks_are_missing()
+        public void Get_headers_when_blocks_are_missing_at_the_end()
         {
             var svc = Build.A.SerializationService().WithEth().TestObject;
+            
+            var headers = new BlockHeader[5];
+            headers[0] = Build.A.BlockHeader.TestObject;
+            headers[1] = Build.A.BlockHeader.TestObject;
+            headers[2] = Build.A.BlockHeader.TestObject;
             
             var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISyncServer>();
             var transactionPool = Substitute.For<ITxPool>();
-            syncManager.FindHeaders(null, Arg.Any<int>(), Arg.Any<int>(), Arg.Any<bool>()).Throws(new ArgumentNullException());
+            syncManager.FindHash(1920000).Returns(TestItem.KeccakA);
+            syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
+                .Returns(headers);
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
@@ -96,7 +104,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var msg = new GetBlockHeadersMessage();
             msg.StartingBlockNumber = 1920000;
-            msg.MaxHeaders = 3;
+            msg.MaxHeaders = 5;
             msg.Skip = 1;
             msg.Reverse = 1;
             
@@ -105,6 +113,53 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
+            session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 3));
+            syncManager.Received().FindHash(1920000);
+        }
+        
+        [Test]
+        public void Get_headers_when_blocks_are_missing_in_the_middle()
+        {
+            var svc = Build.A.SerializationService().WithEth().TestObject;
+            
+            var headers = new BlockHeader[5];
+            headers[0] = Build.A.BlockHeader.TestObject;
+            headers[1] = Build.A.BlockHeader.TestObject;
+            headers[2] = null;
+            headers[3] = Build.A.BlockHeader.TestObject;
+            headers[4] = Build.A.BlockHeader.TestObject;
+            
+            var session = Substitute.For<ISession>();
+            var syncManager = Substitute.For<ISyncServer>();
+            var transactionPool = Substitute.For<ITxPool>();
+            syncManager.FindHash(1920000).Returns(TestItem.KeccakA);
+            syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
+                .Returns(headers);
+            Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            syncManager.Head.Returns(genesisBlock.Header);
+            syncManager.Genesis.Returns(genesisBlock.Header);
+            var handler = new Eth62ProtocolHandler(
+                session,
+                svc,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                syncManager,
+                LimboLogs.Instance,
+                new PerfService(LimboLogs.Instance),
+                transactionPool);
+            handler.Init();
+            
+            var msg = new GetBlockHeadersMessage();
+            msg.StartingBlockNumber = 1920000;
+            msg.MaxHeaders = 5;
+            msg.Skip = 1;
+            msg.Reverse = 1;
+            
+            var statusMsg = new StatusMessage();
+            statusMsg.GenesisHash = genesisBlock.Hash;
+            
+            handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
+            handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
+            session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 5));
             syncManager.Received().FindHash(1920000);
         }
     }
