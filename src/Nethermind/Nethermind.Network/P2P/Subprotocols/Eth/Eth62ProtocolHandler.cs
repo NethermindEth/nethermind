@@ -411,6 +411,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     ? Array.Empty<BlockHeader>()
                     : SyncServer.FindHeaders(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
+            headers = FixHeadersForGeth(headers);
+
+            Send(new BlockHeadersMessage(headers));
+            stopwatch.Stop();
+            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+        }
+
+        private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
+        {
             int emptyBlocksAtTheEnd = 0;
             for (int i = 0; i < headers.Length; i++)
             {
@@ -435,9 +444,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 headers = gethFriendlyHeaders;
             }
 
-            Send(new BlockHeadersMessage(headers));
-            stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            return headers;
         }
 
         private void Handle(BlockBodiesMessage message)
