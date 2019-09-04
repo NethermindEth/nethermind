@@ -196,6 +196,8 @@ namespace Nethermind.Runner.Runners
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
             _perfService = new PerfService(_logManager);
+            
+            _networkConfig = _configProvider.GetConfig<INetworkConfig>();
             _networkHelper = new NetworkHelper(_networkConfig, _logManager);
         }
 
@@ -712,7 +714,6 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork()
         {
-            _networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
