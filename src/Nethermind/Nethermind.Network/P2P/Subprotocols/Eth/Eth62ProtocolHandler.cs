@@ -435,7 +435,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (emptyBlocksAtTheEnd != 0)
             {
-                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(headers.Length - emptyBlocksAtTheEnd).ToArray();
+                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(0,headers.Length - emptyBlocksAtTheEnd).ToArray();
                 headers = gethFriendlyHeaders;
             }
 
