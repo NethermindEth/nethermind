@@ -34,6 +34,7 @@ namespace Nethermind.Db
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         private readonly RocksDb _db;
         private WriteBatch _currentBatch;
+        private WriteOptions _writeOptions;
 
         public abstract string Name { get; }
 
@@ -120,7 +121,13 @@ namespace Nethermind.Db
             
             options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
             options.IncreaseParallelism(Environment.ProcessorCount);
+            options.SetRecycleLogFileNum(dbConfig.RecycleLogFileNum); // potential optimization for reusing allocated log files
+            
+            
 //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
+            _writeOptions = new WriteOptions();
+            _writeOptions.SetSync(dbConfig.WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
+
             return options;
         }
         
@@ -149,11 +156,11 @@ namespace Nethermind.Db
                 {
                     if (value == null)
                     {
-                        _db.Remove(key);
+                        _db.Remove(key, null, _writeOptions);
                     }
                     else
                     {
-                        _db.Put(key, value);
+                        _db.Put(key, value, null, _writeOptions);
                     }
                 }
             }
@@ -172,7 +179,7 @@ namespace Nethermind.Db
 
         public void Remove(byte[] key)
         {
-            _db.Remove(key);
+            _db.Remove(key, null, _writeOptions);
         }
 
         public byte[][] GetAll()
@@ -207,7 +214,7 @@ namespace Nethermind.Db
 
         public void CommitBatch()
         {
-            _db.Write(_currentBatch);
+            _db.Write(_currentBatch, _writeOptions);
             _currentBatch.Dispose();
             _currentBatch = null;
         }
