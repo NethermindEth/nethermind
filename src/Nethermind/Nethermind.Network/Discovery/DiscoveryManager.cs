@@ -188,18 +188,20 @@ namespace Nethermind.Network.Discovery
 
             if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes()))
             {
-                //throw new NetworkingException($"Received message with incorrect destination address, message: {message}");
+                throw new NetworkingException($"Received message with incorrect destination address, message: {message}", NetworkExceptionType.Discovery);
             }
 
-            if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
-            {
+            // port will be different as we dynamically open ports for each socket connection
+//            if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
+//            {
 //                throw new NetworkingException($"Received message with incorrect destination port, message: {message}");
-            }
+//            }
 
-            if (!Bytes.AreEqual(message.FarAddress?.Address.GetAddressBytes(), message.SourceAddress?.Address.GetAddressBytes()))
-            {
-                //throw new NetworkingException($"Received message with incorrect source address, message: {message}");
-            }
+            // either an old Nethermind or other nodes that make the same mistake 
+//            if (!Bytes.AreEqual(message.FarAddress?.Address.GetAddressBytes(), message.SourceAddress?.Address.GetAddressBytes()))
+//            {
+//                throw new NetworkingException($"Received message with incorrect source address, message: {message}", NetworkExceptionType.Discovery);
+//            }
 
             if (message.FarAddress?.Port != message.SourceAddress?.Port)
             {

@@ -21,6 +21,7 @@ namespace Nethermind.Network.Config
     public class NetworkConfig : INetworkConfig
     {
         public string ExternalIp { get; set; } = null;
+        public string LocalIp { get; set; }
         public string StaticPeers { get; set; }
         public string TrustedPeers { get; set; } = string.Empty;
         public bool IsPeersPersistenceOn { get; set; } = true;
@@ -33,5 +34,9 @@ namespace Nethermind.Network.Config
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
         public int MaxCandidatePeerCount { get; set; } = 10000;
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
+        
+        public int DiscoveryPort { get; set; } = 30303;
+        
+        public int P2PPort { get; set; } = 30303;
     }
 }

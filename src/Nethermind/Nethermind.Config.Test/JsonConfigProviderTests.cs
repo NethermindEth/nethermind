@@ -66,7 +66,7 @@ namespace Nethermind.Config.Test
             Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
             new[] { ModuleType.Eth, ModuleType.Debug }.ToList().ForEach(x =>
             {
-                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
+                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x.ToString()));
             });
 
             Assert.AreEqual(4, networkConfig.Concurrency);

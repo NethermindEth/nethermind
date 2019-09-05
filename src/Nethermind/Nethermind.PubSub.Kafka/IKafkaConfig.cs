@@ -22,6 +22,8 @@ namespace Nethermind.PubSub.Kafka
 {
     public interface IKafkaConfig : IConfig
     {
+        [ConfigItem(Description = "If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.", DefaultValue = "false")]
+        bool Enabled { get; set; }
         string Servers { get; }
         string SecurityProtocol { get; }
         bool SaslEnabled { get; }
