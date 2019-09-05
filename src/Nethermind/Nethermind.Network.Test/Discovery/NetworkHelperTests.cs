@@ -30,8 +30,8 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public void Can_resolve_external_ip()
         {
-            var networkHelper = new NetworkHelper(new NetworkConfig(), LimboLogs.Instance);
-            var address = networkHelper.GetExternalIp();
+            var ipResolver = new IpResolver(new NetworkConfig(), LimboLogs.Instance);
+            var address = ipResolver.ExternalIp;
             Assert.IsNotNull(address);
         }
         
@@ -41,16 +41,16 @@ namespace Nethermind.Network.Test.Discovery
             string ipOverride = "99.99.99.99";
             INetworkConfig networkConfig = new NetworkConfig();
             networkConfig.ExternalIp = ipOverride;
-            var networkHelper = new NetworkHelper(networkConfig, LimboLogs.Instance);
-            var address = networkHelper.GetExternalIp();
+            var ipResolver = new IpResolver(networkConfig, LimboLogs.Instance);
+            var address = ipResolver.ExternalIp;
             Assert.AreEqual(IPAddress.Parse(ipOverride), address);
         }
 
         [Test]
         public void Can_resolve_internal_ip()
         {
-            var networkHelper = new NetworkHelper(new NetworkConfig(), LimboLogs.Instance);
-            var address = networkHelper.GetLocalIp();
+            var ipResolver = new IpResolver(new NetworkConfig(), LimboLogs.Instance);
+            var address = ipResolver.LocalIp;
             Assert.IsNotNull(address);
         }
     }

@@ -24,31 +24,23 @@ using Nethermind.Network.Config;
 
 namespace Nethermind.Network
 {
-    public class NetworkHelper : INetworkHelper
+    public class IpResolver : IIpResolver
     {
         private ILogger _logger;
         private INetworkConfig _networkConfig;
-        
-        private IPAddress _localIp;
-        private IPAddress _externalIp;
 
-        public NetworkHelper(INetworkConfig networkConfig, ILogManager logManager)
+        public IpResolver(INetworkConfig networkConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
-            _externalIp = InitializeExternalIp();
+            
+            LocalIp = InitializeLocalIp();
+            ExternalIp = InitializeExternalIp();
         }
+        
+        public IPAddress LocalIp { get; }
 
-       
-        public IPAddress GetLocalIp()
-        {
-            return _localIp ?? (_localIp = FindLocalIp());
-        }
-
-        public IPAddress GetExternalIp()
-        {
-            return _externalIp;
-        }
+        public IPAddress ExternalIp { get; }
 
         private IPAddress InitializeExternalIp()
         {
@@ -79,8 +71,14 @@ namespace Nethermind.Network
             }
         }
 
-        private IPAddress FindLocalIp()
+        private IPAddress InitializeLocalIp()
         {
+            if (_networkConfig.LocalIp != null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_networkConfig.LocalIp}");
+                return IPAddress.Parse(_networkConfig.LocalIp);
+            }
+            
             try
             {
                 using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))

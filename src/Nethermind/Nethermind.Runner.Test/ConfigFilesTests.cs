@@ -42,6 +42,24 @@ namespace Nethermind.Runner.Test
         {
         }
 
+        [TestCase("ropsten_archive.cfg", false)]
+        [TestCase("ropsten.cfg", true)]
+        [TestCase("rinkeby_archive.cfg", false)]
+        [TestCase("rinkeby.cfg", true)]
+        [TestCase("goerli_archive.cfg", false)]
+        [TestCase("goerli.cfg", true)]
+        [TestCase("mainnet_archive.cfg", false)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("sokol.cfg", false)]
+        [TestCase("poacore.cfg", false)]
+        [TestCase("spaceneth.cfg", false)]
+        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+            Assert.AreEqual(config.FastSync, fastSyncEnabled);
+        }
+        
         [TestCase("ropsten_archive.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
         [TestCase("ropsten.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
         [TestCase("rinkeby_archive.cfg", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
@@ -184,12 +202,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
-        public void Default_ports_are_correct(string configFile)
+        public void Network_defaults_are_correct(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             INetworkConfig networkConfig = configProvider.GetConfig<INetworkConfig>();
             Assert.AreEqual(30303, networkConfig.DiscoveryPort, nameof(networkConfig.DiscoveryPort));
             Assert.AreEqual(30303, networkConfig.P2PPort, nameof(networkConfig.P2PPort));
+            Assert.Null(networkConfig.ExternalIp, nameof(networkConfig.ExternalIp));
+            Assert.Null(networkConfig.LocalIp, nameof(networkConfig.LocalIp));
+            Assert.AreEqual(50, networkConfig.ActivePeersMaxCount, 50);
         }
         
         [TestCase("ropsten_archive.cfg")]

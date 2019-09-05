@@ -162,7 +162,7 @@ namespace Nethermind.Network.Discovery
                     .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
             }
 
-            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.ExternalIp), _networkConfig.DiscoveryPort)
+            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort)
                 .ContinueWith(t => _channel = t.Result);
         }
 

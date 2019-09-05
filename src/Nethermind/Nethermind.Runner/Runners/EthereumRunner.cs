@@ -125,7 +125,7 @@ namespace Nethermind.Runner.Runners
         private IConfigProvider _configProvider;
         private ITxPoolConfig _txPoolConfig;
         private IInitConfig _initConfig;
-        private INetworkHelper _networkHelper;
+        private IIpResolver _ipResolver;
         private PrivateKey _nodeKey;
         private ChainSpec _chainSpec;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
@@ -198,8 +198,9 @@ namespace Nethermind.Runner.Runners
             _perfService = new PerfService(_logManager);
             
             _networkConfig = _configProvider.GetConfig<INetworkConfig>();
-            _networkHelper = new NetworkHelper(_networkConfig, _logManager);
-            _networkConfig.ExternalIp = _networkHelper.GetExternalIp().ToString();
+            _ipResolver = new IpResolver(_networkConfig, _logManager);
+            _networkConfig.ExternalIp = _ipResolver.ExternalIp.ToString();
+            _networkConfig.LocalIp = _ipResolver.LocalIp.ToString();
         }
 
         public async Task Start()
