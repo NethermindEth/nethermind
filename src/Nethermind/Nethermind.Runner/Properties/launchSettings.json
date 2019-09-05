@@ -9,7 +9,7 @@
     },
     "MainNet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath D:\\mainnet_fast --SyncConfig.FastSync true",
+      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath D:\\mainnet_fast --Sync.FastSync true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -23,15 +23,15 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\ --InitConfig.JsonRpcEnabled true"
+      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\ --JsonRpc.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",
-      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
     },
     "Poacore": {
       "commandName": "Project",
-      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
     }
   }
 }
