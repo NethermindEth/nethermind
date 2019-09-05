@@ -27,10 +27,10 @@ namespace Nethermind.Monitoring.Config
         bool Enabled { get; }
         
         [ConfigItem(Description = "Prometheus URL.", DefaultValue = "\"http://localhost:9091/metrics\"")]
-        string MetricsPushGatewayUrl {get; }
+        string PushGatewayUrl {get; }
         
         [ConfigItem(DefaultValue = "5")]
-        int MetricsIntervalSeconds {get; }
+        int IntervalSeconds {get; }
         
         [ConfigItem(Description = "Name displayed in the Grafana dashboard", DefaultValue = "\"Nethermind\"")]
         string NodeName { get; }

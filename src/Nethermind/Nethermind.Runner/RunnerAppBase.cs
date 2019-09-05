@@ -225,9 +225,9 @@ namespace Nethermind.Runner
 
             if (metricsParams.Enabled)
             {
-                var intervalSeconds = metricsParams.MetricsIntervalSeconds;
+                var intervalSeconds = metricsParams.IntervalSeconds;
                 _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
-                    metricsParams.MetricsPushGatewayUrl, ClientVersion.Description,
+                    metricsParams.PushGatewayUrl, ClientVersion.Description,
                     metricsParams.NodeName, intervalSeconds, logManager);
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
