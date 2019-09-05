@@ -346,7 +346,7 @@ namespace Nethermind.Blockchain
                     {
                         if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                         {
-                            if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.Hash}");
+                            if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
                         blocksToProcess.Add(block);

@@ -104,7 +104,9 @@ namespace Nethermind.Runner
 
                 var serializer = new UnforgivingJsonSerializer();
                 if (Logger.IsInfo)
+                {
                     Logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
+                }
 
                 _cancelKeySource = new TaskCompletionSource<object>();
 

@@ -68,6 +68,9 @@ namespace Nethermind.Network.Test.Discovery
             _messageSender = Substitute.For<IMessageSender>();
             var calculator = new NodeDistanceCalculator(discoveryConfig);
             
+            _networkConfig.ExternalIp = "99.10.10.66";
+            _networkConfig.LocalIp = "10.0.0.5";
+            
             _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
             

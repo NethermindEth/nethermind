@@ -50,6 +50,9 @@ namespace Nethermind.Network.Test.Discovery
         {
             _config = new DiscoveryConfig();
             _networkConfig = new NetworkConfig();
+            _networkConfig.ExternalIp = "99.10.10.66";
+            _networkConfig.LocalIp = "10.0.0.5";
+            
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort);
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
