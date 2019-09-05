@@ -20,6 +20,7 @@ using System.IO;
 using System.Net;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.EthStats;
 using Nethermind.Grpc;
@@ -41,6 +42,22 @@ namespace Nethermind.Runner.Test
         {
         }
 
+        [TestCase("ropsten_archive.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
+        [TestCase("ropsten.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
+        [TestCase("rinkeby_archive.cfg", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
+        [TestCase("rinkeby.cfg", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]
+        [TestCase("goerli_archive.cfg", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
+        [TestCase("goerli.cfg", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
+        [TestCase("mainnet_archive.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
+        [TestCase("mainnet.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
+        [TestCase("sokol.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        public void Genesis_hash_is_correct(string configFile, string genesisHash)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            IInitConfig config = configProvider.GetConfig<IInitConfig>();
+            Assert.AreEqual(config.GenesisHash, genesisHash);
+        }
+        
         [TestCase("ropsten_archive.cfg")]
         [TestCase("ropsten.cfg")]
         [TestCase("rinkeby_archive.cfg")]
@@ -238,12 +255,12 @@ namespace Nethermind.Runner.Test
 
             Assert.False(initConfig.KeepDevWalletInMemory, nameof(initConfig.KeepDevWalletInMemory));
             Assert.False(initConfig.IsMining, nameof(initConfig.IsMining));
-            Assert.True(initConfig.StoreReceipts, nameof(initConfig.StoreReceipts));
             Assert.False(initConfig.EnableRc7Fix, nameof(initConfig.EnableRc7Fix));
+            Assert.True(initConfig.StoreReceipts, nameof(initConfig.StoreReceipts));
+            Assert.False(initConfig.StoreTraces, nameof(initConfig.StoreTraces));
+            
             Assert.AreEqual(configFile.Replace("cfg", "logs.txt"), initConfig.LogFileName, nameof(initConfig.LogFileName));
-            Assert.False(initConfig.StoreTraces, nameof(initConfig.StoreTraces));
             Assert.AreEqual("chainspec", initConfig.ChainSpecFormat, nameof(initConfig.ChainSpecFormat));
-            Assert.False(initConfig.StoreTraces, nameof(initConfig.StoreTraces));
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)
