@@ -63,6 +63,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
@@ -167,7 +168,6 @@ namespace Nethermind.Runner.Runners
         private HiveRunner _hiveRunner;
         private ISessionMonitor _sessionMonitor;
         private ISyncConfig _syncConfig;
-        public IEnode Enode => _enode;
         private IStaticNodesManager _staticNodesManager;
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
@@ -199,6 +199,7 @@ namespace Nethermind.Runner.Runners
             
             _networkConfig = _configProvider.GetConfig<INetworkConfig>();
             _networkHelper = new NetworkHelper(_networkConfig, _logManager);
+            _networkConfig.ExternalIp = _networkHelper.GetExternalIp().ToString();
         }
 
         public async Task Start()
@@ -255,18 +256,13 @@ namespace Nethermind.Runner.Runners
 
             INodeKeyManager nodeKeyManager = new NodeKeyManager(_cryptoRandom, _keyStore, _configProvider.GetConfig<IKeyStoreConfig>(), _logManager);
             _nodeKey = nodeKeyManager.LoadNodeKey();
-
-            var ipVariable = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
-            var localIp = string.IsNullOrWhiteSpace(ipVariable)
-                ? _networkHelper.GetLocalIp()
-                : IPAddress.Parse(ipVariable);
-
-            _enode = new Enode(_nodeKey.PublicKey, localIp, _initConfig.P2PPort);
+            _enode = new Enode(_nodeKey.PublicKey, IPAddress.Parse(_networkConfig.ExternalIp), _networkConfig.P2PPort);
         }
 
         private void RegisterJsonRpcModules()
         {
-            if (!_initConfig.JsonRpcEnabled)
+            IJsonRpcConfig jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
+            if (!jsonRpcConfig.Enabled)
             {
                 return;
             }
@@ -311,10 +307,7 @@ namespace Nethermind.Runner.Runners
 
         private void UpdateDiscoveryConfig()
         {
-            var localHost = _networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
             var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
-            discoveryConfig.MasterExternalIp = localHost;
-            discoveryConfig.MasterHost = localHost;
             if (discoveryConfig.Bootnodes != string.Empty)
             {
                 if (_chainSpec.Bootnodes.Length != 0)
@@ -542,13 +535,10 @@ namespace Nethermind.Runner.Runners
                 await InitHive();
             }
 
-            if (HiveEnabled)
-            {
-                await InitHive();
-            }
-
             var producers = new List<IProducer>();
-            if (_initConfig.PubSubEnabled)
+            
+            var kafkaConfig = _configProvider.GetConfig<IKafkaConfig>();
+            if (kafkaConfig.Enabled)
             {
                 var kafkaProducer = await PrepareKafkaProducer(_blockTree, _configProvider.GetConfig<IKafkaConfig>());
                 producers.Add(kafkaProducer);
@@ -766,7 +756,7 @@ namespace Nethermind.Runner.Runners
                 _logger.Error("Unable to start the peer manager.", e);
             }
 
-            if (_logger.IsInfo) _logger.Info($"Ethereum     : tcp://{_enode.IpAddress}:{_enode.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"Ethereum     : tcp://{_enode.HostIp}:{_enode.Port}");
             if (_logger.IsInfo) _logger.Info($"Version      : {ClientVersion.Description}");
             if (_logger.IsInfo) _logger.Info($"This node    : {_enode.Info}");
             if (_logger.IsInfo) _logger.Info($"Node address : {_enode.Address} (do not use as an account)");
@@ -903,7 +893,7 @@ namespace Nethermind.Runner.Runners
             _rlpxPeer = new RlpxPeer(
                 _messageSerializationService,
                 _nodeKey.PublicKey,
-                _initConfig.P2PPort,
+                _networkConfig.P2PPort,
                 encryptionHandshakeServiceA,
                 _logManager,
                 _sessionMonitor);
@@ -961,7 +951,6 @@ namespace Nethermind.Runner.Runners
             }
 
             IDiscoveryConfig discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
-            discoveryConfig.MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new SameKeyGenerator(_nodeKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamper);
@@ -978,13 +967,8 @@ namespace Nethermind.Runner.Runners
 
             var nodeDistanceCalculator = new NodeDistanceCalculator(discoveryConfig);
 
-            var nodeTable = new NodeTable(nodeDistanceCalculator,
-                discoveryConfig,
-                _logManager);
-
-            var evictionManager = new EvictionManager(
-                nodeTable,
-                _logManager);
+            var nodeTable = new NodeTable(nodeDistanceCalculator, discoveryConfig, _networkConfig,  _logManager);
+            var evictionManager = new EvictionManager(nodeTable, _logManager);
 
             var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(
                 nodeTable,
@@ -1019,6 +1003,7 @@ namespace Nethermind.Runner.Runners
                 _messageSerializationService,
                 _cryptoRandom,
                 discoveryStorage,
+                _networkConfig,
                 discoveryConfig,
                 _timestamper,
                 _logManager, _perfService);
@@ -1077,7 +1062,7 @@ namespace Nethermind.Runner.Runners
             const string client = "0.1.1";
             const bool canUpdateHistory = false;
             var node = ClientVersion.Description;
-            var port = _configProvider.GetConfig<IInitConfig>().P2PPort;
+            var port = _networkConfig.P2PPort;
             var network = _specProvider.ChainId.ToString();
             var protocol = _syncConfig.FastSync ? "eth/63" : "eth/62";
             var ethStatsClient = new EthStatsClient(config.Server, reconnectionInterval, sender, _logManager);

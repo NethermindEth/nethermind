@@ -26,25 +26,25 @@ namespace Nethermind.Network
     {
         private readonly PublicKey _nodeKey;
 
-        public Enode(PublicKey nodeKey, IPAddress localIp, int p2PPort)
+        public Enode(PublicKey nodeKey, IPAddress hostIp, int port)
         {
             _nodeKey = nodeKey;
-            IpAddress = localIp;
-            P2PPort = p2PPort;
+            HostIp = hostIp;
+            Port = port;
         }
 
         public Enode(string enodeString)
         {
             string[] enodeParts = enodeString.Split(':');
             _nodeKey = new PublicKey(enodeParts[1].Split('@')[0].TrimStart('/'));
-            P2PPort = int.Parse(enodeParts[2]);
-            IpAddress = IPAddress.Parse(enodeParts[1].Split('@')[1]);
+            Port = int.Parse(enodeParts[2]);
+            HostIp = IPAddress.Parse(enodeParts[1].Split('@')[1]);
         }
         
         public PublicKey PublicKey => _nodeKey;
         public Address Address => _nodeKey.Address;
-        public IPAddress IpAddress { get; }
-        public int P2PPort { get; }
-        public string Info => $"enode://{_nodeKey.ToString(false)}@{IpAddress}:{P2PPort}";
+        public IPAddress HostIp { get; }
+        public int Port { get; }
+        public string Info => $"enode://{_nodeKey.ToString(false)}@{HostIp}:{Port}";
     }
 }

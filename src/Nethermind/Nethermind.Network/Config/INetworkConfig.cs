@@ -46,9 +46,12 @@ namespace Nethermind.Network.Config
         [ConfigItem(DefaultValue = "10000")]
         int P2PPingInterval { get; }
 
-        [ConfigItem(DefaultValue = "2")]
-        int P2PPingRetryCount { get; }
-
+        [ConfigItem(Description = "UDP port number for incoming discovery connections.", DefaultValue = "30303")]
+        int DiscoveryPort { get; set; }
+        
+        [ConfigItem(Description = "TPC/IP port number for incoming P2P connections.", DefaultValue = "30303")]
+        int P2PPort { get; set; }
+        
         [ConfigItem(DefaultValue = "2000")]
         int MaxPersistedPeerCount { get; }
         

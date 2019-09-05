@@ -20,7 +20,7 @@ namespace Nethermind.Monitoring.Config
 {
     public class MetricsConfig : IMetricsConfig
     {
-        public bool MetricsEnabled { get; set; } = false;
+        public bool Enabled { get; set; } = false;
         public string MetricsPushGatewayUrl {get; set; } =  "http://localhost:9091/metrics";
         public int MetricsIntervalSeconds {get; set; } = 5;
         public string NodeName { get; set;} = "Nethermind";

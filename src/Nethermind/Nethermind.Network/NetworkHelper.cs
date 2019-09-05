@@ -26,17 +26,20 @@ namespace Nethermind.Network
 {
     public class NetworkHelper : INetworkHelper
     {
-        private readonly INetworkConfig _networkConfig;
-        private readonly ILogger _logger;
+        private ILogger _logger;
+        private INetworkConfig _networkConfig;
+        
         private IPAddress _localIp;
         private IPAddress _externalIp;
 
         public NetworkHelper(INetworkConfig networkConfig, ILogManager logManager)
         {
-            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _externalIp = InitializeExternalIp();
         }
 
+       
         public IPAddress GetLocalIp()
         {
             return _localIp ?? (_localIp = FindLocalIp());
@@ -44,11 +47,17 @@ namespace Nethermind.Network
 
         public IPAddress GetExternalIp()
         {
-            return _externalIp ?? (_externalIp = FindExternalIp());
+            return _externalIp;
         }
 
-        private IPAddress FindExternalIp()
+        private IPAddress InitializeExternalIp()
         {
+            string externalIpSetInEnv = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
+            if (externalIpSetInEnv != null)
+            {
+                return IPAddress.Parse(externalIpSetInEnv);
+            }
+            
             if (_networkConfig.ExternalIp != null)
             {
                 if(_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.ExternalIp)} = {_networkConfig.ExternalIp}");
@@ -61,12 +70,12 @@ namespace Nethermind.Network
                 if(_logger.IsInfo) _logger.Info($"Using {url} to get external ip");
                 string ip = new WebClient().DownloadString(url);
                 if(_logger.IsInfo) _logger.Info($"External ip: {ip}");
-                return IPAddress.Parse(ip?.Trim());
+                return IPAddress.Parse(ip.Trim());
             }
             catch (Exception e)
             {
                 if(_logger.IsError) _logger.Error("Error while getting external ip", e);
-                return null;
+                return IPAddress.Parse("127.0.0.1");
             }
         }
 

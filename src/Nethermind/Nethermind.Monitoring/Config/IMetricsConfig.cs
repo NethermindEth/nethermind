@@ -24,7 +24,7 @@ namespace Nethermind.Monitoring.Config
     public interface IMetricsConfig : IConfig
     {
         [ConfigItem(Description = "If 'true' then the node publishes various metrics to Prometheus at the given interval.", DefaultValue = "false")]
-        bool MetricsEnabled { get; }
+        bool Enabled { get; }
         
         [ConfigItem(Description = "Prometheus URL.", DefaultValue = "\"http://localhost:9091/metrics\"")]
         string MetricsPushGatewayUrl {get; }

@@ -19,12 +19,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
     public class JsonRpcConfig : IJsonRpcConfig
     {
-        public IEnumerable<ModuleType> EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>();
+        public bool Enabled { get; set; }
+
+        public string Host { get; set; }
+        
+        public int Port { get; set; }
+        
+        public string[] EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>().Select(mt => mt.ToString()).ToArray();
     }
 }

@@ -48,6 +48,7 @@ namespace Nethermind.Network.Test.Discovery
         private PublicKey[] _nodeIds;
         private Dictionary<string, PublicKey> _signatureToNodeId;
 
+        private INetworkConfig _networkConfig = new NetworkConfig();
         private IDiscoveryManager _discoveryManager;
         private IMessageSender _udpClient;
         private INodeTable _nodeTable;
@@ -75,7 +76,7 @@ namespace Nethermind.Network.Test.Discovery
 
             var calculator = new NodeDistanceCalculator(discoveryConfig);
 
-            _nodeTable = new NodeTable(calculator, discoveryConfig, logManager);
+            _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
             
             _timestamper = new Timestamper();

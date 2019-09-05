@@ -20,6 +20,7 @@ namespace Nethermind.PubSub.Kafka
 {
     public class KafkaConfig : IKafkaConfig
     {
+        public bool Enabled { get; set; }
         public string Servers { get; set; } = "localhost:19092,localhost:29092,localhost:39092";
         public string SecurityProtocol { get; set; } = "SASL_Plaintext";
         public bool SaslEnabled { get; set; } = true;
