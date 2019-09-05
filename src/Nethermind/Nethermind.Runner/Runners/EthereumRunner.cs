@@ -450,7 +450,7 @@ namespace Nethermind.Runner.Runners
                 _stateProvider,
                 _logManager);
             
-            IList<IAdditionalBlockProcessor> blockPreProcessors = new List<IAdditionalBlockProcessor>();
+            IList<IAdditionalBlockProcessor> additionalBlockProcessors = new List<IAdditionalBlockProcessor>();
             // blockchain processing
             var blockhashProvider = new BlockhashProvider(
                 _blockTree, _logManager);
@@ -469,7 +469,7 @@ namespace Nethermind.Runner.Runners
                 virtualMachine,
                 _logManager);
             
-            InitSealEngine(blockPreProcessors);
+            InitSealEngine(additionalBlockProcessors);
 
             /* validation */
             _headerValidator = new HeaderValidator(
@@ -507,7 +507,7 @@ namespace Nethermind.Runner.Runners
                 _txPool,
                 _receiptStorage,
                 _logManager,
-                blockPreProcessors);
+                additionalBlockProcessors);
 
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
@@ -578,17 +578,25 @@ namespace Nethermind.Runner.Runners
 
         private void InitBlockProducers()
         {
-            if (_initConfig.IsMining)
+            ReadOnlyChain GetProducerChain(
+                Func<IStateProvider, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
+                bool allowStateModification = false)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, allowStateModification);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
                 ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
+                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage,
+                    createAdditionalBlockProcessors);
+                return producerChain;
+            }
 
+            if (_initConfig.IsMining)
+            {
                 switch (_chainSpec.SealEngineType)
                 {
                     case SealEngineType.Clique:
                     {
+                        var producerChain = GetProducerChain();
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
                         CliqueConfig cliqueConfig = new CliqueConfig();
                         cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
@@ -600,9 +608,18 @@ namespace Nethermind.Runner.Runners
 
                     case SealEngineType.NethDev:
                     {
+                        var producerChain = GetProducerChain();
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree,
-                            _timestamper, _logManager);
+                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, _logManager);
+                        break;
+                    }
+                    
+                    case SealEngineType.AuRa:
+                    {
+                        
+                        var producerChain = GetProducerChain((s, t, l)  => new [] {new AuRaAdditionalBlockProcessorFactory(s, new AbiEncoder(), t, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
+                        if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
+                        _blockProducer = new DevBackgroundBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, _logManager);
                         break;
                     }
 

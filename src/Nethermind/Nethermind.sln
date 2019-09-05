@@ -57,6 +57,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\spaceneth.json = Chains\spaceneth.json
 		Chains\sokol.json = Chains\sokol.json
 		Chains\poacore.json = Chains\poacore.json
+		Chains\AuRaTest.json = Chains\AuRaTest.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DiagTools", "Nethermind.DiagTools\Nethermind.DiagTools.csproj", "{B8F7A931-EF2F-4107-8F9B-6C66053A8833}"

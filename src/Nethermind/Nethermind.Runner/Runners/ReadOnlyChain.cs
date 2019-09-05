@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -35,8 +37,7 @@ namespace Nethermind.Runner.Runners
         public IBlockchainProcessor Processor { get; }
         public IStateProvider ReadOnlyStateProvider { get; }
 
-        public ReadOnlyChain(
-            ReadOnlyBlockTree readOnlyTree,
+        public ReadOnlyChain(ReadOnlyBlockTree readOnlyTree,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ISpecProvider specProvider,
@@ -44,7 +45,8 @@ namespace Nethermind.Runner.Runners
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
             ITxPool customTxPool,
-            IReceiptStorage receiptStorage)
+            IReceiptStorage receiptStorage, 
+            Func<IStateProvider, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> additionalBlockProcessorsFactory)
         {
             ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, ReadOnlyStateProvider, logManager);
@@ -52,7 +54,8 @@ namespace Nethermind.Runner.Runners
             VirtualMachine virtualMachine = new VirtualMachine(ReadOnlyStateProvider, storageProvider, blockhashProvider, specProvider, logManager);
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, ReadOnlyStateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, 
+                additionalBlockProcessorsFactory?.Invoke(ReadOnlyStateProvider, transactionProcessor, logManager));
             Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false));
         }
     }
