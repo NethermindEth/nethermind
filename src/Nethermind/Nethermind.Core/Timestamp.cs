@@ -36,7 +36,7 @@ namespace Nethermind.Core
         
         public DateTime UtcNow => _constantDate ?? DateTime.UtcNow;
         
-        private DateTimeOffset Offset => new DateTimeOffset(UtcNow);
+        private DateTimeOffset Offset =>  new DateTimeOffset(UtcNow);
         
         public static Timestamper Default = new Timestamper();
     }

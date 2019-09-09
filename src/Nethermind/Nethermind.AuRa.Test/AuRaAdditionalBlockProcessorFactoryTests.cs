@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Validators;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Evm;
@@ -41,6 +42,7 @@ namespace Nethermind.AuRa.Test
         {
             var factory = new AuRaAdditionalBlockProcessorFactory(
                 Substitute.For<IStateProvider>(),
+                Substitute.For<IBlockTree>(),
                 Substitute.For<IAbiEncoder>(), 
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<ILogManager>());

@@ -34,11 +34,13 @@ namespace Nethermind.AuRa.Test.Validators
         private const string Include1 = "0xffffffffffffffffffffffffffffffffffffffff";
         private const string Include2 = "0xfffffffffffffffffffffffffffffffffffffffe";
         
-        [TestCase(Include1, ExpectedResult = true)]
-        [TestCase(Include2, ExpectedResult = true)]
-        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", ExpectedResult = false)]
-        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", ExpectedResult = false)]
-        public bool should_validate_correctly(string address)
+        [TestCase(Include1, 0ul, ExpectedResult = true)]
+        [TestCase(Include1, 1ul, ExpectedResult = false)]
+        [TestCase(Include2, 1ul, ExpectedResult = true)]
+        [TestCase(Include2, 0ul, ExpectedResult = false)]
+        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", 0ul, ExpectedResult = false)]
+        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", 1ul, ExpectedResult = false)]
+        public bool should_validate_correctly(string address, ulong index)
         {
             var validator = new ListValidator(
                 new AuRaParameters.Validator()
@@ -46,7 +48,7 @@ namespace Nethermind.AuRa.Test.Validators
                     Addresses = new[] {new Address(Include1), new Address(Include2), }
                 });
 
-            return validator.IsValidSealer(new Address(address));
+            return validator.IsValidSealer(new Address(address), index);
         }
 
         [Test]

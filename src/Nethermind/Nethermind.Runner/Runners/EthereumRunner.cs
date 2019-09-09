@@ -579,7 +579,7 @@ namespace Nethermind.Runner.Runners
         private void InitBlockProducers()
         {
             ReadOnlyChain GetProducerChain(
-                Func<IStateProvider, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
+                Func<IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
                 bool allowStateModification = false)
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, allowStateModification);
@@ -616,10 +616,9 @@ namespace Nethermind.Runner.Runners
                     
                     case SealEngineType.AuRa:
                     {
-                        
-                        var producerChain = GetProducerChain((s, t, l)  => new [] {new AuRaAdditionalBlockProcessorFactory(s, new AbiEncoder(), t, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
+                        var producerChain = GetProducerChain((s, b, t, l)  => new[] {new AuRaAdditionalBlockProcessorFactory(s, b, new AbiEncoder(), t, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
                         if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
-                        _blockProducer = new DevBackgroundBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, _logManager);
+                        _blockProducer = new AuRaBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _nodeKey.Address, _sealer, _logManager);
                         break;
                     }
 
@@ -679,12 +678,12 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _transactionProcessor, _logManager)
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, _blockTree, abiEncoder, _transactionProcessor, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                         
-                    _sealer = new AuRaSealer();
                     _sealValidator = new AuRaSealValidator(validatorProcessor, _ethereumEcdsa, _logManager);
                     _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder, _transactionProcessor);
+                    _sealer = new AuRaSealer(_blockTree, validatorProcessor, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _nodeKey.Address, _wallet, _logManager);
                     blockPreProcessors.Add(validatorProcessor);
                     break;
                 default:

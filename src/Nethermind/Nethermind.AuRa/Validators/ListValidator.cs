@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 
@@ -28,7 +29,7 @@ namespace Nethermind.AuRa.Validators
 {
     public class ListValidator : IAuRaValidatorProcessor
     {
-        private readonly ISet<Address> _validatorAddresses;
+        private readonly Address[] _validatorAddresses;
 
         public ListValidator(AuRaParameters.Validator validator)
         {
@@ -37,7 +38,7 @@ namespace Nethermind.AuRa.Validators
                 throw new ArgumentException("Wrong validator type.", nameof(validator));
             
             _validatorAddresses = validator.Addresses?.Length > 0
-                ? validator.Addresses.ToHashSet()
+                ? validator.Addresses
                 : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
         }
         
@@ -47,7 +48,8 @@ namespace Nethermind.AuRa.Validators
 
         public void Initialize(Block block, TransactionProcessor transactionProcessor) { }
 
-        public bool IsValidSealer(Address address) => _validatorAddresses.Contains(address);
+        public bool IsValidSealer(Address address, ulong step) => _validatorAddresses.GetItemRoundRobin(step) == address;
+        
         public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.List;
     }
 }

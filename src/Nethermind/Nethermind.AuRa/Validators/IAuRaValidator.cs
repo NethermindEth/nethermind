@@ -22,6 +22,6 @@ namespace Nethermind.AuRa.Validators
 {
     public interface IAuRaValidator
     {
-        bool IsValidSealer(Address address);
+        bool IsValidSealer(Address address, ulong step);
     }
 }

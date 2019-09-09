@@ -89,13 +89,13 @@ namespace Nethermind.AuRa.Contracts
 
         public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData);
 
-        public bool CheckInitiateChangeEvent(Address contractAddress, Block block, TxReceipt[] receipts, out Address[] addresses)
+        public bool CheckInitiateChangeEvent(Address contractAddress, BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {
             var logEntry = new LogEntry(contractAddress, 
                 Array.Empty<byte>(),
-                new[] {Definition.initiateChangeEventHash, block.ParentHash});
+                new[] {Definition.initiateChangeEventHash, blockHeader.ParentHash});
 
-            if (block.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
+            if (blockHeader.TryFindLog(receipts, logEntry, LogEntryEqualityComparer, out var foundEntry))
             {
                 addresses = DecodeAddresses(foundEntry.Data);
                 return true;                

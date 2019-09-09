@@ -1,4 +1,5 @@
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -12,8 +13,9 @@ namespace Nethermind.AuRa.Validators
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
+            IBlockTree blockTree,
             ILogManager logManager,
-            long startBlockNumber) : base(validator, stateProvider, abiEncoder, transactionProcessor, logManager, startBlockNumber)
+            long startBlockNumber) : base(validator, stateProvider, abiEncoder, transactionProcessor, blockTree, logManager, startBlockNumber)
         {
         }
 

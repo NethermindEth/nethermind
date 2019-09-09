@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Logging;
@@ -33,7 +34,11 @@ namespace Nethermind.AuRa.Validators
         private IAuRaValidatorProcessor _currentValidator = null;
         private int _nextValidator = 0;
 
-        public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, ILogManager logManager)
+        public MultiValidator(
+            AuRaParameters.Validator validator,
+            IAuRaAdditionalBlockProcessorFactory validatorFactory,
+            IBlockTree blockTree,
+            ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             if (validatorFactory == null) throw new ArgumentNullException(nameof(validatorFactory));
@@ -48,11 +53,16 @@ namespace Nethermind.AuRa.Validators
                 : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            if (blockTree?.Head != null)
+            {
+                TryUpdateValidator(blockTree.Head.Number);
+            }
         }
 
         public void PreProcess(Block block)
         {
-            if (TryUpdateValidator(block))
+            if (TryUpdateValidator(block.Number))
             {
                 if (_logger.IsInfo) _logger.Info($"Signal for switch to {_currentValidator.Type} based validator set at block {block.Number}.");
             }
@@ -64,14 +74,14 @@ namespace Nethermind.AuRa.Validators
             _currentValidator?.PostProcess(block, receipts);
         }
         
-        public bool IsValidSealer(Address address) => _currentValidator?.IsValidSealer(address) == true;
+        public bool IsValidSealer(Address address, ulong step) => _currentValidator?.IsValidSealer(address, step) == true;
         
-        private bool TryUpdateValidator(Block block)
+        private bool TryUpdateValidator(long blockNumber)
         {
             var validatorUpdated = false;
             
             // Check next validators as blocks are proceeding
-            while (_validators.Length > _nextValidator && block.Number >= _validators[_nextValidator].Key)
+            while (_validators.Length > _nextValidator && blockNumber >= _validators[_nextValidator].Key)
             {
                 _currentValidator = _validators[_nextValidator].Value;
                 _nextValidator++;
@@ -80,7 +90,7 @@ namespace Nethermind.AuRa.Validators
 
             // Check previous validators if reorganisation happened
             var currentValidator = _nextValidator - 1;
-            while (currentValidator >= 0 && block.Number < _validators[currentValidator].Key)
+            while (currentValidator >= 0 && blockNumber < _validators[currentValidator].Key)
             {
                 _nextValidator = currentValidator;
                 currentValidator--;
