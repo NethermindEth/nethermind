@@ -28,6 +28,5 @@ ToC
    firewall_configuration
    hardware_requirements
    security
-   jsonrpc
    docker
    contact
