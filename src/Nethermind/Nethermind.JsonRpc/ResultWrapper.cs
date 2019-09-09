@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Model;
+using Nethermind.Facade.Proxy;
 
 namespace Nethermind.JsonRpc
 {
@@ -63,6 +64,16 @@ namespace Nethermind.JsonRpc
         public ErrorType GetErrorType()
         {
             return ErrorType;
+        }
+        
+        public static ResultWrapper<T> From(RpcResult<T> rpcResult)
+        {
+            if (rpcResult is null)
+            {
+                return Fail("Missing result.");
+            }
+
+            return rpcResult.IsValid ? Success(rpcResult.Result) : Fail(rpcResult.Error.Message);
         }
     }
 }

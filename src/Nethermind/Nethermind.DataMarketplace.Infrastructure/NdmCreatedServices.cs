@@ -36,12 +36,12 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public INdmDataPublisher NdmDataPublisher { get; }
         public IJsonRpcNdmConsumerChannel JsonRpcNdmConsumerChannel { get; }
         public INdmConsumerChannelManager NdmConsumerChannelManager { get; }
-        public IBlockchainBridge BlockchainBridge { get; }
+        public INdmBlockchainBridge BlockchainBridge { get; }
 
         public NdmCreatedServices(Address consumerAddress,
             IAbiEncoder abiEncoder, IRlpDecoder<DataAsset> dataAssetRlpDecoder, IDepositService depositService,
             INdmDataPublisher ndmDataPublisher, IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
-            INdmConsumerChannelManager ndmConsumerChannelManager, IBlockchainBridge blockchainBridge)
+            INdmConsumerChannelManager ndmConsumerChannelManager, INdmBlockchainBridge blockchainBridge)
         {
             ConsumerAddress = consumerAddress;
             AbiEncoder = abiEncoder;

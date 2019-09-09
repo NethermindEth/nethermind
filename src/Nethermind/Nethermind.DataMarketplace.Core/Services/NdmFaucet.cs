@@ -38,7 +38,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         private DateTime _today;
         private UInt256 _todayRequestsTotalValueWei = 0;
         private readonly ConcurrentDictionary<string, bool> _pendingRequests = new ConcurrentDictionary<string, bool>();
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly IEthRequestRepository _requestRepository;
         private readonly Address _faucetAddress;
         private readonly UInt256 _maxValue;
@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly ILogger _logger;
         private bool _initialized;
 
-        public NdmFaucet(IBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
+        public NdmFaucet(INdmBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
             Address faucetAddress, UInt256 maxValue, UInt256 dailyRequestsTotalValueEth, bool enabled,
             ITimestamper timestamper, ILogManager logManager)
         {
@@ -172,7 +172,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (_logger.IsInfo) _logger.Info($"NDM Faucet is processing request for: {node}, address: {address}, value: {value} wei.");
             try
             {
-                var faucetAccount = _blockchainBridge.GetAccount(_faucetAddress);
+                var faucetAccount =  _blockchainBridge.GetAccount(_faucetAddress);
                 var transaction = new Transaction
                 {
                     Value = value,
@@ -183,7 +183,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                     Nonce = faucetAccount?.Nonce ?? 0
                 };
                 _blockchainBridge.Sign(transaction);
-                var transactionHash = _blockchainBridge.SendTransaction(transaction, true);
+                var transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
                 if (latestRequest is null)
                 {
                     var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));

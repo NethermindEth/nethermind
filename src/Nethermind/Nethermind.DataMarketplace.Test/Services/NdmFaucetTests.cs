@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Test.Services
 {
     public class NdmFaucetTests
     {
-        private IBlockchainBridge _blockchainBridge;
+        private INdmBlockchainBridge _blockchainBridge;
         private IEthRequestRepository _repository;
         private Address _faucetAddress;
         private UInt256 _maxValue;
@@ -53,7 +53,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [SetUp]
         public void Setup()
         {
-            _blockchainBridge = Substitute.For<IBlockchainBridge>();
+            _blockchainBridge = Substitute.For<INdmBlockchainBridge>();
             _repository = Substitute.For<IEthRequestRepository>();
             _repository.SumDailyRequestsTotalValueAsync(Arg.Any<DateTime>()).ReturnsForAnyArgs(UInt256.Zero);
             _faucetAddress = Address.FromNumber(1);
@@ -68,7 +68,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _faucetAccount = Account.TotallyEmpty;
             _transactionHash = Keccak.Zero;
             _blockchainBridge.GetAccount(_faucetAddress).Returns(_faucetAccount);
-            _blockchainBridge.SendTransaction(Arg.Any<Transaction>(), true).Returns(_transactionHash);
+            _blockchainBridge.SendOwnTransactionAsync(Arg.Any<Transaction>()).Returns(_transactionHash);
         }
 
         [Test]

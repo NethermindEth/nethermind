@@ -120,7 +120,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var depositProvider = new DepositProvider(depositRepository, depositUnitsCalculator, logManager);
             var kycVerifier = new KycVerifier(depositApprovalRepository, logManager);
             var consumerNotifier = new ConsumerNotifier(ndmNotifier);
-
+            
             var dataAssetService = new DataAssetService(providerRepository, consumerNotifier, logManager);
             var providerService = new ProviderService(providerRepository, consumerNotifier, logManager);
             var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider, kycVerifier, wallet,
@@ -148,7 +148,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var refundService = new RefundService(blockchainBridge, txPool, abiEncoder, wallet, depositRepository,
                 contractAddress, logManager);
             var refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
-                transactionVerifier, logManager);
+                transactionVerifier, timestamper, logManager);
             var accountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, ndmConfig.Id, consumerAddress, logManager);
             var consumerService = new ConsumerService(accountService, dataAssetService, dataRequestService,

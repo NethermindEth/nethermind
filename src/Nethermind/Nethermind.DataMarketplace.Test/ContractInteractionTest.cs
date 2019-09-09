@@ -32,6 +32,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -86,6 +87,7 @@ namespace Nethermind.DataMarketplace.Test
         protected Address _providerAccount;
         protected DevWallet _wallet;
         protected BlockchainBridge _bridge;
+        protected INdmBlockchainBridge _ndmBridge;
         protected IStateProvider _state;
         protected INdmConfig _ndmConfig;
         protected AbiEncoder _abiEncoder = new AbiEncoder();
@@ -115,6 +117,7 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
+            _ndmBridge = new NdmBlockchainBridge(_bridge);
 
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
@@ -201,20 +204,11 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Block FindBlock(Keccak blockHash)
-            {
-                throw new System.NotImplementedException();
-            }
+            public Block FindBlock(Keccak blockHash) => _headBlock.Hash == blockHash ? _headBlock : null;
 
-            public Block FindBlock(long blockNumber)
-            {
-                throw new System.NotImplementedException();
-            }
+            public Block FindBlock(long blockNumber) => _headBlock.Number == blockNumber ? _headBlock : null;
 
-            public Block FindLatestBlock()
-            {
-                throw new NotImplementedException();
-            }
+            public Block FindLatestBlock() => _headBlock;
 
             public Block FindPendingBlock()
             {

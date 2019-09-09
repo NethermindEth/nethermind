@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Security;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -26,6 +27,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Evm;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Wallet;
@@ -68,7 +70,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
-            var depositService = new DepositService(blockchainBridge, services.TransactionPool, encoder,
+
+            INdmBlockchainBridge ndmBlockchainBridge;
+            if (config.ProxyEnabled)
+            {
+                ndmBlockchainBridge = new NdmBlockchainBridgeProxy(new EthJsonRpcClientProxy(new JsonRpcClientProxy(config.JsonRpcUrlProxies, services.JsonSerializer)));
+            }
+            else
+            {
+                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge);
+            }
+            
+            var depositService = new DepositService(ndmBlockchainBridge, services.TransactionPool, encoder,
                 services.Wallet, contractAddress, logManager);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
@@ -77,7 +90,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
                 depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
-                blockchainBridge));
+                ndmBlockchainBridge));
         }
 
         private static void AddDecoders()

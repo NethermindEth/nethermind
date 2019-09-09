@@ -91,7 +91,7 @@ namespace Nethermind.Config
             {
                 return UInt256.Parse(itemValue);
             }
-            
+
             if (valueType.IsEnum)
             {
                 if (Enum.TryParse(valueType, itemValue, true, out var enumValue))
@@ -101,7 +101,13 @@ namespace Nethermind.Config
 
                 throw new IOException($"Cannot parse enum value: {itemValue}, type: {valueType.Name}");
             }
-            
+
+            if (valueType == typeof(string) && itemValue.StartsWith("[") && itemValue.EndsWith("]") &&
+                itemValue.Length > 2)
+            {
+                return JsonConvert.DeserializeObject<string[]>(itemValue)[0];
+            }
+
             return Convert.ChangeType(itemValue, valueType);
         }
     }
