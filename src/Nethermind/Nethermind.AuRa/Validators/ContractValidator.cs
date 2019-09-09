@@ -153,8 +153,8 @@ namespace Nethermind.AuRa.Validators
             
             if (isStartBlock)
             {
-                InitiateChange(block, validators);
                 if(_logger.IsInfo) _logger.Info($"Signal for switch to contract based validator set at block {block.Number}. Initial contract validators: [{string.Join<Address>(", ", validators)}].");
+                InitiateChange(block, validators);
             }
         }
 

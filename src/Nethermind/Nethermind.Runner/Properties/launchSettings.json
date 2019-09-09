@@ -32,6 +32,10 @@
     "Poacore": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
-    }
+    },
+    "xDai": {
+      "commandName": "Project",
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
+    }    
   }
 }

@@ -832,7 +832,9 @@ namespace Nethermind.Runner.Runners
 
         private void CreateSystemAccounts()
         {
-            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+            var isAura = _chainSpec.SealEngineType == SealEngineType.AuRa;
+            var hasConstructorAllocation = _chainSpec.Allocations.Values.Any(a => a.Constructor != null);
+            if (isAura && hasConstructorAllocation)
             {
                 _stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
                 _storageProvider.Commit();
