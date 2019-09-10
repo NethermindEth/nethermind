@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public Eip150SingleCodeGasPricesTests() : base(new FileBlockchainTestSource("stEIP150singleCodeGasPrices"))
+        public Eip150SingleCodeGasPricesTests() : base(new DirectoryTestsSource("stEIP150singleCodeGasPrices"))
         {
         }
     }

@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public ExtCodeHashTests() : base(new FileBlockchainTestSource("stExtCodeHash"))
+        public ExtCodeHashTests() : base(new DirectoryTestsSource("stExtCodeHash"))
         {
         }
     }

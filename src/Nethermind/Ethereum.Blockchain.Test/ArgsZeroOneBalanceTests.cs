@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public ArgsZeroOneBalanceTests() : base(new FileBlockchainTestSource("stArgsZeroOneBalance"))
+        public ArgsZeroOneBalanceTests() : base(new DirectoryTestsSource("stArgsZeroOneBalance"))
         {
         }
     }

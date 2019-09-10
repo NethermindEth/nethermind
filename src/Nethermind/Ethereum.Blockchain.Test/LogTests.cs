@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public LogTests() : base(new FileBlockchainTestSource("stLogTests"))
+        public LogTests() : base(new DirectoryTestsSource("stLogTests"))
         {
         }
     }

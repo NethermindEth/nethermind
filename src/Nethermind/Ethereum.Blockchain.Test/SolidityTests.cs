@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public SolidityTests() : base(new FileBlockchainTestSource("stSolidityTest"))
+        public SolidityTests() : base(new DirectoryTestsSource("stSolidityTest"))
         {
         }
     }

@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public PreCompiledContractsTests() : base(new FileBlockchainTestSource("stPreCompiledContracts"))
+        public PreCompiledContractsTests() : base(new DirectoryTestsSource("stPreCompiledContracts"))
         {
         }
     }

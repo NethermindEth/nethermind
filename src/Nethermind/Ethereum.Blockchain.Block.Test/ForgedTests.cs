@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public ForgedTests() : base(new FileBlockchainTestSource("bcForgedTest"))
+        public ForgedTests() : base(new DirectoryTestsSource("bcForgedTest"))
         {
         }
     }

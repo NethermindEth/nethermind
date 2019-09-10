@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public TimeConsumingTests() : base(new FileBlockchainTestSource("stTimeConsuming"))
+        public TimeConsumingTests() : base(new DirectoryTestsSource("stTimeConsuming"))
         {
         }
     }

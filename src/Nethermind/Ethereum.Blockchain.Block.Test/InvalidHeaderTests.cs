@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public InvalidHeaderTests() : base(new FileBlockchainTestSource("bcInvalidHeaderTest"))
+        public InvalidHeaderTests() : base(new DirectoryTestsSource("bcInvalidHeaderTest"))
         {
         }
     }

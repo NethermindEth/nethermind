@@ -31,7 +31,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public Eip158ToByzantiumTests() : base(new FileBlockchainTestSource("bcEIP158ToByzantium"))
+        public Eip158ToByzantiumTests() : base(new DirectoryTestsSource("bcEIP158ToByzantium"))
         {
         }
     }

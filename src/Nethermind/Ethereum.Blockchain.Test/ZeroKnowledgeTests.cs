@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public ZeroKnowledgeTests() : base(new FileBlockchainTestSource("stZeroKnowledge"))
+        public ZeroKnowledgeTests() : base(new DirectoryTestsSource("stZeroKnowledge"))
         {
         }
     }

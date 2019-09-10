@@ -20,7 +20,7 @@ using System.Collections.Generic;
 
 namespace Ethereum.Test.Base
 {
-    public interface IBlockchainTestSource
+    public interface IBlockchainTestsSource
     {
         IEnumerable<BlockchainTest> LoadTests();
     }

@@ -50,7 +50,7 @@ namespace Ethereum.Test.Base
 {
     public abstract class BlockchainTestBase
     {
-        private readonly IBlockchainTestSource _testSource;
+        private readonly IBlockchainTestsSource _testsSource;
         private static ILogger _logger = new SimpleConsoleLogger();
         private static ILogManager _logManager = NullLogManager.Instance;
         private static ISealValidator Sealer { get; }
@@ -62,9 +62,9 @@ namespace Ethereum.Test.Base
             Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
         }
 
-        protected BlockchainTestBase(IBlockchainTestSource testSource)
+        protected BlockchainTestBase(IBlockchainTestsSource testsSource)
         {
-            _testSource = testSource ?? throw new ArgumentNullException(nameof(testSource));
+            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
 
         [SetUp]
@@ -107,7 +107,7 @@ namespace Ethereum.Test.Base
 
         public IEnumerable<BlockchainTest> LoadTests()
         {
-            return _testSource.LoadTests();
+            return _testsSource.LoadTests();
         }
 
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)

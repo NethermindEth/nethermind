@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public MultiChainTests() : base(new FileBlockchainTestSource("bcMultiChainTest"))
+        public MultiChainTests() : base(new DirectoryTestsSource("bcMultiChainTest"))
         {
         }
     }

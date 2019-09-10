@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public ShiftTests() : base(new FileBlockchainTestSource("stShift"))
+        public ShiftTests() : base(new DirectoryTestsSource("stShift"))
         {
         }
     }

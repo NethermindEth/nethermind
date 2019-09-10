@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public GasPricerTests() : base(new FileBlockchainTestSource("bcGasPricerTest"))
+        public GasPricerTests() : base(new DirectoryTestsSource("bcGasPricerTest"))
         {
         }
     }

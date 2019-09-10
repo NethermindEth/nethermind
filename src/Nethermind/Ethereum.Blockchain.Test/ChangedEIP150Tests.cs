@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public ChangedEip150Tests() : base(new FileBlockchainTestSource("stChangedEIP150"))
+        public ChangedEip150Tests() : base(new DirectoryTestsSource("stChangedEIP150"))
         {
         }
     }

@@ -31,7 +31,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public HomesteadToEip150Tests() : base(new FileBlockchainTestSource("bcHomesteadToEIP150"))
+        public HomesteadToEip150Tests() : base(new DirectoryTestsSource("bcHomesteadToEIP150"))
         {
         }
     }

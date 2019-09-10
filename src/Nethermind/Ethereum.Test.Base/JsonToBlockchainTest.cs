@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,12 +25,13 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
+using Newtonsoft.Json;
 
 namespace Ethereum.Test.Base
 {
     public static class JsonToBlockchainTest
     {
-        public static IReleaseSpec ParseSpec(string network)
+        private static IReleaseSpec ParseSpec(string network)
         {
             switch (network)
             {
@@ -151,7 +153,36 @@ namespace Ethereum.Test.Base
             test.Blocks = testJson.Blocks;
             test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            
             return test;
+        }
+
+        public static IEnumerable<BlockchainTest> Convert(string json)
+        {
+            Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
+            List<BlockchainTest> testsByName = new List<BlockchainTest>();
+            foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
+            {
+                string[] transitionInfo = namedTest.Value.Network.Split("At");
+                string[] networks = transitionInfo[0].Split("To");
+                for (int i = 0; i < networks.Length; i++)
+                {
+                    networks[i] = networks[i].Replace("EIP150", "TangerineWhistle");
+                    networks[i] = networks[i].Replace("EIP158", "SpuriousDragon");
+                    networks[i] = networks[i].Replace("DAO", "Dao");
+                }
+
+                namedTest.Value.EthereumNetwork = ParseSpec(networks[0]);
+                if (transitionInfo.Length > 1)
+                {
+                    namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
+                    namedTest.Value.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
+                }
+
+                testsByName.Add(Convert(namedTest.Key, namedTest.Value));
+            }
+
+            return testsByName;
         }
     }
 }

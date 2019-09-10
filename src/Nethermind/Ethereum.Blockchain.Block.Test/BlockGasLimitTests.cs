@@ -32,7 +32,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
 
-        public BlockGasLimitTests() : base(new FileBlockchainTestSource("bcBlockGasLimitTest"))
+        public BlockGasLimitTests() : base(new DirectoryTestsSource("bcBlockGasLimitTest"))
         {
         }
     }

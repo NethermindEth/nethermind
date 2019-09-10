@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public TotalDifficultyTests() : base(new FileBlockchainTestSource("bcTotalDifficultyTest"))
+        public TotalDifficultyTests() : base(new DirectoryTestsSource("bcTotalDifficultyTest"))
         {
         }
     }

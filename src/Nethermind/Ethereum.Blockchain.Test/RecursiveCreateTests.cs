@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public RecursiveCreateTests() : base(new FileBlockchainTestSource("stRecursiveCreate"))
+        public RecursiveCreateTests() : base(new DirectoryTestsSource("stRecursiveCreate"))
         {
         }
     }

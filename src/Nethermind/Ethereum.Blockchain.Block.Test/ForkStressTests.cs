@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public ForkStressTests() : base(new FileBlockchainTestSource("bcForkStressTest"))
+        public ForkStressTests() : base(new DirectoryTestsSource("bcForkStressTest"))
         {
         }
     }

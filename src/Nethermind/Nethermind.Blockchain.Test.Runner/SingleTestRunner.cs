@@ -18,80 +18,69 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
+using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class PerfTest : BlockchainTestBase, ITestInRunner
+    public class SingleTestRunner : BlockchainTestBase, ITestInRunner
     {
         private readonly IBlockchainTestsSource _testsSource;
 
-        public PerfTest(IBlockchainTestsSource testsSource) : base(testsSource)
+        public SingleTestRunner(IBlockchainTestsSource testsSource) : base(testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
-
+        
         public async Task<CategoryResult> RunTests()
         {
+            ConsoleColor defaultColor = Console.ForegroundColor;
             List<string> failingTests = new List<string>();
-            long totalMs = 0L;
-            Console.WriteLine($"RUNNING tests");
-            Stopwatch stopwatch = new Stopwatch();
+
+            string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
-            bool isNewLine = true;
             foreach (BlockchainTest test in tests)
             {
-                stopwatch.Reset();
                 Setup(null);
+
                 try
                 {
+                    Console.Write($"{test.Name,-80} ");
                     Assert.IsNull(test.LoadFailure);
-                    await RunTest(test, stopwatch);
+
+                    await RunTest(test);
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine("PASS");
+                    Console.ForegroundColor = defaultColor;
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     failingTests.Add(test.Name);
-                    ConsoleColor mem = Console.ForegroundColor;
                     Console.ForegroundColor = ConsoleColor.Red;
-                    if (!isNewLine)
+                    Console.WriteLine("FAIL");
+                    Console.ForegroundColor = defaultColor;
+                    NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
+                    try
                     {
-                        Console.WriteLine();
-                        isNewLine = true;
+                        if (!Directory.Exists(directoryName))
+                        {
+                            Directory.CreateDirectory(directoryName);
+                        }
+
+                        Setup(manager);
+                        await RunTest(test);
                     }
-
-                    Console.WriteLine($"  {test.Name,-80} {e.GetType().Name}");
-                    Console.ForegroundColor = mem;
-                }
-
-                long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-                long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-                totalMs += ms;
-                if (ms > 100)
-                {
-                    if (!isNewLine)
+                    catch (Exception againEx)
                     {
-                        Console.WriteLine();
-                        isNewLine = true;
+                        manager.GetClassLogger().Error(againEx.ToString());
                     }
-
-                    Console.WriteLine($"  {test.Name,-80}{ns,14}ns{ms,8}ms");
-                }
-                else
-                {
-                    Console.Write(".");
-                    isNewLine = false;
                 }
             }
 
-            if (!isNewLine)
-            {
-                Console.WriteLine();
-            }
-
-            return new CategoryResult(totalMs, failingTests.ToArray());
+            return new CategoryResult(0, failingTests.ToArray());
         }
     }
 }

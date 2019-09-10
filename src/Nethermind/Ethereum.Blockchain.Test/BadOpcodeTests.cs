@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public BadOpcodeTests() : base(new FileBlockchainTestSource("stBadOpcode"))
+        public BadOpcodeTests() : base(new DirectoryTestsSource("stBadOpcode"))
         {
         }
     }

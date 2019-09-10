@@ -31,7 +31,7 @@ namespace Ethereum.Transition.Test
             await RunTest(test);
         }
         
-        public ByzantiumToConstantinopleFixTests() : base(new FileBlockchainTestSource("bcByzantiumToConstantinopleFix"))
+        public ByzantiumToConstantinopleFixTests() : base(new DirectoryTestsSource("bcByzantiumToConstantinopleFix"))
         {
         }
     }

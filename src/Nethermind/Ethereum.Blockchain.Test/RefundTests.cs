@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public RefundTests() : base(new FileBlockchainTestSource("stRefundTest"))
+        public RefundTests() : base(new DirectoryTestsSource("stRefundTest"))
         {
         }
     }

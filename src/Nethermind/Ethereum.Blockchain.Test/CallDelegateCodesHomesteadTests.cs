@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public CallDelegateCodesHomesteadTests() : base(new FileBlockchainTestSource("stCallDelegateCodesHomestead"))
+        public CallDelegateCodesHomesteadTests() : base(new DirectoryTestsSource("stCallDelegateCodesHomestead"))
         {
         }
     }

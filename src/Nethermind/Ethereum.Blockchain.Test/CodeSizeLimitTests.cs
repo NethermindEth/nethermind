@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public CodeSizeLimitTests() : base(new FileBlockchainTestSource("stCodeSizeLimit"))
+        public CodeSizeLimitTests() : base(new DirectoryTestsSource("stCodeSizeLimit"))
         {
         }
     }

@@ -28,11 +28,11 @@ namespace Nethermind.Blockchain.Test.Runner
 {
     public class BugHunter : BlockchainTestBase, ITestInRunner
     {
-        private readonly IBlockchainTestSource _testSource;
+        private readonly IBlockchainTestsSource _testsSource;
 
-        public BugHunter(IBlockchainTestSource testSource) : base(testSource)
+        public BugHunter(IBlockchainTestsSource testsSource) : base(testsSource)
         {
-            _testSource = testSource ?? throw new ArgumentNullException(nameof(testSource));
+            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
         
         public async Task<CategoryResult> RunTests()
@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test.Runner
             List<string> failingTests = new List<string>();
 
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
-            IEnumerable<BlockchainTest> tests = _testSource.LoadTests();
+            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
             foreach (BlockchainTest test in tests)
             {
                 Setup(null);

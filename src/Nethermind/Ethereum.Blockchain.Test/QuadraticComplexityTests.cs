@@ -31,7 +31,7 @@ namespace Ethereum.Blockchain.Test
             await RunTest(test);
         }
         
-        public QuadraticComplexityTests() : base(new FileBlockchainTestSource("stQuadraticComplexityTest"))
+        public QuadraticComplexityTests() : base(new DirectoryTestsSource("stQuadraticComplexityTest"))
         {
         }
     }
