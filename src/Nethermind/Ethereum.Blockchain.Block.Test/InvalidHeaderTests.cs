@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Block.Test
     [TestFixture]
     public class InvalidHeaderTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcInvalidHeaderTest" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public InvalidHeaderTests() : base(new FileBlockchainTestSource("bcInvalidHeaderTest"))
+        {
         }
     }
 }

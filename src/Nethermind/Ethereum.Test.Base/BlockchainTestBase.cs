@@ -48,127 +48,28 @@ using NUnit.Framework;
 
 namespace Ethereum.Test.Base
 {
-    public class BlockchainTestBase
+    public abstract class BlockchainTestBase
     {
-        private static ILogManager _logManager = NullLogManager.Instance;
+        private readonly IBlockchainTestSource _testSource;
         private static ILogger _logger = new SimpleConsoleLogger();
-
-        private static DifficultuCalculatorWrapper DifficultyCalculator { get; }
+        private static ILogManager _logManager = NullLogManager.Instance;
         private static ISealValidator Sealer { get; }
+        private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
 
         static BlockchainTestBase()
         {
-            DifficultyCalculator = new DifficultuCalculatorWrapper();
+            DifficultyCalculator = new DifficultyCalculatorWrapper();
             Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
+        }
+
+        protected BlockchainTestBase(IBlockchainTestSource testSource)
+        {
+            _testSource = testSource ?? throw new ArgumentNullException(nameof(testSource));
         }
 
         [SetUp]
         public void Setup()
         {
-        }
-
-        public static IEnumerable<BlockchainTest> LoadTests(string testSet)
-        {
-            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", testSet);
-            if (Directory.Exists(".\\Tests\\"))
-            {
-                testDirs = testDirs.Union(Directory.EnumerateDirectories(".\\Tests\\", testSet));
-            }
-
-            Dictionary<string, Dictionary<string, BlockchainTestJson>> testJsons = new Dictionary<string, Dictionary<string, BlockchainTestJson>>();
-            foreach (string testDir in testDirs)
-            {
-                testJsons[testDir] = LoadTestsFromDirectory(testDir);
-            }
-
-            return testJsons.SelectMany(d => d.Value).Select(pair => Convert(pair.Key, pair.Value));
-        }
-
-        private static IReleaseSpec ParseSpec(string network)
-        {
-            switch (network)
-            {
-                case "Frontier":
-                    return Frontier.Instance;
-                case "Homestead":
-                    return Homestead.Instance;
-                case "TangerineWhistle":
-                    return TangerineWhistle.Instance;
-                case "SpuriousDragon":
-                    return SpuriousDragon.Instance;
-                case "EIP150":
-                    return TangerineWhistle.Instance;
-                case "EIP158":
-                    return SpuriousDragon.Instance;
-                case "Dao":
-                    return Dao.Instance;
-                case "Constantinople":
-                    return Constantinople.Instance;
-                case "ConstantinopleFix":
-                    return ConstantinopleFix.Instance;
-                case "Byzantium":
-                    return Byzantium.Instance;
-                default:
-                    throw new NotSupportedException();
-            }
-        }
-
-        private static Dictionary<string, BlockchainTestJson> LoadTestsFromDirectory(string testDir)
-        {
-            Dictionary<string, BlockchainTestJson> testsByName = new Dictionary<string, BlockchainTestJson>();
-            List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
-            foreach (string testFile in testFiles)
-            {
-                try
-                {
-                    if (Path.GetFileName(testFile).StartsWith("."))
-                    {
-                        continue;
-                    }
-
-                    string json = File.ReadAllText(testFile);
-                    Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
-                    foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
-                    {
-                        string[] transitionInfo = namedTest.Value.Network.Split("At");
-                        string[] networks = transitionInfo[0].Split("To");
-                        for (int i = 0; i < networks.Length; i++)
-                        {
-                            networks[i] = networks[i].Replace("EIP150", "TangerineWhistle");
-                            networks[i] = networks[i].Replace("EIP158", "SpuriousDragon");
-                            networks[i] = networks[i].Replace("DAO", "Dao");
-                        }
-
-                        namedTest.Value.EthereumNetwork = ParseSpec(networks[0]);
-                        if (transitionInfo.Length > 1)
-                        {
-                            namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
-                            namedTest.Value.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
-                        }
-
-                        testsByName.Add(namedTest.Key, namedTest.Value);
-                    }
-                }
-                catch (Exception e)
-                {
-                    testsByName.Add(testFile, new BlockchainTestJson {LoadFailure = $"Failed to load: {e.Message}"});
-                }
-            }
-
-            return testsByName;
-        }
-
-        private static AccountState Convert(AccountStateJson accountStateJson)
-        {
-            AccountState state = new AccountState();
-            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUInt256();
-            state.Code = Bytes.FromHexString(accountStateJson.Code);
-            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
-            state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Bytes.FromHexString(p.Key).ToUInt256(),
-                p => Bytes.FromHexString(p.Value));
-            return state;
         }
 
         private class LoggingTraceListener : System.Diagnostics.TraceListener
@@ -194,7 +95,7 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger();
         }
 
-        private class DifficultuCalculatorWrapper : IDifficultyCalculator
+        private class DifficultyCalculatorWrapper : IDifficultyCalculator
         {
             public IDifficultyCalculator Wrapped { get; set; }
 
@@ -202,6 +103,11 @@ namespace Ethereum.Test.Base
             {
                 return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             }
+        }
+
+        public IEnumerable<BlockchainTest> LoadTests()
+        {
+            return _testSource.LoadTests();
         }
 
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
@@ -319,7 +225,7 @@ namespace Ethereum.Test.Base
 
             if (test.GenesisRlp == null)
             {
-                test.GenesisRlp = Rlp.Encode(new Block(Convert(test.GenesisBlockHeader)));
+                test.GenesisRlp = Rlp.Encode(new Block(JsonToBlockchainTest.Convert(test.GenesisBlockHeader)));
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
@@ -420,7 +326,7 @@ namespace Ethereum.Test.Base
             TestBlockHeaderJson testHeaderJson = test.Blocks
                                                      .Where(b => b.BlockHeader != null)
                                                      .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader;
-            BlockHeader testHeader = Convert(testHeaderJson);
+            BlockHeader testHeader = JsonToBlockchainTest.Convert(testHeaderJson);
             List<string> differences = new List<string>();
 
             var deletedAccounts = test.Pre.Where(pre => !test.PostState.ContainsKey(pre.Key));
@@ -536,88 +442,6 @@ namespace Ethereum.Test.Base
             }
 
             return differences;
-        }
-
-        private static BlockHeader Convert(TestBlockHeaderJson headerJson)
-        {
-            if (headerJson == null)
-            {
-                return null;
-            }
-
-            BlockHeader header = new BlockHeader(
-                new Keccak(headerJson.ParentHash),
-                new Keccak(headerJson.UncleHash),
-                new Address(headerJson.Coinbase),
-                Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
-                Bytes.FromHexString(headerJson.ExtraData)
-            );
-
-            header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom).ToBigEndianBitArray2048());
-            header.GasUsed = (long) Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
-            header.Hash = new Keccak(headerJson.Hash);
-            header.MixHash = new Keccak(headerJson.MixHash);
-            header.Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
-            header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
-            header.StateRoot = new Keccak(headerJson.StateRoot);
-            header.TxRoot = new Keccak(headerJson.TransactionsTrie);
-            return header;
-        }
-
-        private static Block Convert(TestBlockJson testBlockJson)
-        {
-            BlockHeader header = Convert(testBlockJson.BlockHeader);
-            BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray() ?? new BlockHeader[0];
-            Block block = new Block(header, ommers);
-            block.Body.Transactions = testBlockJson.Transactions?.Select(Convert).ToArray();
-            return block;
-        }
-
-        private static Transaction Convert(TransactionJson transactionJson)
-        {
-            Transaction transaction = new Transaction();
-            transaction.Value = Bytes.FromHexString(transactionJson.Value).ToUInt256();
-            transaction.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToInt64();
-            transaction.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256();
-            transaction.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
-            transaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(transactionJson.To);
-            transaction.Data = transaction.To == null ? null : Bytes.FromHexString(transactionJson.Data);
-            transaction.Init = transaction.To == null ? Bytes.FromHexString(transactionJson.Data) : null;
-            Signature signature = new Signature(
-                Bytes.FromHexString(transactionJson.R).PadLeft(32),
-                Bytes.FromHexString(transactionJson.S).PadLeft(32),
-                Bytes.FromHexString(transactionJson.V)[0]);
-            transaction.Signature = signature;
-
-            return transaction;
-        }
-
-        private static BlockchainTest Convert(string name, BlockchainTestJson testJson)
-        {
-            if (testJson.LoadFailure != null)
-            {
-                return new BlockchainTest
-                {
-                    Name = name,
-                    LoadFailure = testJson.LoadFailure
-                };
-            }
-
-            BlockchainTest test = new BlockchainTest();
-            test.Name = name;
-            test.Network = testJson.EthereumNetwork;
-            test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionBlockNumber = testJson.TransitionBlockNumber;
-            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
-            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
-            test.GenesisBlockHeader = testJson.GenesisBlockHeader;
-            test.Blocks = testJson.Blocks;
-            test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
-            test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
-            return test;
         }
     }
 }

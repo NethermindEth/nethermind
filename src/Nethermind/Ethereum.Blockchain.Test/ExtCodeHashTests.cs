@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class ExtCodeHashTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stExtCodeHash" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public ExtCodeHashTests() : base(new FileBlockchainTestSource("stExtCodeHash"))
+        {
         }
     }
 }

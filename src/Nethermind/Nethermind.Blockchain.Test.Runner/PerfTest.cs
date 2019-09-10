@@ -27,44 +27,43 @@ namespace Nethermind.Blockchain.Test.Runner
 {
     public class PerfTest : BlockchainTestBase, ITestInRunner
     {
-        public async Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1)
+        private readonly IBlockchainTestSource _testSource;
+
+        public PerfTest(IBlockchainTestSource testSource) : base(testSource)
+        {
+            _testSource = testSource ?? throw new ArgumentNullException(nameof(testSource));
+        }
+
+        public async Task<CategoryResult> RunTests()
         {
             List<string> failingTests = new List<string>();
             long totalMs = 0L;
-            Console.WriteLine($"RUNNING {subset}");
+            Console.WriteLine($"RUNNING tests");
             Stopwatch stopwatch = new Stopwatch();
-            IEnumerable<BlockchainTest> tests = LoadTests(subset);
+            IEnumerable<BlockchainTest> tests = _testSource.LoadTests();
             bool isNewLine = true;
             foreach (BlockchainTest test in tests)
             {
-                if (testWildcard != null && !test.Name.Contains(testWildcard))
-                {
-                    continue;
-                }
-
                 stopwatch.Reset();
-                for (int i = 0; i < iterations; i++)
+                Setup(null);
+                try
                 {
-                    Setup(null);
-                    try
+                    Assert.IsNull(test.LoadFailure);
+                    await RunTest(test, stopwatch);
+                }
+                catch (Exception e)
+                {
+                    failingTests.Add(test.Name);
+                    ConsoleColor mem = Console.ForegroundColor;
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    if (!isNewLine)
                     {
-                        Assert.IsNull(test.LoadFailure);
-                        await RunTest(test, stopwatch);
+                        Console.WriteLine();
+                        isNewLine = true;
                     }
-                    catch (Exception e)
-                    {
-                        failingTests.Add(test.Name);
-                        ConsoleColor mem = Console.ForegroundColor;
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        if (!isNewLine)
-                        {
-                            Console.WriteLine();
-                            isNewLine = true;
-                        }
 
-                        Console.WriteLine($"  {test.Name,-80} {e.GetType().Name}");
-                        Console.ForegroundColor = mem;
-                    }
+                    Console.WriteLine($"  {test.Name,-80} {e.GetType().Name}");
+                    Console.ForegroundColor = mem;
                 }
 
                 long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
@@ -78,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Runner
                         isNewLine = true;
                     }
 
-                    Console.WriteLine($"  {test.Name,-80}{ns / iterations,14}ns{ms / iterations,8}ms");
+                    Console.WriteLine($"  {test.Name,-80}{ns,14}ns{ms,8}ms");
                 }
                 else
                 {

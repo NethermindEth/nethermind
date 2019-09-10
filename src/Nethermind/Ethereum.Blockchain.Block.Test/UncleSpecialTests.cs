@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Block.Test
     [TestFixture]
     public class UncleSpecialTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcUncleSpecialTests" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public UncleSpecialTests() : base(new FileBlockchainTestSource("bcUncleSpecialTests"))
+        {
         }
     }
 }

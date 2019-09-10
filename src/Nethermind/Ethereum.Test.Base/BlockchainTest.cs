@@ -27,6 +27,7 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTest
     {
+        public string Category { get; set; }
         public string Name { get; set; }
         public IReleaseSpec Network { get; set; }
         public IReleaseSpec NetworkAfterTransition { get; set; }

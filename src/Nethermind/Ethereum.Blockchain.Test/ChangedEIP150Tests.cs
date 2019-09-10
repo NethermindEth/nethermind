@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class ChangedEip150Tests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stChangedEIP150" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
+        }
+        
+        public ChangedEip150Tests() : base(new FileBlockchainTestSource("stChangedEIP150"))
+        {
         }
     }
 }

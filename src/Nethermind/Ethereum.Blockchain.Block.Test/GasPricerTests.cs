@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Block.Test
     [TestFixture]
     public class GasPricerTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcGasPricerTest" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public GasPricerTests() : base(new FileBlockchainTestSource("bcGasPricerTest"))
+        {
         }
     }
 }

@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class Eip150SingleCodeGasPricesTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stEIP150singleCodeGasPrices" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
+        }
+        
+        public Eip150SingleCodeGasPricesTests() : base(new FileBlockchainTestSource("stEIP150singleCodeGasPrices"))
+        {
         }
     }
 }

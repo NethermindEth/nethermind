@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class RecursiveCreateTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stRecursiveCreate" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public RecursiveCreateTests() : base(new FileBlockchainTestSource("stRecursiveCreate"))
+        {
         }
     }
 }

@@ -22,6 +22,6 @@ namespace Nethermind.Blockchain.Test.Runner
 {
     public interface ITestInRunner
     {
-        Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1);
+        Task<CategoryResult> RunTests();
     }
 }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,30 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-using Ethereum.Test.Base;
-using Nethermind.Core;
-using NUnit.Framework;
+using System.Collections.Generic;
 
-namespace Ethereum.Blockchain.Block.Test
+namespace Ethereum.Test.Base
 {
-    [TestFixture]
-    public class StateTests : BlockchainTestBase
+    public interface IBlockchainTestSource
     {
-        [Todo(Improve.TestCoverage, "SuicideStorage tests")]
-        [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
-        {
-            if (test.Name.Contains("suicideStorage"))
-            {
-                return;
-            }
-            
-            await RunTest(test);
-        }
-        
-        public StateTests() : base(new FileBlockchainTestSource("bcStateTests"))
-        {
-        }
+        IEnumerable<BlockchainTest> LoadTests();
     }
 }

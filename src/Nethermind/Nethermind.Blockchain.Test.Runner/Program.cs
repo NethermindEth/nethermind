@@ -20,24 +20,23 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
+using Ethereum.Test.Base;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
     internal class Program
     {
-        private const int StandardIterations = 1;
-
         private static readonly List<string> AllFailingTests = new List<string>();
         private static long _totalMs;
 
-        private static async Task Run(ITestInRunner test, string category, string testWildcard, int iterations = StandardIterations)
+        private static async Task Run(ITestInRunner test)
         {
-            CategoryResult result = await test.RunTests(category, testWildcard, iterations);
+            CategoryResult result = await test.RunTests();
 
             AllFailingTests.AddRange(result.FailingTests);
             _totalMs += result.TotalMs;
 
-            Console.WriteLine($"CATEGORY {category} {result.TotalMs}ms, FAILURES {result.FailingTests.Length}");
+            Console.WriteLine($"CATEGORY {result.TotalMs}ms, FAILURES {result.FailingTests.Length}");
             Console.WriteLine();
             Console.WriteLine();
             Console.WriteLine();
@@ -65,10 +64,11 @@ namespace Nethermind.Blockchain.Test.Runner
                 else
                 {
                     stopwatch.Start();
-                    await Run(new BugHunter(), testWildcard);
+                    await Run(testWildcard, s => new BugHunter(s));
                 }
+
                 stopwatch.Stop();
-                
+
                 foreach (string failingTest in AllFailingTests)
                 {
                     ConsoleColor mem = Console.ForegroundColor;
@@ -85,75 +85,76 @@ namespace Nethermind.Blockchain.Test.Runner
             }
         }
 
-        private static async Task Run(ITestInRunner bugHunter, string testWildcard)
+        private static async Task Run(string testWildcard, Func<IBlockchainTestSource, ITestInRunner> testRunnerBuilder)
         {
-            await Run(bugHunter, "stArgsZeroOneBalance", testWildcard);
-            await Run(bugHunter, "stAttackTest", testWildcard);
-            await Run(bugHunter, "stBadOpcode", testWildcard);
-            await Run(bugHunter, "stBugs", testWildcard);
-            await Run(bugHunter, "stCallCodes", testWildcard);
-            await Run(bugHunter, "stCallCreateCallCodeTest", testWildcard);
-            await Run(bugHunter, "stCallDelegateCodesCallCodeHomestead", testWildcard);
-            await Run(bugHunter, "stCallDelegateCodesHomestead", testWildcard);
-            await Run(bugHunter, "stChangedEIP150", testWildcard);
-            await Run(bugHunter, "stCodeCopyTest", testWildcard);
-            await Run(bugHunter, "stCodeSizeLimit", testWildcard);
-            await Run(bugHunter, "stCreate2", testWildcard);
-            await Run(bugHunter, "stCreateTest", testWildcard);
-            await Run(bugHunter, "stDelegatecallTestHomestead", testWildcard);
-            await Run(bugHunter, "stEIP150singleCodeGasPrices", testWildcard);
-            await Run(bugHunter, "stEIP150Specific", testWildcard);
-            await Run(bugHunter, "stEIP158Specific", testWildcard);
-            await Run(bugHunter, "stExample", testWildcard);
-            await Run(bugHunter, "stHomesteadSpecific", testWildcard);
-            await Run(bugHunter, "stInitCodeTest", testWildcard);
-            await Run(bugHunter, "stLogTests", testWildcard);
-            await Run(bugHunter, "stMemExpandingEIP150Calls", testWildcard);
-            await Run(bugHunter, "stMemoryStressTest", testWildcard);
-            await Run(bugHunter, "stMemoryTest", testWildcard);
-            await Run(bugHunter, "stNonZeroCallsTest", testWildcard);
-            await Run(bugHunter, "stPreCompiledContracts", testWildcard);
-            await Run(bugHunter, "stPreCompiledContracts2", testWildcard);
-            await Run(bugHunter, "stQuadraticComplexityTest", testWildcard);
-            await Run(bugHunter, "stRandom", testWildcard);
-            await Run(bugHunter, "stRandom2", testWildcard);
-            await Run(bugHunter, "stRecursiveCreate", testWildcard);
-            await Run(bugHunter, "stRefundTest", testWildcard);
-            await Run(bugHunter, "stReturnDataTest", testWildcard);
-            await Run(bugHunter, "stRevertTest", testWildcard);
-            await Run(bugHunter, "stShift", testWildcard);
-            await Run(bugHunter, "stSolidityTest", testWildcard);
-            await Run(bugHunter, "stSpecialTest", testWildcard);
-            await Run(bugHunter, "stStackTests", testWildcard);
-            await Run(bugHunter, "stStaticCall", testWildcard);
-            await Run(bugHunter, "stSystemOperationsTest", testWildcard);
-            await Run(bugHunter, "stTransactionTest", testWildcard);
-            await Run(bugHunter, "stTransitionTest", testWildcard);
-            await Run(bugHunter, "stWalletTest", testWildcard);
-            await Run(bugHunter, "stZeroCallsRevert", testWildcard);
-            await Run(bugHunter, "stZeroCallsTest", testWildcard);
-            await Run(bugHunter, "stZeroKnowledge", testWildcard);
-            await Run(bugHunter, "stZeroKnowledge2", testWildcard);
-            await Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
-            await Run(bugHunter, "bcExploitTest", testWildcard);
-            await Run(bugHunter, "bcForgedTest", testWildcard);
-            await Run(bugHunter, "bcForkStressTest", testWildcard);
-            await Run(bugHunter, "bcGasPricerTest", testWildcard);
-            await Run(bugHunter, "bcInvalidHeaderTest", testWildcard);
-            await Run(bugHunter, "bcMultiChainTestTest", testWildcard);
-            await Run(bugHunter, "bcRandomBlockhashTest", testWildcard);
-            await Run(bugHunter, "bcStateTests", testWildcard);
-            await Run(bugHunter, "bcTotalDifficultyTest", testWildcard);
-            await Run(bugHunter, "bcUncleHeaderValidity", testWildcard);
-            await Run(bugHunter, "bcUncleTest", testWildcard);
-            await Run(bugHunter, "bcValidBlockTest", testWildcard);
-            await Run(bugHunter, "bcWalletTest", testWildcard);
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stArgsZeroOneBalance", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stAttackTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stBadOpcode", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stBugs", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCallCodes", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCallCreateCallCodeTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCallDelegateCodesCallCodeHomestead", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCallDelegateCodesHomestead", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stChangedEIP150", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCodeCopyTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCodeSizeLimit", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCreate2", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stCreateTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stDelegatecallTestHomestead", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stEIP150singleCodeGasPrices", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stEIP150Specific", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stEIP158Specific", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stExample", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stHomesteadSpecific", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stInitCodeTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stLogTests", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stMemExpandingEIP150Calls", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stMemoryStressTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stMemoryTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stNonZeroCallsTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stPreCompiledContracts", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stPreCompiledContracts2", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stQuadraticComplexityTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stRandom", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stRandom2", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stRecursiveCreate", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stRefundTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stReturnDataTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stRevertTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stShift", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stSolidityTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stSpecialTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stStackTests", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stStaticCall", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stSystemOperationsTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stTransactionTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stTransitionTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stWalletTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stZeroCallsRevert", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stZeroCallsTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stZeroKnowledge", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("stZeroKnowledge2", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcBlockGasLimitTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcExploitTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcForgedTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcForkStressTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcGasPricerTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcInvalidHeaderTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcMultiChainTestTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcRandomBlockhashTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcStateTests", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcTotalDifficultyTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcUncleHeaderValidity", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcUncleTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcValidBlockTest", testWildcard)));
+            await Run(testRunnerBuilder(new FileBlockchainTestSource("bcWalletTest", testWildcard)));
 
-            /* transition tests */
-            await Run(bugHunter, "bcEIP158ToByzantium", testWildcard);
-            await Run(bugHunter, "bcFrontierToHomestead", testWildcard);
-            await Run(bugHunter, "bcHomesteadToDao", testWildcard);
-            await Run(bugHunter, "bcHomesteadToEIP150", testWildcard);
+            /* transitnew BugHunter(new FileBlockhainTestSource()/
+            await Run(new BugHunter(new FileBlockhainTestSource("bcEIP158ToByzantium", testWildcard));
+            await Run(new BugHunter(new FileBlockhainTestSource("bcFrontierToHomestead", testWildcard));
+            await Run(new BugHunter(new FileBlockhainTestSource("bcHomesteadToDao", testWildcard));
+            await Run(new BugHunter(new FileBlockhainTestSource("bcHomesteadToEIP150", testWildcard));
+            */
         }
     }
 }

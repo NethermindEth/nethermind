@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class CodeSizeLimitTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stCodeSizeLimit" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public CodeSizeLimitTests() : base(new FileBlockchainTestSource("stCodeSizeLimit"))
+        {
         }
     }
 }

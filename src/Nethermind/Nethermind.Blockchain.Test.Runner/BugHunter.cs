@@ -28,20 +28,22 @@ namespace Nethermind.Blockchain.Test.Runner
 {
     public class BugHunter : BlockchainTestBase, ITestInRunner
     {
-        public async Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1)
+        private readonly IBlockchainTestSource _testSource;
+
+        public BugHunter(IBlockchainTestSource testSource) : base(testSource)
+        {
+            _testSource = testSource ?? throw new ArgumentNullException(nameof(testSource));
+        }
+        
+        public async Task<CategoryResult> RunTests()
         {
             ConsoleColor defaultColor = Console.ForegroundColor;
             List<string> failingTests = new List<string>();
 
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
-            IEnumerable<BlockchainTest> tests = LoadTests(subset);
+            IEnumerable<BlockchainTest> tests = _testSource.LoadTests();
             foreach (BlockchainTest test in tests)
             {
-                if (testWildcard != null && !test.Name.Contains(testWildcard))
-                {
-                    continue;
-                }
-
                 Setup(null);
 
                 try
@@ -60,7 +62,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("FAIL");
                     Console.ForegroundColor = defaultColor;
-                    NLogManager manager = new NLogManager(string.Concat(subset, "_", test.Name, ".txt"), directoryName);
+                    NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                     try
                     {
                         if (!Directory.Exists(directoryName))

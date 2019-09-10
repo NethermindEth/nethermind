@@ -25,10 +25,14 @@ namespace Ethereum.Transition.Test
     [TestFixture]
     public class ByzantiumToConstantinopleFixTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcByzantiumToConstantinopleFix"  })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {    
             await RunTest(test);
+        }
+        
+        public ByzantiumToConstantinopleFixTests() : base(new FileBlockchainTestSource("bcByzantiumToConstantinopleFix"))
+        {
         }
     }
 }

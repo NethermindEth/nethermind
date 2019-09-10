@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class PreCompiledContractsTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stPreCompiledContracts" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public PreCompiledContractsTests() : base(new FileBlockchainTestSource("stPreCompiledContracts"))
+        {
         }
     }
 }

@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class RevertTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stRevertTest" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public RevertTests() : base(new FileBlockchainTestSource("stRevertTest"))
+        {
         }
     }
 }

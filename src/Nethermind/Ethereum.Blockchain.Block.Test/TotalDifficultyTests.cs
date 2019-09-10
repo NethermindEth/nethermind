@@ -25,10 +25,14 @@ namespace Ethereum.Blockchain.Block.Test
     [TestFixture]
     public class TotalDifficultyTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcTotalDifficultyTest" })]
+        [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
+        }
+        
+        public TotalDifficultyTests() : base(new FileBlockchainTestSource("bcTotalDifficultyTest"))
+        {
         }
     }
 }
