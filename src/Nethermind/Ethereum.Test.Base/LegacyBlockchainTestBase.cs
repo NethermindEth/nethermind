@@ -114,11 +114,6 @@ namespace Ethereum.Test.Base
         {
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            // TODO: not supported in .NET Core, need to replace?
-            // LoggingTraceListener traceListener = new LoggingTraceListener();
-            // Debug.Listeners.Clear();
-            // Debug.Listeners.Add(traceListener);
-
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             IDb traceDb = new MemDb();

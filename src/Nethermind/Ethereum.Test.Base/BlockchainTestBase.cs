@@ -35,10 +35,12 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
@@ -151,7 +153,6 @@ namespace Ethereum.Test.Base
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IDb traceDb = new MemDb();
 
             ISpecProvider specProvider = new CustomSpecProvider(
                 (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
@@ -163,23 +164,9 @@ namespace Ethereum.Test.Base
             }
 
             DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
-            IRewardCalculator rewardCalculator = new ZeroRewardCalculator();
-
-            IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
+            
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
-            ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
-            IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
-//            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
-//            ITxValidator txValidator = new TxValidator(ChainId.MainNet);
-//            IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
-//            IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
-//            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _logManager);
-
-
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-//            IBlockValidator blockValidator = AlwaysValidBlockValidator.Instance;
-            IBlockValidator blockValidator = new StateRootValidator(test.PostHash);
             IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
@@ -188,71 +175,23 @@ namespace Ethereum.Test.Base
                 specProvider,
                 _logManager);
 
-            IBlockProcessor blockProcessor = new BlockProcessor(
+            TransactionProcessor transactionProcessor = new TransactionProcessor(
                 specProvider,
-                blockValidator,
-                rewardCalculator,
-                new TransactionProcessor(
-                    specProvider,
-                    stateProvider,
-                    storageProvider,
-                    virtualMachine,
-                    _logManager),
-                stateDb,
-                codeDb,
-                traceDb,
                 stateProvider,
                 storageProvider,
-                transactionPool,
-                receiptStorage,
+                virtualMachine,
                 _logManager);
-
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-                blockTree,
-                blockProcessor,
-                new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, _logManager),
-                _logManager,
-                false,
-                false);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            ManualResetEvent genesisProcessed = new ManualResetEvent(false);
-            blockTree.NewHeadBlock += (sender, args) =>
-            {
-                if (args.Block.Number == 0)
-                {
-                    genesisProcessed.Set();
-                }
-            };
+            BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase, test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
+            header.StateRoot = test.PostHash;
+            header.Hash = Keccak.Compute("1");
 
-            BlockHeader genesisHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 0x020000, 0, 0x1388, 0x00, Bytes.FromHexString("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa"));
-            genesisHeader.Bloom = Bloom.Empty;
-            genesisHeader.TxRoot = Keccak.EmptyTreeHash;
-            genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
-            genesisHeader.StateRoot = stateProvider.StateRoot;
-            genesisHeader.Hash = test.PreviousHash;
-
-            Block genesisBlock = new Block(genesisHeader);
-            blockchainProcessor.Start();
-            blockTree.SuggestBlock(genesisBlock);
-            genesisProcessed.WaitOne();
-
-            BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, Address.Zero, genesisBlock.Difficulty, 1, 100000000, 1000, new byte[0]);
-            Block block = new Block(header, new Transaction[] {test.Transaction}, Enumerable.Empty<BlockHeader>());
-            block.Bloom = Bloom.Empty;
-            block.Timestamp = test.CurrentTimestamp;
-            block.Difficulty = test.CurrentDifficulty;
-            block.Beneficiary = test.CurrentCoinbase;
-            block.Number = test.CurrentNumber;
-            block.GasLimit = test.CurrentGasLimit;
-            block.ReceiptsRoot = test.PostReceiptsRoot;
-            block.StateRoot = test.PostHash;
-            block.Hash = Keccak.Compute("1");
-
+            GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
             try
             {
-                blockTree.SuggestBlock(block);
+                transactionProcessor.Execute(test.Transaction, header, tracer);
             }
             catch (Exception e)
             {
@@ -260,15 +199,19 @@ namespace Ethereum.Test.Base
                 throw;
             }
 
-            await blockchainProcessor.StopAsync(true);
-            stopwatch?.Stop();
-
+            // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
             if (!stateProvider.AccountExists(test.CurrentCoinbase))
             {
                 stateProvider.CreateAccount(test.CurrentCoinbase, 0);
             }
 
-            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
+            List<string> differences = RunAssertions(test, stateProvider);
+            if (differences.Count != 0)
+            {
+                string serialized = new EthereumJsonSerializer().Serialize(tracer.BuildResult());
+                Console.WriteLine(serialized);
+            }
+
             Assert.Zero(differences.Count, "differences");
         }
 
@@ -300,17 +243,12 @@ namespace Ethereum.Test.Base
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
+        private List<string> RunAssertions(BlockchainTest test, IStateProvider stateProvider)
         {
             List<string> differences = new List<string>();
-//            if (test.PostReceiptsRoot != headBlock.Header.ReceiptsRoot)
-//            {
-//                differences.Add($"RECEIPT ROOT exp: {test.PostReceiptsRoot}, actual: {headBlock.Header.ReceiptsRoot}");
-//            }
-
-            if (test.PostHash != headBlock.StateRoot)
+            if (test.PostHash != stateProvider.StateRoot)
             {
-                differences.Add($"LAST BLOCK HASH exp: {test.PostHash}, actual: {headBlock.Hash}");
+                differences.Add($"LAST BLOCK HASH exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
             }
 
             foreach (string difference in differences)
