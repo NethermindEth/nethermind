@@ -1646,6 +1646,11 @@ namespace Nethermind.Core.Encoding
             return 1;
         }
         
+        public static int LengthOf(bool value)
+        {
+            return 1;
+        }
+        
         public static int LengthOf(LogEntry item) 
         {
             if (Decoders.ContainsKey(typeof(LogEntry)))

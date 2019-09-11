@@ -98,6 +98,7 @@ using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using Nethermind.Store.Rpc;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -172,6 +173,8 @@ namespace Nethermind.Runner.Runners
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
         private INetworkConfig _networkConfig;
+        private BlockInfoRepository _blockInfoRepository;
+        private IBlockFinalizationManager _finalizationManager;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -424,11 +427,14 @@ namespace Nethermind.Runner.Runners
                 _txPoolConfig, _stateProvider, _logManager);
             var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
+
+            _blockInfoRepository = new BlockInfoRepository(_dbProvider.BlockInfosDb);
             
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.HeadersDb,
                 _dbProvider.BlockInfosDb,
+                _blockInfoRepository, 
                 _specProvider,
                 _txPool,
                 _syncConfig,
@@ -511,6 +517,8 @@ namespace Nethermind.Runner.Runners
                 _initConfig.StoreReceipts,
                 _initConfig.StoreTraces);
 
+            _finalizationManager = InitFinalizationManager(blockPreProcessors);
+
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
@@ -565,6 +573,18 @@ namespace Nethermind.Runner.Runners
             _disposeStack.Push(subscription);
 
             await InitializeNetwork();
+        }
+
+        private IBlockFinalizationManager InitFinalizationManager(IList<IAdditionalBlockProcessor> blockPreProcessors)
+        {
+            switch (_chainSpec.SealEngineType)
+            {
+                case SealEngineType.AuRa:
+                    return new AuRaBlockFinalizationManager(_blockTree, _blockInfoRepository, _blockProcessor, 
+                            blockPreProcessors.OfType<IAuRaValidator>().First(), _logManager);
+                default:
+                    return null;
+            }
         }
 
         private void InitBlockProducers()
@@ -653,7 +673,7 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _transactionProcessor, _logManager)
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                         
                     _sealer = new AuRaSealer();
@@ -821,7 +841,7 @@ namespace Nethermind.Runner.Runners
 
             _blockTree.NewHeadBlock += GenesisProcessed;
             _blockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(5));
+            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(5000));
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");

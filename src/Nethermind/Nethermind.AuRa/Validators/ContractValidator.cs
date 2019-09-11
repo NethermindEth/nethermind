@@ -19,11 +19,14 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Abi;
 using Nethermind.AuRa.Contracts;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
@@ -36,24 +39,39 @@ namespace Nethermind.AuRa.Validators
 {
     public class ContractValidator : IAuRaValidatorProcessor
     {
-        private ValidatorContract _validatorContract;
+        private static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
+        private readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
         private readonly ILogger _logger;
+        private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         
+        private ValidatorContract _validatorContract;
         private HashSet<Address> _validators;
-        private PendingValidators _pendingValidators;
-        private readonly ValidationStampCollection _validatedSinceFinalized = new ValidationStampCollection();
+        private PendingValidators _currentPendingValidators;
+        private long _lastProcessedBlockNumber = -1;
+        private IBlockFinalizationManager _blockFinalizationManager;
 
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
-        protected long StartBlockNumber { get; }
+        protected long InitBlockNumber { get; }
         protected CallOutputTracer Output { get; } = new CallOutputTracer();
         protected ValidatorContract ValidatorContract => _validatorContract ?? (_validatorContract = CreateValidatorContract(ContractAddress));
         private bool IsInitialized => _validators != null;
+        
+        private PendingValidators CurrentPendingValidators
+        {
+            get => _currentPendingValidators;
+            set
+            {
+                _currentPendingValidators = value;
+                SavePendingValidators();
+            }
+        }
 
         public ContractValidator(
             AuRaParameters.Validator validator,
+            IDb stateDb,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
@@ -65,74 +83,80 @@ namespace Nethermind.AuRa.Validators
                 throw new ArgumentException("Wrong validator type.", nameof(validator));
             
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
-            StartBlockNumber = startBlockNumber;
+            InitBlockNumber = startBlockNumber;
+            LoadPendingValidators();
         }
-        
+
         public bool IsValidSealer(Address address) => _validators.Contains(address);
+        
+        public int MinSealersForFinalization => _validators.MinSealersForFinalization();
+
+        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager)
+        {
+            if (_blockFinalizationManager != null)
+            {
+                _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
+            }
+
+            _blockFinalizationManager = finalizationManager;
+            
+            if (_blockFinalizationManager != null)
+            {
+                _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
+            }
+        }
 
         public virtual void PreProcess(Block block)
         {
-            var isStartBlock = StartBlockNumber == block.Number;
-            if (isStartBlock || !IsInitialized)
+            var isInitBlockNumber = InitBlockNumber == block.Number;
+            if (isInitBlockNumber || !IsInitialized)
             {
-                Initialize(block, isStartBlock);
+                Initialize(block, isInitBlockNumber);
             }
             else
             {
-                ClearPendingValidatorsAfterReorganisation(block);                
+                bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
+                if (reorganisationHappened)
+                {
+                    if (block.Number <= CurrentPendingValidators.BlockNumber)
+                    {
+                        CurrentPendingValidators = null;
+                    }
+                    else
+                    {
+                        LoadPendingValidators();
+                    }
+                }
             }
 
             FinalizePendingValidatorsIfNeeded(block);
-        }
 
-        private void ClearPendingValidatorsAfterReorganisation(Block block)
-        {
-            bool reorganisationHappened = block.Number <= _validatedSinceFinalized.LastBlockNumber;
-            if (reorganisationHappened)
-            {
-                bool reorganisationBeforeInitChange = block.Number <= _pendingValidators.BlockNumber;
-                if (reorganisationBeforeInitChange)
-                {
-                    ClearPendingValidators();
-                }
-                else
-                {
-                    _validatedSinceFinalized.RemoveFromBlock(block.Number);
-                }
-            }
+            _lastProcessedBlockNumber = block.Number;
         }
-
-        private void FinalizePendingValidatorsIfNeeded(Block block)
-        {
-            bool thereArePendingValidators = _pendingValidators != null;
-            if (thereArePendingValidators)
-            {
-                var shouldFinalizePendingValidators = _validatedSinceFinalized.Count > 0 && _validatedSinceFinalized.Count > _validators.Count / 2;
-                if (shouldFinalizePendingValidators)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {_pendingValidators.BlockNumber} at block {block.Number}.");
-                    ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
-                    
-                    _validators = new HashSet<Address>(_pendingValidators.Addresses);
-                    ClearPendingValidators();
-                }
-                else
-                {
-                    _validatedSinceFinalized.Add(new ValidationStamp(block));                    
-                }
-            }
-        }
-
+        
         public virtual void PostProcess(Block block, TxReceipt[] receipts)
         {
             if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, block, receipts, out var potentialValidators))
             {
                 InitiateChange(block, potentialValidators);
                 if (_logger.IsInfo) _logger.Info($"Signal for transition within contract at block {block.Number}. New list: [{string.Join<Address>(", ", potentialValidators)}].");
+            }
+        }
+
+        private void FinalizePendingValidatorsIfNeeded(Block block)
+        {
+            if (CurrentPendingValidators?.IsFinalized == true)
+            {
+                if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} at block {block.Number}.");
+                ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                
+                _validators = CurrentPendingValidators.Addresses.ToHashSet();
+                CurrentPendingValidators = null;
             }
         }
 
@@ -154,17 +178,19 @@ namespace Nethermind.AuRa.Validators
             if (isStartBlock)
             {
                 if(_logger.IsInfo) _logger.Info($"Signal for switch to contract based validator set at block {block.Number}. Initial contract validators: [{string.Join<Address>(", ", validators)}].");
-                InitiateChange(block, validators);
+                InitiateChange(block, validators, true);
             }
         }
 
-        private void InitiateChange(Block block, Address[] potentialValidators)
+        private void InitiateChange(Block block, Address[] potentialValidators, bool isFinalized = false)
         {
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
-            if (_pendingValidators == null && potentialValidators.Length > 0)
+            if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
-                _pendingValidators = new PendingValidators(block.Number, potentialValidators);
-                _validatedSinceFinalized.Add(new ValidationStamp(block));
+                CurrentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators)
+                {
+                    IsFinalized = isFinalized
+                };
             }
         }
 
@@ -192,102 +218,141 @@ namespace Nethermind.AuRa.Validators
             }
         }
         
-        private void ClearPendingValidators()
+        private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
         {
-            _pendingValidators = null;
-            _validatedSinceFinalized.Clear();
+            if (CurrentPendingValidators != null)
+            {
+                var currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks.Any(b => b.Hash == CurrentPendingValidators.BlockHash);
+                if (currentPendingValidatorsBlockGotFinalized)
+                {
+                    CurrentPendingValidators.IsFinalized = true;
+                    SavePendingValidators();
+                }
+            }
+        }
+
+        private void SavePendingValidators()
+        {
+            _stateDb.Set(PendingValidatorsKey, _pendingValidatorsDecoder.Encode(CurrentPendingValidators).Bytes);
+        }
+        
+        private void LoadPendingValidators()
+        {
+            var rlpStream = new RlpStream(_stateDb.Get(PendingValidatorsKey) ?? Rlp.OfEmptySequence.Bytes);
+            _currentPendingValidators = _pendingValidatorsDecoder.Decode(rlpStream);
         }
 
         private class PendingValidators
         {
-            public PendingValidators(long blockNumber, Address[] addresses)
+            public PendingValidators(long blockNumber, Keccak blockHash, Address[] addresses)
             {
                 BlockNumber = blockNumber;
+                BlockHash = blockHash;
                 Addresses = addresses;
             }
 
             public Address[] Addresses { get; }
-            
             public long BlockNumber { get; }
+            public Keccak BlockHash { get; }
+            public bool IsFinalized { get; set; }
         }
-        
-        private class ValidationStamp : IEquatable<ValidationStamp>
+
+        private class PendingValidatorsDecoder : IRlpDecoder<PendingValidators>
         {
-
-            public ValidationStamp(long blockNumber, Address address)
+            static PendingValidatorsDecoder()
             {
-                BlockNumber = blockNumber;
-                Address = address;
-            }
-
-            public long BlockNumber { get; }
-            
-            public Address Address { get; }
-
-            public ValidationStamp(Block block) : this(block.Number, block.Beneficiary) { }
-
-            public bool Equals(ValidationStamp other)
-            {
-                if (ReferenceEquals(null, other)) return false;
-                if (ReferenceEquals(this, other)) return true;
-                return Equals(Address, other.Address);
+                Rlp.Decoders[typeof(PendingValidators)] = new PendingValidatorsDecoder();
             }
             
-            public override bool Equals(object obj)
+            public PendingValidators Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
             {
-                if (ReferenceEquals(null, obj)) return false;
-                if (ReferenceEquals(this, obj)) return true;
-                if (obj.GetType() != GetType()) return false;
-                return Equals((ValidationStamp) obj);
-            }
-
-            public override int GetHashCode()
-            {
-                return Address?.GetHashCode() ?? 0;
-            }
-        }
-        
-        private class ValidationStampCollection
-        {
-            private readonly ISet<ValidationStamp> _set;
-            private readonly List<ValidationStamp> _list;
-
-            public ValidationStampCollection() : this(new HashSet<ValidationStamp>()) { }
-
-            public ValidationStampCollection(ISet<ValidationStamp> set)
-            {
-                _set = set;
-                _list = new List<ValidationStamp>(set);
-            }
-
-            public int Count => _set.Count;
-
-            public long? LastBlockNumber => _list.LastOrDefault()?.BlockNumber;
-
-            public void Add(ValidationStamp item)
-            {
-                if (_set.Add(item))
+                if (rlpStream.IsNextItemNull())
                 {
-                    _list.Add(item);                    
-                }
-            }
-
-            public void Clear()
-            {
-                _list.Clear();
-                _set.Clear();
-            }
-
-            public void RemoveFromBlock(long blockNumber)
-            {
-                var removeFromIndex = _list.FindLastIndex(i => i.BlockNumber < blockNumber) + 1;
-                for (int i = removeFromIndex; i < _list.Count; i++)
-                {
-                    _set.Remove(_list[i]);
+                    rlpStream.ReadByte();
+                    return null;
                 }
                 
-                _list.RemoveRange(removeFromIndex, _list.Count - removeFromIndex);
+                var sequenceLength = rlpStream.ReadSequenceLength();
+                var pendingValidatorsCheck = rlpStream.Position + sequenceLength;
+
+                var blockNumber = rlpStream.DecodeLong();
+                var blockHash = rlpStream.DecodeKeccak();
+                
+                var addressSequenceLength = rlpStream.ReadSequenceLength();
+                var addressCheck = rlpStream.Position + addressSequenceLength;
+                List<Address> addresses = new List<Address>();
+                while (rlpStream.Position < addressCheck)
+                {
+                    addresses.Add(rlpStream.DecodeAddress());
+                }
+                rlpStream.Check(addressCheck);
+                
+                var result = new PendingValidators(blockNumber, blockHash, addresses.ToArray())
+                {
+                    IsFinalized = rlpStream.DecodeBool()
+                };
+                
+                rlpStream.Check(pendingValidatorsCheck);
+                
+                return result;
             }
+
+            public Rlp Encode(PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                if (item == null)
+                {
+                    return Rlp.OfEmptySequence;
+                }
+            
+                RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
+                Encode(rlpStream, item, rlpBehaviors);
+                return new Rlp(rlpStream.Data);
+            }
+
+            public void Encode(MemoryStream stream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
+                Rlp.StartSequence(stream, contentLength);
+                Rlp.Encode(stream, item.BlockNumber);
+                Rlp.Encode(stream, item.BlockHash);
+                Rlp.StartSequence(stream, addressesLength);
+                for (int i = 0; i < item.Addresses.Length; i++)
+                {
+                    Rlp.Encode(stream, item.Addresses[i]);
+                }
+                Rlp.Encode(stream, item.IsFinalized);
+            }
+            
+            public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+            {
+                (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
+                rlpStream.StartSequence(contentLength);
+                rlpStream.Encode(item.BlockNumber);
+                rlpStream.Encode(item.BlockHash);
+                rlpStream.StartSequence(addressesLength);
+                for (int i = 0; i < item.Addresses.Length; i++)
+                {
+                    rlpStream.Encode(item.Addresses[i]);
+                }
+                rlpStream.Encode(item.IsFinalized);
+            }
+
+            public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
+                item == null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
+
+            private (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
+            {
+                int contentLength = Rlp.LengthOf(item.BlockNumber) 
+                                    + Rlp.LengthOf(item.BlockHash) 
+                                    + Rlp.LengthOf(item.IsFinalized); 
+                
+                var addressesLength = GetAddressesLength(item.Addresses);
+                contentLength += Rlp.LengthOfSequence(addressesLength);
+                
+                return (contentLength, addressesLength);
+            }
+
+            private int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
         }
     }
 }

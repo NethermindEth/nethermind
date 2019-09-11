@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -53,7 +54,8 @@ namespace Nethermind.Core.Test.Builders
             blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
 
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            var blockInfoDb = new MemDb();
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, new BlockInfoRepository(blockInfoDb),  RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
         }
 
         public BlockTreeBuilder OfHeadersOnly

@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.AuRa.Validators;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs.ChainSpecStyle;
@@ -41,7 +42,6 @@ namespace Nethermind.AuRa.Test.Validators
         private ILogManager _logManager;
         private IDictionary<long, IAuRaValidatorProcessor> _innerValidators;
         private Block _block;
-        private ITransactionProcessor _transactionProcessor;
 
         [SetUp]
         public void SetUp()
@@ -50,7 +50,7 @@ namespace Nethermind.AuRa.Test.Validators
             _innerValidators = new SortedList<long, IAuRaValidatorProcessor>();
             _factory = Substitute.For<IAuRaAdditionalBlockProcessorFactory>();
             _logManager = Substitute.For<ILogManager>();
-            _transactionProcessor = Substitute.For<ITransactionProcessor>();
+            Substitute.For<IBlockFinalizationManager>();
             
             _factory.CreateValidatorProcessor(default, default)
                 .ReturnsForAnyArgs(x =>
@@ -76,11 +76,11 @@ namespace Nethermind.AuRa.Test.Validators
             Action act = () => new MultiValidator(_validator, null, _logManager);
             act.Should().Throw<ArgumentNullException>();
         }
-        
+
         [Test]
         public void throws_ArgumentNullException_on_empty_logManager()
         {
-            Action act = () => new MultiValidator(_validator,_factory,null);
+            Action act = () => new MultiValidator(_validator,_factory, null);
             act.Should().Throw<ArgumentNullException>();
         }
 
