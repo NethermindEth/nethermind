@@ -60,7 +60,7 @@ namespace Ethereum.Test.Base
             List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
             foreach (string testFile in testFiles)
             {
-                FileTestsSource fileTestsSource = new FileTestsSource(testDir, wildcard);
+                FileTestsSource fileTestsSource = new FileTestsSource(testFile, wildcard);
                 try
                 {
                     testsByName.AddRange(fileTestsSource.LoadTests());

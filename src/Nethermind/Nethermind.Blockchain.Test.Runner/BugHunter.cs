@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Console.WriteLine("PASS");
                     Console.ForegroundColor = defaultColor;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     failingTests.Add(test.Name);
                     Console.ForegroundColor = ConsoleColor.Red;

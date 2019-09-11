@@ -16,19 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using System.Collections.Generic;
+using Nethermind.Core.Specs;
 
 namespace Ethereum.Test.Base
 {
-    public class TransactionJson
+    public class LegacyBlockchainTestJson
     {
-        public byte[][] Data { get; set; }
-        public long[] GasLimit { get; set; }
-        public UInt256 GasPrice { get; set; }
-        public UInt256 Nonce { get; set; }
-        public Address To { get; set; }
-        public UInt256[] Value { get; set; }
-        public byte[] SecretKey { get; set; }
+        public string Network { get; set; }
+        public IReleaseSpec EthereumNetwork { get; set; }
+        public IReleaseSpec EthereumNetworkAfterTransition { get; set; }
+        public int TransitionBlockNumber { get; set; }
+        public string LastBlockHash { get; set; }
+        public string GenesisRlp { get; set; }
+
+        public TestBlockJson[] Blocks { get; set; }
+        public TestBlockHeaderJson GenesisBlockHeader { get; set; }
+
+        public Dictionary<string, AccountStateJson> Pre { get; set; }
+        public Dictionary<string, AccountStateJson> PostState { get; set; }
+        
+        public string SealEngine { get; set; }
+        public string LoadFailure { get; set; }
     }
 }
