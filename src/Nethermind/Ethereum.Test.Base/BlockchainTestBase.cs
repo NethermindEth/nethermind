@@ -163,7 +163,7 @@ namespace Ethereum.Test.Base
             }
 
             DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
-            IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+            IRewardCalculator rewardCalculator = new ZeroRewardCalculator();
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider, _logManager);
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
@@ -178,8 +178,8 @@ namespace Ethereum.Test.Base
 
 
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IBlockValidator blockValidator = AlwaysValidBlockValidator.Instance;
-//            IBlockValidator blockValidator = new StateRootValidator(test.PostHash);
+//            IBlockValidator blockValidator = AlwaysValidBlockValidator.Instance;
+            IBlockValidator blockValidator = new StateRootValidator(test.PostHash);
             IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
@@ -262,6 +262,11 @@ namespace Ethereum.Test.Base
 
             await blockchainProcessor.StopAsync(true);
             stopwatch?.Stop();
+
+            if (!stateProvider.AccountExists(test.CurrentCoinbase))
+            {
+                stateProvider.CreateAccount(test.CurrentCoinbase, 0);
+            }
 
             List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
             Assert.Zero(differences.Count, "differences");
