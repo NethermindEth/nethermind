@@ -97,6 +97,11 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportOperationError(EvmExceptionType error)
         {
+            if(_traceEntry == null)
+            {
+                
+            }
+            
             _traceEntry.Error = GetErrorDescription(error);
         }
         

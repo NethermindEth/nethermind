@@ -191,7 +191,7 @@ namespace Ethereum.Test.Base
             GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
             try
             {
-                transactionProcessor.Execute(test.Transaction, header, tracer);
+                transactionProcessor.Execute(test.Transaction, header, NullTxTracer.Instance);
             }
             catch (Exception e)
             {
