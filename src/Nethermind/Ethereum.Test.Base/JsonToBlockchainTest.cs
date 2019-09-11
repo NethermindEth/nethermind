@@ -117,6 +117,7 @@ namespace Ethereum.Test.Base
             transaction.Init = transaction.To == null ? transactionJson.Data[postStateJson.Indexes.Data] : null;
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
             transaction.Signature = new Signature(1, 1, 27 );
+            transaction.Hash = Transaction.CalculateHash(transaction);
             return transaction;
         }
 
