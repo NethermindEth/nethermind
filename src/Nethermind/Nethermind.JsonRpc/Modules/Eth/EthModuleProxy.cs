@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
+using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Eip1186;
 
@@ -79,8 +80,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             => ResultWrapper<UInt256?>.From(await _proxy.eth_blockNumber());
 
         public async Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)
-            => ResultWrapper<UInt256?>.From(await _proxy.eth_getBalance(address, blockParameter.Type.ToString(),
-                blockParameter.BlockNumber));
+            => ResultWrapper<UInt256?>.From(await _proxy.eth_getBalance(address, MapBlockParameter(blockParameter)));
 
         public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
             BlockParameter blockParameter)
@@ -241,6 +241,24 @@ namespace Nethermind.JsonRpc.Modules.Eth
             BlockParameter blockParameter)
         {
             throw new System.NotImplementedException();
+        }
+
+        private static BlockParameterModel MapBlockParameter(BlockParameter blockParameter)
+        {
+            if (blockParameter is null)
+            {
+                return null;
+            }
+
+            if (blockParameter.Type == BlockParameterType.BlockNumber && blockParameter.BlockNumber.HasValue)
+            {
+                return BlockParameterModel.FromNumber(blockParameter.BlockNumber.Value);
+            }
+
+            return new BlockParameterModel
+            {
+                Type = blockParameter.Type.ToString()
+            };
         }
     }
 }

@@ -107,7 +107,6 @@ namespace Nethermind.DataMarketplace.Core.Services
         public Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
             => Task.FromResult(_blockchainBridge.SendTransaction(transaction, true));
 
-        public Account GetAccount(Address address) => _blockchainBridge.GetAccount(address);
-        public void Sign(Transaction transaction) => _blockchainBridge.Sign(transaction);
+        public Task<Account> GetAccountAsync(Address address) => Task.FromResult(_blockchainBridge.GetAccount(address));
     }
 }

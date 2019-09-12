@@ -100,13 +100,13 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();
             transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
-            
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+
             if (_logger.IsInfo)
             {
                 _logger.Info($"Sending an early refund claim transaction on {earlyRefundClaim.DepositId} to be refunded to {earlyRefundClaim.RefundTo}");
             }
             
-            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
     }

@@ -71,10 +71,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy = null;
             INdmBlockchainBridge ndmBlockchainBridge;
             if (config.ProxyEnabled)
             {
-                ndmBlockchainBridge = new NdmBlockchainBridgeProxy(new EthJsonRpcClientProxy(new JsonRpcClientProxy(config.JsonRpcUrlProxies, services.JsonSerializer)));
+                ethJsonRpcClientProxy = new EthJsonRpcClientProxy(new JsonRpcClientProxy(config.JsonRpcUrlProxies,
+                    services.JsonSerializer));
+                ndmBlockchainBridge = new NdmBlockchainBridgeProxy(ethJsonRpcClientProxy);
             }
             else
             {
@@ -90,7 +93,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
                 depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
-                ndmBlockchainBridge));
+                ndmBlockchainBridge, ethJsonRpcClientProxy));
         }
 
         private static void AddDecoders()

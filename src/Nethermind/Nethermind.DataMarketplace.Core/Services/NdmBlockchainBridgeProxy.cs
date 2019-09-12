@@ -14,16 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
+using Nethermind.Facade.Proxy.Models;
+using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
-    public class NdmBlockchainBridgeProxy : INdmBlockchainBridge  
+    public class NdmBlockchainBridgeProxy : INdmBlockchainBridge
     {
         private readonly IEthJsonRpcClientProxy _proxy;
 
@@ -31,76 +35,90 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             _proxy = proxy;
         }
-        
-        public Task<long> GetLatestBlockNumberAsync()
+
+        public async Task<long> GetLatestBlockNumberAsync()
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_blockNumber();
+
+            return result.IsValid && result.Result.HasValue ? (long) result.Result.Value : 0;
         }
 
-        public Task<byte[]> GetCodeAsync(Address address)
+        public async Task<byte[]> GetCodeAsync(Address address)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_getCode(address, BlockParameterModel.Latest);
+
+            return result.IsValid ? result.Result : Array.Empty<byte>();
         }
 
-        public Task<Block> FindBlockAsync(Keccak blockHash)
+        public async Task<Block> FindBlockAsync(Keccak blockHash)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_getBlockByHash(blockHash);
+
+            return result.IsValid ? result.Result?.ToBlock() : null;
         }
 
-        public Task<Block> FindBlockAsync(long blockNumber)
+        public async Task<Block> FindBlockAsync(long blockNumber)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_getBlockByNumber(BlockParameterModel.FromNumber(blockNumber));
+
+            return result.IsValid ? result.Result?.ToBlock() : null;
         }
 
-        public Task<Block> GetLatestBlockAsync()
+        public async Task<Block> GetLatestBlockAsync()
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_getBlockByNumber(BlockParameterModel.Latest);
+
+            return result.IsValid ? result.Result?.ToBlock() : null;
         }
 
-
-        public Task<UInt256> GetNonceAsync(Address address)
+        public async Task<UInt256> GetNonceAsync(Address address)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_getTransactionCount(address, BlockParameterModel.Pending);
+
+            return result.IsValid ? result.Result ?? UInt256.Zero : UInt256.Zero;
         }
 
-        public Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
+        public async Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_getTransactionByHash(transactionHash);
+
+            return result.IsValid ? MapTransaction(result.Result) : null;
         }
 
-        public Task<int> GetNetworkIdAsync()
+        public async Task<int> GetNetworkIdAsync()
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_chainId();
+
+            return result.IsValid ? (int) result.Result : 0;
         }
 
-        public Task<byte[]> CallAsync(Transaction transaction)
+        public async Task<byte[]> CallAsync(Transaction transaction)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_call(CallTransactionModel.FromTransaction(transaction));
+
+            return result.IsValid ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
         }
 
-        public Task<byte[]> CallAsync(Transaction transaction, long blockNumber)
+        public async Task<byte[]> CallAsync(Transaction transaction, long blockNumber)
         {
-            throw new System.NotImplementedException();
+            var result = await _proxy.eth_call(CallTransactionModel.FromTransaction(transaction),
+                BlockParameterModel.FromNumber(blockNumber));
+
+            return result.IsValid ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
         }
 
-        public Task<byte[]> CallAsync(Transaction transaction, Keccak blockHash)
+        public async Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
         {
-            throw new System.NotImplementedException();
+            var data = Rlp.Encode(transaction).Bytes;
+            var result = await _proxy.eth_sendRawTransaction(data);
+
+            return result.IsValid ? result.Result : null;
         }
 
-        public Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public Account GetAccount(Address address)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public void Sign(Transaction transaction)
-        {
-            throw new System.NotImplementedException();
-        }
+        private static NdmTransaction MapTransaction(TransactionModel transaction)
+            => transaction is null
+                ? null
+                : new NdmTransaction(transaction.ToTransaction(), (long) transaction.BlockNumber,
+                    transaction.BlockHash);
     }
 }

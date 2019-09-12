@@ -16,15 +16,27 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Facade.Proxy.Models;
 
 namespace Nethermind.Facade.Proxy
 {
     public interface IEthJsonRpcClientProxy
     {
+        Task<RpcResult<UInt256>> eth_chainId();
         Task<RpcResult<UInt256?>> eth_blockNumber();
+        Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null);
+        Task<RpcResult<UInt256?>> eth_getTransactionCount(Address address, BlockParameterModel  blockParameter = null);
+        Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction, BlockParameterModel blockParameter = null);
+        Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null);
+        Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash);
+        Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction);
 
-        Task<RpcResult<UInt256?>> eth_getBalance(Address address, string blockParameter = null,
-            long? blockNumber = null);
+        Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash,
+            bool returnFullTransactionObjects = false);
+
+        Task<RpcResult<BlockModel>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+            bool returnFullTransactionObjects = false);
     }
 }

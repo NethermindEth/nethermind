@@ -14,26 +14,39 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.Facade.Proxy.Models
 {
-    public interface INdmBlockchainBridge
+    public class BlockParameterModel
     {
-        Task<long > GetLatestBlockNumberAsync();
-        Task<byte[]> GetCodeAsync(Address address);
-        Task<Block> FindBlockAsync(Keccak blockHash);
-        Task<Block> FindBlockAsync(long blockNumber);
-        Task<Block > GetLatestBlockAsync();
-        Task<UInt256> GetNonceAsync(Address address);
-        Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash);
-        Task<int> GetNetworkIdAsync();
-        Task<byte[]> CallAsync(Transaction transaction);
-        Task<byte[]> CallAsync(Transaction transaction, long blockNumber);
-        Task<Keccak> SendOwnTransactionAsync(Transaction transaction);
+        public string Type { get; set; }
+        public UInt256? Number { get; set; }
+
+        public static BlockParameterModel FromNumber(long number) => new BlockParameterModel
+        {
+            Number = (UInt256?) number
+        };
+
+        public static BlockParameterModel FromNumber(UInt256 number) => new BlockParameterModel
+        {
+            Number = number
+        };
+
+        public static BlockParameterModel Earliest => new BlockParameterModel
+        {
+            Type = "earliest"
+        };
+
+        public static BlockParameterModel Latest => new BlockParameterModel
+        {
+            Type = "latest"
+        };
+
+
+        public static BlockParameterModel Pending => new BlockParameterModel
+        {
+            Type = "pending"
+        };
     }
 }

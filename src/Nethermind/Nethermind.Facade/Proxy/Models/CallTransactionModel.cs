@@ -14,26 +14,29 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.Facade.Proxy.Models
 {
-    public interface INdmBlockchainBridge
+    public class CallTransactionModel
     {
-        Task<long > GetLatestBlockNumberAsync();
-        Task<byte[]> GetCodeAsync(Address address);
-        Task<Block> FindBlockAsync(Keccak blockHash);
-        Task<Block> FindBlockAsync(long blockNumber);
-        Task<Block > GetLatestBlockAsync();
-        Task<UInt256> GetNonceAsync(Address address);
-        Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash);
-        Task<int> GetNetworkIdAsync();
-        Task<byte[]> CallAsync(Transaction transaction);
-        Task<byte[]> CallAsync(Transaction transaction, long blockNumber);
-        Task<Keccak> SendOwnTransactionAsync(Transaction transaction);
+        public Address From { get; set; }
+        public Address To { get; set; }
+        public UInt256 Gas { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public UInt256 Value { get; set; }
+        public byte[] Data { get; set; }
+
+        public static CallTransactionModel FromTransaction(Transaction transaction)
+            => new CallTransactionModel
+            {
+                From = transaction.SenderAddress,
+                To = transaction.To,
+                Data = transaction.Data,
+                Value = transaction.Value,
+                Gas = (UInt256) transaction.GasLimit,
+                GasPrice = transaction.GasPrice
+            };
     }
 }

@@ -24,6 +24,7 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy;
 
 namespace Nethermind.DataMarketplace.Infrastructure
 {
@@ -37,11 +38,13 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IJsonRpcNdmConsumerChannel JsonRpcNdmConsumerChannel { get; }
         public INdmConsumerChannelManager NdmConsumerChannelManager { get; }
         public INdmBlockchainBridge BlockchainBridge { get; }
+        public IEthJsonRpcClientProxy EthJsonRpcClientProxy { get; }
 
         public NdmCreatedServices(Address consumerAddress,
             IAbiEncoder abiEncoder, IRlpDecoder<DataAsset> dataAssetRlpDecoder, IDepositService depositService,
             INdmDataPublisher ndmDataPublisher, IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
-            INdmConsumerChannelManager ndmConsumerChannelManager, INdmBlockchainBridge blockchainBridge)
+            INdmConsumerChannelManager ndmConsumerChannelManager, INdmBlockchainBridge blockchainBridge,
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy)
         {
             ConsumerAddress = consumerAddress;
             AbiEncoder = abiEncoder;
@@ -51,6 +54,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             JsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             NdmConsumerChannelManager = ndmConsumerChannelManager;
             BlockchainBridge = blockchainBridge;
+            EthJsonRpcClientProxy = ethJsonRpcClientProxy;
         }
     }
 }

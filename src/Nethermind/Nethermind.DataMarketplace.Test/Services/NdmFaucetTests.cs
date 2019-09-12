@@ -28,6 +28,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.Logging;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -42,6 +43,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private UInt256 _dailyRequestsTotalValueEth;
         private bool _enabled;
         private ITimestamper _timestamper;
+        private IWallet _wallet;
         private ILogManager _logManager;
         private INdmFaucet _faucet;
         private string _host;
@@ -61,13 +63,14 @@ namespace Nethermind.DataMarketplace.Test.Services
             _dailyRequestsTotalValueEth = 500;
             _enabled = true;
             _timestamper = new Timestamper();
+            _wallet = Substitute.For<IWallet>();
             _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);
             _value = 1.Ether();
             _faucetAccount = Account.TotallyEmpty;
             _transactionHash = Keccak.Zero;
-            _blockchainBridge.GetAccount(_faucetAddress).Returns(_faucetAccount);
+            _blockchainBridge.GetNonceAsync(_faucetAddress).Returns(UInt256.Zero);
             _blockchainBridge.SendOwnTransactionAsync(Arg.Any<Transaction>()).Returns(_transactionHash);
         }
 
@@ -208,7 +211,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private async Task InitFaucetAsync()
         {
             _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue,
-                _dailyRequestsTotalValueEth, _enabled, _timestamper, _logManager);
+                _dailyRequestsTotalValueEth, _enabled, _timestamper, _wallet, _logManager);
             await Task.Delay(1);
         }
 

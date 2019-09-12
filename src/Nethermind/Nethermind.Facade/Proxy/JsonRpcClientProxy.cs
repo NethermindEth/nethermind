@@ -36,7 +36,7 @@ namespace Nethermind.Facade.Proxy
             {
                 throw new ArgumentException("Empty JSON RPC URL proxy.", nameof(url));
             }
-            
+
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _client = new HttpClient
             {
@@ -54,7 +54,7 @@ namespace Nethermind.Facade.Proxy
                 jsonrpc = 2.0,
                 id,
                 method,
-                @params = @params ?? Array.Empty<object>()
+                @params = (@params ?? Array.Empty<object>()).Where(x => !(x is null))
             };
 
             var payload = GetPayload(request);

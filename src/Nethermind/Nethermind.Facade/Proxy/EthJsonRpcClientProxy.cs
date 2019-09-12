@@ -7,7 +7,7 @@
 //  (at your option) any later version.
 // 
 //  The Nethermind library is distributed in the hope that it will be useful,
-//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  but WITHOUT ANY WARRANTY; witrhout even the implied warranty of
 //  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 //  GNU Lesser General Public License for more details.
 // 
@@ -16,7 +16,9 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Facade.Proxy.Models;
 
 namespace Nethermind.Facade.Proxy
 {
@@ -29,11 +31,53 @@ namespace Nethermind.Facade.Proxy
             _proxy = proxy;
         }
 
+        public Task<RpcResult<UInt256>> eth_chainId()
+            => _proxy.SendAsync<UInt256>(nameof(eth_chainId));
+
         public Task<RpcResult<UInt256?>> eth_blockNumber()
             => _proxy.SendAsync<UInt256?>(nameof(eth_blockNumber));
 
-        public Task<RpcResult<UInt256?>> eth_getBalance(Address address, string blockParameter = null,
-            long? blockNumber = null)
-            => _proxy.SendAsync<UInt256?>(nameof(eth_getBalance), address, blockParameter);
+        public Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null)
+            => _proxy.SendAsync<UInt256?>(nameof(eth_getBalance), address, MapBlockParameter(blockParameter));
+
+        public Task<RpcResult<UInt256?>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null)
+            => _proxy.SendAsync<UInt256?>(nameof(eth_getTransactionCount), address, MapBlockParameter(blockParameter));
+
+        public Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction,
+            BlockParameterModel blockParameter = null)
+            => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));
+
+        public Task<RpcResult<byte[]>> eth_getCode(Address address, BlockParameterModel blockParameter = null)
+            => _proxy.SendAsync<byte[]>(nameof(eth_getCode), address, MapBlockParameter(blockParameter));
+
+        public Task<RpcResult<TransactionModel>> eth_getTransactionByHash(Keccak transactionHash)
+            => _proxy.SendAsync<TransactionModel>(nameof(eth_getTransactionByHash), transactionHash);
+
+        public Task<RpcResult<Keccak>> eth_sendRawTransaction(byte[] transaction)
+            => _proxy.SendAsync<Keccak>(nameof(eth_sendRawTransaction), transaction);
+
+        public Task<RpcResult<BlockModel>> eth_getBlockByHash(Keccak blockHash,
+            bool returnFullTransactionObjects = false)
+            => _proxy.SendAsync<BlockModel>(nameof(eth_getBlockByHash), blockHash, returnFullTransactionObjects);
+
+        public Task<RpcResult<BlockModel>> eth_getBlockByNumber(BlockParameterModel blockParameter,
+            bool returnFullTransactionObjects = false)
+            => _proxy.SendAsync<BlockModel>(nameof(eth_getBlockByNumber), MapBlockParameter(blockParameter),
+                returnFullTransactionObjects);
+
+        private static object MapBlockParameter(BlockParameterModel blockParameter)
+        {
+            if (blockParameter is null)
+            {
+                return null;
+            }
+
+            if (blockParameter.Number.HasValue)
+            {
+                return blockParameter.Number.Value;
+            }
+
+            return string.IsNullOrWhiteSpace(blockParameter.Type) ? null : blockParameter.Type.ToLowerInvariant();
+        }
     }
 }

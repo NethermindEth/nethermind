@@ -162,9 +162,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, personalBridge, timestamper)));
 
+            var useDepositTimer = blockchainBridge is NdmBlockchainBridgeProxy;
+            var ethJsonRpcClientProxy = services.CreatedServices.EthJsonRpcClientProxy;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
                 refundClaimant, depositConfirmationService, blockProcessor, depositRepository, consumerNotifier,
-                logManager);
+                logManager, useDepositTimer: useDepositTimer, ethJsonRpcClientProxy: ethJsonRpcClientProxy);
 
             consumerServicesBackgroundProcessor.Init();
 
