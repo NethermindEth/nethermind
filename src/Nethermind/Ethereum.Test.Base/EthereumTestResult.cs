@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain.Test.Runner
+namespace Ethereum.Test.Base
 {
-    public class CategoryResult
+    public class EthereumTestResult
     {
-        public CategoryResult(long totalMs, string[] failingTests)
+        public EthereumTestResult()
         {
-            TotalMs = totalMs;
-            FailingTests = failingTests;
         }
 
-        public long TotalMs { get; set; }
-        public string[] FailingTests { get; set; }
+        public EthereumTestResult(string name, string fork, string loadFailure)
+        {
+            Pass = false;
+            Name = loadFailure;
+            Fork = fork;
+            LoadFailure = loadFailure;
+        }
+        
+        public string LoadFailure { get; set; }
+        public string Name { get; set; }
+        public string Fork { get; set; }
+        public bool Pass { get; set; }
+        public long TimeInMs { get; set; }
     }
 }

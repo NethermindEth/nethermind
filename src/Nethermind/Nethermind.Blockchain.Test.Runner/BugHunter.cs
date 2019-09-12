@@ -19,52 +19,52 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Logging;
-using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
     public class BugHunter : BlockchainTestBase, ITestInRunner
     {
-        private readonly IBlockchainTestsSource _testsSource;
+        private IBlockchainTestsSource _testsSource;
+        private ConsoleColor _defaultColour;
 
         public BugHunter(IBlockchainTestsSource testsSource) : base(testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+            _defaultColour = Console.ForegroundColor;
         }
-        
-        public async Task<CategoryResult> RunTests()
-        {
-            ConsoleColor defaultColor = Console.ForegroundColor;
-            List<string> failingTests = new List<string>();
 
+        public async Task<IEnumerable<EthereumTestResult>> RunTests()
+        {
+            List<EthereumTestResult> testResults = new List<EthereumTestResult>();
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
             foreach (BlockchainTest test in tests)
             {
-                Setup(null);
+                Setup(NullLogManager.Instance);
 
-                try
+                Console.Write($"{test.Name,-80} ");
+                if (test.LoadFailure != null)
                 {
-                    Console.Write($"{test.Name,-80} ");
-                    Assert.IsNull(test.LoadFailure);
-
-                    await RunTest(test);
-                    Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine("PASS");
-                    Console.ForegroundColor = defaultColor;
+                    WriteRed(test.LoadFailure);
+                    testResults.Add(new EthereumTestResult(test.Name, test.ForkName, test.LoadFailure));
                 }
-                catch (Exception ex)
+                else
                 {
-                    failingTests.Add(test.Name);
-                    Console.ForegroundColor = ConsoleColor.Red;
-                    Console.WriteLine("FAIL");
-                    Console.ForegroundColor = defaultColor;
-                    NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
-                    try
+                    EthereumTestResult result = await RunTest(test);
+                    testResults.Add(result);
+                    
+                    if (result.Pass)
                     {
+                        WriteGreen("PASS");
+                    }
+                    else
+                    {
+                        WriteRed("FAIL");
+                        NLogManager manager = new NLogManager(string.Concat(test.Category, "_", test.Name, ".txt"), directoryName);
                         if (!Directory.Exists(directoryName))
                         {
                             Directory.CreateDirectory(directoryName);
@@ -72,15 +72,25 @@ namespace Nethermind.Blockchain.Test.Runner
 
                         Setup(manager);
                         await RunTest(test);
-                    }
-                    catch (Exception againEx)
-                    {
-                        manager.GetClassLogger().Error(againEx.ToString());
-                    }
+                    }                    
                 }
             }
 
-            return new CategoryResult(0, failingTests.ToArray());
+            return testResults;
+        }
+
+        private void WriteRed(string text)
+        {
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine(text);
+            Console.ForegroundColor = _defaultColour;
+        }
+
+        private void WriteGreen(string text)
+        {
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine(text);
+            Console.ForegroundColor = _defaultColour;
         }
     }
 }

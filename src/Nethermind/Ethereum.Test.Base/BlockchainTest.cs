@@ -29,7 +29,8 @@ namespace Ethereum.Test.Base
     {
         public string Category { get; set; }
         public string Name { get; set; }
-        public IReleaseSpec Network { get; set; }
+        public IReleaseSpec Fork { get; set; }
+        public string ForkName { get; set; }
         public Address CurrentCoinbase { get; set; }
         public UInt256 CurrentDifficulty { get; set; }
         public long CurrentGasLimit { get; set; }

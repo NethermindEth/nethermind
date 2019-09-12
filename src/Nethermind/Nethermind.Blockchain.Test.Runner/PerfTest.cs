@@ -19,8 +19,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
@@ -34,10 +36,9 @@ namespace Nethermind.Blockchain.Test.Runner
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
 
-        public async Task<CategoryResult> RunTests()
+        public async Task<IEnumerable<EthereumTestResult>> RunTests()
         {
-            List<string> failingTests = new List<string>();
-            long totalMs = 0L;
+            List<EthereumTestResult> results = new List<EthereumTestResult>();
             Console.WriteLine($"RUNNING tests");
             Stopwatch stopwatch = new Stopwatch();
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
@@ -45,15 +46,13 @@ namespace Nethermind.Blockchain.Test.Runner
             foreach (BlockchainTest test in tests)
             {
                 stopwatch.Reset();
-                Setup(null);
-                try
+                Setup(NullLogManager.Instance);
+                Assert.IsNull(test.LoadFailure);
+                EthereumTestResult result = await RunTest(test);
+                results.Add(result);
+                
+                if (!result.Pass)
                 {
-                    Assert.IsNull(test.LoadFailure);
-                    await RunTest(test, stopwatch);
-                }
-                catch (Exception e)
-                {
-                    failingTests.Add(test.Name);
                     ConsoleColor mem = Console.ForegroundColor;
                     Console.ForegroundColor = ConsoleColor.Red;
                     if (!isNewLine)
@@ -62,13 +61,12 @@ namespace Nethermind.Blockchain.Test.Runner
                         isNewLine = true;
                     }
 
-                    Console.WriteLine($"  {test.Name,-80} {e.GetType().Name}");
+                    Console.WriteLine($"  {test.Name,-80} FAIL");
                     Console.ForegroundColor = mem;
                 }
 
                 long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                 long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-                totalMs += ms;
                 if (ms > 100)
                 {
                     if (!isNewLine)
@@ -91,7 +89,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 Console.WriteLine();
             }
 
-            return new CategoryResult(totalMs, failingTests.ToArray());
+            return results;
         }
     }
 }

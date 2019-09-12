@@ -147,8 +147,9 @@ namespace Ethereum.Test.Base
             return _testsSource.LoadTests();
         }
 
-        protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
+        protected async Task<EthereumTestResult> RunTest(BlockchainTest test)
         {
+            Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
             ISnapshotableDb stateDb = new StateDb();
@@ -156,7 +157,7 @@ namespace Ethereum.Test.Base
 
             ISpecProvider specProvider = new CustomSpecProvider(
                 (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                (1, test.Network));
+                (1, test.Fork));
 
             if (specProvider.GenesisSpec != Frontier.Instance)
             {
@@ -164,7 +165,7 @@ namespace Ethereum.Test.Base
             }
 
             DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
-            
+
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
@@ -189,15 +190,7 @@ namespace Ethereum.Test.Base
             header.Hash = Keccak.Compute("1");
 
             GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
-            try
-            {
-                transactionProcessor.Execute(test.Transaction, header, NullTxTracer.Instance);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                throw;
-            }
+            transactionProcessor.Execute(test.Transaction, header, NullTxTracer.Instance);
 
             // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
             if (!stateProvider.AccountExists(test.CurrentCoinbase))
@@ -208,11 +201,19 @@ namespace Ethereum.Test.Base
             List<string> differences = RunAssertions(test, stateProvider);
             if (differences.Count != 0)
             {
+                Console.WriteLine();
                 string serialized = new EthereumJsonSerializer().Serialize(tracer.BuildResult());
                 Console.WriteLine(serialized);
             }
 
-            Assert.Zero(differences.Count, "differences");
+            EthereumTestResult testResult = new EthereumTestResult();
+            testResult.Pass = differences.Count == 0;
+            testResult.Fork = test.ForkName;
+            testResult.Name = test.Name;
+            testResult.TimeInMs = (long)stopwatch.Elapsed.TotalMilliseconds;
+            
+//            Assert.Zero(differences.Count, "differences");
+            return testResult;
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
@@ -248,7 +249,7 @@ namespace Ethereum.Test.Base
             List<string> differences = new List<string>();
             if (test.PostHash != stateProvider.StateRoot)
             {
-                differences.Add($"LAST BLOCK HASH exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
+                differences.Add($"STATE ROOT exp: {test.PostHash}, actual: {stateProvider.StateRoot}");
             }
 
             foreach (string difference in differences)

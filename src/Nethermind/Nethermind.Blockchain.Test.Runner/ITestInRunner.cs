@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using Ethereum.Test.Base;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
     public interface ITestInRunner
     {
-        Task<CategoryResult> RunTests();
+        Task<IEnumerable<EthereumTestResult>> RunTests();
     }
 }
