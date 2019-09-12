@@ -27,11 +27,11 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class PerfTest : BlockchainTestBase, ITestInRunner
+    public class PerfStateTest : BlockchainTestBase, IStateTestRunner
     {
         private readonly IBlockchainTestsSource _testsSource;
 
-        public PerfTest(IBlockchainTestsSource testsSource) : base(testsSource)
+        public PerfStateTest(IBlockchainTestsSource testsSource) : base(testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
@@ -45,10 +45,15 @@ namespace Nethermind.Blockchain.Test.Runner
             bool isNewLine = true;
             foreach (BlockchainTest test in tests)
             {
-                stopwatch.Reset();
+                if (test.LoadFailure != null)
+                {
+                    continue;
+                }
+                
                 Setup(NullLogManager.Instance);
-                Assert.IsNull(test.LoadFailure);
+                stopwatch.Restart();
                 EthereumTestResult result = await RunTest(test);
+                stopwatch.Stop();
                 results.Add(result);
                 
                 if (!result.Pass)

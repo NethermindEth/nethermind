@@ -19,14 +19,13 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class BugHunter : BlockchainTestBase, ITestInRunner
+    public class BugHunter : BlockchainTestBase, IStateTestRunner
     {
         private IBlockchainTestsSource _testsSource;
         private ConsoleColor _defaultColour;
@@ -46,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Runner
             {
                 Setup(NullLogManager.Instance);
 
-                Console.Write($"{test.Name,-80} ");
+                Console.Write($"{test,-120} ");
                 if (test.LoadFailure != null)
                 {
                     WriteRed(test.LoadFailure);

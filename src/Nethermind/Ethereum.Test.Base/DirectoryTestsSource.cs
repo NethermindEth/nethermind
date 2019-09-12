@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Newtonsoft.Json;
 
 namespace Ethereum.Test.Base
 {
@@ -37,9 +36,17 @@ namespace Ethereum.Test.Base
 
         public IEnumerable<BlockchainTest> LoadTests()
         {
-//            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-//            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", _directory);
-            IEnumerable<string> testDirs = Directory.EnumerateDirectories(AppDomain.CurrentDomain.BaseDirectory, _directory);
+            IEnumerable<string> testDirs;
+            if (!Path.IsPathRooted(_directory))
+            {
+                Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+                testDirs = Directory.EnumerateDirectories(".", _directory);
+            }
+            else
+            {
+                testDirs = new[] {_directory};
+            }
+
             if (Directory.Exists(".\\Tests\\"))
             {
                 testDirs = testDirs.Union(Directory.EnumerateDirectories(".\\Tests\\", _directory));
@@ -58,12 +65,20 @@ namespace Ethereum.Test.Base
         {
             List<BlockchainTest> testsByName = new List<BlockchainTest>();
             List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
+            int testIndex = 0;
             foreach (string testFile in testFiles)
             {
+                Console.WriteLine($"Loading tests {++testIndex}/{testFiles.Count}");
                 FileTestsSource fileTestsSource = new FileTestsSource(testFile, wildcard);
                 try
                 {
-                    testsByName.AddRange(fileTestsSource.LoadTests());
+                    var tests = fileTestsSource.LoadTests().ToList();
+                    foreach (BlockchainTest blockchainTest in tests)
+                    {
+                        blockchainTest.Category = testDir;
+                    }
+
+                    testsByName.AddRange(tests);
                 }
                 catch (Exception e)
                 {

@@ -1892,6 +1892,7 @@ namespace Nethermind.Evm
                                 if (!newSameAsCurrent)
                                 {
                                     evmState.Refund += RefundOf.SClear;
+                                    if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClear);
                                 }
                             }
                             else if (currentIsZero)
@@ -1940,6 +1941,7 @@ namespace Nethermind.Evm
                                         if (newIsZero)
                                         {
                                             evmState.Refund += RefundOf.SClear;
+                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClear);
                                         }
                                     }
                                 }
@@ -1955,12 +1957,14 @@ namespace Nethermind.Evm
                                     {
                                         if (currentIsZero)
                                         {
-                                            evmState.Refund -= RefundOf.SClear; 
+                                            evmState.Refund -= RefundOf.SClear;
+                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(-RefundOf.SClear);
                                         }
 
                                         if (newIsZero)
                                         {
                                             evmState.Refund += RefundOf.SClear;
+                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClear);
                                         }
                                     }
                                     
@@ -1970,10 +1974,12 @@ namespace Nethermind.Evm
                                         if (originalIsZero)
                                         {
                                             evmState.Refund += RefundOf.SSetReversed;
+                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SSetReversed);
                                         }
                                         else
                                         {
                                             evmState.Refund += RefundOf.SClearReversed;
+                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClearReversed);
                                         }
                                     }
                                 }  
@@ -2522,7 +2528,7 @@ namespace Nethermind.Evm
                             if(_txTracer.IsTracingInstructions) _txTracer.ReportOperationError(EvmExceptionType.NotEnoughBalance);
                             
                             RefundGas(gasLimitUl, ref gasAvailable);
-                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(gasAvailable);
+                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefundForVmTrace(gasLimitUl, gasAvailable);
                             break;
                         }
 

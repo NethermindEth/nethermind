@@ -149,6 +149,11 @@ namespace Ethereum.Test.Base
 
         protected async Task<EthereumTestResult> RunTest(BlockchainTest test)
         {
+            return await RunTest(test, NullTxTracer.Instance);
+        }
+        
+        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, ITxTracer txTracer)
+        {
             Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
@@ -188,9 +193,8 @@ namespace Ethereum.Test.Base
             BlockHeader header = new BlockHeader(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase, test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, new byte[0]);
             header.StateRoot = test.PostHash;
             header.Hash = Keccak.Compute("1");
-
-            GethLikeTxTracer tracer = new GethLikeTxTracer(GethTraceOptions.Default);
-            transactionProcessor.Execute(test.Transaction, header, NullTxTracer.Instance);
+            
+            transactionProcessor.Execute(test.Transaction, header, txTracer);
 
             // '@winsvega added a 0-wei reward to the miner , so we had to add that into the state test execution phase. He needed it for retesteth.'
             if (!stateProvider.AccountExists(test.CurrentCoinbase))
@@ -199,18 +203,12 @@ namespace Ethereum.Test.Base
             }
 
             List<string> differences = RunAssertions(test, stateProvider);
-            if (differences.Count != 0)
-            {
-                Console.WriteLine();
-                string serialized = new EthereumJsonSerializer().Serialize(tracer.BuildResult());
-                Console.WriteLine(serialized);
-            }
-
             EthereumTestResult testResult = new EthereumTestResult();
             testResult.Pass = differences.Count == 0;
             testResult.Fork = test.ForkName;
             testResult.Name = test.Name;
-            testResult.TimeInMs = (long)stopwatch.Elapsed.TotalMilliseconds;
+            testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
+            testResult.StateRoot = stateProvider.StateRoot;
             
 //            Assert.Zero(differences.Count, "differences");
             return testResult;

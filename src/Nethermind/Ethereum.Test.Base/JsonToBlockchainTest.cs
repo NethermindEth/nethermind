@@ -151,6 +151,7 @@ namespace Ethereum.Test.Base
                 {
                     BlockchainTest test = new BlockchainTest();
                     test.Name = name;
+                    test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
                     test.CurrentCoinbase = testJson.Env.CurrentCoinbase;

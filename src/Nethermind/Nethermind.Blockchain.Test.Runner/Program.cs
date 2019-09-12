@@ -21,7 +21,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using CommandLine;
 using Ethereum.Test.Base;
 
 namespace Nethermind.Blockchain.Test.Runner
@@ -31,32 +30,14 @@ namespace Nethermind.Blockchain.Test.Runner
         private static readonly List<string> AllFailingTests = new List<string>();
         private static long _totalMs;
 
-        public class Options
-        {
-            [Option('i', "input", Required = false, HelpText = "Set the state test input file.")]
-            public string Input { get; set; }
-        }
-
         public static async Task Main(params string[] args)
         {
-            ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
-            Parsed<Options> options = result as Parsed<Options>;
-            if (options != null)
-            {
-                await Run(options.Value);
-            }
+            await Run();
         }
 
-        private static async Task Run(Options options)
+        private static async Task Run()
         {
-            if (!string.IsNullOrWhiteSpace(options.Input))
-            {
-                await RunSingleTest(options.Input, source => new BugHunter(source));
-            }
-            else
-            {
-                await RunManualTestingLoop();
-            }
+            await RunManualTestingLoop();
         }
 
         private static async Task RunManualTestingLoop()
@@ -78,10 +59,14 @@ namespace Nethermind.Blockchain.Test.Runner
                     await RunAllStateTests(testWildcard, s => new PerfTest(s));
 #endif
                 }
-                else
+                else if(command == "b")
                 {
                     stopwatch.Start();
                     await RunAllStateTests(testWildcard, s => new BugHunter(s));
+                }
+                else
+                {
+                    break;
                 }
 
                 stopwatch.Stop();
@@ -102,18 +87,12 @@ namespace Nethermind.Blockchain.Test.Runner
             }
         }
 
-        private static async Task RunSingleTest(string path, Func<IBlockchainTestsSource, ITestInRunner> testRunnerBuilder)
+        private static async Task WrapAndRunDirectoryTests(IStateTestRunner stateTest)
         {
-            FileTestsSource source = new FileTestsSource(path);
-            await testRunnerBuilder(source).RunTests();
-        }
-
-        private static async Task WrapAndRunDirectoryTests(ITestInRunner test)
-        {
-            var result = (await test.RunTests()).ToList();
-            var failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name).ToArray();
+            var result = (await stateTest.RunTests()).ToList();
+            var failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
             AllFailingTests.AddRange(failedTestsInCategory);
-            long categoryTimeInMs = result.Sum(t => t.TimeInMs); 
+            long categoryTimeInMs = result.Sum(t => t.TimeInMs);
             _totalMs += result.Sum(t => t.TimeInMs);
 
             Console.WriteLine($"CATEGORY {categoryTimeInMs}ms, FAILURES {failedTestsInCategory.Length}");
@@ -121,8 +100,8 @@ namespace Nethermind.Blockchain.Test.Runner
             Console.WriteLine();
             Console.WriteLine();
         }
-        
-        private static async Task RunAllStateTests(string testWildcard, Func<IBlockchainTestsSource, ITestInRunner> testRunnerBuilder)
+
+        private static async Task RunAllStateTests(string testWildcard, Func<IBlockchainTestsSource, IStateTestRunner> testRunnerBuilder)
         {
             // do not loop over a list of directories so it is more convenient to rapidly comment out / comment in
             await WrapAndRunDirectoryTests(testRunnerBuilder(new DirectoryTestsSource("stArgsZeroOneBalance", testWildcard)));

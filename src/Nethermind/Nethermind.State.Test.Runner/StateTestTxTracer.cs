@@ -18,81 +18,77 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Store;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.State.Test.Runner
 {
-    public class GethLikeTxTracer : ITxTracer
+    public class StateTestTxTracer : ITxTracer
     {
-        private readonly GethTraceOptions _options;
-        private GethTxTraceEntry _traceEntry;
-        private GethLikeTxTrace _trace = new GethLikeTxTrace();
+        private StateTestTxTraceEntry _traceEntry;
+        private StateTestTxTrace _trace = new StateTestTxTrace();
 
-        public GethLikeTxTracer(GethTraceOptions options)
-        {
-            _options = options;
-            IsTracingStack = !_options.DisableStack;
-            IsTracingMemory = !_options.DisableMemory;
-            IsTracingOpLevelStorage = !_options.DisableStorage;
-        }
-        
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
-        public bool IsTracingOpLevelStorage { get; }
-        public bool IsTracingMemory { get; }
+        public bool IsTracingOpLevelStorage => true;
+        public bool IsTracingMemory => true;
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingCode => false;
-        public bool IsTracingStack { get; }
+        public bool IsTracingStack => true;
         bool ITxTracer.IsTracingState => false;
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
         {
-            _trace.ReturnValue = output;
-            _trace.Gas = gasSpent;
+            _trace.Result.Output = output;
+            _trace.Result.GasUsed = gasSpent;
         }
 
         public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error)
         {
-            _trace.Failed = true;
-            _trace.ReturnValue = output ?? Bytes.Empty;
+            _trace.Result.Error = _traceEntry?.Error ?? error;
+            _trace.Result.Output = output ?? Bytes.Empty;
+            _trace.Result.GasUsed = gasSpent;
         }
 
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
-            var previousTraceEntry = _traceEntry;
-            _traceEntry = new GethTxTraceEntry();
+//            var previousTraceEntry = _traceEntry;
+            _traceEntry = new StateTestTxTraceEntry();
             _traceEntry.Pc = pc;
-            _traceEntry.Operation = Enum.GetName(typeof(Instruction), opcode);
+            _traceEntry.Operation = (byte)opcode;
+            _traceEntry.OperationName = Enum.GetName(typeof(Instruction), opcode);
             _traceEntry.Gas = gas;
             _traceEntry.Depth = depth;
             _trace.Entries.Add(_traceEntry);
             
-            if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
-            {
-                _traceEntry.Storage = new Dictionary<string, string>();
-                _trace.StoragesByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
-            }
-            else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
-            {
-                if (previousTraceEntry == null)
-                {
-                    throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
-                }
-                    
-                _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth.Pop());
-            }
-            else
-            {
-                if (previousTraceEntry == null)
-                {
-                    throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
-                }
-                    
-                _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
-            }
+//            if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
+//            {
+//                _traceEntry.Storage = new Dictionary<string, string>();
+//                _trace.StorageByDepth.Push(previousTraceEntry != null ? previousTraceEntry.Storage : new Dictionary<string, string>());
+//            }
+//            else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
+//            {
+//                if (previousTraceEntry == null)
+//                {
+//                    throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
+//                }
+//                    
+//                _traceEntry.Storage = new Dictionary<string, string>(_trace.StorageByDepth.Pop());
+//            }
+//            else
+//            {
+//                if (previousTraceEntry == null)
+//                {
+//                    throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
+//                }
+//                    
+//                _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
+//            }
         }
 
         public void ReportOperationError(EvmExceptionType error)
@@ -113,7 +109,7 @@ namespace Nethermind.Evm.Tracing
                 case EvmExceptionType.StackUnderflow:
                     return "StackUnderflow";
                 case EvmExceptionType.OutOfGas:
-                    return "OutOfGass";
+                    return "gas uint64 overflow";
                 case EvmExceptionType.InvalidJumpDestination:
                     return "BadJumpDestination";
                 case EvmExceptionType.AccessViolation:
@@ -145,9 +141,9 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationStorage(Address address, UInt256 storageIndex, byte[] newValue, byte[] currentValue)
         {
-            byte[] bigEndian = new byte[32];
-            storageIndex.ToBigEndian(bigEndian);
-            _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
+//            byte[] bigEndian = new byte[32];
+//            storageIndex.ToBigEndian(bigEndian);
+//            _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
         }
 
         public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
@@ -206,11 +202,22 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportRefund(long refund)
         {
+            _traceEntry.Refund = (int)refund;
         }
 
         public void SetOperationStack(List<string> stackTrace)
         {
-            _traceEntry.Stack = stackTrace;
+            _traceEntry.Stack = new List<string>();
+            foreach (string s in stackTrace)
+            {
+                string prepared = s.AsSpan().Slice(2).TrimStart('0').ToString();
+                if (prepared == string.Empty)
+                {
+                    prepared = "0x0";
+                }
+                
+                _traceEntry.Stack.Add(prepared);
+            }
         }
 
         public void ReportStackPush(Span<byte> stackItem)
@@ -219,10 +226,10 @@ namespace Nethermind.Evm.Tracing
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
-            _traceEntry.Memory = memoryTrace;
+            _traceEntry.Memory = "0x" + string.Concat(memoryTrace.Select(mt => mt.Replace("0x", string.Empty)));
         }
 
-        public GethLikeTxTrace BuildResult()
+        public StateTestTxTrace BuildResult()
         {
             return _trace;
         }

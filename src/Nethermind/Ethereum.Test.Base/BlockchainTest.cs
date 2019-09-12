@@ -43,9 +43,10 @@ namespace Ethereum.Test.Base
         public bool SealEngineUsed { get; set; }    
         public string LoadFailure { get; set; }
         public Transaction Transaction { get; set; }
+        
         public override string ToString()
         {
-            return Name;
+            return $"{Category}.{Name}_{ForkName}";
         }
     }
 }

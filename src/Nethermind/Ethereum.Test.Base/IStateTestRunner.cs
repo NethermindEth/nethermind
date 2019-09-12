@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,34 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Newtonsoft.Json;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Ethereum.Test.Base
 {
-    public class EthereumTestResult
+    public interface IStateTestRunner
     {
-        public EthereumTestResult()
-        {
-        }
-
-        public EthereumTestResult(string name, string fork, string loadFailure)
-        { 
-            Pass = false;
-            Name = name;
-            Fork = fork;
-            LoadFailure = loadFailure;
-        }
-        
-        public string LoadFailure { get; set; }
-        public string Name { get; set; }
-        public bool Pass { get; set; }
-        public string Fork { get; set; }
-
-        [JsonIgnore]
-        public int TimeInMs { get; set; }
-        
-        [JsonIgnore]
-        public Keccak StateRoot { get; set; }
+        Task<IEnumerable<EthereumTestResult>> RunTests();
     }
 }

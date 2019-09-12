@@ -19,31 +19,11 @@
 using Nethermind.Core.Crypto;
 using Newtonsoft.Json;
 
-namespace Ethereum.Test.Base
+namespace Nethermind.State.Test.Runner
 {
-    public class EthereumTestResult
+    public class StateTestTxTraceState
     {
-        public EthereumTestResult()
-        {
-        }
-
-        public EthereumTestResult(string name, string fork, string loadFailure)
-        { 
-            Pass = false;
-            Name = name;
-            Fork = fork;
-            LoadFailure = loadFailure;
-        }
-        
-        public string LoadFailure { get; set; }
-        public string Name { get; set; }
-        public bool Pass { get; set; }
-        public string Fork { get; set; }
-
-        [JsonIgnore]
-        public int TimeInMs { get; set; }
-        
-        [JsonIgnore]
+        [JsonProperty("stateRoot")]
         public Keccak StateRoot { get; set; }
     }
 }

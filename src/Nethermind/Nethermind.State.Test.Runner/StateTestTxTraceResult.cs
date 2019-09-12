@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Ethereum.Test.Base;
+using Newtonsoft.Json;
 
-namespace Nethermind.Blockchain.Test.Runner
+namespace Nethermind.State.Test.Runner
 {
-    public interface ITestInRunner
+    public class StateTestTxTraceResult
     {
-        Task<IEnumerable<EthereumTestResult>> RunTests();
+        [JsonProperty("output")]
+        public byte[] Output { get; set; }
+        
+        [JsonProperty("gasUsed")]
+        public long GasUsed { get; set; }
+        
+        [JsonProperty("time")]
+        public int Time { get; set; }
+        
+        [JsonProperty("error")]
+        public string Error { get; set; }
     }
 }
