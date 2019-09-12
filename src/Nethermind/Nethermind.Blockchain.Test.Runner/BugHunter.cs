@@ -22,6 +22,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Logging;
+using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
@@ -30,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Runner
         private IBlockchainTestsSource _testsSource;
         private ConsoleColor _defaultColour;
 
-        public BugHunter(IBlockchainTestsSource testsSource) : base(testsSource)
+        public BugHunter(IBlockchainTestsSource testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _defaultColour = Console.ForegroundColor;
@@ -70,7 +71,7 @@ namespace Nethermind.Blockchain.Test.Runner
                         }
 
                         Setup(manager);
-                        await RunTest(test);
+                        Assert.True(RunTest(test).Result.Pass);
                     }                    
                 }
             }

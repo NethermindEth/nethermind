@@ -60,15 +60,40 @@ namespace Ethereum.Test.Base
 
             return testJsons;
         }
+        
+        public IEnumerable<LegacyBlockchainTest> LoadLegacyTests()
+        {
+            IEnumerable<string> testDirs;
+            if (!Path.IsPathRooted(_directory))
+            {
+                Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+                testDirs = Directory.EnumerateDirectories(".", _directory);
+            }
+            else
+            {
+                testDirs = new[] {_directory};
+            }
+
+            if (Directory.Exists(".\\Tests\\"))
+            {
+                testDirs = testDirs.Union(Directory.EnumerateDirectories(".\\Tests\\", _directory));
+            }
+
+            List<LegacyBlockchainTest> testJsons = new List<LegacyBlockchainTest>();
+            foreach (string testDir in testDirs)
+            {
+                testJsons.AddRange(LoadLegacyTestsFromDirectory(testDir, _wildcard));
+            }
+
+            return testJsons;
+        }
 
         private static IEnumerable<BlockchainTest> LoadTestsFromDirectory(string testDir, string wildcard)
         {
             List<BlockchainTest> testsByName = new List<BlockchainTest>();
             List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
-            int testIndex = 0;
             foreach (string testFile in testFiles)
             {
-                Console.WriteLine($"Loading tests {++testIndex}/{testFiles.Count}");
                 FileTestsSource fileTestsSource = new FileTestsSource(testFile, wildcard);
                 try
                 {
@@ -83,6 +108,32 @@ namespace Ethereum.Test.Base
                 catch (Exception e)
                 {
                     testsByName.Add(new BlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e.Message}"});
+                }
+            }
+
+            return testsByName;
+        }
+        
+        private static IEnumerable<LegacyBlockchainTest> LoadLegacyTestsFromDirectory(string testDir, string wildcard)
+        {
+            List<LegacyBlockchainTest> testsByName = new List<LegacyBlockchainTest>();
+            List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
+            foreach (string testFile in testFiles)
+            {
+                FileTestsSource fileTestsSource = new FileTestsSource(testFile, wildcard);
+                try
+                {
+                    var tests = fileTestsSource.LoadLegacyTests().ToList();
+                    foreach (LegacyBlockchainTest blockchainTest in tests)
+                    {
+                        blockchainTest.Category = testDir;
+                    }
+
+                    testsByName.AddRange(tests);
+                }
+                catch (Exception e)
+                {
+                    testsByName.Add(new LegacyBlockchainTest {Name = testFile, LoadFailure = $"Failed to load: {e.Message}"});
                 }
             }
 

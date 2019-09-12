@@ -17,9 +17,11 @@
  */
 
 using System;
+using System.Buffers.Text;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace Ethereum.Test.Base
 {
@@ -54,6 +56,30 @@ namespace Ethereum.Test.Base
             catch (Exception e)
             {
                 return Enumerable.Repeat(new BlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
+            }
+        }
+        
+        public IEnumerable<LegacyBlockchainTest> LoadLegacyTests()
+        {
+            try
+            {
+                if (Path.GetFileName(_fileName).StartsWith("."))
+                {
+                    return Enumerable.Empty<LegacyBlockchainTest>();
+                }
+
+                if (_wildcard != null && !_fileName.Contains(_wildcard))
+                {
+                    return Enumerable.Empty<LegacyBlockchainTest>();
+                }
+
+                string json = File.ReadAllText(_fileName, Encoding.Default);
+                
+                return JsonToBlockchainTest.ConvertLegacy(json);
+            }
+            catch (Exception e)
+            {
+                return Enumerable.Repeat(new LegacyBlockchainTest {Name = _fileName, LoadFailure = $"Failed to load: {e.Message}"}, 1);
             }
         }
     }

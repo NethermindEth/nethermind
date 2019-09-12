@@ -23,5 +23,7 @@ namespace Ethereum.Test.Base
     public interface IBlockchainTestsSource
     {
         IEnumerable<BlockchainTest> LoadTests();
+        
+        IEnumerable<LegacyBlockchainTest> LoadLegacyTests();
     }
 }

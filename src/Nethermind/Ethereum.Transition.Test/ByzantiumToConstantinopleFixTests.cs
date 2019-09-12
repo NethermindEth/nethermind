@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
@@ -23,16 +24,14 @@ using NUnit.Framework;
 namespace Ethereum.Transition.Test
 {
     [TestFixture]
-    public class ByzantiumToConstantinopleFixTests : BlockchainTestBase
+    public class ByzantiumToConstantinopleFixTests : LegacyBlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public async Task Test(LegacyBlockchainTest test)
         {    
             await RunTest(test);
         }
         
-        public ByzantiumToConstantinopleFixTests() : base(new DirectoryTestsSource("bcByzantiumToConstantinopleFix"))
-        {
-        }
+        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcByzantiumToConstantinopleFix").LoadLegacyTests(); }
     }
 }

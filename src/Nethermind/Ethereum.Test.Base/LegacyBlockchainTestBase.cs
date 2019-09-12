@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -50,7 +51,6 @@ namespace Ethereum.Test.Base
 {
     public abstract class LegacyBlockchainTestBase
     {
-        private readonly IBlockchainTestsSource _testsSource;
         private static ILogger _logger = new SimpleConsoleLogger();
         private static ILogManager _logManager = NullLogManager.Instance;
         private static ISealValidator Sealer { get; }
@@ -60,11 +60,6 @@ namespace Ethereum.Test.Base
         {
             DifficultyCalculator = new DifficultyCalculatorWrapper();
             Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
-        }
-
-        protected LegacyBlockchainTestBase(IBlockchainTestsSource testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
 
         [SetUp]
@@ -103,11 +98,6 @@ namespace Ethereum.Test.Base
             {
                 return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             }
-        }
-
-        public IEnumerable<BlockchainTest> LoadTests()
-        {
-            return _testsSource.LoadTests();
         }
 
         protected async Task RunTest(LegacyBlockchainTest test, Stopwatch stopwatch = null)
@@ -318,6 +308,11 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(LegacyBlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
         {
+            if (test.PostStateRoot != null)
+            {
+                return test.PostStateRoot != stateProvider.StateRoot ? new List<string> {"state root mismatch"} : Enumerable.Empty<string>().ToList();
+            }
+
             TestBlockHeaderJson testHeaderJson = test.Blocks
                                                      .Where(b => b.BlockHeader != null)
                                                      .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader;

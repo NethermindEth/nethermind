@@ -31,7 +31,7 @@ namespace Nethermind.Blockchain.Test.Runner
     {
         private readonly IBlockchainTestsSource _testsSource;
 
-        public PerfStateTest(IBlockchainTestsSource testsSource) : base(testsSource)
+        public PerfStateTest(IBlockchainTestsSource testsSource)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }

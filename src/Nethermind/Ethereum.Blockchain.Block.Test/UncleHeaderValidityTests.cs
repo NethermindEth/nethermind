@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
@@ -23,16 +24,14 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    public class UncleHeaderValidityTests : BlockchainTestBase
+    public class UncleHeaderValidityTests : LegacyBlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public async Task Test(LegacyBlockchainTest test)
         {
             await RunTest(test);
         }
         
-        public UncleHeaderValidityTests() : base(new DirectoryTestsSource("bcUncleHeaderValidityTest"))
-        {
-        }
+        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcUncleHeaderValidityTest").LoadLegacyTests(); }
     }
 }

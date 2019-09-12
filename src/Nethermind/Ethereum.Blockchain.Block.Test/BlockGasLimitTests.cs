@@ -24,16 +24,14 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    public class BlockGasLimitTests : BlockchainTestBase
+    public class BlockGasLimitTests : LegacyBlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public async Task Test(LegacyBlockchainTest test)
         {
             await RunTest(test);
         }
 
-        public BlockGasLimitTests() : base(new DirectoryTestsSource("bcBlockGasLimitTest"))
-        {
-        }
+        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcBlockGasLimitTest").LoadLegacyTests(); }
     }
 }

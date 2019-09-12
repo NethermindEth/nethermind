@@ -52,7 +52,6 @@ namespace Ethereum.Test.Base
 {
     public abstract class BlockchainTestBase
     {
-        private readonly IBlockchainTestsSource _testsSource;
         private static ILogger _logger = new SimpleConsoleLogger();
         private static ILogManager _logManager = NullLogManager.Instance;
         private static ISealValidator Sealer { get; }
@@ -64,31 +63,9 @@ namespace Ethereum.Test.Base
             Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
         }
 
-        protected BlockchainTestBase(IBlockchainTestsSource testsSource)
-        {
-            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-        }
-
         [SetUp]
         public void Setup()
         {
-        }
-
-        private class LoggingTraceListener : System.Diagnostics.TraceListener
-        {
-            private readonly StringBuilder _line = new StringBuilder();
-
-            public override void Write(string message)
-            {
-                _line.Append(message);
-            }
-
-            public override void WriteLine(string message)
-            {
-                Write(message);
-                _logger.Info(_line.ToString());
-                _line.Clear();
-            }
         }
 
         protected void Setup(ILogManager logManager)
@@ -105,46 +82,6 @@ namespace Ethereum.Test.Base
             {
                 return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             }
-        }
-
-        private class StateRootValidator : IBlockValidator
-        {
-            private readonly Keccak _stateRoot;
-
-            public StateRootValidator(Keccak stateRoot)
-            {
-                _stateRoot = stateRoot ?? throw new ArgumentNullException(nameof(stateRoot));
-            }
-
-            public bool ValidateHash(BlockHeader header)
-            {
-                return true;
-            }
-
-            public bool ValidateHeader(BlockHeader header, BlockHeader parent, bool isOmmer)
-            {
-                return header.StateRoot == _stateRoot;
-            }
-
-            public bool ValidateHeader(BlockHeader header, bool isOmmer)
-            {
-                return header.StateRoot == _stateRoot;
-            }
-
-            public bool ValidateSuggestedBlock(Block block)
-            {
-                return true;
-            }
-
-            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-            {
-                return processedBlock.StateRoot == _stateRoot;
-            }
-        }
-
-        public IEnumerable<BlockchainTest> LoadTests()
-        {
-            return _testsSource.LoadTests();
         }
 
         protected async Task<EthereumTestResult> RunTest(BlockchainTest test)

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
@@ -24,11 +25,11 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    public class StateTests : BlockchainTestBase
+    public class StateTests : LegacyBlockchainTestBase
     {
         [Todo(Improve.TestCoverage, "SuicideStorage tests")]
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public async Task Test(LegacyBlockchainTest test)
         {
             if (test.Name.Contains("suicideStorage"))
             {
@@ -38,8 +39,6 @@ namespace Ethereum.Blockchain.Block.Test
             await RunTest(test);
         }
         
-        public StateTests() : base(new DirectoryTestsSource("bcStateTests"))
-        {
-        }
+        public static IEnumerable<LegacyBlockchainTest> LoadTests() { return new DirectoryTestsSource("bcStateTests").LoadLegacyTests(); }
     }
 }

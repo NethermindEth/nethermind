@@ -17,10 +17,16 @@
  */
 
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Ethereum.Test.Base
 {
+    public class HalfLegacyBlockchainTestJson : LegacyBlockchainTestJson
+    {
+        public new Keccak PostState { get; set; }
+    }
+    
     public class LegacyBlockchainTestJson
     {
         public string Network { get; set; }

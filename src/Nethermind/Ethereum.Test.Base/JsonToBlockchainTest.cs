@@ -37,7 +37,7 @@ namespace Ethereum.Test.Base
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
-            
+
             switch (network)
             {
                 case "Frontier":
@@ -66,7 +66,7 @@ namespace Ethereum.Test.Base
                     throw new NotSupportedException();
             }
         }
-        
+
         public static BlockHeader Convert(TestBlockHeaderJson headerJson)
         {
             if (headerJson == null)
@@ -79,8 +79,8 @@ namespace Ethereum.Test.Base
                 new Keccak(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
+                (long) Bytes.FromHexString(headerJson.Number).ToUInt256(),
+                (long) Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
                 Bytes.FromHexString(headerJson.ExtraData)
             );
@@ -101,9 +101,10 @@ namespace Ethereum.Test.Base
             BlockHeader header = Convert(testBlockJson.BlockHeader);
             BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray() ?? new BlockHeader[0];
             Block block = new Block(header, ommers);
-            block.Body.Transactions = testBlockJson.Transactions?.Select(t => Convert(postStateJson, t)).ToArray();
+            block.Body.Transactions = testBlockJson.Transactions?.Select(t => Convert(t)).ToArray();
             return block;
         }
+
 
         public static Transaction Convert(PostStateJson postStateJson, TransactionJson transactionJson)
         {
@@ -116,7 +117,22 @@ namespace Ethereum.Test.Base
             transaction.Data = transaction.To == null ? null : transactionJson.Data[postStateJson.Indexes.Data];
             transaction.Init = transaction.To == null ? transactionJson.Data[postStateJson.Indexes.Data] : null;
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
-            transaction.Signature = new Signature(1, 1, 27 );
+            transaction.Signature = new Signature(1, 1, 27);
+            transaction.Hash = Transaction.CalculateHash(transaction);
+            return transaction;
+        }
+
+        public static Transaction Convert(LegacyTransactionJson transactionJson)
+        {
+            Transaction transaction = new Transaction();
+            transaction.Value = transactionJson.Value;
+            transaction.GasLimit = transactionJson.GasLimit;
+            transaction.GasPrice = transactionJson.GasPrice;
+            transaction.Nonce = transactionJson.Nonce;
+            transaction.To = transactionJson.To;
+            transaction.Data = transaction.To == null ? null : transactionJson.Data;
+            transaction.Init = transaction.To == null ? transactionJson.Data : null;
+            transaction.Signature = new Signature(transactionJson.R, transactionJson.S, (int) transactionJson.V);
             transaction.Hash = Transaction.CalculateHash(transaction);
             return transaction;
         }
@@ -132,7 +148,7 @@ namespace Ethereum.Test.Base
                 p => Bytes.FromHexString(p.Value));
             return state;
         }
-        
+
         public static IEnumerable<BlockchainTest> Convert(string name, BlockchainTestJson testJson)
         {
             if (testJson.LoadFailure != null)
@@ -163,7 +179,7 @@ namespace Ethereum.Test.Base
                     test.PostHash = stateJson.Hash;
                     test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
                     test.Transaction = Convert(stateJson, testJson.Transaction);
-                    blockchainTests.Add(test);   
+                    blockchainTests.Add(test);
                 }
             }
 
@@ -190,14 +206,23 @@ namespace Ethereum.Test.Base
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
-            test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+
+            HalfLegacyBlockchainTestJson half = testJson as HalfLegacyBlockchainTestJson;
+            if (half != null)
+            {
+                test.PostStateRoot = half.PostState;
+            }
+            else
+            {
+                test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            }
             
             return test;
         }
 
         private static EthereumJsonSerializer _serializer = new EthereumJsonSerializer();
-        
+
         public static IEnumerable<BlockchainTest> Convert(string json)
         {
             Dictionary<string, BlockchainTestJson> testsInFile = _serializer.Deserialize<Dictionary<string, BlockchainTestJson>>(json);
@@ -209,10 +234,24 @@ namespace Ethereum.Test.Base
 
             return tests;
         }
-        
+
         public static IEnumerable<LegacyBlockchainTest> ConvertLegacy(string json)
         {
-            Dictionary<string, LegacyBlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, LegacyBlockchainTestJson>>(json);
+            Dictionary<string, LegacyBlockchainTestJson> testsInFile;
+            try
+            {
+                testsInFile = _serializer.Deserialize<Dictionary<string, LegacyBlockchainTestJson>>(json);
+            }
+            catch (Exception)
+            {
+                var half = _serializer.Deserialize<Dictionary<string, HalfLegacyBlockchainTestJson>>(json);
+                testsInFile = new Dictionary<string, LegacyBlockchainTestJson>();
+                foreach (KeyValuePair<string, HalfLegacyBlockchainTestJson> pair in half)
+                {
+                    testsInFile[pair.Key] = pair.Value;
+                }
+            }
+
             List<LegacyBlockchainTest> testsByName = new List<LegacyBlockchainTest>();
             foreach (KeyValuePair<string, LegacyBlockchainTestJson> namedTest in testsInFile)
             {

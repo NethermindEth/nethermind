@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
@@ -26,13 +27,11 @@ namespace Ethereum.Blockchain.Test
     public class ZeroKnowledgeTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
-        public async Task Test(BlockchainTest test)
+        public void Test(BlockchainTest test)
         {
-            await RunTest(test);
+            Assert.True(RunTest(test).Result.Pass);
         }
         
-        public ZeroKnowledgeTests() : base(new DirectoryTestsSource("stZeroKnowledge"))
-        {
-        }
+        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stZeroKnowledge").LoadTests(); }
     }
 }

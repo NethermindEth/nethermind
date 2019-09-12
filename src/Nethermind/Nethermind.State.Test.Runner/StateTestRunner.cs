@@ -32,7 +32,7 @@ namespace Nethermind.State.Test.Runner
         private readonly bool _alwaysTrace;
         private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace) : base(testsSource)
+        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _alwaysTrace = alwaysTrace;
