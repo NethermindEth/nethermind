@@ -28,7 +28,7 @@ namespace Ethereum.Blockchain.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(BlockchainTest test)
         {
-            Assert.True(RunTest(test).Result.Pass);
+            Assert.True(RunTest(test).Pass);
         }
         
         public static IEnumerable<BlockchainTest> LoadTests()

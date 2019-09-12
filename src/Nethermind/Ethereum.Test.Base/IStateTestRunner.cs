@@ -23,6 +23,6 @@ namespace Ethereum.Test.Base
 {
     public interface IStateTestRunner
     {
-        Task<IEnumerable<EthereumTestResult>> RunTests();
+        IEnumerable<EthereumTestResult> RunTests();
     }
 }

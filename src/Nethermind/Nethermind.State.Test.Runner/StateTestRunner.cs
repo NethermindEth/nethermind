@@ -55,7 +55,7 @@ namespace Nethermind.State.Test.Runner
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
-        public async Task<IEnumerable<EthereumTestResult>> RunTests()
+        public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
             IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
@@ -64,13 +64,13 @@ namespace Nethermind.State.Test.Runner
                 EthereumTestResult result = null;
                 if (!_alwaysTrace)
                 {
-                    result = await RunTest(test, NullTxTracer.Instance);
+                    result = RunTest(test, NullTxTracer.Instance);
                 }
 
                 if (!(result?.Pass ?? false))
                 {
                     StateTestTxTracer txTracer = new StateTestTxTracer();
-                    result = await RunTest(test, txTracer);
+                    result = RunTest(test, txTracer);
 
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;

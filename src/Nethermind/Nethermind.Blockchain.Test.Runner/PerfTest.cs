@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test.Runner
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
         }
 
-        public async Task<IEnumerable<EthereumTestResult>> RunTests()
+        public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
             Console.WriteLine($"RUNNING tests");
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 
                 Setup(NullLogManager.Instance);
                 stopwatch.Restart();
-                EthereumTestResult result = await RunTest(test);
+                EthereumTestResult result = RunTest(test);
                 stopwatch.Stop();
                 results.Add(result);
                 

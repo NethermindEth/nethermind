@@ -17,9 +17,7 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Threading.Tasks;
 using CommandLine;
 using Ethereum.Test.Base;
 
@@ -27,7 +25,6 @@ namespace Nethermind.State.Test.Runner
 {
     internal class Program
     {
-        private static readonly List<string> AllFailingTests = new List<string>();
         private static long _totalMs;
 
         public class Options
@@ -42,21 +39,21 @@ namespace Nethermind.State.Test.Runner
             public bool Wait { get; set; }
         }
 
-        public static async Task Main(params string[] args)
+        public static void Main(params string[] args)
         {
             ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
             Parsed<Options> options = result as Parsed<Options>;
             if (options != null)
             {
-                await Run(options.Value);
+                Run(options.Value);
             }
         }
 
-        private static async Task Run(Options options)
+        private static void Run(Options options)
         {
             if (!string.IsNullOrWhiteSpace(options.Input))
             {
-                await RunSingleTest(options.Input, source => new StateTestsRunner(source, options.TraceAlways));
+                RunSingleTest(options.Input, source => new StateTestsRunner(source, options.TraceAlways));
             }
 
             if (options.Wait)
@@ -65,7 +62,7 @@ namespace Nethermind.State.Test.Runner
             }
         }
 
-        private static async Task RunSingleTest(string path, Func<IBlockchainTestsSource, IStateTestRunner> testRunnerBuilder)
+        private static void RunSingleTest(string path, Func<IBlockchainTestsSource, IStateTestRunner> testRunnerBuilder)
         {
             IBlockchainTestsSource source;
             if (Directory.Exists(path))
@@ -81,7 +78,7 @@ namespace Nethermind.State.Test.Runner
                 throw new IOException("Input path could not be resolved.");
             }
 
-            await testRunnerBuilder(source).RunTests();
+            testRunnerBuilder(source).RunTests();
         }
     }
 }

@@ -84,12 +84,12 @@ namespace Ethereum.Test.Base
             }
         }
 
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test)
+        protected EthereumTestResult RunTest(BlockchainTest test)
         {
-            return await RunTest(test, NullTxTracer.Instance);
+            return RunTest(test, NullTxTracer.Instance);
         }
         
-        protected async Task<EthereumTestResult> RunTest(BlockchainTest test, ITxTracer txTracer)
+        protected EthereumTestResult RunTest(BlockchainTest test, ITxTracer txTracer)
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
