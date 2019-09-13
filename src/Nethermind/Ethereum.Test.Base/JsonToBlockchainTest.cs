@@ -166,7 +166,7 @@ namespace Ethereum.Test.Base
                 foreach (PostStateJson stateJson in postStateBySpec.Value)
                 {
                     BlockchainTest test = new BlockchainTest();
-                    test.Name = name;
+                    test.Name = name + $"_d{stateJson.Indexes.Data}g{stateJson.Indexes.Gas}v{stateJson.Indexes.Value}";
                     test.ForkName = postStateBySpec.Key;
                     test.Fork = ParseSpec(postStateBySpec.Key);
                     test.PreviousHash = testJson.Env.PreviousHash;
