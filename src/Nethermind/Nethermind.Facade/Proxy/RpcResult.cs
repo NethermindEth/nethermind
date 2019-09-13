@@ -23,6 +23,14 @@ namespace Nethermind.Facade.Proxy
         public RpcError Error { get; set; }
         public bool IsValid => Error is null;
 
+        public static RpcResult<T> Invalid(string message) => new RpcResult<T>
+        {
+            Error = new RpcError
+            {
+                Message = message
+            }
+        };
+
         public class RpcError
         {
             public long Code { get; set; }
