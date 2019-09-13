@@ -23,7 +23,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class Eip150SpecificTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]

@@ -16,36 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Numerics;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Rewards;
-using Nethermind.Blockchain.TxPools;
-using Nethermind.Blockchain.TxPools.Storages;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -54,14 +36,6 @@ namespace Ethereum.Test.Base
     {
         private static ILogger _logger = new SimpleConsoleLogger();
         private static ILogManager _logManager = NullLogManager.Instance;
-        private static ISealValidator Sealer { get; }
-        private static DifficultyCalculatorWrapper DifficultyCalculator { get; }
-
-        static BlockchainTestBase()
-        {
-            DifficultyCalculator = new DifficultyCalculatorWrapper();
-            Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
-        }
 
         [SetUp]
         public void Setup()
@@ -73,17 +47,7 @@ namespace Ethereum.Test.Base
             _logManager = logManager ?? NullLogManager.Instance;
             _logger = _logManager.GetClassLogger();
         }
-
-        private class DifficultyCalculatorWrapper : IDifficultyCalculator
-        {
-            public IDifficultyCalculator Wrapped { get; set; }
-
-            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, long blockNumber, bool parentHasUncles)
-            {
-                return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
-            }
-        }
-
+        
         protected EthereumTestResult RunTest(BlockchainTest test)
         {
             return RunTest(test, NullTxTracer.Instance);
@@ -105,8 +69,6 @@ namespace Ethereum.Test.Base
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
-
-            DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
 
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();

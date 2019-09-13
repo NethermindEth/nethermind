@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class SpecialTests : BlockchainTestBase
     {
         [Todo(Improve.TestCoverage, "Investigate 540980 if only affected by retesteth - it worked before the test format changes")]

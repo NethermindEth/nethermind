@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class RevertTests : BlockchainTestBase
     {
         private string[] ignored = new string[]
