@@ -80,9 +80,16 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
         {
-            var result = await _proxy.eth_getTransactionByHash(transactionHash);
+            var transactionTask = _proxy.eth_getTransactionByHash(transactionHash);
+            var receiptTask = _proxy.eth_getTransactionReceipt(transactionHash);
+            await Task.WhenAll(transactionTask, receiptTask);
 
-            return result.IsValid ? MapTransaction(result.Result) : null;
+            if (!transactionTask.Result.IsValid || !receiptTask.Result.IsValid)
+            {
+                return null;
+            }
+
+            return MapTransaction(transactionTask.Result.Result, receiptTask.Result.Result);
         }
 
         public async Task<int> GetNetworkIdAsync()
@@ -115,10 +122,10 @@ namespace Nethermind.DataMarketplace.Core.Services
             return result.IsValid ? result.Result : null;
         }
 
-        private static NdmTransaction MapTransaction(TransactionModel transaction)
-            => transaction is null
+        private static NdmTransaction MapTransaction(TransactionModel transaction, ReceiptModel receipt)
+            => transaction is null || receipt is null
                 ? null
                 : new NdmTransaction(transaction.ToTransaction(), (long) transaction.BlockNumber,
-                    transaction.BlockHash);
+                    transaction.BlockHash, (long) receipt.GasUsed);
     }
 }

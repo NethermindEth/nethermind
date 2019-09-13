@@ -14,28 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Facade.Proxy;
-using Nethermind.Logging;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.JsonRpc.Modules.Eth
+namespace Nethermind.Facade.Proxy.Models
 {
-    public class EthModuleProxyFactory : ModuleFactoryBase<IEthModule>
+    public class LogModel
     {
-        private readonly string[] _urlProxies;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogManager _logManager;
-
-        public EthModuleProxyFactory(string[] urlProxies, IJsonSerializer jsonSerializer, ILogManager logManager)
-        {
-            _urlProxies = urlProxies;
-            _jsonSerializer = jsonSerializer;
-            _logManager = logManager;
-        }
-
-        public override IEthModule Create()
-            => new EthModuleProxy(new EthJsonRpcClientProxy(new JsonRpcClientProxy(_urlProxies, _jsonSerializer,
-                _logManager)));
+        public Address Address { get; set; }
+        public Keccak BlockHash { get; set; }
+        public UInt256 BlockNumber { get; set; }
+        public byte[] Data { get; set; }
+        public UInt256 LogIndex { get; set; }
+        public bool Removed { get; set; }
+        public List<Keccak> Topics { get; set; }
+        public Keccak TransactionHash { get; set; }
+        public Keccak TransactionIndex { get; set; }
     }
 }

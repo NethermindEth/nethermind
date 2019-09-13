@@ -66,7 +66,8 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return Task.FromResult<NdmTransaction>(null);
             }
 
-            return Task.FromResult(new NdmTransaction(transaction, receipt.BlockNumber, receipt.BlockHash));
+            return Task.FromResult(new NdmTransaction(transaction, receipt.BlockNumber, receipt.BlockHash,
+                receipt.GasUsed));
         }
 
         public Task<int> GetNetworkIdAsync() => Task.FromResult(_blockchainBridge.GetNetworkId());

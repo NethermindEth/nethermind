@@ -76,7 +76,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             if (config.ProxyEnabled)
             {
                 ethJsonRpcClientProxy = new EthJsonRpcClientProxy(new JsonRpcClientProxy(config.JsonRpcUrlProxies,
-                    services.JsonSerializer));
+                    services.JsonSerializer, logManager));
                 ndmBlockchainBridge = new NdmBlockchainBridgeProxy(ethJsonRpcClientProxy);
             }
             else

@@ -43,6 +43,9 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<UInt256?>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<UInt256?>(nameof(eth_getTransactionCount), address, MapBlockParameter(blockParameter));
 
+        public Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash)
+            => _proxy.SendAsync<ReceiptModel>(nameof(eth_getTransactionReceipt), transactionHash);
+        
         public Task<RpcResult<byte[]>> eth_call(CallTransactionModel transaction,
             BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<byte[]>(nameof(eth_call), transaction, MapBlockParameter(blockParameter));

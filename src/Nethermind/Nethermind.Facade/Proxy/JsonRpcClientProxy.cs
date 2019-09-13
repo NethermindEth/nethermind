@@ -20,6 +20,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Logging;
 
 namespace Nethermind.Facade.Proxy
 {
@@ -27,8 +28,9 @@ namespace Nethermind.Facade.Proxy
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly HttpClient _client;
+        private ILogger _logger;
 
-        public JsonRpcClientProxy(string[] urlProxies, IJsonSerializer jsonSerializer)
+        public JsonRpcClientProxy(string[] urlProxies, IJsonSerializer jsonSerializer, ILogManager logManager)
         {
             var url = urlProxies?.FirstOrDefault() ??
                       throw new ArgumentException("Empty JSON RPC URL proxies.", nameof(urlProxies));
@@ -38,6 +40,7 @@ namespace Nethermind.Facade.Proxy
             }
 
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _client = new HttpClient
             {
                 BaseAddress = new Uri(url)
@@ -57,14 +60,15 @@ namespace Nethermind.Facade.Proxy
                 @params = (@params ?? Array.Empty<object>()).Where(x => !(x is null))
             };
 
-            var payload = GetPayload(request);
+            var requestId = Guid.NewGuid().ToString();
+            var json = _jsonSerializer.Serialize(request);
+            if (_logger.IsTrace) _logger.Trace($"Sending JSON RPC Proxy request [id: {requestId}]: {json}");
+            var payload = new StringContent(json, Encoding.UTF8, "application/json");
             var result = await _client.PostAsync(string.Empty, payload);
-            var content = await result.Content.ReadAsStringAsync();
+            var response = await result.Content.ReadAsStringAsync();
+            if (_logger.IsTrace) _logger.Trace($"Received JSON RPC Proxy response [id: {requestId}]: {response}");
 
-            return _jsonSerializer.Deserialize<RpcResult<T>>(content);
+            return _jsonSerializer.Deserialize<RpcResult<T>>(response);
         }
-
-        private StringContent GetPayload(object data)
-            => new StringContent(_jsonSerializer.Serialize(data), Encoding.UTF8, "application/json");
     }
 }

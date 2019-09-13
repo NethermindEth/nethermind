@@ -24,12 +24,14 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public Transaction Transaction { get; }
         public long BlockNumber { get; }
         public Keccak BlockHash { get; }
+        public long GasUsed { get; set; }
 
-        public NdmTransaction(Transaction transaction, long blockNumber, Keccak blockHash)
+        public NdmTransaction(Transaction transaction, long blockNumber, Keccak blockHash, long gasUsed)
         {
             Transaction = transaction;
             BlockNumber = blockNumber;
             BlockHash = blockHash;
+            GasUsed = gasUsed;
         }
     }
 }
