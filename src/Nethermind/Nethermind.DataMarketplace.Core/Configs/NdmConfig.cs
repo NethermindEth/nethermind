@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Configs
@@ -46,6 +47,6 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public UInt256 FaucetEthDailyRequestsTotalValue { get; set; } = 500;
         public string PluginsPath { get; set; } = "ndm/plugins";
         public bool ProxyEnabled { get; set; }
-        public string[] JsonRpcUrlProxies { get; set; }
+        public string[] JsonRpcUrlProxies { get; set; } = Array.Empty<string>();
     }
 }
