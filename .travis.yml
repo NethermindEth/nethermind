@@ -178,7 +178,7 @@ jobs:
       if: branch = master OR type = pull_request
       name: "Ethereum.Basic.Test"
     - script:
-      - git submodule update --init && dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
+      - git submodule update --init && travis_wait 21 dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Blockchain.Block.Test
       if: branch = master OR type = pull_request
       name: "Ethereum.Blockchain.Block.Test"
     - script:

@@ -24,6 +24,7 @@ using NUnit.Framework;
 namespace Ethereum.Transition.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class FrontierToHomesteadTests : LegacyBlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]

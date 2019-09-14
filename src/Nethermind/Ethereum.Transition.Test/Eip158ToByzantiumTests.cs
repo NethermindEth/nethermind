@@ -23,7 +23,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Transition.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class Eip158ToByzantiumTests : LegacyBlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests))]
