@@ -543,7 +543,7 @@ namespace Nethermind.Evm
                 }
                 
                 _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter);
-                if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(evmState.Memory.GetTrace()); }
+                if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(vmState.Memory.GetTrace()); }
                 if (_txTracer.IsTracingStack) { _txTracer.SetOperationStack(GetStackTrace(stack)); }
             }
 
