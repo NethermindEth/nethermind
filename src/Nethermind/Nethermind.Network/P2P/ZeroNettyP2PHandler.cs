@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P
                     int length = SnappyCodec.Uncompress(content.Array, content.ArrayOffset + content.ReaderIndex, content.ReadableBytes, output.Array, output.ArrayOffset);
                     output.SetWriterIndex(output.WriterIndex + length);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     if (content.ReadableBytes == 2 && content.ReadByte() == 193)
                     {

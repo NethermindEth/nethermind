@@ -397,14 +397,19 @@ namespace Nethermind.Core.Encoding
         {
             return Encode((long) value);
         }
-
+        
         public static Rlp Encode(uint value)
         {
-            return Encode((long) value);
+            return value == 0U ? OfEmptyByteArray : Encode((long) value);
         }
 
         public static Rlp Encode(int value)
         {
+            if (value == 0)
+            {
+                return OfEmptyByteArray;
+            }
+
             return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long) value);
         }
 

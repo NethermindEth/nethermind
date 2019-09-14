@@ -19,6 +19,7 @@
 using System;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
@@ -86,7 +87,7 @@ namespace Nethermind.Network.Rlpx
 
             try
             {
-                _bossGroup = new MultithreadEventLoopGroup(1);
+                _bossGroup = new MultithreadEventLoopGroup();
                 _workerGroup = new MultithreadEventLoopGroup();
 
                 ServerBootstrap bootstrap = new ServerBootstrap();
@@ -153,13 +154,15 @@ namespace Nethermind.Network.Rlpx
                 InitializeChannel(ch, session);
             }));
             var connectTask = clientBootstrap.ConnectAsync(node.Address);
-            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
+            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
                 throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
             }
 
+            delayCancellation.Cancel();
             if (connectTask.IsFaulted)
             {
                 if (_logger.IsTrace)
@@ -236,9 +239,14 @@ namespace Nethermind.Network.Rlpx
 
             // below comment may arise from not understanding the quiet period but the resolution is correct
             // we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
-            if (await Task.WhenAny(closingTask, Task.Delay(Timeouts.TcpClose)) != closingTask)
+            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            if (await Task.WhenAny(closingTask, Task.Delay(Timeouts.TcpClose, delayCancellation.Token)) != closingTask)
             {
                 if (_logger.IsDebug) _logger.Debug($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
+            }
+            else
+            {
+                delayCancellation.Cancel();
             }
 
             if (_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");

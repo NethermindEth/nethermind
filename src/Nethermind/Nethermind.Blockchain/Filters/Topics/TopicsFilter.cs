@@ -33,13 +33,13 @@ namespace Nethermind.Blockchain.Filters.Topics
 
         public bool Accepts(LogEntry entry)
         {
+            if (_expressions.Length > entry.Topics.Length)
+            {
+                return false;
+            }
+            
             for (int i = 0; i < _expressions.Length; i++)
             {
-                if (_expressions.Length > entry.Topics.Length)
-                {
-                    return false;
-                }
-
                 if (!_expressions[i].Accepts(entry.Topics[i]))
                 {
                     return false;
@@ -47,6 +47,22 @@ namespace Nethermind.Blockchain.Filters.Topics
             }
 
             return true;
+        }
+
+        public bool Matches(Bloom bloom)
+        {
+            bool result = true;
+            
+            for (int i = 0; i < _expressions.Length; i++)
+            {
+                result = _expressions[i].Matches(bloom);
+                if (!result)
+                {
+                    break;
+                }
+            }
+
+            return result;
         }
     }
 }

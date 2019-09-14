@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -151,8 +152,16 @@ namespace Nethermind.Network.Discovery
         public async Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout)
         {
             var completionSource = GetCompletionSource(senderIdHash, (int)messageType);
-            var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout));
-            return firstTask == completionSource.Task;
+            CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
+
+            bool result = firstTask == completionSource.Task;
+            if (result)
+            {
+                delayCancellation.Cancel();
+            }
+            
+            return result;
         }
 
         public event EventHandler<NodeEventArgs> NodeDiscovered;
@@ -179,18 +188,20 @@ namespace Nethermind.Network.Discovery
 
             if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes()))
             {
-                //throw new NetworkingException($"Received message with incorrect destination address, message: {message}");
+                throw new NetworkingException($"Received message with incorrect destination address, message: {message}", NetworkExceptionType.Discovery);
             }
 
-            if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
-            {
+            // port will be different as we dynamically open ports for each socket connection
+//            if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
+//            {
 //                throw new NetworkingException($"Received message with incorrect destination port, message: {message}");
-            }
+//            }
 
-            if (!Bytes.AreEqual(message.FarAddress?.Address.GetAddressBytes(), message.SourceAddress?.Address.GetAddressBytes()))
-            {
-                //throw new NetworkingException($"Received message with incorrect source address, message: {message}");
-            }
+            // either an old Nethermind or other nodes that make the same mistake 
+//            if (!Bytes.AreEqual(message.FarAddress?.Address.GetAddressBytes(), message.SourceAddress?.Address.GetAddressBytes()))
+//            {
+//                throw new NetworkingException($"Received message with incorrect source address, message: {message}", NetworkExceptionType.Discovery);
+//            }
 
             if (message.FarAddress?.Port != message.SourceAddress?.Port)
             {

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Numerics;
 using Jint.Native;
 using Nethermind.Core;
@@ -134,6 +135,12 @@ namespace Nethermind.Cli.Modules
         public JsValue ProtocolVersion()
         {
             return NodeManager.PostJint("eth_protocolVersion").Result;
+        }
+        
+        [CliFunction("eth", "getLogs")]
+        public JsValue GetLogs(object json)
+        {
+            return NodeManager.PostJint("eth_getLogs", json).Result;
         }
 
         public EthCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)

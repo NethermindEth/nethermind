@@ -62,7 +62,7 @@ namespace Nethermind.Core
         
         private void Set(byte[] sequence, Bloom masterBloom)
         {
-            var indexes = GetIndexes(sequence);
+            var indexes = GetExtract(sequence);
             _bits.Set(indexes.Index1, true);
             _bits.Set(indexes.Index2, true);
             _bits.Set(indexes.Index3, true);
@@ -74,10 +74,10 @@ namespace Nethermind.Core
             }
         }
         
-        public bool IsMatch(byte[] sequence)
+        public bool Matches(byte[] sequence)
         {
-            var indexes = GetIndexes(sequence);
-            return _bits[indexes.Index1] && _bits[indexes.Index2] && _bits[indexes.Index3];
+            var indexes = GetExtract(sequence);
+            return Matches(ref indexes);
         }
         
         public override string ToString()
@@ -157,27 +157,37 @@ namespace Nethermind.Core
             }
         }
         
-        public bool IsMatch(LogEntry logEntry)
+        public bool Matches(LogEntry logEntry)
         {
-            if (!IsMatch(logEntry.LoggersAddress.Bytes))
+            if (Matches(logEntry.LoggersAddress))
             {
-                return false;
-            }
-            
-            for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
-            {
-                Keccak topic = logEntry.Topics[topicIndex];
-                if (!IsMatch(topic.Bytes))
+                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
-                    return false;
+                    if (!Matches(logEntry.Topics[topicIndex]))
+                    {
+                        return false;
+                    }
                 }
+
+                return true;
             }
 
-            return true;
-
+            return false;
         }
+
+        public bool Matches(Address address) => Matches(address.Bytes);
         
-        private (int Index1, int Index2, int Index3) GetIndexes(byte[] sequence)
+        public bool Matches(Keccak topic) => Matches(topic.Bytes);
+        
+        public bool Matches(ref BloomExtract extract) => _bits[extract.Index1] && _bits[extract.Index2] && _bits[extract.Index3];
+
+        public bool Matches(BloomExtract extract) => Matches(ref extract);
+        
+        public static BloomExtract GetExtract(Address address) => GetExtract(address.Bytes);
+        
+        public  static BloomExtract GetExtract(Keccak topic) => GetExtract(topic.Bytes);
+
+        private static BloomExtract GetExtract(byte[] sequence)
         {
             int GetIndex(Span<byte> bytes, int index1, int index2)
             {
@@ -185,7 +195,22 @@ namespace Nethermind.Core
             }
 
             var keccakBytes = ValueKeccak.Compute(sequence).BytesAsSpan;
-            return (GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
+            var indexes = new BloomExtract(GetIndex(keccakBytes, 0, 1), GetIndex(keccakBytes, 2, 3), GetIndex(keccakBytes, 4, 5));
+            return indexes;
+        }
+        
+        public struct BloomExtract
+        {
+            public BloomExtract(int index1, int index2, int index3)
+            {
+                Index1 = index1;
+                Index2 = index2;
+                Index3 = index3;
+            }
+            
+            public int Index1 { get; }
+            public int Index2 { get; }
+            public int Index3 { get; }
         }
     }
 }

@@ -525,7 +525,7 @@ namespace Nethermind.Evm
             Span<byte> bytesOnStack = vmState.BytesOnStack.AsSpan();
             int stackHead = vmState.StackHead;
             long gasAvailable = vmState.GasAvailable;
-            UInt256 programCounter = vmState.ProgramCounter;
+            int programCounter = vmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
 
             void UpdateCurrentState()
@@ -542,8 +542,8 @@ namespace Nethermind.Evm
                     return;
                 }
                 
-                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, (int)programCounter);
-                if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(vmState.Memory.GetTrace()); }
+                _txTracer.StartOperation(env.CallDepth + 1, gasAvailable, instruction, programCounter);
+                if (_txTracer.IsTracingMemory) { _txTracer.SetOperationMemory(evmState.Memory.GetTrace()); }
                 if (_txTracer.IsTracingStack) { _txTracer.SetOperationStack(GetStackTrace(stack)); }
             }
 
@@ -2029,8 +2029,8 @@ namespace Nethermind.Evm
 //                            return CallResult.InvalidJumpDestination;
                         }
 
-                        int dest = (int)jumpDest;
-                        if (!env.CodeInfo.ValidateJump(dest))
+                        int jumpDestInt = (int)jumpDest;
+                        if (!env.CodeInfo.ValidateJump(jumpDestInt))
                         {
                             // https://github.com/NethermindEth/nethermind/issues/140
                             EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
@@ -2038,7 +2038,7 @@ namespace Nethermind.Evm
 //                            return CallResult.InvalidJumpDestination;
                         }
 
-                        programCounter = jumpDest;
+                        programCounter = jumpDestInt;
                         break;
                     }
                     case Instruction.JUMPI:
@@ -2062,9 +2062,9 @@ namespace Nethermind.Evm
 //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
                             }
 
-                            int dest = (int)jumpDest;
+                            int jumpDestInt = (int)jumpDest;
 
-                            if (!env.CodeInfo.ValidateJump(dest))
+                            if (!env.CodeInfo.ValidateJump(jumpDestInt))
                             {
                                 EndInstructionTraceError(EvmExceptionType.InvalidJumpDestination);
                                 // https://github.com/NethermindEth/nethermind/issues/140
@@ -2072,7 +2072,7 @@ namespace Nethermind.Evm
 //                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
                             }
 
-                            programCounter = jumpDest;
+                            programCounter = jumpDestInt;
                         }
 
                         break;
@@ -2085,7 +2085,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        UInt256 pc = programCounter - 1L;
+                        UInt256 pc = (UInt256)(programCounter - 1);
                         PushUInt256(ref pc, bytesOnStack);
                         break;
                     }
@@ -2183,12 +2183,12 @@ namespace Nethermind.Evm
                         }
 
                         int length = instruction - Instruction.PUSH1 + 1;
-                        int programCounterInt = (int)programCounter;
+                        int programCounterInt = programCounter;
                         int usedFromCode = Math.Min(code.Length - programCounterInt, length);
 
                         PushLeftPaddedBytes(code.Slice(programCounterInt, usedFromCode), length, bytesOnStack);
 
-                        programCounter += (ulong)length;
+                        programCounter += length;
                         break;
                     }
                     case Instruction.DUP1:
@@ -2834,7 +2834,7 @@ namespace Nethermind.Evm
             return CallResult.Empty;
         }
         
-        private struct CallResult
+        internal struct CallResult
         {
             public static CallResult OutOfGasException = new CallResult(EvmExceptionType.OutOfGas);
             public static CallResult AccessViolationException = new CallResult(EvmExceptionType.AccessViolation);
@@ -2872,15 +2872,13 @@ namespace Nethermind.Evm
                 ExceptionType = exceptionType;
             }
 
-            public bool ShouldRevert { get; }
-            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-
             public VmState StateToExecute { get; }
             public byte[] Output { get; }
+            public EvmExceptionType ExceptionType { get; }
+            public bool ShouldRevert { get; }
+            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
             public bool IsReturn => StateToExecute == null;
             public bool IsException => ExceptionType != EvmExceptionType.None;
-
-            public EvmExceptionType ExceptionType { get; }
         }
     }
 }

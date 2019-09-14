@@ -35,7 +35,7 @@ namespace Nethermind.Overseer.Test.Framework
             process.Exited += ProcessOnExited;
             process.StartInfo.WorkingDirectory = workingDirectory;
             process.StartInfo.FileName = "dotnet";
-            var arguments = $"Nethermind.Runner.dll --config {config} --InitConfig.HttpPort {httpPort} --InitConfig.P2PPort {p2pPort} --InitConfig.DiscoveryPort {p2pPort} --InitConfig.TestNodeKey {nodeKey}";
+            var arguments = $"Nethermind.Runner.dll --config {config} --JsonRpc.Port {httpPort} --Network.P2PPort {p2pPort} --Network.DiscoveryPort {p2pPort} --KeyStore.TestNodeKey {nodeKey}";
             if (!string.IsNullOrEmpty(dbPath))
             {
                 arguments = $"{arguments} --baseDbPath {dbPath}";
@@ -43,7 +43,7 @@ namespace Nethermind.Overseer.Test.Framework
 
             if (!string.IsNullOrEmpty(bootnode))
             {
-                arguments = $"{arguments} --NetworkConfig.Bootnodes {bootnode}";
+                arguments = $"{arguments} --Discovery.Bootnodes {bootnode}";
             }
             
             process.StartInfo.Arguments = arguments;

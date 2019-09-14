@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
@@ -28,16 +29,18 @@ namespace Nethermind.JsonRpc.Modules
     {
         public IReadOnlyCollection<JsonConverter> Converters { get; } = new List<JsonConverter>();
         
-        private readonly IJsonRpcConfig _jsonRpcConfig;
+        private ILogger _logger;
+        private IJsonRpcConfig _jsonRpcConfig;
         private Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)> _methods = new Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)>();
         private Dictionary<ModuleType, (Func<IModule> RentModule, Action<IModule> ReturnModule)> _pools = new Dictionary<ModuleType, (Func<IModule> RentModule, Action<IModule> ReturnModule)>();
 
         private List<ModuleType> _modules = new List<ModuleType>();
         private List<ModuleType> _enabledModules = new List<ModuleType>();
 
-        public RpcModuleProvider(IJsonRpcConfig jsonRpcConfig)
+        public RpcModuleProvider(IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private IDictionary<string, MethodInfo> GetMethodDict(Type type)
@@ -45,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules
             var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
             return methods.ToDictionary(x => x.Name.Trim().ToLower());
         }
-        
+
         public void Register<T>(IRpcModulePool<T> pool) where T : IModule
         {
             ModuleType moduleType = typeof(T).GetCustomAttribute<RpcModuleAttribute>().ModuleType;
@@ -60,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules
                 _methods[name] = (moduleType, info);
             }
 
-            if (_jsonRpcConfig.EnabledModules.Contains(moduleType))
+            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString()))
             {
                 _enabledModules.Add(moduleType);
             }

@@ -66,7 +66,7 @@ namespace Nethermind.Config.Test
                 Dictionary<string, string> args = new Dictionary<string, string>();
                 if (bitArray.Get(4))
                 {
-                    args.Add("StatsConfig.CaptureNodeStatsEventHistory", bitArray.Get(5).ToString());
+                    args.Add("Stats.CaptureNodeStatsEventHistory", bitArray.Get(5).ToString());
                 }
 
                 Environment.SetEnvironmentVariable("NETHERMIND_STATSCONFIG_CAPTURENODESTATSEVENTHISTORY", null, EnvironmentVariableTarget.Process);
@@ -78,7 +78,7 @@ namespace Nethermind.Config.Test
                 Dictionary<string, string> fakeJson = new Dictionary<string, string>();
                 if (bitArray.Get(0))
                 {
-                    fakeJson.Add("StatsConfig.CaptureNodeStatsEventHistory", bitArray.Get(1).ToString());
+                    fakeJson.Add("Stats.CaptureNodeStatsEventHistory", bitArray.Get(1).ToString());
                 }
 
                 configProvider.AddSource(new ArgsConfigSource(args));

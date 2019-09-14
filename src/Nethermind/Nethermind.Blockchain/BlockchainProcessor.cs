@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Return");
+            if (_logger.IsTrace) _logger.Trace($"Returns from processing loop");
         }
 
         public event EventHandler ProcessingQueueEmpty;
@@ -288,6 +288,7 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
+                    if (_logger.IsTrace) _logger.Trace($"To be processed (of {suggestedBlock.ToString(Block.Format.Short)}) is {toBeProcessed?.ToString(Block.Format.Short)}");
                     if (toBeProcessed.IsGenesis)
                     {
                         break;
@@ -302,7 +303,15 @@ namespace Nethermind.Blockchain
                     bool isFastSyncTransition = _blockTree.Head == _blockTree.Genesis && toBeProcessed.Number > 1; 
                     if (!isFastSyncTransition)
                     {
-                        toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);    
+                        if (_logger.IsTrace) _logger.Trace($"Finding parent of {toBeProcessed.ToString(Block.Format.Short)}");
+                        toBeProcessed = _blockTree.FindParent(toBeProcessed.Header, BlockTreeLookupOptions.None);
+                        if (_logger.IsTrace) _logger.Trace($"Found parent {toBeProcessed?.ToString(Block.Format.Short)}");
+
+                        if (toBeProcessed == null)
+                        {
+                            if (_logger.IsTrace) _logger.Trace($"Treating this as fast sync transition for {suggestedBlock.ToString(Block.Format.Short)}");
+                            break;
+                        }
                     }
                     else
                     {
@@ -337,7 +346,7 @@ namespace Nethermind.Blockchain
                     {
                         if (block.Hash != null && _blockTree.WasProcessed(block.Number, block.Hash))
                         {
-                            if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.Hash}");
+                            if (_logger.IsInfo) _logger.Info($"Rerunning block after reorg: {block.ToString(Block.Format.FullHashAndNumber)}");
                         }
                         
                         blocksToProcess.Add(block);

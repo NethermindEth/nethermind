@@ -37,7 +37,7 @@ namespace Nethermind.Core
             string gitHash = File.Exists("git-hash") ? File.ReadAllText("git-hash") : string.Empty;
             gitHash = Regex.Match(gitHash, "\\-g(\\w+)").Groups[1].Value;
             
-            Description = $"Nethermind/v1.0.0-rc31dev-{gitHash}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v1.0.4-{gitHash}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
         
         public static string Description { get; }

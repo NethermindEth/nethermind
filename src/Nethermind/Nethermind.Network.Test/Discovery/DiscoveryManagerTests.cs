@@ -42,6 +42,7 @@ namespace Nethermind.Network.Test.Discovery
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
         
+        private INetworkConfig _networkConfig = new NetworkConfig();
         private IDiscoveryManager _discoveryManager;
         private IMessageSender _messageSender;
         private INodeTable _nodeTable;
@@ -67,7 +68,10 @@ namespace Nethermind.Network.Test.Discovery
             _messageSender = Substitute.For<IMessageSender>();
             var calculator = new NodeDistanceCalculator(discoveryConfig);
             
-            _nodeTable = new NodeTable(calculator, discoveryConfig, logManager);
+            _networkConfig.ExternalIp = "99.10.10.66";
+            _networkConfig.LocalIp = "10.0.0.5";
+            
+            _nodeTable = new NodeTable(calculator, discoveryConfig, _networkConfig, logManager);
             _nodeTable.Initialize(TestItem.PublicKeyA);
             
             _timestamper = new Timestamper();

@@ -20,31 +20,23 @@ namespace Nethermind.Runner.Config
 {
     public class InitConfig : IInitConfig
     {
-        public bool PubSubEnabled { get; set; } = false;
         public bool EnableUnsecuredDevWallet { get; set; } = false;
         public bool KeepDevWalletInMemory { get; set; } = false;
-        public bool JsonRpcEnabled { get; set; } = false;
         public bool WebSocketsEnabled { get; set; } = false;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
-        public string HttpHost { get; set; } = "127.0.0.1";
-        public int HttpPort { get; set; } = 8545;
-        public int DiscoveryPort { get; set; } = 30303;
-        public int P2PPort { get; set; } = 30303;
         public string ChainSpecPath { get; set; }
         public string ChainSpecFormat { get; set; } = "chainspec";
         public string BaseDbPath { get; set; } = "db";
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
         public string StaticNodesPath { get; set; } = "Data/static-nodes.json";
-        public string[] JsonRpcEnabledModules { get; set; } = { "Clique", "Eth", "Net", "Web3", "Db", "Debug", "TxPool" };
         public string LogDirectory { get; set; } = null;
         public bool StoreTraces { get; set; } = false;
-        public bool StoreReceipts { get; set; } = false;
-        
+        public bool StoreReceipts { get; set; } = true;
         public bool EnableRc7Fix { get; set; } = false;
     }
 }

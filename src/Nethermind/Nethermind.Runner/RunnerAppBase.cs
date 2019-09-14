@@ -104,7 +104,9 @@ namespace Nethermind.Runner
 
                 var serializer = new UnforgivingJsonSerializer();
                 if (Logger.IsInfo)
+                {
                     Logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
+                }
 
                 _cancelKeySource = new TaskCompletionSource<object>();
 
@@ -132,11 +134,12 @@ namespace Nethermind.Runner
         [Todo(Improve.Refactor, "network config can be handled internally in EthereumRunner")]
         protected async Task StartRunners(IConfigProvider configProvider)
         {
-            var initParams = configProvider.GetConfig<IInitConfig>();
+            IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             var metricsParams = configProvider.GetConfig<IMetricsConfig>();
-            var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
-            IRpcModuleProvider rpcModuleProvider = initParams.JsonRpcEnabled
-                ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>())
+            var logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
+            IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
+                ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
             var jsonSerializer = new EthereumJsonSerializer();
             var webSocketsManager = new WebSocketsManager();
@@ -179,7 +182,7 @@ namespace Nethermind.Runner
                 });
             }
             
-            if (initParams.WebSocketsEnabled)
+            if (initConfig.WebSocketsEnabled)
             {
                 if (ndmEnabled)
                 {
@@ -195,12 +198,12 @@ namespace Nethermind.Runner
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
             });
 
-            if (initParams.JsonRpcEnabled)
+            if (jsonRpcConfig.Enabled)
             {
                 rpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(new Web3Module(logManager)));
                 var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
                 var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, logManager);
-                if (initParams.WebSocketsEnabled)
+                if (initConfig.WebSocketsEnabled)
                 {
                     webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer));
                 }
@@ -220,11 +223,11 @@ namespace Nethermind.Runner
                 if (Logger.IsInfo) Logger.Info("Json RPC is disabled");
             }
 
-            if (metricsParams.MetricsEnabled)
+            if (metricsParams.Enabled)
             {
-                var intervalSeconds = metricsParams.MetricsIntervalSeconds;
+                var intervalSeconds = metricsParams.IntervalSeconds;
                 _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
-                    metricsParams.MetricsPushGatewayUrl, ClientVersion.Description,
+                    metricsParams.PushGatewayUrl, ClientVersion.Description,
                     metricsParams.NodeName, intervalSeconds, logManager);
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {

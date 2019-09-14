@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Builders
             return Build();
         }
 
-        public LogEntryBuilder WithTopics(Keccak[] topics)
+        public LogEntryBuilder WithTopics(params Keccak[] topics)
         {
             _topics = topics;
             

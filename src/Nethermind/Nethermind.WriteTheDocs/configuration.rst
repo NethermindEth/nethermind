@@ -348,15 +348,15 @@ MetricsConfig
 
 Configuration of the Prometheus + Grafana metrics publication. Documentation of the required setup is not yet ready (but the metrics do work and are used by the dev team)
 
- MetricsEnabled
+ Enabled
    If 'true' then the node publishes various metrics to Prometheus at the given interval.
    default value: false
 
- MetricsIntervalSeconds
+ IntervalSeconds
    
    default value: 5
 
- MetricsPushGatewayUrl
+ PushGatewayUrl
    Prometheus URL.
    default value: "http://localhost:9091/metrics"
 
@@ -630,9 +630,9 @@ Sample configuration (mainnet)
       {
         "ConfigModule": "MetricsConfig"
         "ConfigItems": {
-          "MetricsEnabled" : false,
-          "MetricsIntervalSeconds" : 5,
-          "MetricsPushGatewayUrl" : "http://localhost:9091/metrics",
+          "Enabled" : false,
+          "IntervalSeconds" : 5,
+          "PushGatewayUrl" : "http://localhost:9091/metrics",
           "NodeName" : "Nethermind",
         }
       },

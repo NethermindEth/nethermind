@@ -126,24 +126,20 @@ namespace Nethermind.Blockchain.Filters
         {
             if (filterTopic == null)
             {
-                return new AnyTopic();
+                return AnyTopic.Instance;
             }
-
-            return new OrExpression(new[]
+            else if (filterTopic.Topic != null)
             {
-                GetTopicExpression(filterTopic.First),
-                GetTopicExpression(filterTopic.Second)
-            });
-        }
-
-        private TopicExpression GetTopicExpression(Keccak topic)
-        {
-            if (topic == null)
-            {
-                return new AnyTopic();
+                return new SpecificTopic(filterTopic.Topic);
             }
-
-            return new SpecificTopic(topic);
+            else if (filterTopic.Topics.Any())
+            {
+                return new OrExpression(filterTopic.Topics.Select(t => new SpecificTopic(t)).ToArray<TopicExpression>());
+            }
+            else
+            {
+                return AnyTopic.Instance; 
+            }
         }
 
         private static AddressFilter GetAddress(object address)
@@ -180,19 +176,29 @@ namespace Nethermind.Blockchain.Filters
                 case string topic:
                     return new FilterTopic
                     {
-                        First = new Keccak(topic)
+                        Topic = new Keccak(topic)
                     };
             }
 
-            var topics = (obj as IEnumerable<string>)?.ToList();
-            var first = topics?.FirstOrDefault();
-            var second = topics?.Skip(1).FirstOrDefault();
-
-            return new FilterTopic
+            var topics = obj as IEnumerable<string>;
+            if (topics == null)
             {
-                First = first is null ? null : new Keccak(first),
-                Second = second is null ? null : new Keccak(second)
-            };
+                return null;
+            }
+            else
+            {
+                return new FilterTopic
+                {
+                    Topics = topics.Select(t => new Keccak(t)).ToArray()
+                };
+            }
+        }
+        
+        private class FilterTopic
+        {
+            public Keccak Topic { get; set; }
+            public Keccak[] Topics { get; set; }
+        
         }
     }
 }

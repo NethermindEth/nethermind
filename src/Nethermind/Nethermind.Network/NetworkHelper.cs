@@ -20,49 +20,65 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 
 namespace Nethermind.Network
 {
-    public class NetworkHelper : INetworkHelper
+    public class IpResolver : IIpResolver
     {
-        private readonly ILogger _logger;
-        private IPAddress _localIp;
-        private IPAddress _externalIp;
+        private ILogger _logger;
+        private INetworkConfig _networkConfig;
 
-        public NetworkHelper(ILogger logger)
+        public IpResolver(INetworkConfig networkConfig, ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            
+            LocalIp = InitializeLocalIp();
+            ExternalIp = InitializeExternalIp();
         }
+        
+        public IPAddress LocalIp { get; }
 
-        public IPAddress GetLocalIp()
-        {
-            return _localIp ?? (_localIp = FindLocalIp());
-        }
+        public IPAddress ExternalIp { get; }
 
-        public IPAddress GetExternalIp()
+        private IPAddress InitializeExternalIp()
         {
-            return _externalIp ?? (_externalIp = FindExternalIp());
-        }
-
-        private IPAddress FindExternalIp()
-        {
+            string externalIpSetInEnv = Environment.GetEnvironmentVariable("NETHERMIND_ENODE_IPADDRESS");
+            if (externalIpSetInEnv != null)
+            {
+                return IPAddress.Parse(externalIpSetInEnv);
+            }
+            
+            if (_networkConfig.ExternalIp != null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"Using the external IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.ExternalIp)} = {_networkConfig.ExternalIp}");
+                return IPAddress.Parse(_networkConfig.ExternalIp);
+            }
+            
             try
             {
-                var url = "http://checkip.amazonaws.com";
-                _logger.Info($"Using {url} to get external ip");
-                var ip = new WebClient().DownloadString(url);
-                _logger.Info($"External ip: {ip}");
-                return IPAddress.Parse(ip?.Trim());
+                const string url = "http://checkip.amazonaws.com";
+                if(_logger.IsInfo) _logger.Info($"Using {url} to get external ip");
+                string ip = new WebClient().DownloadString(url);
+                if(_logger.IsInfo) _logger.Info($"External ip: {ip}");
+                return IPAddress.Parse(ip.Trim());
             }
             catch (Exception e)
             {
-                _logger.Error("Error while getting external ip", e);
-                return null;
+                if(_logger.IsError) _logger.Error("Error while getting external ip", e);
+                return IPAddress.Parse("127.0.0.1");
             }
         }
 
-        private IPAddress FindLocalIp()
+        private IPAddress InitializeLocalIp()
         {
+            if (_networkConfig.LocalIp != null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"Using the local IP override: {nameof(NetworkConfig)}.{nameof(NetworkConfig.LocalIp)} = {_networkConfig.LocalIp}");
+                return IPAddress.Parse(_networkConfig.LocalIp);
+            }
+            
             try
             {
                 using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
@@ -76,7 +92,7 @@ namespace Nethermind.Network
             }
             catch (Exception e)
             {
-                _logger.Error("Error while getting local ip", e);
+                if(_logger.IsError) _logger.Error("Error while getting local ip", e);
                 return null;
             }
         }

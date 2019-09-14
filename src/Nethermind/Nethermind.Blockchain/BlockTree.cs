@@ -47,8 +47,7 @@ namespace Nethermind.Blockchain
         private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize);
         private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize);
 
-        private const int MaxQueueSize = 10_000_000;
-
+        private const int BestKnownSearchLimit = 256_000_000;
         public const int DbLoadBatchSize = 4000;
 
         private long _currentDbLoadBatchEnd;
@@ -139,7 +138,7 @@ namespace Nethermind.Blockchain
         {
             long headNumber = Head?.Number ?? -1;
             long left = Math.Max(LowestInsertedHeader?.Number ?? 0, headNumber);
-            long right = headNumber + MaxQueueSize;
+            long right = headNumber + BestKnownSearchLimit;
 
             while (left != right)
             {
@@ -235,6 +234,92 @@ namespace Nethermind.Blockchain
             }
         }
 
+        private async Task VisitBlocks(long startNumber, long blocksToVisit, Func<Block, Task<bool>> blockFound, Func<BlockHeader, Task<bool>> headerFound, Func<long, Task<bool>> noneFound, CancellationToken cancellationToken)
+        {
+            long blockNumber = startNumber;
+            for (long i = 0; i < blocksToVisit; i++)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                ChainLevelInfo level = LoadLevel(blockNumber);
+                if (level == null)
+                {
+                    _logger.Warn($"Missing level - {blockNumber}");
+                    break;
+                }
+
+                BigInteger maxDifficultySoFar = 0;
+                BlockInfo maxDifficultyBlock = null;
+                for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
+                {
+                    if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
+                    {
+                        maxDifficultyBlock = level.BlockInfos[blockIndex];
+                        maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
+                    }
+                }
+
+                level = null;
+                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                if (level != null)
+                    // ReSharper disable once HeuristicUnreachableCode
+                {
+                    // ReSharper disable once HeuristicUnreachableCode
+                    throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
+                }
+
+                if (maxDifficultyBlock == null)
+                {
+                    throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
+                }
+
+                Block block = FindBlock(maxDifficultyBlock.BlockHash, BlockTreeLookupOptions.None);
+                if (block == null)
+                {
+                    BlockHeader header = FindHeader(maxDifficultyBlock.BlockHash, BlockTreeLookupOptions.None);
+                    if (header == null)
+                    {
+                        bool shouldContinue = await noneFound(blockNumber);
+                        if (!shouldContinue)
+                        {
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        bool shouldContinue = await headerFound(header);
+                        if (!shouldContinue)
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    bool shouldContinue = await blockFound(block);
+                    if (!shouldContinue)
+                    {
+                        break;
+                    }
+                }
+
+                blockNumber++;
+            }
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.Info($"Canceled visiting blocks in DB at block {blockNumber}");
+            }
+
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");
+            }
+        }
+
         public async Task LoadBlocksFromDb(
             CancellationToken cancellationToken,
             long? startBlockNumber = null,
@@ -250,7 +335,7 @@ namespace Nethermind.Blockchain
                 {
                     Keccak deletePointerHash = new Keccak(deletePointer);
                     if (_logger.IsInfo) _logger.Info($"Cleaning invalid blocks starting from {deletePointer}");
-                    CleanInvalidBlocks(deletePointerHash);
+                    DeleteBlocks(deletePointerHash);
                 }
 
                 if (startBlockNumber == null)
@@ -262,7 +347,7 @@ namespace Nethermind.Blockchain
                     Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1, BlockTreeLookupOptions.RequireCanonical)?.Header;
                 }
 
-                long blocksToLoad = Math.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
+                long blocksToLoad = Math.Min(CountKnownAheadOfHead(), maxBlocksToLoad);
                 if (blocksToLoad == 0)
                 {
                     if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB");
@@ -271,107 +356,52 @@ namespace Nethermind.Blockchain
 
                 if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}");
 
-                long blockNumber = startBlockNumber.Value;
-                for (long i = 0; i < blocksToLoad; i++)
+                Task<bool> NoneFound(long number)
                 {
-                    if (cancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    ChainLevelInfo level = LoadLevel(blockNumber);
-                    if (level == null)
-                    {
-                        _logger.Warn($"Missing level - {blockNumber}");
-                        break;
-                    }
-
-                    BigInteger maxDifficultySoFar = 0;
-                    BlockInfo maxDifficultyBlock = null;
-                    for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
-                    {
-                        if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
-                        {
-                            maxDifficultyBlock = level.BlockInfos[blockIndex];
-                            maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
-                        }
-                    }
-
-                    level = null;
-                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-                    if (level != null)
-                        // ReSharper disable once HeuristicUnreachableCode
-                    {
-                        // ReSharper disable once HeuristicUnreachableCode
-                        throw new InvalidOperationException("just be aware that this level can be deleted by another thread after here");
-                    }
-
-                    if (maxDifficultyBlock == null)
-                    {
-                        throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
-                    }
-
-                    Block block = FindBlock(maxDifficultyBlock.BlockHash, BlockTreeLookupOptions.None);
-                    if (block == null)
-                    {
-                        BlockHeader header = FindHeader(maxDifficultyBlock.BlockHash, BlockTreeLookupOptions.None);
-                        if (header == null)
-                        {
-                            _blockInfoDb.Delete(blockNumber);
-                            BestKnownNumber = blockNumber - 1;
-                            // TODO: check if it is the last one
-                            break;
-                        }
-
-                        BestSuggestedHeader = header;
-                        if (i < blocksToLoad - 1024)
-                        {
-                            long jumpSize = blocksToLoad - 1024 - 1;
-                            if (_logger.IsInfo) _logger.Info($"Switching to fast sync headers load - jumping from {i} to {i + jumpSize}.");
-                            blockNumber += jumpSize;
-                            i += jumpSize;
-                        }
-
-                        // copy paste from below less batching
-                        if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
-                        {
-                            if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {blocksToLoad} headers from DB.");
-                        }
-                    }
-                    else
-                    {
-                        BestSuggestedHeader = block.Header;
-                        BestSuggestedBody = block;
-                        NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-
-                        if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < blockNumber)
-                        {
-                            if (_logger.IsInfo)
-                            {
-                                _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
-                            }
-
-                            _dbBatchProcessed = new TaskCompletionSource<object>();
-                            using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
-                            {
-                                _currentDbLoadBatchEnd = blockNumber - batchSize;
-                                await _dbBatchProcessed.Task;
-                            }
-                        }
-                    }
-
-                    blockNumber++;
+                    _blockInfoDb.Delete(number);
+                    BestKnownNumber = number - 1;
+                    return Task.FromResult(false);
                 }
 
-                if (cancellationToken.IsCancellationRequested)
+                Task<bool> HeaderFound(BlockHeader header)
                 {
-                    _logger.Info($"Canceled loading blocks from DB at block {blockNumber}");
+                    BestSuggestedHeader = header;
+                    long i = header.Number - startBlockNumber.Value;
+                    // copy paste from below less batching
+                    if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < header.Number)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Loaded {i + 1} out of {blocksToLoad} headers from DB.");
+                    }
+
+                    return Task.FromResult(true);
                 }
 
-                if (_logger.IsInfo)
+                async Task<bool> BlockFound(Block block)
                 {
-                    _logger.Info($"Completed loading blocks from DB at block {blockNumber} - best known {BestKnownNumber}");
+                    BestSuggestedHeader = block.Header;
+                    BestSuggestedBody = block;
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+
+                    long i = block.Number - startBlockNumber.Value;
+                    if (i % batchSize == batchSize - 1 && i != blocksToLoad - 1 && Head.Number + batchSize < block.Number)
+                    {
+                        if (_logger.IsInfo)
+                        {
+                            _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
+                        }
+
+                        _dbBatchProcessed = new TaskCompletionSource<object>();
+                        using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+                        {
+                            _currentDbLoadBatchEnd = block.Number - batchSize;
+                            await _dbBatchProcessed.Task;
+                        }
+                    }
+
+                    return true;
                 }
+
+                await VisitBlocks(startBlockNumber.Value, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
             }
             finally
             {
@@ -599,7 +629,7 @@ namespace Nethermind.Blockchain
                     {
                         return null;
                     }
-                    
+
                     header = _headerDecoder.Decode(data.AsRlpValueContext(), RlpBehaviors.AllowExtraData);
                     spanHeaderDb.DangerousReleaseMemory(data);
                 }
@@ -802,12 +832,12 @@ namespace Nethermind.Blockchain
             }
             finally
             {
-                CleanInvalidBlocks(invalidBlock.Hash);
+                DeleteBlocks(invalidBlock.Hash);
                 CanAcceptNewBlocks = true;
             }
         }
 
-        private void CleanInvalidBlocks(Keccak deletePointer)
+        private void DeleteBlocks(Keccak deletePointer)
         {
             BlockHeader deleteHeader = FindHeader(deletePointer, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             long currentNumber = deleteHeader.Number;
@@ -821,7 +851,6 @@ namespace Nethermind.Blockchain
                 nextLevel = LoadLevel(currentNumber + 1);
 
                 bool shouldRemoveLevel = false;
-
                 if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
                 {
                     if (currentLevel.BlockInfos.Length == 1)
@@ -841,31 +870,13 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (nextLevel != null) // just finding what the next descendant will be
+                // just finding what the next descendant will be
+                if (nextLevel != null)
                 {
-                    if (nextLevel.BlockInfos.Length == 1)
-                    {
-                        nextHash = nextLevel.BlockInfos[0].BlockHash;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < nextLevel.BlockInfos.Length; i++)
-                        {
-                            BlockHeader potentialDescendant = FindHeader(nextLevel.BlockInfos[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            if (potentialDescendant.ParentHash == currentHash)
-                            {
-                                nextHash = potentialDescendant.Hash;
-                                break;
-                            }
-                        }
-                    }
+                    nextHash = FindChild(nextLevel, currentHash);
+                }
 
-                    UpdateDeletePointer(nextHash);
-                }
-                else
-                {
-                    UpdateDeletePointer(null);
-                }
+                UpdateDeletePointer(nextHash);
 
                 try
                 {
@@ -901,6 +912,22 @@ namespace Nethermind.Blockchain
                 currentHash = nextHash;
                 nextHash = null;
             }
+        }
+
+        private Keccak FindChild(ChainLevelInfo level, Keccak parentHash)
+        {
+            Keccak childHash = null;
+            for (int i = 0; i < level.BlockInfos.Length; i++)
+            {
+                BlockHeader potentialChild = FindHeader(level.BlockInfos[i].BlockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                if (potentialChild.ParentHash == parentHash)
+                {
+                    childHash = potentialChild.Hash;
+                    break;
+                }
+            }
+
+            return childHash;
         }
 
         public bool IsMainChain(Keccak blockHash)
@@ -1053,7 +1080,7 @@ namespace Nethermind.Blockchain
         }
 
         [Todo(Improve.Refactor, "Look at this magic -1 behaviour, never liked it, now when it is split between BestKnownNumber and Head it is even worse")]
-        private long FindNumberOfBlocksToLoadFromDb()
+        private long CountKnownAheadOfHead()
         {
             long headNumber = Head?.Number ?? -1;
             return BestKnownNumber - headNumber;
@@ -1348,5 +1375,68 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
 
         public event EventHandler<BlockEventArgs> NewHeadBlock;
+
+        public async Task FixFastSyncGaps(CancellationToken cancellationToken)
+        {
+            try
+            {
+                CanAcceptNewBlocks = false;
+                long startNumber = Head?.Number ?? 0;
+                if (startNumber == 0)
+                {
+                    return;
+                }
+
+                long blocksToLoad = CountKnownAheadOfHead();
+                if (blocksToLoad == 0)
+                {
+                    return;
+                }
+                
+                long? gapStart = null;
+                long? gapEnd = null;
+
+                Keccak firstInvalidHash = null;
+                bool shouldDelete = false;
+
+                Task<bool> NoneFound(long number) => Task.FromResult(false);
+
+                Task<bool> HeaderFound(BlockHeader header)
+                {
+                    if (firstInvalidHash == null)
+                    {
+                        gapStart = header.Number;
+                        firstInvalidHash = header.Hash;
+                    }
+
+                    return Task.FromResult(true);
+                }
+
+                Task<bool> BlockFound(Block block)
+                {
+                    if (firstInvalidHash != null && !shouldDelete)
+                    {
+                        gapEnd = block.Number;
+                        shouldDelete = true;
+                    }
+
+                    return Task.FromResult(true);
+                }
+
+                await VisitBlocks(startNumber + 1, blocksToLoad, BlockFound, HeaderFound, NoneFound, cancellationToken);
+
+                if (shouldDelete)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Deleting blocks starting with {firstInvalidHash} due to the gap found between {gapStart} and {gapEnd}");
+                    DeleteBlocks(firstInvalidHash);
+                    BestSuggestedHeader = Head;
+                    BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
+                }
+            }
+            finally
+            {
+                CanAcceptNewBlocks = true;
+            }
+        }
     }
 }

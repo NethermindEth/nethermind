@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         [JsonRpcMethod(Description = "", IsImplemented = false)]
         ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key);
         
-        [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. InitConfig.JsonRpcEnabled")]
+        [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled")]
         ResultWrapper<string> debug_getConfigValue(string category, string name);
     }
 }

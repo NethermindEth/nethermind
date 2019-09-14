@@ -98,6 +98,11 @@ namespace Nethermind.PerfTest
                 await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
             }
 
+            public async Task FixFastSyncGaps(CancellationToken cancellationToken)
+            {
+                await _blockTree.FixFastSyncGaps(cancellationToken);
+            }
+
             public AddBlockResult Insert(Block block)
             {
                 return _blockTree.Insert(block);

@@ -165,6 +165,22 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void Can_load_best_known_up_to_256million()
+        {
+            _blocksDb = new MemDb();
+            _headersDb = new MemDb();
+            IDb blocksInfosDb = Substitute.For<IDb>();
+
+            Rlp chainLevel = Rlp.Encode(new ChainLevelInfo(true, new BlockInfo[] {new BlockInfo(TestItem.KeccakA, 1)}));
+            blocksInfosDb[Arg.Any<byte[]>()].Returns(chainLevel.Bytes);
+
+            BlockTree blockTree = new BlockTree(_blocksDb, _headersDb, blocksInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+
+
+            Assert.AreEqual(255_999_998, blockTree.BestKnownNumber);
+        }
+
+        [Test]
         public void Add_and_find_branch()
         {
             BlockTree blockTree = BuildBlockTree();
@@ -321,7 +337,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block0.Hash, headers[0].Hash);
             Assert.Null(headers[1]);
         }
-        
+
         [Test]
         public void When_finding_headers_does_not_find_a_header_it_breaks_the_loop()
         {
@@ -337,10 +353,10 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(100, headers.Length);
             Assert.AreEqual(block0.Hash, headers[0].Hash);
             Assert.Null(headers[3]);
-            
+
             Assert.AreEqual(0, _headersDb.ReadsCount);
         }
-        
+
         [Test]
         public void When_finding_blocks_does_not_find_a_block_it_breaks_the_loop()
         {
@@ -356,7 +372,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(100, headers.Length);
             Assert.AreEqual(block0.Hash, headers[0].Hash);
             Assert.Null(headers[3]);
-            
+
             Assert.AreEqual(0, _headersDb.ReadsCount);
         }
 
@@ -378,7 +394,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[1]));
             Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2]));
         }
-        
+
         [Test]
         public void Find_sequence_basic_shorter()
         {
@@ -396,7 +412,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[0]));
             Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[1]));
         }
-        
+
         [Test]
         public void Find_sequence_basic()
         {
@@ -449,7 +465,7 @@ namespace Nethermind.Blockchain.Test
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 0, 0, false);
             Assert.AreEqual(0, blocks.Length);
         }
-        
+
         [Test]
         public void Find_sequence_one_block()
         {
@@ -916,6 +932,73 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
+        public void When_head_block_is_followed_by_a_block_bodies_gap_it_should_delete_all_levels_after_the_gap_start()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(block3).TestObject;
+            Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(6).WithParent(block4).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestHeader(block3.Header);
+            tree.SuggestHeader(block4.Header);
+            tree.SuggestBlock(block5);
+
+            tree.UpdateMainChain(block2);
+
+            tree.FixFastSyncGaps(CancellationToken.None);
+
+            Assert.Null(blockInfosDb.Get(3), "level 3");
+            Assert.Null(blockInfosDb.Get(4), "level 4");
+            Assert.Null(blockInfosDb.Get(5), "level 5");
+
+            Assert.AreEqual(2L, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(block2.Header, tree.Head, "head");
+            Assert.AreEqual(block2.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+        }
+
+        [Test]
+        public void When_deleting_invalid_block_does_not_delete_blocks_that_are_not_its_descendants()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            MemDb headersDb = new MemDb();
+            BlockTree tree = new BlockTree(blocksDb, headersDb, blockInfosDb, MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
+            Block block3 = Build.A.Block.WithNumber(3).WithDifficulty(4).WithParent(block2).TestObject;
+            Block block4 = Build.A.Block.WithNumber(4).WithDifficulty(5).WithParent(block3).TestObject;
+            Block block5 = Build.A.Block.WithNumber(5).WithDifficulty(6).WithParent(block4).TestObject;
+
+            Block block3bad = Build.A.Block.WithNumber(3).WithDifficulty(1).WithParent(block2).TestObject;
+
+            tree.SuggestBlock(block0);
+            tree.SuggestBlock(block1);
+            tree.SuggestBlock(block2);
+            tree.SuggestBlock(block3);
+            tree.SuggestBlock(block4);
+            tree.SuggestBlock(block5);
+
+            tree.SuggestBlock(block3bad);
+
+            tree.UpdateMainChain(block5);
+            tree.DeleteInvalidBlock(block3bad);
+
+            Assert.AreEqual(5L, tree.BestKnownNumber, "best known");
+            Assert.AreEqual(block5.Header, tree.Head, "head");
+            Assert.AreEqual(block5.Hash, tree.BestSuggestedHeader.Hash, "suggested");
+        }
+
+        [Test]
         public async Task When_cleaning_descendants_of_invalid_does_not_touch_other_branches()
         {
             MemDb blocksDb = new MemDb();
@@ -1296,7 +1379,7 @@ namespace Nethermind.Blockchain.Test
 
             txPoolMock.Received().RemoveTransaction(t1.Hash, 1);
         }
-        
+
         [Test]
         public void When_block_is_moved_out_of_main_transactions_are_removed_from_tx_pool()
         {

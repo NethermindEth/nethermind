@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
@@ -24,7 +25,10 @@ namespace Nethermind.Blockchain.Filters
     public class AddressFilter
     {
         public static AddressFilter AnyAddress = new AddressFilter((Address)null);
-
+        
+        private Bloom.BloomExtract[] _addressesBloomIndexes;
+        private Bloom.BloomExtract? _addressBloomExtract;
+        
         public AddressFilter(Address address)
         {
             Address = address;
@@ -37,6 +41,8 @@ namespace Nethermind.Blockchain.Filters
         
         public Address Address { get; set; }
         public HashSet<Address> Addresses { get; set; }
+        private Bloom.BloomExtract[] AddressesBloomExtracts => _addressesBloomIndexes ?? (_addressesBloomIndexes = CalculateBloomExtracts());
+        private Bloom.BloomExtract AddressBloomExtract => (_addressBloomExtract ?? (_addressBloomExtract = Bloom.GetExtract(Address))).Value;
 
         public bool Accepts(Address address)
         {
@@ -47,5 +53,35 @@ namespace Nethermind.Blockchain.Filters
 
             return Address == null || Address == address;
         }
+
+        public bool Matches(Bloom bloom)
+        {
+            if (Addresses != null)
+            {
+                bool result = true;
+                var indexes = AddressesBloomExtracts;
+                for (var i = 0; i < indexes.Length; i++)
+                {
+                    var index = indexes[i];
+                    result = bloom.Matches(ref index); 
+                    if (result)
+                    {
+                        break;
+                    }
+                }
+
+                return result;
+            }
+            else if (Address == null)
+            {
+                return true;
+            }
+            else
+            {
+                return bloom.Matches(AddressBloomExtract);
+            }
+        }
+
+        private Bloom.BloomExtract[] CalculateBloomExtracts() => Addresses.Select(Bloom.GetExtract).ToArray();
     }
 }
