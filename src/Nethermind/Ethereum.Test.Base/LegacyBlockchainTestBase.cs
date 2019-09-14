@@ -102,6 +102,7 @@ namespace Ethereum.Test.Base
 
         protected async Task RunTest(LegacyBlockchainTest test, Stopwatch stopwatch = null)
         {
+            TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
             ISnapshotableDb stateDb = new StateDb();

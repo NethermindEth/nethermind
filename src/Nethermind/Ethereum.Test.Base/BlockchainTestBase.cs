@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
@@ -26,7 +27,6 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -55,6 +55,7 @@ namespace Ethereum.Test.Base
         
         protected EthereumTestResult RunTest(BlockchainTest test, ITxTracer txTracer)
         {
+            TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Stopwatch stopwatch = Stopwatch.StartNew();
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
