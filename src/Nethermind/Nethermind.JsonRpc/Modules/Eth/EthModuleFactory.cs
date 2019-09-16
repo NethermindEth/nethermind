@@ -62,13 +62,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-            var blockProcessor1 = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             
             _filterStore = new FilterStore();
-            _filterManager = new FilterManager(_filterStore, blockProcessor1, _txPool, _logManager);
+            _filterManager = new FilterManager(_filterStore, blockProcessor, _txPool, _logManager);
         }
         
         public override IEthModule Create()
