@@ -186,10 +186,10 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes()))
-            {
-                throw new NetworkingException($"Received message with incorrect destination address, message: {message}", NetworkExceptionType.Discovery);
-            }
+//            if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress?.Address.GetAddressBytes()))
+//            {
+//                throw new NetworkingException($"Received message with incorrect destination address, message: {message}", NetworkExceptionType.Discovery);
+//            }
 
             // port will be different as we dynamically open ports for each socket connection
 //            if (_nodeTable.MasterNode.Port != message.DestinationAddress?.Port)
