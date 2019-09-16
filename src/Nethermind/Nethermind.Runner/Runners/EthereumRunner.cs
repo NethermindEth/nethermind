@@ -302,7 +302,7 @@ namespace Nethermind.Runner.Runners
             NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
             _rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule));
 
-            ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _logManager);
+            ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _blockTree, _receiptStorage, _logManager);
             _rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule));
         }
 

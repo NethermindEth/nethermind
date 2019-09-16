@@ -143,6 +143,8 @@ namespace Nethermind.Facade
             return txReceipt;
         }
 
+        public TxReceipt[] GetReceipts(Block block) => _receiptStorage.FindForBlock(block);
+
         public class CallOutput
         {
             public CallOutput()
