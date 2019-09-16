@@ -78,6 +78,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             return result.IsValid ? result.Result ?? UInt256.Zero : UInt256.Zero;
         }
 
+        public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address) => GetNonceAsync(address);
+
         public async Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
         {
             var transactionTask = _proxy.eth_getTransactionByHash(transactionHash);

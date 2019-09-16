@@ -36,18 +36,16 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
     public class RefundService : IRefundService
     {
         private readonly INdmBlockchainBridge _blockchainBridge;
-        private readonly ITxPool _txPool;
         private readonly IAbiEncoder _abiEncoder;
         private readonly IWallet _wallet;
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly Address _contractAddress;
         private readonly ILogger _logger;
 
-        public RefundService(INdmBlockchainBridge blockchainBridge, ITxPool txPool, IAbiEncoder abiEncoder, IWallet wallet,
+        public RefundService(INdmBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
             IDepositDetailsRepository depositRepository, Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _txPool = txPool;
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _depositRepository = depositRepository;
@@ -78,7 +76,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
+            transaction.Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
             
             if (_logger.IsInfo)
@@ -99,7 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.SenderAddress = onBehalfOf;
             transaction.GasLimit = 90000; // check  
             transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
+            transaction.Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 
             if (_logger.IsInfo)

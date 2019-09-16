@@ -81,7 +81,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
             else
             {
-                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge);
+                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
             }
             
             var depositService = new DepositService(ndmBlockchainBridge, services.TransactionPool, encoder,

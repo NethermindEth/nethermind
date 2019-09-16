@@ -145,7 +145,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
                 nodePublicKey, logManager);
-            var refundService = new RefundService(blockchainBridge, txPool, abiEncoder, wallet, depositRepository,
+            var refundService = new RefundService(blockchainBridge, abiEncoder, wallet, depositRepository,
                 contractAddress, logManager);
             var refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
                 transactionVerifier, timestamper, logManager);

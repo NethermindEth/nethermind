@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -27,10 +28,12 @@ namespace Nethermind.DataMarketplace.Core.Services
     public class NdmBlockchainBridge : INdmBlockchainBridge
     {
         private readonly IBlockchainBridge _blockchainBridge;
+        private readonly ITxPool _txPool;
 
-        public NdmBlockchainBridge(IBlockchainBridge blockchainBridge)
+        public NdmBlockchainBridge(IBlockchainBridge blockchainBridge, ITxPool txPool)
         {
             _blockchainBridge = blockchainBridge;
+            _txPool = txPool;
         }
 
         public Task<long> GetLatestBlockNumberAsync()
@@ -57,6 +60,9 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
         public Task<UInt256> GetNonceAsync(Address address) => Task.FromResult(_blockchainBridge.GetNonce(address));
+
+        public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address)
+            => Task.FromResult(_txPool.ReserveOwnTransactionNonce(address));
 
         public Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
         {

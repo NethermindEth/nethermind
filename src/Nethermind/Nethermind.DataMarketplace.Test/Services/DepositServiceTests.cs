@@ -102,7 +102,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Throws_when_no_code_deployed()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            _ndmBridge = new NdmBlockchainBridge(bridge);
+            _ndmBridge = new NdmBlockchainBridge(bridge, _txPool);
             DepositService depositService = new DepositService(_ndmBridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
             bridge.GetCode(contractAddress).Returns(Bytes.Empty);
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public void Throws_when_unexpected_code()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            _ndmBridge = new NdmBlockchainBridge(bridge);
+            _ndmBridge = new NdmBlockchainBridge(bridge, _txPool);
             DepositService depositService = new DepositService(_ndmBridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
             bridge.GetCode(contractAddress).Returns(Bytes.FromHexString("0xa234"));
@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         public async Task Ok_when_code_is_valid()
         {
             IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-            _ndmBridge = new NdmBlockchainBridge(bridge);
+            _ndmBridge = new NdmBlockchainBridge(bridge, _txPool);
             DepositService depositService = new DepositService(_ndmBridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
             Address contractAddress = new Address(_ndmConfig.ContractAddress);
             bridge.GetCode(contractAddress).Returns(Bytes.FromHexString(ContractData.DeployedCode));

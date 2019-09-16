@@ -117,13 +117,14 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
-            _ndmBridge = new NdmBlockchainBridge(_bridge);
-
+            
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(),
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
+            
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -132,7 +133,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.SenderAddress = _providerAccount;
             deployContract.GasLimit = 4000000;
             deployContract.Init = initCode;
-            deployContract.Nonce = (UInt256) _bridge.GetNonce(_providerAccount);
+            deployContract.Nonce = _bridge.GetNonce(_providerAccount);
             Keccak txHash = _bridge.SendTransaction(deployContract);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");

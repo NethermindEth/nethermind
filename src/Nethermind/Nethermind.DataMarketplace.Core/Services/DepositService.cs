@@ -104,8 +104,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 SenderAddress = onBehalfOf,
                 GasLimit = 70000,
                 GasPrice = 20.GWei(),
-                Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf)
-//                Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf)
+                Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf)
             };
             // check  
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
