@@ -98,22 +98,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
         }
 
-        public Task<byte[]> CallAsync(Transaction transaction, Keccak blockHash)
-        {
-            var block = _blockchainBridge.FindBlock(blockHash);
-            if (block is null)
-            {
-                return Task.FromResult(Array.Empty<byte>());
-            }
-
-            var callOutput = _blockchainBridge.Call(block.Header, transaction);
-
-            return Task.FromResult(callOutput.OutputData ?? new byte[] {0});
-        }
-
         public Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
             => Task.FromResult(_blockchainBridge.SendTransaction(transaction, true));
-
-        public Task<Account> GetAccountAsync(Address address) => Task.FromResult(_blockchainBridge.GetAccount(address));
     }
 }
