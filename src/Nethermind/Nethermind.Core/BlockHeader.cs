@@ -58,9 +58,9 @@ namespace Nethermind.Core
         public Keccak ReceiptsRoot { get; set; }
         public Bloom Bloom { get; set; }
         public UInt256 Difficulty { get; set; }
-        public long Number { get; internal set; }
+        public long Number { get; set; }
         public long GasUsed { get; set; }
-        public long GasLimit { get; internal set; }
+        public long GasLimit { get; set; }
         public UInt256 Timestamp { get; set; }
         public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).DateTime;
         public byte[] ExtraData { get; set; }

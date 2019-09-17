@@ -33,6 +33,7 @@ using NUnit.Framework;
 
 namespace Ethereum.PoW.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class EthashTests
     {
         [OneTimeSetUp]

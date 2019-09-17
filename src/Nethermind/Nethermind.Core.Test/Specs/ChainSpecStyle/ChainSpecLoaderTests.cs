@@ -27,6 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs.ChainSpecStyle
 {
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public class ChainSpecLoaderTests
     {

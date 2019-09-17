@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain.Test.Runner
-{
-    public class CategoryResult
-    {
-        public CategoryResult(long totalMs, string[] failingTests)
-        {
-            TotalMs = totalMs;
-            FailingTests = failingTests;
-        }
+using System.Collections.Generic;
 
-        public long TotalMs { get; set; }
-        public string[] FailingTests { get; set; }
+namespace Ethereum.Test.Base
+{
+    public interface IBlockchainTestsSource
+    {
+        IEnumerable<BlockchainTest> LoadTests();
+        
+        IEnumerable<LegacyBlockchainTest> LoadLegacyTests();
     }
 }

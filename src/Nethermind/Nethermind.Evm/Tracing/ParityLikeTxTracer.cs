@@ -452,9 +452,13 @@ namespace Nethermind.Evm.Tracing
             _currentVmTrace.VmTrace.Code = byteCode;
         }
 
-        public void ReportRefund(long gasAvailable)
+        public void ReportRefundForVmTrace(long refund, long gasAvailable)
         {
             _currentOperation.Used = gasAvailable;
+        }
+
+        public void ReportRefund(long refund)
+        {
         }
     }
 }

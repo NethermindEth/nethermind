@@ -23,7 +23,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
 {
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     public class DifficultyMordenTests : TestsBase
     {
         public static IEnumerable<DifficultyTests> LoadMordenTests()
