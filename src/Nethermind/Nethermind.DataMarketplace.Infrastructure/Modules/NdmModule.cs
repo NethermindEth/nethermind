@@ -17,6 +17,7 @@
  */
 
 using System.Linq;
+using System.Net.Http;
 using System.Security;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
@@ -50,8 +51,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
             UnlockHardcodedAccounts(providerAddress, consumerAddress, services.Wallet);
-            
+
             var logManager = services.LogManager;
+            var jsonSerializer = services.JsonSerializer;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
@@ -75,8 +77,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             INdmBlockchainBridge ndmBlockchainBridge;
             if (config.ProxyEnabled)
             {
-                ethJsonRpcClientProxy = new EthJsonRpcClientProxy(new JsonRpcClientProxy(config.JsonRpcUrlProxies,
-                    services.JsonSerializer, logManager));
+                ethJsonRpcClientProxy = new EthJsonRpcClientProxy(new JsonRpcClientProxy(
+                    new DefaultHttpClient(new HttpClient(), jsonSerializer, logManager),
+                    config.JsonRpcUrlProxies));
                 ndmBlockchainBridge = new NdmBlockchainBridgeProxy(ethJsonRpcClientProxy);
             }
             else

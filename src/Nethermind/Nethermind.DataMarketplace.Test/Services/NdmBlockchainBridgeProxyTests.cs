@@ -240,7 +240,7 @@ namespace Nethermind.DataMarketplace.Test.Services
                 Arg.Is<BlockParameterModel>(x => x.Number == blockNumber));
             result.Should().BeSameAs(Array.Empty<byte>());
         }
-//        
+   
         [Test]
         public async Task call_with_transaction_number_should_invoke_proxy_eth_call_and_return_data()
         {
