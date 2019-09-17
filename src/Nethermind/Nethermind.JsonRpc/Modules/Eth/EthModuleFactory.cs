@@ -43,11 +43,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly ILogManager _logManager;
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
-        private readonly IBlockProcessor _blockProcessor;
-        private ILogger _logger;
-        
-        private IFilterStore _filterStore;
-        private IFilterManager _filterManager;
+        private readonly IFilterStore _filterStore;
+        private readonly IFilterManager _filterManager;
 
         public EthModuleFactory(
             IDbProvider dbProvider,
@@ -65,14 +62,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _logger = logManager.GetClassLogger();
             
             _filterStore = new FilterStore();
-            _filterManager = new FilterManager(_filterStore, _blockProcessor, _txPool, _logManager);
+            _filterManager = new FilterManager(_filterStore, blockProcessor, _txPool, _logManager);
         }
         
         public override IEthModule Create()

@@ -33,5 +33,11 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("parity_pendingTransactions").Result;
         }
+        
+        [CliFunction("parity", "getBlockReceipts", Description = "Returns receipts from all transactions from particular block")]
+        public JsValue GetBlockReceipts(string blockParameter)
+        {
+            return NodeManager.PostJint("parity_getBlockReceipts", blockParameter).Result;
+        }
     }
 }
