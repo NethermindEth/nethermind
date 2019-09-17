@@ -24,11 +24,9 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 

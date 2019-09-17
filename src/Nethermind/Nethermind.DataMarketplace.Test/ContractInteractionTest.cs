@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;

@@ -24,7 +24,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
-using Nethermind.DataMarketplace.Consumers.Refunds;
 using Nethermind.DataMarketplace.Consumers.Refunds.Services;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Core.Domain;

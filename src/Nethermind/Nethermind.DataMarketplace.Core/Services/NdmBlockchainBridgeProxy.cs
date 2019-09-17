@@ -23,7 +23,6 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
-using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
@@ -33,49 +32,49 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public NdmBlockchainBridgeProxy(IEthJsonRpcClientProxy proxy)
         {
-            _proxy = proxy;
+            _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         }
 
         public async Task<long> GetLatestBlockNumberAsync()
         {
             var result = await _proxy.eth_blockNumber();
 
-            return result.IsValid && result.Result.HasValue ? (long) result.Result.Value : 0;
+            return result?.IsValid == true && result.Result.HasValue ? (long) result.Result.Value : 0;
         }
 
         public async Task<byte[]> GetCodeAsync(Address address)
         {
             var result = await _proxy.eth_getCode(address, BlockParameterModel.Latest);
 
-            return result.IsValid ? result.Result : Array.Empty<byte>();
+            return result?.IsValid == true ? result.Result : Array.Empty<byte>();
         }
 
         public async Task<Block> FindBlockAsync(Keccak blockHash)
         {
             var result = await _proxy.eth_getBlockByHash(blockHash);
 
-            return result.IsValid ? result.Result?.ToBlock() : null;
+            return result?.IsValid == true ? result.Result?.ToBlock() : null;
         }
 
         public async Task<Block> FindBlockAsync(long blockNumber)
         {
             var result = await _proxy.eth_getBlockByNumber(BlockParameterModel.FromNumber(blockNumber));
 
-            return result.IsValid ? result.Result?.ToBlock() : null;
+            return result?.IsValid == true ? result.Result?.ToBlock() : null;
         }
 
         public async Task<Block> GetLatestBlockAsync()
         {
             var result = await _proxy.eth_getBlockByNumber(BlockParameterModel.Latest);
 
-            return result.IsValid ? result.Result?.ToBlock() : null;
+            return result?.IsValid == true ? result.Result?.ToBlock() : null;
         }
 
         public async Task<UInt256> GetNonceAsync(Address address)
         {
             var result = await _proxy.eth_getTransactionCount(address, BlockParameterModel.Pending);
 
-            return result.IsValid ? result.Result ?? UInt256.Zero : UInt256.Zero;
+            return result?.IsValid == true ? result.Result ?? UInt256.Zero : UInt256.Zero;
         }
 
         public Task<UInt256> ReserveOwnTransactionNonceAsync(Address address) => GetNonceAsync(address);
@@ -86,7 +85,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             var receiptTask = _proxy.eth_getTransactionReceipt(transactionHash);
             await Task.WhenAll(transactionTask, receiptTask);
 
-            if (!transactionTask.Result.IsValid || !receiptTask.Result.IsValid)
+            if (transactionTask.Result is null || !transactionTask.Result.IsValid ||
+                receiptTask.Result is null || !receiptTask.Result.IsValid)
             {
                 return null;
             }
@@ -98,14 +98,14 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             var result = await _proxy.eth_chainId();
 
-            return result.IsValid ? (int) result.Result : 0;
+            return result?.IsValid == true ? (int) result.Result : 0;
         }
 
         public async Task<byte[]> CallAsync(Transaction transaction)
         {
             var result = await _proxy.eth_call(CallTransactionModel.FromTransaction(transaction));
 
-            return result.IsValid ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
+            return result?.IsValid == true ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
         }
 
         public async Task<byte[]> CallAsync(Transaction transaction, long blockNumber)
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             var result = await _proxy.eth_call(CallTransactionModel.FromTransaction(transaction),
                 BlockParameterModel.FromNumber(blockNumber));
 
-            return result.IsValid ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
+            return result?.IsValid == true ? result.Result ?? Array.Empty<byte>() : Array.Empty<byte>();
         }
 
         public async Task<Keccak> SendOwnTransactionAsync(Transaction transaction)
@@ -121,7 +121,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             var data = Rlp.Encode(transaction).Bytes;
             var result = await _proxy.eth_sendRawTransaction(data);
 
-            return result.IsValid ? result.Result : null;
+            return result?.IsValid == true ? result.Result : null;
         }
 
         private static NdmTransaction MapTransaction(TransactionModel transaction, ReceiptModel receipt)

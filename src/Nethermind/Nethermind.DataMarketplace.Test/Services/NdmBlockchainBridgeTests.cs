@@ -42,6 +42,20 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         [Test]
+        public void constructor_should_throw_exception_if_blockchain_bridge_argument_is_null()
+        {
+            Action act = () => _ndmBridge = new NdmBlockchainBridge(null, _txPool);
+            act.Should().Throw<ArgumentNullException>();
+        }
+        
+        [Test]
+        public void constructor_should_throw_exception_if_tx_pool_argument_is_null()
+        {
+            Action act = () => _ndmBridge = new NdmBlockchainBridge(_blockchainBridge, null);
+            act.Should().Throw<ArgumentNullException>();
+        }
+
+        [Test]
         public async Task get_latest_block_number_should_return_0_if_head_is_null()
         {
             var result = await _ndmBridge.GetLatestBlockNumberAsync();
@@ -206,7 +220,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
         
         [Test]
-        public async Task send_own_transaction_should_invoke_blockchain_bridge_send_transaction()
+        public async Task send_own_transaction_should_invoke_blockchain_bridge_send_transaction_and_return_hash()
         {
             var transaction = Build.A.Transaction.TestObject;
             var hash = TestItem.KeccakA;

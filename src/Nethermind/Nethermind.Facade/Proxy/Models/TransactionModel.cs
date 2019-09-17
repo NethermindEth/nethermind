@@ -26,7 +26,6 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 Nonce { get; set; }
         public Keccak BlockHash { get; set; }
         public UInt256 BlockNumber { get; set; }
-        public UInt256 TransactionIndex { get; set; }
         public Address From { get; set; }
         public Address To { get; set; }
         public UInt256 Gas { get; set; }

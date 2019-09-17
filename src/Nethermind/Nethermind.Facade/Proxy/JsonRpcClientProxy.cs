@@ -110,7 +110,7 @@ namespace Nethermind.Facade.Proxy
                 }
             } while (currentRetry <= _retries);
             
-            return RpcResult<T>.Invalid($"There was an error when sending JSON RPC Proxy request [id: {requestId}].");
+            return RpcResult<T>.Fail($"There was an error when sending JSON RPC Proxy request [id: {requestId}].");
         }
     }
 }

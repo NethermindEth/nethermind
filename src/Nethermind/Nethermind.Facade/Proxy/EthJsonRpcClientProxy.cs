@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,7 +29,7 @@ namespace Nethermind.Facade.Proxy
 
         public EthJsonRpcClientProxy(IJsonRpcClientProxy proxy)
         {
-            _proxy = proxy;
+            _proxy = proxy ?? throw new ArgumentNullException(nameof(proxy));
         }
 
         public Task<RpcResult<UInt256>> eth_chainId()

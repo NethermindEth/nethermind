@@ -32,8 +32,8 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public NdmBlockchainBridge(IBlockchainBridge blockchainBridge, ITxPool txPool)
         {
-            _blockchainBridge = blockchainBridge;
-            _txPool = txPool;
+            _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
 
         public Task<long> GetLatestBlockNumberAsync()

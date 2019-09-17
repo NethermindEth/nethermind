@@ -28,7 +28,6 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 GasLimit { get; set; }
         public UInt256 GasUsed { get; set; }
         public Keccak Hash { get; set; }
-        public byte[] LogsBloom { get; set; }
         public Address Miner { get; set; }
         public Keccak MixHash { get; set; }
         public UInt256 Nonce { get; set; }
@@ -42,20 +41,19 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 TotalDifficulty { get; set; }
         public List<Keccak> Transactions { get; set; }
         public Keccak TransactionsRoot { get; set; }
-        public List<Keccak> Uncles { get; set; }
 
         public Block ToBlock()
             => new Block(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long) Number,
-                (long) GasLimit, Timestamp, ExtraData)
-                {
-                    StateRoot = StateRoot,
-                    GasUsed = (long) GasUsed,
-                    Hash = Hash,
-                    MixHash = MixHash,
-                    Nonce = (ulong) Nonce,
-                    ReceiptsRoot = ReceiptsRoot,
-                    TotalDifficulty = TotalDifficulty,
-                    TxRoot = TransactionsRoot
-                });
+                (long) GasLimit, Timestamp, ExtraData))
+            {
+                StateRoot = StateRoot,
+                GasUsed = (long) GasUsed,
+                Hash = Hash,
+                MixHash = MixHash,
+                Nonce = (ulong) Nonce,
+                ReceiptsRoot = ReceiptsRoot,
+                TotalDifficulty = TotalDifficulty,
+                TransactionsRoot = TransactionsRoot,
+            };
     }
 }
