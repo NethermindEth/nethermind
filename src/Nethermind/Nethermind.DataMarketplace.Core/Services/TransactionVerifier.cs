@@ -54,6 +54,11 @@ namespace Nethermind.DataMarketplace.Core.Services
                 {
                     break;
                 }
+                
+                if (confirmations == _requiredBlockConfirmations)
+                {
+                    break;
+                }
             }
             
             return new TransactionVerifierResult(true, confirmations, _requiredBlockConfirmations);

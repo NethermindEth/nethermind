@@ -19,10 +19,13 @@
 using System;
 using System.Text;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Refunds.Services;
 using Nethermind.Logging;
@@ -148,6 +151,32 @@ namespace Nethermind.DataMarketplace.Test.Services
             Assert.AreEqual(StatusCode.Success, refundReceipt.StatusCode, $"early refund claim {refundReceipt.Error} {Encoding.UTF8.GetString(refundReceipt.ReturnValue ?? new byte[0])}");
             UInt256 balanceAfter = _state.GetBalance(_consumerAccount);
             Assert.Greater(balanceAfter, balanceBefore);
+        }
+
+        [Test]
+        public async Task set_early_refund_ticket_should_fail_if_deposit_does_not_exits()
+        {
+            const RefundReason reason = RefundReason.DataDiscontinued;
+            var ticket = new EarlyRefundTicket(TestItem.KeccakA, 0, null);
+            var refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
+            await refundService.SetEarlyRefundTicketAsync(ticket, reason);
+            await _depositRepository.Received().GetAsync(ticket.DepositId);
+            await _depositRepository.DidNotReceiveWithAnyArgs().UpdateAsync(null);
+        }
+        
+        [Test]
+        public async Task set_early_refund_ticket_should_succeed_if_deposit_exists()
+        {
+            const RefundReason reason = RefundReason.DataDiscontinued;
+            var deposit = new Deposit(TestItem.KeccakA, 1, 1, 1);
+            var depositDetails = new DepositDetails(deposit, null, null, null, 0, null);
+            var ticket = new EarlyRefundTicket(deposit.Id, 0, null);
+            var refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
+            _depositRepository.GetAsync(ticket.DepositId).Returns(depositDetails);
+            await refundService.SetEarlyRefundTicketAsync(ticket, reason);
+            depositDetails.EarlyRefundTicket.Should().Be(ticket);
+            await _depositRepository.Received().GetAsync(ticket.DepositId);
+            await _depositRepository.Received().UpdateAsync(depositDetails);
         }
     }
 }

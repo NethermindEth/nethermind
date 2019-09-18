@@ -33,7 +33,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Services
+namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
 {
     public class RefundClaimantTests : ContractInteractionTest
     {

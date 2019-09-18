@@ -17,14 +17,11 @@
  */
 
 using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Facade;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
@@ -74,7 +71,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 await _consumerNotifier.SendDepositRejectedAsync(deposit.Id);
                 return;
             }
-            
+
             if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
             var confirmed = confirmations >= _requiredBlockConfirmations;
             if (confirmed)
@@ -134,7 +131,6 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
                 block = await _blockchainBridge.FindBlockAsync(block.ParentHash);
             } while (confirmations < _requiredBlockConfirmations);
-            
             
             var latestBlockNumber = await _blockchainBridge.GetLatestBlockNumberAsync();
             var blocksDifference = latestBlockNumber - transaction.BlockNumber;

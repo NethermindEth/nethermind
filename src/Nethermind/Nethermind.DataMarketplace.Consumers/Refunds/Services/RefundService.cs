@@ -19,7 +19,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Abi;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -27,7 +26,6 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 

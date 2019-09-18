@@ -49,7 +49,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             _consumerNotifier = Substitute.For<IConsumerNotifier>();
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
             _depositService = Substitute.For<IDepositService>();
-            _requiredBlockConfirmations = 1;
+            _requiredBlockConfirmations = 2;
             _depositConfirmationService = new DepositConfirmationService(_blockchainBridge, _consumerNotifier,
                 _depositRepository, _depositService, LimboLogs.Instance, _requiredBlockConfirmations);
         }
@@ -86,6 +86,111 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             deposit.Confirmed.Should().BeFalse();
         }
         
+        [Test]
+        public async Task try_confirm_should_skip_further_processing_if_block_was_not_found()
+        {
+            const int latestBlockNumber = 3;
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction();
+            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            await _blockchainBridge.Received().GetLatestBlockNumberAsync();
+            await _blockchainBridge.Received().FindBlockAsync(latestBlockNumber);
+            await _depositService.DidNotReceive().VerifyDepositAsync(deposit.Consumer, deposit.Id, Arg.Any<long>());
+        }
+        
+        [Test]
+        public async Task try_confirm_should_skip_further_processing_if_confirmation_timestamp_is_0()
+        {
+            const int latestBlockNumber = 3;
+            const uint confirmationTimestamp = 0;
+            var block = GetBlock();
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction();
+            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
+            _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
+            _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
+                .Returns(confirmationTimestamp);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            await _depositService.Received().VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number);
+            await _depositRepository.DidNotReceive().UpdateAsync(deposit);
+        }
+        
+        [Test]
+        public async Task try_confirm_should_set_confirmation_timestamp_for_the_first_time_if_is_greater_than_0()
+        {
+            const int latestBlockNumber = 3;
+            const uint confirmationTimestamp = 1;
+            var block = GetBlock();
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction();
+            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
+            _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
+            _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
+                .Returns(confirmationTimestamp);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            await _depositRepository.Received().UpdateAsync(deposit);
+            deposit.ConfirmationTimestamp.Should().Be(confirmationTimestamp);
+        }
+        
+        [Test]
+        public async Task try_confirm_should_confirm_deposit_if_timestamp_is_greater_than_0_and_required_number_of_confirmations_is_achieved()
+        {
+            const int latestBlockNumber = 3;
+            const uint confirmationTimestamp = 1;
+            var block = GetBlock();
+            var parentBlock = GetBlock();
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction();
+            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
+            _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
+            _blockchainBridge.FindBlockAsync(block.ParentHash).Returns(parentBlock);
+            _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
+                .Returns(confirmationTimestamp);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            deposit.Confirmed.Should().BeTrue();
+            deposit.Confirmations.Should().Be(_requiredBlockConfirmations);
+            await _depositRepository.Received().UpdateAsync(deposit);
+            await _blockchainBridge.Received(2).GetLatestBlockNumberAsync();
+            await _consumerNotifier.Received().SendDepositConfirmationsStatusAsync(deposit.Id, deposit.DataAsset.Name,
+                _requiredBlockConfirmations, _requiredBlockConfirmations, deposit.ConfirmationTimestamp, true);
+        }
+        
+        [Test]
+        public async Task try_confirm_should_reject_deposit_if_transaction_is_missing_block_confirmation()
+        {
+            const int latestBlockNumber = 3;
+            const uint confirmationTimestamp = 1;
+            var block = GetBlock();
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction();
+            block.Hash = transaction.BlockHash;
+            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
+            _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
+            _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
+                .Returns(confirmationTimestamp);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            deposit.Rejected.Should().BeTrue();
+            await _depositRepository.Received().UpdateAsync(deposit);
+            await _consumerNotifier.Received().SendDepositRejectedAsync(deposit.Id);
+        }
+
+        private static Block GetBlock()
+        {
+            var block = Build.A.Block.TestObject;
+            block.Number = 2;
+
+            return block;
+        }
+
+        private static NdmTransaction GetTransaction()
+            => new NdmTransaction(Build.A.Transaction.TestObject, 1, TestItem.KeccakA, 1);
+
         private static DepositDetails GetDepositDetails(uint timestamp = 0)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA,

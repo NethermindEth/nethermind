@@ -23,6 +23,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts
 {
     public interface IReceiptService
     {
-        Task SendAsync(DataDeliveryReceiptRequest request);
+        Task SendAsync(DataDeliveryReceiptRequest request, int fetchSessionRetries = 3,
+            int fetchSessionRetryDelayMilliseconds = 3000);
     }
 }

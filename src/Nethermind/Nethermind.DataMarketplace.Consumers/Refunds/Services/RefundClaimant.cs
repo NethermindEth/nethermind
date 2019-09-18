@@ -22,7 +22,6 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Facade;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
@@ -62,7 +61,6 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             {
                 return;
             }
-            
             
             var depositId = deposit.Deposit.Id;
             var transactionHash = deposit.ClaimedRefundTransactionHash;
