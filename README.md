@@ -73,7 +73,7 @@ dotnet test EthereumTests.sln
 [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
 [![GitHub contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/graphs/contributors)
 
-At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly on Linux, Windows and MacOS). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
+At Nethermind we are building an open source multiplatform Ethereum client implementation in .NET Core (running seamlessly on Linux, Windows and MacOS). Simultaneously our team works on Nethermind Data Marketplace and on-chain data extraction tools and client customizations.
 
 Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. Nethermind is under development and you find the open issues here [issues](https://github.com/NethermindEth/nethermind/issues)
 
