@@ -49,7 +49,7 @@ namespace Nethermind.AuRa.Validators
 
         public bool IsValidSealer(Address address) => _validators.Contains(address);
         public int MinSealersForFinalization => _validators.MinSealersForFinalization();
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager) { }
+        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager) { } // ListValidator doesn't change its behaviour/state based on Finalization of blocks, only Multi and Contract validators do.
 
         public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.List;
     }

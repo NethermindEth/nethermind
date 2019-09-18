@@ -37,8 +37,8 @@ namespace Nethermind.AuRa
         private readonly ILogger _logger;
         private readonly IBlockProcessor _blockProcessor;
         private long _lastFinalizedBlockLevel = -1L;
-        private Keccak _lastFinalizingBLockHash = Keccak.EmptyTreeHash;
-        private ValidationStampCollection _lastFinalizingBLockValidators = new ValidationStampCollection();
+        private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
+        private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
         public AuRaBlockFinalizationManager(IBlockTree blockTree, IBlockInfoRepository blockInfoRepository, IBlockProcessor blockProcessor, IAuRaValidator auRaValidator, ILogManager logManager)
         {
@@ -100,13 +100,13 @@ namespace Nethermind.AuRa
             
             bool IsConsecutiveBlock()
             {
-                return originalBlock.ParentHash == _lastFinalizingBLockHash;
+                return originalBlock.ParentHash == _lastProcessedBlockHash;
             }
 
             bool ConsecutiveBlockWillFinalizeBlocks()
             {
-                _lastFinalizingBLockValidators.Add(block);
-                return _lastFinalizingBLockValidators.Count >= minSealersForFinalization;
+                _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
+                return _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
             }
 
             List<BlockHeader> finalizedBlocks;
@@ -123,7 +123,7 @@ namespace Nethermind.AuRa
             {
                 if (!isConsecutiveBlock)
                 {
-                    _lastFinalizingBLockValidators.Clear();
+                    _consecutiveValidatorsForNotYetFinalizedBlocks.Clear();
                 }
 
                 finalizedBlocks = new List<BlockHeader>();
@@ -147,11 +147,11 @@ namespace Nethermind.AuRa
                             blockInfo.IsFinalized = true;
                             _blockInfoRepository.PersistLevel(block.Number, chainLevel, batch);
                             finalizedBlocks.Add(block);
-                            _lastFinalizingBLockValidators.RemoveFromBlock(block.Number);
+                            _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
                         }
                         else
                         {
-                            _lastFinalizingBLockValidators.Add(block);
+                            _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
                         }
 
                         if (!block.IsGenesis)
@@ -165,7 +165,7 @@ namespace Nethermind.AuRa
                 finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
             }
 
-            _lastFinalizingBLockHash = originalBlock.Hash;
+            _lastProcessedBlockHash = originalBlock.Hash;
 
             return finalizedBlocks;
         }
@@ -237,7 +237,7 @@ namespace Nethermind.AuRa
         private class ValidationStampCollection
         {
             private readonly ISet<Address> _set = new HashSet<Address>();
-            private readonly SortedList<long, Address> _list = new SortedList<long, Address>(Comparer<long>.Create((x, y) => (int) (y - x)));
+            private readonly SortedList<long, Address> _list = new SortedList<long, Address>(Comparer<long>.Create((x, y) => y.CompareTo(x)));
 
             public int Count => _set.Count;
             
@@ -249,7 +249,7 @@ namespace Nethermind.AuRa
                 }
             }
 
-            public void RemoveFromBlock(long blockNumber)
+            public void RemoveAncestors(long blockNumber)
             {
                 IEnumerable<long> toDelete = _list.Keys.SkipWhile(k => k > blockNumber).ToArray();
                 foreach (var number in toDelete)
