@@ -16,10 +16,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
@@ -28,13 +30,16 @@ namespace Nethermind.AuRa
 {
     public class AuRaBlockFinalizationManager : IBlockFinalizationManager
     {
+        private static readonly List<BlockHeader> Empty = new List<BlockHeader>();
         private readonly IBlockTree _blockTree;
         private readonly IBlockInfoRepository _blockInfoRepository;
         private readonly IAuRaValidator _auRaValidator;
         private readonly ILogger _logger;
-        private IBlockProcessor _blockProcessor;
+        private readonly IBlockProcessor _blockProcessor;
         private long _lastFinalizedBlockLevel = -1L;
-        
+        private Keccak _lastFinalizingBLockHash = Keccak.EmptyTreeHash;
+        private ValidationStampCollection _lastFinalizingBLockValidators = new ValidationStampCollection();
+
         public AuRaBlockFinalizationManager(IBlockTree blockTree, IBlockInfoRepository blockInfoRepository, IBlockProcessor blockProcessor, IAuRaValidator auRaValidator, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -80,8 +85,92 @@ namespace Nethermind.AuRa
                 LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
             }
         }
+        
+        private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
+        {
+            (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
+            {
+                var chainLevelInfo = _blockInfoRepository.LoadLevel(blockHeader.Number);
+                var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
+                return (chainLevelInfo, blockInfo);
+            }
+            
+            var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
+            var originalBlock = block;
+            
+            bool IsConsecutiveBlock()
+            {
+                return originalBlock.ParentHash == _lastFinalizingBLockHash;
+            }
 
-        [Todo(Improve.Performance, "Optimize if there are no reorganisations with object cache.")]
+            bool ConsecutiveBlockWillFinalizeBlocks()
+            {
+                _lastFinalizingBLockValidators.Add(block);
+                return _lastFinalizingBLockValidators.Count >= minSealersForFinalization;
+            }
+
+            List<BlockHeader> finalizedBlocks;
+            var isConsecutiveBlock = IsConsecutiveBlock();
+            
+            // Optimization:
+            // if block is consecutive than we can just check if this sealer will cause any blocks get finalized
+            // using cache of vallidators of not yet finalized blocks from previous block operation
+            if (isConsecutiveBlock && !ConsecutiveBlockWillFinalizeBlocks())
+            {
+                finalizedBlocks = Empty;
+            }
+            else
+            {
+                if (!isConsecutiveBlock)
+                {
+                    _lastFinalizingBLockValidators.Clear();
+                }
+
+                finalizedBlocks = new List<BlockHeader>();
+                var validators = new HashSet<Address>();
+                var originalBlockSealer = originalBlock.Beneficiary;
+
+                using (var batch = _blockInfoRepository.StartBatch())
+                {
+                    var (chainLevel, blockInfo) = GetBlockInfo(block);
+
+                    // Optimization:
+                    // if this block sealer seals for 2nd time than this seal can not finalize any blocks
+                    // as the 1st seal or some seal between 1st seal and current one would already finalize some of them
+                    bool OriginalBlockSealerSignedOnlyOnce() => !validators.Contains(originalBlockSealer) || block.Beneficiary != originalBlockSealer;
+                    
+                    while (!blockInfo.IsFinalized && OriginalBlockSealerSignedOnlyOnce())
+                    {
+                        validators.Add(block.Beneficiary);
+                        if (validators.Count >= minSealersForFinalization)
+                        {
+                            blockInfo.IsFinalized = true;
+                            _blockInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+                            finalizedBlocks.Add(block);
+                            _lastFinalizingBLockValidators.RemoveFromBlock(block.Number);
+                        }
+                        else
+                        {
+                            _lastFinalizingBLockValidators.Add(block);
+                        }
+
+                        if (!block.IsGenesis)
+                        {
+                            block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+                            (chainLevel, blockInfo) = GetBlockInfo(block);
+                        }
+                    }
+                }
+
+                finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
+            }
+
+            _lastFinalizingBLockHash = originalBlock.Hash;
+
+            return finalizedBlocks;
+        }
+
+        /* Simple, unoptimized method implementation for reference: 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
             (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
@@ -100,9 +189,7 @@ namespace Nethermind.AuRa
             {
                 var (chainLevel, blockInfo) = GetBlockInfo(block);
                 
-                bool OriginalBlockSealerSignedOnlyOnce() => !validators.Contains(originalBlockSealer) || block.Beneficiary != originalBlockSealer; // if this block sealer seals for 2nd time than this seal can not finalize any blocks
-
-                while (!blockInfo.IsFinalized && OriginalBlockSealerSignedOnlyOnce())
+                while (!blockInfo.IsFinalized)
                 {
                     validators.Add(block.Beneficiary);
                     if (validators.Count >= minSealersForFinalization)
@@ -124,9 +211,9 @@ namespace Nethermind.AuRa
             
             return finalizedBlocks;
         }
+        */
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
-        public event EventHandler LastFinalizedBlockLevelChanged;
 
         public long LastFinalizedBlockLevel
         {
@@ -137,7 +224,6 @@ namespace Nethermind.AuRa
                 {
                     _lastFinalizedBlockLevel = value;
                     if (_logger.IsTrace) _logger.Trace($"Setting {nameof(LastFinalizedBlockLevel)} to {value}.");
-                    LastFinalizedBlockLevelChanged?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
@@ -145,6 +231,39 @@ namespace Nethermind.AuRa
         public void Dispose()
         {
             _blockProcessor.BlockProcessed -= OnBlockProcessed;
+        }
+
+        [DebuggerDisplay("Count = {Count}")]
+        private class ValidationStampCollection
+        {
+            private readonly ISet<Address> _set = new HashSet<Address>();
+            private readonly SortedList<long, Address> _list = new SortedList<long, Address>(Comparer<long>.Create((x, y) => (int) (y - x)));
+
+            public int Count => _set.Count;
+            
+            public void Add(BlockHeader blockHeader)
+            {
+                if (_set.Add(blockHeader.Beneficiary))
+                {
+                    _list.Add(blockHeader.Number, blockHeader.Beneficiary);
+                }
+            }
+
+            public void RemoveFromBlock(long blockNumber)
+            {
+                IEnumerable<long> toDelete = _list.Keys.SkipWhile(k => k > blockNumber).ToArray();
+                foreach (var number in toDelete)
+                {
+                    _set.Remove(_list[number]);
+                    _list.Remove(number);
+                }
+            }
+
+            public void Clear()
+            {
+                _set.Clear();;
+                _list.Clear();
+            }
         }
     }
 }

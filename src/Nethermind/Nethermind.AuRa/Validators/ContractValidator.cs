@@ -123,7 +123,7 @@ namespace Nethermind.AuRa.Validators
                 bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
                 if (reorganisationHappened)
                 {
-                    if (block.Number <= CurrentPendingValidators.BlockNumber)
+                    if (block.Number <= CurrentPendingValidators?.BlockNumber)
                     {
                         CurrentPendingValidators = null;
                     }
@@ -154,8 +154,6 @@ namespace Nethermind.AuRa.Validators
             {
                 if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} at block {block.Number}.");
                 ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
-                
-                _validators = CurrentPendingValidators.Addresses.ToHashSet();
                 CurrentPendingValidators = null;
             }
         }
@@ -172,8 +170,8 @@ namespace Nethermind.AuRa.Validators
                 CreateSystemAccount();
             }
             
-            // Todo if last InitiateChange is not finalized we need to load potential validators.
             var validators = LoadValidatorsFromContract(block);
+            _validators = validators.ToHashSet();
             
             if (isStartBlock)
             {
@@ -204,7 +202,6 @@ namespace Nethermind.AuRa.Validators
                 throw new AuRaException("Failed to initialize validators list.");
             }
 
-            _validators = validators.ToHashSet();
             return validators;
         }
 
@@ -226,6 +223,7 @@ namespace Nethermind.AuRa.Validators
                 if (currentPendingValidatorsBlockGotFinalized)
                 {
                     CurrentPendingValidators.IsFinalized = true;
+                    _validators = CurrentPendingValidators.Addresses.ToHashSet();
                     SavePendingValidators();
                 }
             }
