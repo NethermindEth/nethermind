@@ -39,8 +39,8 @@ namespace Nethermind.AuRa.Validators
 {
     public class ContractValidator : IAuRaValidatorProcessor
     {
-        private static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
-        private readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
+        internal static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
+        private static readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
         private readonly ILogger _logger;
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
@@ -240,7 +240,7 @@ namespace Nethermind.AuRa.Validators
             _currentPendingValidators = _pendingValidatorsDecoder.Decode(rlpStream);
         }
 
-        private class PendingValidators
+        internal class PendingValidators
         {
             public PendingValidators(long blockNumber, Keccak blockHash, Address[] addresses)
             {

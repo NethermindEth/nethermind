@@ -26,6 +26,7 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test;
@@ -62,7 +63,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void SetUp()
         {
             _db = Substitute.For<IDb>();
-            _db[Arg.Any<byte[]>()].Returns((byte[]) null);
+            _db[ContractValidator.PendingValidatorsKey.Bytes].Returns((byte[]) null);
             _stateProvider = Substitute.For<IStateProvider>();
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _logManager = Substitute.For<ILogManager>();
@@ -147,6 +148,27 @@ namespace Nethermind.AuRa.Test.Validators
             _stateProvider.Received(1).CreateAccount(Address.SystemUser, UInt256.Zero);
             _stateProvider.Received(1).Commit(Homestead.Instance);
         }
+
+        [Test]
+        public void initializes_pendingValidators_from_db()
+        {
+            var blockNumber = 10;
+            var validators = TestItem.Addresses.Take(10).ToArray();
+            var blockHash = Keccak.Compute("Test");
+            var pendingValidators = new ContractValidator.PendingValidators(blockNumber, blockHash, validators);
+            var rlp = Rlp.Encode(pendingValidators);
+            _db[ContractValidator.PendingValidatorsKey.Bytes].Returns(rlp.Bytes);
+            
+            IAuRaValidatorProcessor validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            
+            validator.SetFinalizationManager(_blockFinalizationManager);
+            _blockFinalizationManager.BlocksFinalized +=
+                Raise.EventWith(new FinalizeEventArgs(_block.Header,
+                    Build.A.BlockHeader.WithNumber(blockNumber).WithHash(blockHash).TestObject));
+            
+            validators.Select(v => validator.IsValidSealer(v)).Should().AllBeEquivalentTo(true);
+        }
+            
 
         [Test]
         public void loads_initial_validators_from_contract()
@@ -481,24 +503,13 @@ namespace Nethermind.AuRa.Test.Validators
                 validator.PostProcess(_block, txReceipts);
                 var finalizedNumber = blockNumber - validator.MinSealersForFinalization + 1;
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
-                    new FinalizeEventArgs(_block.Header,
-                        new[]
-                        {
-                            Build.A.BlockHeader.WithNumber(finalizedNumber)
-                                .WithHash(Keccak.Compute(finalizedNumber.ToString())).TestObject
-                        }));
+                    new FinalizeEventArgs(_block.Header, Build.A.BlockHeader.WithNumber(finalizedNumber)
+                            .WithHash(Keccak.Compute(finalizedNumber.ToString())).TestObject));
                 
                 currentValidators = test.GetCurrentValidators(blockNumber);
                 var nextValidators = test.GetNextValidators(blockNumber);
-                try
-                {
                     currentValidators.Select(a => validator.IsValidSealer(a)).Should().AllBeEquivalentTo(true, $"Validator address is not recognized in block {blockNumber}");
                     nextValidators?.Except(currentValidators).Select(a => validator.IsValidSealer(a)).Should().AllBeEquivalentTo(false);
-                }
-                catch (Exception e)
-                {
-                   
-                }
             }
             
             ValidateFinalizationForChain(test.Current);

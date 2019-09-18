@@ -112,8 +112,7 @@ namespace Nethermind.AuRa.Test.Validators
             foreach (var blockNumber in _validator.Validators.Keys)
             {
                 _finalizationManager.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(
-                    Build.A.BlockHeader.WithNumber(blockNumber + 1).TestObject,
-                    new[] {Build.A.BlockHeader.WithNumber(blockNumber).TestObject}));
+                    Build.A.BlockHeader.WithNumber(blockNumber + 1).TestObject, Build.A.BlockHeader.WithNumber(blockNumber).TestObject));
             }
 
             _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(x => x + 2));
