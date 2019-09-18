@@ -23,15 +23,15 @@ namespace Nethermind.Core.Json
 {
     public class AddressConverter : JsonConverter<Address>
     {
-        public override void WriteJson(JsonWriter writer, Address value, Newtonsoft.Json.JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, Address value, JsonSerializer serializer)
         {
             writer.WriteValue(value.ToString());
         }
 
-        public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
+        public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             string s = (string)reader.Value;
-            return s == null ? null : new Address(s);
+            return string.IsNullOrEmpty(s) ? null : new Address(s);
         }
     }
 }

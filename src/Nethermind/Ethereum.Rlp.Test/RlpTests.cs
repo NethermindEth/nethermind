@@ -30,6 +30,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Rlp.Test
 {
+    [Parallelizable(ParallelScope.All)]
     [TestFixture]
     public class RlpTests
     {

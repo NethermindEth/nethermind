@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
 {
-    [Parallelizable(ParallelScope.None)]
+    [Parallelizable(ParallelScope.All)]
     public class DifficultyCustomHomesteadTests : TestsBase
     {
         public static IEnumerable<DifficultyTests> LoadFrontierTests()

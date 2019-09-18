@@ -19,7 +19,7 @@
     <PackageReference Include="System.Diagnostics.TextWriterTraceListener" Version="4.3.0" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\**\*.*">
+    <EmbeddedResource Include="..\..\tests\GeneralStateTests\**\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>

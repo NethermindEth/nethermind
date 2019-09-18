@@ -180,6 +180,8 @@ parity
 ^^^^^^
 
  - parity_pendingTransactions()
+ 
+ - parity_getBlockReceipts(blockParameter)
 
 personal
 ^^^^^^^^
