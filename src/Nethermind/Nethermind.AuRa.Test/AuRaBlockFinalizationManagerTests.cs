@@ -20,6 +20,7 @@ using FluentAssertions;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Store.Repositories;
@@ -45,6 +46,8 @@ namespace Nethermind.AuRa.Test
             _logManager = Substitute.For<ILogManager>();
 
             _auraValidator.MinSealersForFinalization.Returns(2);
+            
+            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
         }
 
         private void BuildChainLevelTree(params ChainLevelInfo[] levels)
