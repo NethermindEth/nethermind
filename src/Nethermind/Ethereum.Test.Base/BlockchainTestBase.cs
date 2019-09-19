@@ -43,6 +43,7 @@ using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -244,7 +245,8 @@ namespace Ethereum.Test.Base
             IStateProvider stateProvider = new StateProvider(stateDb, codeDb, _logManager);
             ITxPool transactionPool = new TxPool(NullTxStorage.Instance, new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, _logManager);
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, transactionPool, _logManager);
+            var blockInfoDb = new MemDb();
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb),  specProvider, transactionPool, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(ChainId.MainNet);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
