@@ -22,11 +22,11 @@ using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Receipts;
 using Nethermind.DataMarketplace.Consumers.Receipts.Services;
-using Nethermind.Logging;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Logging;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Test.Validators
+namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
 {
     public class ReceiptRequestValidatorTests
     {

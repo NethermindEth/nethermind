@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
@@ -27,6 +28,8 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Refunds;
+using Nethermind.Facade.Proxy;
+using Nethermind.Facade.Proxy.Models;
 using Nethermind.Logging;
 using Timer = System.Timers.Timer;
 
@@ -36,18 +39,23 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
     {
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly IConsumerNotifier _consumerNotifier;
+        private readonly bool _useDepositTimer;
+        private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private readonly IAccountService _accountService;
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly Timer _timer;
+        private readonly Timer _refundClaimTimer;
+        private readonly Timer _depositTimer;
         private readonly ILogger _logger;
         private long _currentBlockTimestamp;
+        private long _currentBlockNumber;
 
         public ConsumerServicesBackgroundProcessor(IAccountService accountService, IRefundClaimant refundClaimant,
             IDepositConfirmationService depositConfirmationService, IBlockProcessor blockProcessor,
             IDepositDetailsRepository depositRepository, IConsumerNotifier consumerNotifier, ILogManager logManager,
-            uint tryClaimRefundsIntervalMilliseconds = 60000)
+            uint tryClaimRefundsIntervalMilliseconds = 60000, bool useDepositTimer = false, 
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy = null, uint depositTimer = 10000)
         {
             _accountService = accountService;
             _refundClaimant = refundClaimant;
@@ -55,21 +63,60 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             _blockProcessor = blockProcessor;
             _depositRepository = depositRepository;
             _consumerNotifier = consumerNotifier;
+            _useDepositTimer = useDepositTimer;
+            _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _logger = logManager.GetClassLogger();
-            _timer = new Timer(tryClaimRefundsIntervalMilliseconds);
+            _refundClaimTimer = new Timer(tryClaimRefundsIntervalMilliseconds);
+            if (_useDepositTimer)
+            {
+                _depositTimer = new Timer(depositTimer);
+            }
         }
 
         public void Init()
         {
-            _timer.Start();
-            _timer.Elapsed += TimerOnElapsed;
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
+            if (_useDepositTimer)
+            {
+                _depositTimer.Elapsed += DepositTimerOnElapsed;
+                _depositTimer.Start();
+            }
+            else
+            {
+                _blockProcessor.BlockProcessed += OnBlockProcessed;
+            }
+
+            _refundClaimTimer.Elapsed += RefundClaimTimerOnElapsed;
+            _refundClaimTimer.Start();
             if (_logger.IsInfo) _logger.Info("Initialized NDM consumer services background processor.");
         }
 
-        private void TimerOnElapsed(object sender, ElapsedEventArgs e)
+        private void DepositTimerOnElapsed(object sender, ElapsedEventArgs e)
+            => _ethJsonRpcClientProxy.eth_getBlockByNumber(BlockParameterModel.Latest)
+                .ContinueWith(async t =>
+                {
+                    if (t.IsFaulted && _logger.IsError)
+                    {
+                        _logger.Error("Fetching the latest block via proxy has failed.", t.Exception);
+                        return;
+                    }
+
+                    var block = t.Result.IsValid ? t.Result.Result : null;
+                    if (block is null)
+                    {
+                        _logger.Error("Latest block fetched via proxy is null.", t.Exception);
+                        return;
+                    }
+
+                    if (_currentBlockNumber == block.Number)
+                    {
+                        return;
+                    }
+
+                    await ProcessBlockAsync((long) block.Number, (long) block.Timestamp);
+                });
+
+        private void RefundClaimTimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            if (_logger.IsInfo) _logger.Info("Verifying whether any refunds might be claimed...");
             _depositRepository.BrowseAsync(new GetDeposits
                 {
                     Results = int.MaxValue,
@@ -80,10 +127,17 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 {
                     if (t.IsFaulted && _logger.IsError)
                     {
-                        _logger.Error($"Fetching the deposits has failed.", t.Exception);
+                        _logger.Error("Fetching the deposits has failed.", t.Exception);
                         return;
                     }
 
+                    if (t.Result.Items.Any())
+                    {
+                        if (_logger.IsInfo) _logger.Info("No claimable refunds have been found.");
+                        return;
+                    }
+
+                    if (_logger.IsInfo) _logger.Info($"Found {t.Result.Items.Count} claimable refunds.");
                     var refundTo = _accountService.GetAddress();
                     foreach (var deposit in t.Result.Items)
                     {
@@ -94,24 +148,26 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+            => ProcessBlockAsync(e.Block.Number, (long) e.Block.Timestamp).ContinueWith(t =>
+            {
+                if (t.IsFaulted && _logger.IsError)
+                {
+                    _logger.Error($"Processing the block {e.Block.Number} has failed.", t.Exception);
+                }
+            });
+
+        private async Task ProcessBlockAsync(long number, long timestamp)
         {
-            Interlocked.Exchange(ref _currentBlockTimestamp, (long) e.Block.Timestamp);
-            _consumerNotifier.SendBlockProcessedAsync(e.Block.Number);
-            _depositRepository.BrowseAsync(new GetDeposits
+            Interlocked.Exchange(ref _currentBlockNumber, number);
+            Interlocked.Exchange(ref _currentBlockTimestamp, timestamp);
+            await _consumerNotifier.SendBlockProcessedAsync(number);
+            var deposits = await _depositRepository.BrowseAsync(new GetDeposits
             {
                 OnlyUnconfirmed = true,
                 OnlyNotRejected = true,
                 Results = int.MaxValue
-            }).ContinueWith(async t =>
-            {
-                if (t.IsFaulted && _logger.IsError)
-                {
-                    _logger.Error($"Fetching the deposits has failed.", t.Exception);
-                    return;
-                }
-
-                await TryConfirmDepositsAsync(t.Result.Items);
             });
+            await TryConfirmDepositsAsync(deposits.Items);
         }
 
         private async Task TryConfirmDepositsAsync(IEnumerable<DepositDetails> deposits)

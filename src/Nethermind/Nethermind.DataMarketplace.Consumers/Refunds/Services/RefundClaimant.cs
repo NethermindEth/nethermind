@@ -22,7 +22,6 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Facade;
 using Nethermind.Logging;
 
 namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
@@ -30,25 +29,34 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
     public class RefundClaimant : IRefundClaimant
     {
         private readonly IRefundService _refundService;
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly IDepositDetailsRepository _depositRepository;
         private readonly ITransactionVerifier _transactionVerifier;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        public RefundClaimant(IRefundService refundService, IBlockchainBridge blockchainBridge,
+        public RefundClaimant(IRefundService refundService, INdmBlockchainBridge blockchainBridge,
             IDepositDetailsRepository depositRepository, ITransactionVerifier transactionVerifier,
-            ILogManager logManager)
+            ITimestamper timestamper, ILogManager logManager)
         {
             _refundService = refundService;
             _blockchainBridge = blockchainBridge;
             _depositRepository = depositRepository;
             _transactionVerifier = transactionVerifier;
+            _timestamper = timestamper;
             _logger = logManager.GetClassLogger();
         }
 
         public async Task TryClaimRefundAsync(DepositDetails deposit, Address refundTo)
         {
-            var now = (ulong) _blockchainBridge.Head.Timestamp;
+            var now = _timestamper.EpochSeconds;
+            if (!deposit.CanClaimRefund(now))
+            {
+                return;
+            }
+            
+            var latestBlock = await _blockchainBridge.GetLatestBlockAsync();
+            now = (ulong) latestBlock.Timestamp;
             if (!deposit.CanClaimRefund(now))
             {
                 return;
@@ -61,7 +69,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 var provider = deposit.DataAsset.Provider.Address;
                 var refundClaim = new RefundClaim(depositId, deposit.DataAsset.Id, deposit.Deposit.Units,
                     deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider, refundTo);
-                transactionHash = _refundService.ClaimRefund(refundTo, refundClaim);
+                transactionHash = await _refundService.ClaimRefundAsync(refundTo, refundClaim);
                 deposit.SetClaimedRefundTransactionHash(transactionHash);
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', transaction hash: '{transactionHash}' (awaits a confirmation).");
@@ -72,7 +80,14 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 
         public async Task TryClaimEarlyRefundAsync(DepositDetails deposit, Address refundTo)
         {
-            var now = (ulong) _blockchainBridge.Head.Timestamp;
+            var now = _timestamper.EpochSeconds;
+            if (!deposit.CanClaimEarlyRefund(now))
+            {
+                return;
+            }
+            
+            var latestBlock = await _blockchainBridge.GetLatestBlockAsync();
+            now = (ulong) latestBlock.Timestamp;
             if (!deposit.CanClaimEarlyRefund(now))
             {
                 return;
@@ -87,7 +102,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                 var earlyRefundClaim = new EarlyRefundClaim(ticket.DepositId, deposit.DataAsset.Id,
                     deposit.Deposit.Units, deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider,
                     ticket.ClaimableAfter, ticket.Signature, refundTo);
-                transactionHash = _refundService.ClaimEarlyRefund(refundTo, earlyRefundClaim);
+                transactionHash = await _refundService.ClaimEarlyRefundAsync(refundTo, earlyRefundClaim);
                 deposit.SetClaimedRefundTransactionHash(transactionHash);
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', transaction hash: '{transactionHash}' (awaits a confirmation).");
@@ -100,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
         {
             var depositId = deposit.Id;
             var transactionHash = deposit.TransactionHash;
-            var (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);          
+            var transaction  = await _blockchainBridge.GetTransactionAsync(transactionHash);          
             if (transaction is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositId}' to claim the {type}refund.");
@@ -108,10 +123,10 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
             
             if (_logger.IsInfo) _logger.Info($"Trying to claim the {type}refund (transaction hash: '{transactionHash}') for deposit: '{depositId}'.");
-            var verifierResult = _transactionVerifier.Verify(receipt);
+            var verifierResult = await _transactionVerifier.VerifyAsync(transaction);
             if (!verifierResult.BlockFound)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block number: {receipt.BlockNumber}, hash: '{receipt.BlockHash}' was not found for transaction hash: '{transactionHash}' - {type}refund claim for deposit: '{depositId}' will not confirmed.");
+                if (_logger.IsWarn) _logger.Warn($"Block number: {transaction.BlockNumber}, hash: '{transaction.BlockHash}' was not found for transaction hash: '{transactionHash}' - {type}refund claim for deposit: '{depositId}' will not confirmed.");
                 return;
             }
             

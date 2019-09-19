@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;
@@ -32,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -86,6 +86,7 @@ namespace Nethermind.DataMarketplace.Test
         protected Address _providerAccount;
         protected DevWallet _wallet;
         protected BlockchainBridge _bridge;
+        protected INdmBlockchainBridge _ndmBridge;
         protected IStateProvider _state;
         protected INdmConfig _ndmConfig;
         protected AbiEncoder _abiEncoder = new AbiEncoder();
@@ -115,12 +116,14 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
-
+            
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(),
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
+            
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -129,7 +132,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.SenderAddress = _providerAccount;
             deployContract.GasLimit = 4000000;
             deployContract.Init = initCode;
-            deployContract.Nonce = (UInt256) _bridge.GetNonce(_providerAccount);
+            deployContract.Nonce = _bridge.GetNonce(_providerAccount);
             Keccak txHash = _bridge.SendTransaction(deployContract);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
@@ -201,20 +204,11 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Block FindBlock(Keccak blockHash)
-            {
-                throw new System.NotImplementedException();
-            }
+            public Block FindBlock(Keccak blockHash) => _headBlock.Hash == blockHash ? _headBlock : null;
 
-            public Block FindBlock(long blockNumber)
-            {
-                throw new System.NotImplementedException();
-            }
+            public Block FindBlock(long blockNumber) => _headBlock.Number == blockNumber ? _headBlock : null;
 
-            public Block FindLatestBlock()
-            {
-                throw new NotImplementedException();
-            }
+            public Block FindLatestBlock() => _headBlock;
 
             public Block FindPendingBlock()
             {

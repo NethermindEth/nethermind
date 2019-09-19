@@ -32,7 +32,6 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
-using Nethermind.Evm;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;

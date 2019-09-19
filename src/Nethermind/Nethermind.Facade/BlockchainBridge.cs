@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
