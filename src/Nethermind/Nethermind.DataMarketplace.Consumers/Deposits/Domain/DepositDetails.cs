@@ -72,6 +72,11 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             ConfirmationTimestamp = timestamp;
         }
 
+        public void SetTransactionHash(Keccak transactionHash)
+        {
+            TransactionHash = transactionHash ?? throw new ArgumentNullException(nameof(transactionHash));
+        }
+
         public void Reject()
         {
             Rejected = true;

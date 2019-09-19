@@ -19,57 +19,59 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
-    public class PerfTest : BlockchainTestBase, ITestInRunner
+    public class PerfStateTest : BlockchainTestBase, IStateTestRunner
     {
-        public async Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1)
+        private readonly IBlockchainTestsSource _testsSource;
+
+        public PerfStateTest(IBlockchainTestsSource testsSource)
         {
-            List<string> failingTests = new List<string>();
-            long totalMs = 0L;
-            Console.WriteLine($"RUNNING {subset}");
+            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+        }
+
+        public IEnumerable<EthereumTestResult> RunTests()
+        {
+            List<EthereumTestResult> results = new List<EthereumTestResult>();
+            Console.WriteLine($"RUNNING tests");
             Stopwatch stopwatch = new Stopwatch();
-            IEnumerable<BlockchainTest> tests = LoadTests(subset);
+            IEnumerable<BlockchainTest> tests = _testsSource.LoadTests();
             bool isNewLine = true;
             foreach (BlockchainTest test in tests)
             {
-                if (testWildcard != null && !test.Name.Contains(testWildcard))
+                if (test.LoadFailure != null)
                 {
                     continue;
                 }
-
-                stopwatch.Reset();
-                for (int i = 0; i < iterations; i++)
+                
+                Setup(NullLogManager.Instance);
+                stopwatch.Restart();
+                EthereumTestResult result = RunTest(test);
+                stopwatch.Stop();
+                results.Add(result);
+                
+                if (!result.Pass)
                 {
-                    Setup(null);
-                    try
+                    ConsoleColor mem = Console.ForegroundColor;
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    if (!isNewLine)
                     {
-                        Assert.IsNull(test.LoadFailure);
-                        await RunTest(test, stopwatch);
+                        Console.WriteLine();
+                        isNewLine = true;
                     }
-                    catch (Exception e)
-                    {
-                        failingTests.Add(test.Name);
-                        ConsoleColor mem = Console.ForegroundColor;
-                        Console.ForegroundColor = ConsoleColor.Red;
-                        if (!isNewLine)
-                        {
-                            Console.WriteLine();
-                            isNewLine = true;
-                        }
 
-                        Console.WriteLine($"  {test.Name,-80} {e.GetType().Name}");
-                        Console.ForegroundColor = mem;
-                    }
+                    Console.WriteLine($"  {test.Name,-80} FAIL");
+                    Console.ForegroundColor = mem;
                 }
 
                 long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                 long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-                totalMs += ms;
                 if (ms > 100)
                 {
                     if (!isNewLine)
@@ -78,7 +80,7 @@ namespace Nethermind.Blockchain.Test.Runner
                         isNewLine = true;
                     }
 
-                    Console.WriteLine($"  {test.Name,-80}{ns / iterations,14}ns{ms / iterations,8}ms");
+                    Console.WriteLine($"  {test.Name,-80}{ns,14}ns{ms,8}ms");
                 }
                 else
                 {
@@ -92,7 +94,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 Console.WriteLine();
             }
 
-            return new CategoryResult(totalMs, failingTests.ToArray());
+            return results;
         }
     }
 }

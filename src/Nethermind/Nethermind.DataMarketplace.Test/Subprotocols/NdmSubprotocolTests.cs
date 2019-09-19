@@ -17,17 +17,12 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Shared;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Subprotocols;
 using Nethermind.DataMarketplace.Subprotocols.Messages;

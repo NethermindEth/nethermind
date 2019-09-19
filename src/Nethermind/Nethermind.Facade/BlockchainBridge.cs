@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -142,6 +141,8 @@ namespace Nethermind.Facade
             txReceipt.TxHash = txHash;
             return txReceipt;
         }
+
+        public TxReceipt[] GetReceipts(Block block) => _receiptStorage.FindForBlock(block);
 
         public class CallOutput
         {

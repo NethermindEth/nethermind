@@ -16,18 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
+
 namespace Ethereum.Test.Base
 {
     public class TransactionJson
     {
-        public string Data { get; set; }
-        public string GasLimit { get; set; }
-        public string GasPrice { get; set; }
-        public string Nonce { get; set; }
-        public string To { get; set; }
-        public string Value { get; set; }
-        public string R { get; set; }
-        public string S { get; set; }
-        public string V { get; set; }
+        public byte[][] Data { get; set; }
+        public long[] GasLimit { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public UInt256 Nonce { get; set; }
+        public Address To { get; set; }
+        public UInt256[] Value { get; set; }
+        public byte[] SecretKey { get; set; }
     }
 }

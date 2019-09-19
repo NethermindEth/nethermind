@@ -49,6 +49,7 @@ using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Specs.GenesisFileStyle;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.Subprotocols.Serializers;
 using Nethermind.Db;
@@ -61,6 +62,7 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.JsonRpc;
@@ -274,8 +276,20 @@ namespace Nethermind.Runner.Runners
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
-            EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree, _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, _logManager);
-            _rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
+            var ndmConfig = _configProvider.GetConfig<INdmConfig>();
+            if (ndmConfig.Enabled && !(_ndmInitializer is null) && ndmConfig.ProxyEnabled)
+            {
+                if (_logger.IsInfo) _logger.Info("Enabled JSON RPC Proxy for NDM.");
+                var proxyFactory = new EthModuleProxyFactory(ndmConfig.JsonRpcUrlProxies, _ethereumJsonSerializer,
+                    _logManager);
+                _rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory));
+            }
+            else
+            {
+                EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree,
+                    _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, _logManager);
+                _rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
+            }
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_dbProvider, _blockTree, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, _configProvider, _specProvider, _logManager);
             _rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
@@ -305,7 +319,7 @@ namespace Nethermind.Runner.Runners
             NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
             _rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule));
 
-            ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _logManager);
+            ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _blockTree, _receiptStorage, _logManager);
             _rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule));
         }
 

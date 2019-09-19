@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,8 +26,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Facade;
 using Nethermind.Logging;
+using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
@@ -38,19 +37,20 @@ namespace Nethermind.DataMarketplace.Core.Services
         private DateTime _today;
         private UInt256 _todayRequestsTotalValueWei = 0;
         private readonly ConcurrentDictionary<string, bool> _pendingRequests = new ConcurrentDictionary<string, bool>();
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly IEthRequestRepository _requestRepository;
         private readonly Address _faucetAddress;
         private readonly UInt256 _maxValue;
         private readonly UInt256 _dailyRequestsTotalValueWei;
         private readonly bool _enabled;
         private readonly ITimestamper _timestamper;
+        private readonly IWallet _wallet;
         private readonly ILogger _logger;
         private bool _initialized;
 
-        public NdmFaucet(IBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
+        public NdmFaucet(INdmBlockchainBridge blockchainBridge, IEthRequestRepository requestRepository,
             Address faucetAddress, UInt256 maxValue, UInt256 dailyRequestsTotalValueEth, bool enabled,
-            ITimestamper timestamper, ILogManager logManager)
+            ITimestamper timestamper, IWallet wallet, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge;
             _requestRepository = requestRepository;
@@ -59,6 +59,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             _dailyRequestsTotalValueWei = dailyRequestsTotalValueEth * 1_000_000_000_000_000_000;
             _enabled = enabled;
             _timestamper = timestamper;
+            _wallet = wallet;
             _today = _timestamper.UtcNow;
             _logger = logManager.GetClassLogger();
             if (!_enabled || _faucetAddress is null)
@@ -172,7 +173,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (_logger.IsInfo) _logger.Info($"NDM Faucet is processing request for: {node}, address: {address}, value: {value} wei.");
             try
             {
-                var faucetAccount = _blockchainBridge.GetAccount(_faucetAddress);
+                var nonce =  await _blockchainBridge.GetNonceAsync(_faucetAddress);
                 var transaction = new Transaction
                 {
                     Value = value,
@@ -180,10 +181,10 @@ namespace Nethermind.DataMarketplace.Core.Services
                     GasPrice = 20.GWei(),
                     To = address,
                     SenderAddress = _faucetAddress,
-                    Nonce = faucetAccount?.Nonce ?? 0
+                    Nonce = nonce
                 };
-                _blockchainBridge.Sign(transaction);
-                var transactionHash = _blockchainBridge.SendTransaction(transaction, true);
+                _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+                var transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
                 if (latestRequest is null)
                 {
                     var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));

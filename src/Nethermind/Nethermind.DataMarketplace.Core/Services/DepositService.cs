@@ -18,16 +18,15 @@
 
 using System;
 using System.IO;
+using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Wallet;
 
@@ -36,13 +35,13 @@ namespace Nethermind.DataMarketplace.Core.Services
     public class DepositService : IDepositService
     {
         private readonly IAbiEncoder _abiEncoder;
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
         private readonly ILogger _logger;
         private readonly Address _contractAddress;
 
-        public DepositService(IBlockchainBridge blockchainBridge, ITxPool txPool, IAbiEncoder abiEncoder, IWallet wallet,
+        public DepositService(INdmBlockchainBridge blockchainBridge, ITxPool txPool, IAbiEncoder abiEncoder, IWallet wallet,
            Address contractAddress, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -53,70 +52,92 @@ namespace Nethermind.DataMarketplace.Core.Services
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public UInt256 ReadDepositBalance(Address onBehalfOf, Keccak depositId)
+        public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
         {
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositBalanceAbiSig, depositId.Bytes);
-            Transaction transaction = new Transaction();
-            transaction.Value = 0;
-            transaction.Data = txData;
-            transaction.To = _contractAddress;
-            transaction.SenderAddress = onBehalfOf;
-            transaction.GasLimit = 100000;
-            transaction.GasPrice = 0.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
-            _wallet.Sign(transaction, _blockchainBridge.GetNetworkId());
-            BlockchainBridge.CallOutput callOutput = _blockchainBridge.Call(_blockchainBridge.Head, transaction);
-            return (callOutput.OutputData ?? new byte[] {0}).ToUInt256();
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositBalanceAbiSig,
+                depositId.Bytes);
+            Transaction transaction = new Transaction
+            {
+                Value = 0,
+                Data = txData,
+                To = _contractAddress,
+                SenderAddress = onBehalfOf,
+                GasLimit = 100000,
+                GasPrice = 0.GWei(),
+                Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf)
+            };
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+            var data = await _blockchainBridge.CallAsync(transaction);
+
+            return data.ToUInt256();
         }
-        public void ValidateContractAddress(Address contractAddress)
+
+        public async Task ValidateContractAddressAsync(Address contractAddress)
         {
             if (contractAddress != _contractAddress)
             {
                 throw new InvalidDataException($"Contract address {contractAddress} is different than configured {_contractAddress}");
             }
 
-            if (_blockchainBridge.GetCode(contractAddress).Length == 0)
+            var code = await _blockchainBridge.GetCodeAsync(contractAddress);
+            if (code is null || code.Length == 0)
             {
                 throw new InvalidDataException($"No contract code at address {contractAddress}.");
             }
             
-            if (!Bytes.AreEqual(_blockchainBridge.GetCode(contractAddress), Bytes.FromHexString(ContractData.DeployedCode)))
+            if (!Bytes.AreEqual(code, Bytes.FromHexString(ContractData.DeployedCode)))
             {
                 throw new InvalidDataException($"Code at address {contractAddress} is different than expected.");
             }
         }
 
-        public Keccak MakeDeposit(Address onBehalfOf, Deposit deposit)
+        public async Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig, deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);
-            Transaction transaction = new Transaction();
-            transaction.Value = deposit.Value;
-            transaction.Data = txData;
-            transaction.To = _contractAddress;
-            transaction.SenderAddress = onBehalfOf;
-            transaction.GasLimit = 70000; // check  
-            transaction.GasPrice = 20.GWei();
-            transaction.Nonce = _txPool.ReserveOwnTransactionNonce(onBehalfOf);
-            _wallet.Sign(transaction, _blockchainBridge.GetNetworkId());
-            return _blockchainBridge.SendTransaction(transaction, true);
+            Transaction transaction = new Transaction
+            {
+                Value = deposit.Value,
+                Data = txData,
+                To = _contractAddress,
+                SenderAddress = onBehalfOf,
+                GasLimit = 70000,
+                GasPrice = 20.GWei(),
+                Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf)
+            };
+            // check  
+            _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+            
+            return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
 
-        public uint VerifyDeposit(Address onBehalfOf, Keccak depositId)
-            => VerifyDeposit(onBehalfOf, depositId, _blockchainBridge.Head);
-        
-        public uint VerifyDeposit(Address onBehalfOf, Keccak depositId, BlockHeader head)
+        public async Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId)
         {
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.VerifyDepositAbiSig, depositId.Bytes);
-            Transaction transaction = new Transaction();
-            transaction.Value = 0;
-            transaction.Data = txData;
-            transaction.To = _contractAddress;
-            transaction.SenderAddress = onBehalfOf;
-            transaction.GasLimit = 100000;
-            transaction.GasPrice = 0.GWei();
-            transaction.Nonce = (UInt256) _blockchainBridge.GetNonce(onBehalfOf);
-            BlockchainBridge.CallOutput callOutput = _blockchainBridge.Call(head, transaction);
-            return (callOutput.OutputData ?? new byte[] {0}).ToUInt32();
+            var transaction = await GetTransactionAsync(onBehalfOf, depositId);
+            var data = await _blockchainBridge.CallAsync(transaction);
+
+            return data.ToUInt32();
+            
         }
+        
+        public async Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId, long blockNumber)
+        {
+            var transaction = await GetTransactionAsync(onBehalfOf, depositId);
+            var data = await _blockchainBridge.CallAsync(transaction, blockNumber);
+
+            return data.ToUInt32();
+        }
+
+        private async Task<Transaction> GetTransactionAsync(Address onBehalfOf, Keccak depositId)
+            => new Transaction
+            {
+                Value = 0,
+                Data = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.VerifyDepositAbiSig,
+                    depositId.Bytes),
+                To = _contractAddress,
+                SenderAddress = onBehalfOf,
+                GasLimit = 100000,
+                GasPrice = 0.GWei(),
+                Nonce = await _blockchainBridge.GetNonceAsync(onBehalfOf)
+            };
     }
 }

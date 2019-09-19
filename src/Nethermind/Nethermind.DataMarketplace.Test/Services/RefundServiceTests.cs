@@ -18,12 +18,15 @@
 
 using System;
 using System.Text;
+using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
-using Nethermind.DataMarketplace.Consumers.Refunds;
 using Nethermind.DataMarketplace.Consumers.Refunds.Services;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -47,12 +50,12 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         [Test]
-        public void Can_claim_refund()
+        public async Task Can_claim_refund()
         {
             uint timestamp = 1546871954;
             _bridge.NextBlockPlease(timestamp);
             
-            DepositService depositService = new DepositService(_bridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
+            DepositService depositService = new DepositService(_ndmBridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
             Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = timestamp + 4;
             UInt256 value = 1.Ether();
@@ -71,7 +74,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             Keccak depositId = Keccak.Compute(depositData);
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
-            Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -79,14 +82,14 @@ namespace Nethermind.DataMarketplace.Test.Services
             // calls revert and cannot reuse the same state - use only for manual debugging
 //            Assert.True(depositService.VerifyDeposit(deposit.Id), "deposit verified");
 
-            RefundService refundService = new RefundService(_bridge, _txPool, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
+            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
 
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
             _bridge.NextBlockPlease(expiryTime + 1);
             RefundClaim refundClaim = new RefundClaim(depositId, assetId, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             UInt256 balanceBefore = _state.GetBalance(_consumerAccount);
-            Keccak refundTxHash = refundService.ClaimRefund(_consumerAccount, refundClaim);
+            Keccak refundTxHash = await refundService.ClaimRefundAsync(_consumerAccount, refundClaim);
             TxReceipt refundReceipt = _bridge.GetReceipt(refundTxHash);
             TestContext.WriteLine("GAS USED FOR REFUND CLAIM: {0}", refundReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, refundReceipt.StatusCode, $"refund claim {refundReceipt.Error} {Encoding.UTF8.GetString(refundReceipt.ReturnValue ?? new byte[0])}");
@@ -95,12 +98,12 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
         
         [Test]
-        public void Can_claim_early_refund()
+        public async Task Can_claim_early_refund()
         {
             uint timestamp = 1546871954;
             _bridge.NextBlockPlease(timestamp);
             
-            DepositService depositService = new DepositService(_bridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
+            DepositService depositService = new DepositService(_ndmBridge, _txPool, _abiEncoder, _wallet, _contractAddress, LimboLogs.Instance);
             Keccak assetId = Keccak.Compute("data asset");
             uint expiryTime = timestamp + (uint)TimeSpan.FromDays(4).TotalSeconds;
             UInt256 value = 1.Ether();
@@ -120,7 +123,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             Keccak depositId = Keccak.Compute(depositData);
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
-            Keccak depositTxHash = depositService.MakeDeposit(_consumerAccount, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -131,7 +134,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             uint claimableAfter = timestamp + (uint)TimeSpan.FromDays(1).TotalSeconds;
             AbiSignature earlyRefundAbiDef = new AbiSignature("earlyRefund", new AbiBytes(32), new AbiUInt(32));
             byte[] earlyRefundData = _abiEncoder.Encode(AbiEncodingStyle.Packed, earlyRefundAbiDef, depositId.Bytes, claimableAfter);
-            RefundService refundService = new RefundService(_bridge, _txPool, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
+            RefundService refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
 
             // it will not work so far as we do everything within the same block and timestamp is wrong
             
@@ -142,12 +145,38 @@ namespace Nethermind.DataMarketplace.Test.Services
             EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(depositId, assetId, units, value, expiryTime, pepper, _providerAccount, claimableAfter, earlySig,_consumerAccount);
             UInt256 balanceBefore = _state.GetBalance(_consumerAccount);
             
-            Keccak refundTxHash = refundService.ClaimEarlyRefund(_consumerAccount, earlyRefundClaim);
+            Keccak refundTxHash = await refundService.ClaimEarlyRefundAsync(_consumerAccount, earlyRefundClaim);
             TxReceipt refundReceipt = _bridge.GetReceipt(refundTxHash);
             TestContext.WriteLine("GAS USED FOR EARLY REFUND CLAIM: {0}", refundReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, refundReceipt.StatusCode, $"early refund claim {refundReceipt.Error} {Encoding.UTF8.GetString(refundReceipt.ReturnValue ?? new byte[0])}");
             UInt256 balanceAfter = _state.GetBalance(_consumerAccount);
             Assert.Greater(balanceAfter, balanceBefore);
+        }
+
+        [Test]
+        public async Task set_early_refund_ticket_should_fail_if_deposit_does_not_exits()
+        {
+            const RefundReason reason = RefundReason.DataDiscontinued;
+            var ticket = new EarlyRefundTicket(TestItem.KeccakA, 0, null);
+            var refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
+            await refundService.SetEarlyRefundTicketAsync(ticket, reason);
+            await _depositRepository.Received().GetAsync(ticket.DepositId);
+            await _depositRepository.DidNotReceiveWithAnyArgs().UpdateAsync(null);
+        }
+        
+        [Test]
+        public async Task set_early_refund_ticket_should_succeed_if_deposit_exists()
+        {
+            const RefundReason reason = RefundReason.DataDiscontinued;
+            var deposit = new Deposit(TestItem.KeccakA, 1, 1, 1);
+            var depositDetails = new DepositDetails(deposit, null, null, null, 0, null);
+            var ticket = new EarlyRefundTicket(deposit.Id, 0, null);
+            var refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
+            _depositRepository.GetAsync(ticket.DepositId).Returns(depositDetails);
+            await refundService.SetEarlyRefundTicketAsync(ticket, reason);
+            depositDetails.EarlyRefundTicket.Should().Be(ticket);
+            await _depositRepository.Received().GetAsync(ticket.DepositId);
+            await _depositRepository.Received().UpdateAsync(depositDetails);
         }
     }
 }

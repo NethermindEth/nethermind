@@ -120,7 +120,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var depositProvider = new DepositProvider(depositRepository, depositUnitsCalculator, logManager);
             var kycVerifier = new KycVerifier(depositApprovalRepository, logManager);
             var consumerNotifier = new ConsumerNotifier(ndmNotifier);
-
+            
             var dataAssetService = new DataAssetService(providerRepository, consumerNotifier, logManager);
             var providerService = new ProviderService(providerRepository, consumerNotifier, logManager);
             var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider, kycVerifier, wallet,
@@ -145,10 +145,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
                 sessionService, timestamper, receiptRepository, sessionRepository, abiEncoder, wallet, ecdsa,
                 nodePublicKey, logManager);
-            var refundService = new RefundService(blockchainBridge, txPool, abiEncoder, wallet, depositRepository,
+            var refundService = new RefundService(blockchainBridge, abiEncoder, wallet, depositRepository,
                 contractAddress, logManager);
             var refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
-                transactionVerifier, logManager);
+                transactionVerifier, timestamper, logManager);
             var accountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, ndmConfig.Id, consumerAddress, logManager);
             var consumerService = new ConsumerService(accountService, dataAssetService, dataRequestService,
@@ -162,9 +162,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, personalBridge, timestamper)));
 
+            var useDepositTimer = blockchainBridge is NdmBlockchainBridgeProxy;
+            var ethJsonRpcClientProxy = services.CreatedServices.EthJsonRpcClientProxy;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
                 refundClaimant, depositConfirmationService, blockProcessor, depositRepository, consumerNotifier,
-                logManager);
+                logManager, useDepositTimer: useDepositTimer, ethJsonRpcClientProxy: ethJsonRpcClientProxy);
 
             consumerServicesBackgroundProcessor.Init();
 

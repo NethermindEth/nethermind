@@ -41,7 +41,7 @@ namespace Nethermind.Core.Specs
         }
 
         public long? DaoBlockNumber { get; } = null;
-        public static long IstanbulBlockNumber { get; } = 10000000;
+        public static long IstanbulBlockNumber { get; } = 0x17D433;
 
         public int ChainId => 0x5;
     }

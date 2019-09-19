@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -25,9 +26,10 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface IDepositService
     {
-        Keccak MakeDeposit(Address onBehalfOf, Deposit deposit);
-        uint VerifyDeposit(Address onBehalfOf, Keccak depositId);
-        uint VerifyDeposit(Address onBehalfOf, Keccak depositId, BlockHeader head);
-        UInt256 ReadDepositBalance(Address onBehalfOf, Keccak depositId);
+        Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit);
+        Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId);
+        Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId, long blockNumber);
+        Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId);
+        Task ValidateContractAddressAsync(Address contractAddress);
     }
 }

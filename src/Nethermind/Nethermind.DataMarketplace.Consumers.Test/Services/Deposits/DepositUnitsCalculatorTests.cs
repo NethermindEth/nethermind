@@ -32,7 +32,7 @@ using Nethermind.DataMarketplace.Core.Domain;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Services
+namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
 {
     public class DepositUnitsCalculatorTests
     {

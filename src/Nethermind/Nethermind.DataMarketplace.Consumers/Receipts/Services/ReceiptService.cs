@@ -53,8 +53,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
         private readonly IEthereumEcdsa _ecdsa;
         private readonly PublicKey _nodePublicKey;
         private readonly ILogger _logger;
-
-
+        
         public ReceiptService(IDepositProvider depositProvider, IProviderService providerService,
             IReceiptRequestValidator receiptRequestValidator, ISessionService sessionService, ITimestamper timestamper,
             IReceiptRepository receiptRepository, IConsumerSessionRepository sessionRepository, IAbiEncoder abiEncoder,
@@ -74,34 +73,13 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             _logger = logManager.GetClassLogger();
         }
         
-        public async Task SendAsync(DataDeliveryReceiptRequest request)
+        public async Task SendAsync(DataDeliveryReceiptRequest request, int fetchSessionRetries = 3,
+            int fetchSessionRetryDelayMilliseconds = 3000)
         {
             var depositId = request.DepositId;
-            var (deposit, session) = await TryGetDepositAndSessionAsync(depositId);
-            if (deposit is null)
-            {
-                return;
-            }
-
-            if (session is null)
-            {
-                const int retries = 3;
-                var retry = 0;
-                while (retry < retries)
-                {
-                    retry++;
-                    await Task.Delay(3000);
-                    (_, session) = await TryGetDepositAndSessionAsync(depositId);
-                    if (session is null)
-                    {
-                        continue;
-                    }
-                    if (_logger.IsInfo) _logger.Info($"Found an active session: '{session.Id}' for deposit: '{deposit.Id}'.");
-                    break;
-                }
-            }
-
-            if (session is null)
+            var (deposit, session) = await TryGetDepositAndSessionAsync(depositId,
+                fetchSessionRetries, fetchSessionRetryDelayMilliseconds);
+            if (deposit is null || session is null)
             {
                 return;
             }
@@ -178,7 +156,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
         }
 
         private async Task<(DepositDetails deposit, ConsumerSession session)> TryGetDepositAndSessionAsync(
-            Keccak depositId)
+            Keccak depositId, int fetchSessionRetries = 3, int fetchSessionRetryDelayMilliseconds = 3000)
         {
             var deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)
@@ -189,6 +167,31 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             }
 
             var session = _sessionService.GetActive(depositId);
+            if (!(session is null))
+            {
+                return (deposit, session);
+            }
+            
+            if (fetchSessionRetries <= 0)
+            {
+                return (deposit, null);
+            }
+            
+            var retry = 0;
+            while (retry < fetchSessionRetries)
+            {
+                retry++;
+                if (_logger.IsTrace) _logger.Trace($"Retrying ({retry}/{fetchSessionRetries}) fetching an active session for deposit: {deposit} in {fetchSessionRetryDelayMilliseconds} ms...");
+                await Task.Delay(fetchSessionRetryDelayMilliseconds);
+                session = _sessionService.GetActive(depositId);
+                if (session is null)
+                {
+                    continue;
+                }
+                if (_logger.IsInfo) _logger.Info($"Found an active session: '{session.Id}' for deposit: '{deposit.Id}'.");
+                break;
+            }
+            
             return (session is null) ? (deposit, null) : (deposit, session);
         }
     }

@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,8 +39,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_hashrate();
         ResultWrapper<UInt256?> eth_gasPrice();
         ResultWrapper<IEnumerable<Address>> eth_accounts();
-        ResultWrapper<UInt256?> eth_blockNumber();
-        ResultWrapper<UInt256?> eth_getBalance(Address address, BlockParameter blockParameter);
+        Task<ResultWrapper<UInt256?>> eth_blockNumber();
+        Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter);
         ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter);
         ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter);
         ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash);

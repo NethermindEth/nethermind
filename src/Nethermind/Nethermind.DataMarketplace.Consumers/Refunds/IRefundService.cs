@@ -26,7 +26,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds
     public interface IRefundService
     {
         Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason);
-        Keccak ClaimRefund(Address onBehalfOf, RefundClaim refundClaim);
-        Keccak ClaimEarlyRefund(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim);
+        Task<Keccak> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim);
+        Task<Keccak> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim);
     }
 }

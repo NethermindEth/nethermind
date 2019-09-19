@@ -34,6 +34,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Basic.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class TransactionTests
     {
         [OneTimeSetUp]

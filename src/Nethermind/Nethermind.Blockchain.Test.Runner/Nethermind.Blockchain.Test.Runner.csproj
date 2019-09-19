@@ -5,13 +5,13 @@
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\..\tests\BlockchainTests\bc*\*.*">
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\ValidBlocks\bc*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\**\*.*">
+    <EmbeddedResource Include="..\..\tests\GeneralStateTests\**\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>

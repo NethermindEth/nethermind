@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 : new Address(ndmConfig.FaucetAddress);
             var faucet = new NdmFaucet(services.CreatedServices.BlockchainBridge, ethRequestRepository, faucetAddress,
                 ndmConfig.FaucetWeiRequestMaxValue, ndmConfig.FaucetEthDailyRequestsTotalValue, ndmConfig.FaucetEnabled,
-                timestamper, logManager);
+                timestamper, wallet, logManager);
 
             var consumerAddress = string.IsNullOrWhiteSpace(ndmConfig.ConsumerAddress)
                 ? Address.Zero
