@@ -83,7 +83,7 @@ namespace Nethermind.AuRa.Test
         public void correctly_finalizes_blocks_in_chain()
         {
             var count = 10;
-            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(count, 0, 0, TestItem.AddressA, TestItem.AddressB);
+            var blockTreeBuilder = Build.A.BlockTree();
             HashSet<BlockHeader> finalizedBlocks = new HashSet<BlockHeader>();
             
             var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
@@ -94,6 +94,8 @@ namespace Nethermind.AuRa.Test
                     finalizedBlocks.Add(block);
                 }
             };
+            
+            blockTreeBuilder.OfChainLength(count, 0, 0, TestItem.AddressA, TestItem.AddressB);
 
             var start = 0;
             for (int i = start; i < count; i++)
@@ -107,6 +109,19 @@ namespace Nethermind.AuRa.Test
             var expected = Enumerable.Range(start, count).Select(i => i != count - 1);
             finalizedBlocks.Count.Should().Be(count - 1);
             result.Should().BeEquivalentTo(expected);
+        }
+        
+        [Test]
+        public void correctly_finalizes_blocks_in_already_in_chain_on_initialize()
+        {
+            var count = 2;
+            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(count, 0, 0, TestItem.AddressA, TestItem.AddressB);
+            HashSet<BlockHeader> finalizedBlocks = new HashSet<BlockHeader>();
+            
+            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
+
+            IEnumerable<bool> result = Enumerable.Range(0, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
+            result.Should().BeEquivalentTo(new[] {true, false});
         }
         
         [TestCase(2, 4, ExpectedResult = new[] {1, 3, 1, 0})]
@@ -124,11 +139,13 @@ namespace Nethermind.AuRa.Test
             }
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            var blockTreeBuilder = Build.A.BlockTree(genesis)
+            var blockTreeBuilder = Build.A.BlockTree(genesis);
+
+            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
+            
+            blockTreeBuilder
                 .OfChainLength(out Block headBlock, chainLength, 1, 0, TestItem.Addresses.Take(validators).ToArray())
                 .OfChainLength(out Block alternativeHeadBlock, chainLength, 0, splitFrom: 2, TestItem.Addresses.Skip(validators).Take(validators).ToArray());
-            
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
             
             for (int i = 0; i < chainLength - 1; i++)
             {
