@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
             var blockInfoDb = new MemDb();
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new BlockInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
             _blockTree.SuggestBlock(genesis);
 
             _testHeaderMapping = new Dictionary<long, Keccak>();

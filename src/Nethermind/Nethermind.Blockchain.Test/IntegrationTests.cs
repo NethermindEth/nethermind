@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Test
             TxPool txPool = new TxPool(NullTxStorage.Instance, Timestamper.Default, ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
             IReceiptStorage receiptStorage = new PersistentReceiptStorage(receiptsDb, NullDb.Instance, specProvider, logManager);
             var blockInfoDb = new MemDb();
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new BlockInfoRepository(blockInfoDb), specProvider, txPool, logManager);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, logManager);
             Timestamper timestamper = new Timestamper();
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, logManager);

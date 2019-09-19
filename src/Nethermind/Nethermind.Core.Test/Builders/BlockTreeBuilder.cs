@@ -55,11 +55,11 @@ namespace Nethermind.Core.Test.Builders
 
             _genesisBlock = genesisBlock;
             var blockInfoDb = new MemDb();
-            BlockInfoRepository = new BlockInfoRepository(blockInfoDb);
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, BlockInfoRepository,  RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository,  RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
         }
 
-        public BlockInfoRepository BlockInfoRepository { get; private set; }
+        public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
 
         public BlockTreeBuilder OfHeadersOnly
         {

@@ -165,7 +165,7 @@ namespace Nethermind.AuRa.Validators
 
         private void FinalizePendingValidatorsIfNeeded(Block block)
         {
-            if (CurrentPendingValidators?.IsFinalized == true)
+            if (CurrentPendingValidators?.AreFinalized == true)
             {
                 if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} at block {block.Number}.");
                 ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
@@ -192,14 +192,14 @@ namespace Nethermind.AuRa.Validators
 
         }
 
-        private void InitiateChange(Block block, Address[] potentialValidators, bool isFinalized = false)
+        private void InitiateChange(Block block, Address[] potentialValidators, bool areFinalized = false)
         {
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
             if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
                 CurrentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators)
                 {
-                    IsFinalized = isFinalized
+                    AreFinalized = areFinalized
                 };
             }
         }
@@ -239,7 +239,7 @@ namespace Nethermind.AuRa.Validators
                 var currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks.Any(b => b.Hash == CurrentPendingValidators.BlockHash);
                 if (currentPendingValidatorsBlockGotFinalized)
                 {
-                    CurrentPendingValidators.IsFinalized = true;
+                    CurrentPendingValidators.AreFinalized = true;
                     Validators = CurrentPendingValidators.Addresses.ToHashSet();
                     SavePendingValidators();
                 }
@@ -269,7 +269,7 @@ namespace Nethermind.AuRa.Validators
             public Address[] Addresses { get; }
             public long BlockNumber { get; }
             public Keccak BlockHash { get; }
-            public bool IsFinalized { get; set; }
+            public bool AreFinalized { get; set; }
         }
 
         private class PendingValidatorsDecoder : IRlpDecoder<PendingValidators>
@@ -304,7 +304,7 @@ namespace Nethermind.AuRa.Validators
                 
                 var result = new PendingValidators(blockNumber, blockHash, addresses.ToArray())
                 {
-                    IsFinalized = rlpStream.DecodeBool()
+                    AreFinalized = rlpStream.DecodeBool()
                 };
                 
                 rlpStream.Check(pendingValidatorsCheck);
@@ -335,7 +335,7 @@ namespace Nethermind.AuRa.Validators
                 {
                     Rlp.Encode(stream, item.Addresses[i]);
                 }
-                Rlp.Encode(stream, item.IsFinalized);
+                Rlp.Encode(stream, item.AreFinalized);
             }
             
             public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -349,7 +349,7 @@ namespace Nethermind.AuRa.Validators
                 {
                     rlpStream.Encode(item.Addresses[i]);
                 }
-                rlpStream.Encode(item.IsFinalized);
+                rlpStream.Encode(item.AreFinalized);
             }
 
             public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
@@ -359,7 +359,7 @@ namespace Nethermind.AuRa.Validators
             {
                 int contentLength = Rlp.LengthOf(item.BlockNumber) 
                                     + Rlp.LengthOf(item.BlockHash) 
-                                    + Rlp.LengthOf(item.IsFinalized); 
+                                    + Rlp.LengthOf(item.AreFinalized); 
                 
                 var addressesLength = GetAddressesLength(item.Addresses);
                 contentLength += Rlp.LengthOfSequence(addressesLength);

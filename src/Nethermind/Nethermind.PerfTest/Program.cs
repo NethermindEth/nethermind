@@ -258,7 +258,7 @@ namespace Nethermind.PerfTest
                 stateProvider,
                 _logManager);
 
-            var blockInfoRepository = new BlockInfoRepository(blockInfosDb);
+            var blockInfoRepository = new ChainLevelInfoRepository(blockInfosDb);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, _logManager));
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);

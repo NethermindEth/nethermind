@@ -173,7 +173,7 @@ namespace Nethermind.Runner.Runners
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
         private INetworkConfig _networkConfig;
-        private BlockInfoRepository _blockInfoRepository;
+        private ChainLevelInfoRepository _chainLevelInfoRepository;
         private IBlockFinalizationManager _finalizationManager;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
@@ -428,13 +428,13 @@ namespace Nethermind.Runner.Runners
             var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
 
-            _blockInfoRepository = new BlockInfoRepository(_dbProvider.BlockInfosDb);
+            _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
             
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.HeadersDb,
                 _dbProvider.BlockInfosDb,
-                _blockInfoRepository, 
+                _chainLevelInfoRepository, 
                 _specProvider,
                 _txPool,
                 _syncConfig,
@@ -586,7 +586,7 @@ namespace Nethermind.Runner.Runners
             switch (_chainSpec.SealEngineType)
             {
                 case SealEngineType.AuRa:
-                    return new AuRaBlockFinalizationManager(_blockTree, _blockInfoRepository, _blockProcessor, 
+                    return new AuRaBlockFinalizationManager(_blockTree, _chainLevelInfoRepository, _blockProcessor, 
                             blockPreProcessors.OfType<IAuRaValidator>().First(), _logManager);
                 default:
                     return null;

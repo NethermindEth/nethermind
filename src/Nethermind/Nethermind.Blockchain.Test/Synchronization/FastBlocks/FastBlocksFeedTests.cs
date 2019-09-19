@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private void SetupLocalTree(int length = 1)
         {
             var blockInfoDb = new MemDb();
-            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new BlockInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
+            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
             for (int i = 0; i < length; i++)
             {
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i, BlockTreeLookupOptions.None));

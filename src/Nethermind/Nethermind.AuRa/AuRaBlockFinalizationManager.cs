@@ -32,7 +32,7 @@ namespace Nethermind.AuRa
     {
         private static readonly List<BlockHeader> Empty = new List<BlockHeader>();
         private readonly IBlockTree _blockTree;
-        private readonly IBlockInfoRepository _blockInfoRepository;
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly IAuRaValidator _auRaValidator;
         private readonly ILogger _logger;
         private readonly IBlockProcessor _blockProcessor;
@@ -40,10 +40,10 @@ namespace Nethermind.AuRa
         private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
-        public AuRaBlockFinalizationManager(IBlockTree blockTree, IBlockInfoRepository blockInfoRepository, IBlockProcessor blockProcessor, IAuRaValidator auRaValidator, ILogManager logManager)
+        public AuRaBlockFinalizationManager(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository, IBlockProcessor blockProcessor, IAuRaValidator auRaValidator, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockInfoRepository = blockInfoRepository ?? throw new ArgumentNullException(nameof(blockInfoRepository));
+            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _auRaValidator = auRaValidator ?? throw new ArgumentNullException(nameof(auRaValidator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
@@ -59,7 +59,7 @@ namespace Nethermind.AuRa
             do
             {
                 level--;
-                chainLevel = _blockInfoRepository.LoadLevel(level);
+                chainLevel = _chainLevelInfoRepository.LoadLevel(level);
             } 
             while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
@@ -98,7 +98,7 @@ namespace Nethermind.AuRa
         {
             (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
             {
-                var chainLevelInfo = _blockInfoRepository.LoadLevel(blockHeader.Number);
+                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockHeader.Number);
                 var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
                 return (chainLevelInfo, blockInfo);
             }
@@ -138,7 +138,7 @@ namespace Nethermind.AuRa
                 var validators = new HashSet<Address>();
                 var originalBlockSealer = originalBlock.Beneficiary;
 
-                using (var batch = _blockInfoRepository.StartBatch())
+                using (var batch = _chainLevelInfoRepository.StartBatch())
                 {
                     var (chainLevel, blockInfo) = GetBlockInfo(block);
 
@@ -153,7 +153,7 @@ namespace Nethermind.AuRa
                         if (validators.Count >= minSealersForFinalization)
                         {
                             blockInfo.IsFinalized = true;
-                            _blockInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+                            _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
                             finalizedBlocks.Add(block);
                             _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
                         }

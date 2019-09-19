@@ -18,7 +18,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Store.Repositories
 {
-    public interface IBlockInfoRepository
+    public interface IChainLevelInfoRepository
     {
         void Delete(long number, BatchWrite batch = null);
         void PersistLevel(long number, ChainLevelInfo level, BatchWrite batch = null);

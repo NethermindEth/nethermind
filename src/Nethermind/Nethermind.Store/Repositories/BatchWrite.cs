@@ -21,18 +21,27 @@ namespace Nethermind.Store.Repositories
 {
     public class BatchWrite : IDisposable
     {
-        private readonly ReaderWriterLockSlim _readerWriterLock;
+        private readonly object _lockObject;
+        private bool _lockTaken;
 
-        public BatchWrite(ReaderWriterLockSlim readerWriterLock)
+        public BatchWrite(object lockObject)
         {
-            _readerWriterLock = readerWriterLock;
-            _readerWriterLock.EnterWriteLock();
+            _lockObject = lockObject;
+            Monitor.Enter(_lockObject, ref _lockTaken);
         }
         
         public void Dispose()
         {
-            _readerWriterLock.ExitWriteLock();
-            Disposed = true;
+            if (!Disposed)
+            {
+                if (_lockTaken)
+                {
+                    _lockTaken = false;
+                    Monitor.Exit(_lockObject);
+                }
+
+                Disposed = true;
+            }
         }
 
         public bool Disposed { get; private set; }

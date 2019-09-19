@@ -21,39 +21,65 @@ using Nethermind.Core.Encoding;
 
 namespace Nethermind.Store.Repositories
 {
-    public class BlockInfoRepository : IBlockInfoRepository
+    public class ChainLevelInfoRepository : IChainLevelInfoRepository
     {
         private const int CacheSize = 64;
         
-        private ReaderWriterLockSlim _blockInfoLock = new ReaderWriterLockSlim();
+        private readonly object _writeLock = new object();
         private readonly LruCache<long, ChainLevelInfo> _blockInfoCache = new LruCache<long, ChainLevelInfo>(CacheSize);
         
         private readonly IDb _blockInfoDb;
         
-        public BlockInfoRepository(IDb blockInfoDb)
+        public ChainLevelInfoRepository(IDb blockInfoDb)
         {
             _blockInfoDb = blockInfoDb ?? throw new ArgumentNullException(nameof(blockInfoDb));
         }
 
         public void Delete(long number, BatchWrite batch = null)
         {
-            Batch(batch, () =>
+            void Delete()
             {
                 _blockInfoCache.Delete(number);
                 _blockInfoDb.Delete(number);
-            });
+            }
+
+            bool needLock = batch?.Disposed != false;
+            if (needLock)
+            {
+                lock(_writeLock)
+                {
+                    Delete();
+                }
+            }
+            else
+            {
+                Delete();
+            }
         }
 
         public void PersistLevel(long number, ChainLevelInfo level, BatchWrite batch = null)
         {
-            Batch(batch, () =>
+            void PersistLevel()
             {
                 // _blockInfoCache.Set(number, level);
                 _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
-            });
+            }
+
+            bool needLock = batch?.Disposed != false;
+            if (needLock)
+            {
+                lock(_writeLock)
+                {
+                    PersistLevel();
+                }
+            }
+            else
+            {
+                PersistLevel();
+            }
         }
 
-        public BatchWrite StartBatch() => new BatchWrite(_blockInfoLock);
+        public BatchWrite StartBatch() => new BatchWrite(_writeLock);
 
         public ChainLevelInfo LoadLevel(long number)
         {
@@ -69,27 +95,6 @@ namespace Nethermind.Store.Repositories
             }
 
             return chainLevelInfo;
-        }
-
-        private void Batch(BatchWrite batch, Action action)
-        {
-            bool needLock = batch?.Disposed != false;
-            if (needLock)
-            {
-                try
-                {
-                    _blockInfoLock.EnterWriteLock();
-                    action();
-                }
-                finally
-                {
-                    _blockInfoLock.ExitWriteLock();
-                }
-            }
-            else
-            {
-                action();
-            }
         }
     }
 }

@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain
 
         private long _currentDbLoadBatchEnd;
 
-        private object _batchInsertLock = new object();
+        private readonly object _batchInsertLock = new object();
 
         private readonly IDb _blockDb;
         private readonly IDb _headerDb;
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly ITxPool _txPool;
         private readonly ISyncConfig _syncConfig;
-        private readonly IBlockInfoRepository _blockInfoRepository;
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         
         internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
         internal static Keccak HeadAddressInDb = Keccak.Zero;
@@ -85,11 +85,11 @@ namespace Nethermind.Blockchain
             IDb blockDb,
             IDb headerDb,
             IDb blockInfoDb,
-            IBlockInfoRepository blockInfoRepository,
+            IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
             ITxPool txPool,
             ILogManager logManager)
-            : this(blockDb, headerDb, blockInfoDb, blockInfoRepository, specProvider, txPool, new SyncConfig(), logManager)
+            : this(blockDb, headerDb, blockInfoDb, chainLevelInfoRepository, specProvider, txPool, new SyncConfig(), logManager)
         {
         }
 
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain
             IDb blockDb,
             IDb headerDb,
             IDb blockInfoDb,
-            IBlockInfoRepository blockInfoRepository,
+            IChainLevelInfoRepository chainLevelInfoRepository,
             ISpecProvider specProvider,
             ITxPool txPool,
             ISyncConfig syncConfig,
@@ -110,7 +110,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider;
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _blockInfoRepository = blockInfoRepository ?? throw new ArgumentNullException(nameof(blockInfoRepository));
+            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
             ChainLevelInfo genesisLevel = LoadLevel(0, true);
             if (genesisLevel != null)
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain
                 {
                     // just for corrupted test bases
                     genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
-                    _blockInfoRepository.PersistLevel(0, genesisLevel);
+                    _chainLevelInfoRepository.PersistLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
@@ -362,7 +362,7 @@ namespace Nethermind.Blockchain
 
                 Task<bool> NoneFound(long number)
                 {
-                    _blockInfoRepository.Delete(number);
+                    _chainLevelInfoRepository.Delete(number);
                     BestKnownNumber = number - 1;
                     return Task.FromResult(false);
                 }
@@ -431,7 +431,7 @@ namespace Nethermind.Blockchain
 
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
             ChainLevelInfo chainLevel = new ChainLevelInfo(false, blockInfo);
-            _blockInfoRepository.PersistLevel(header.Number, chainLevel);
+            _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
             
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
             {
@@ -824,66 +824,68 @@ namespace Nethermind.Blockchain
             Keccak nextHash = null;
             ChainLevelInfo nextLevel = null;
 
-            while (true)
+            using (var batch = _chainLevelInfoRepository.StartBatch())
             {
-                ChainLevelInfo currentLevel = nextLevel ?? LoadLevel(currentNumber);
-                nextLevel = LoadLevel(currentNumber + 1);
-
-                bool shouldRemoveLevel = false;
-                if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
+                while (true)
                 {
-                    if (currentLevel.BlockInfos.Length == 1)
+                    ChainLevelInfo currentLevel = nextLevel ?? LoadLevel(currentNumber);
+                    nextLevel = LoadLevel(currentNumber + 1);
+
+                    bool shouldRemoveLevel = false;
+                    if (currentLevel != null) // preparing update of the level (removal of the invalid branch block)
                     {
-                        shouldRemoveLevel = true;
-                    }
-                    else
-                    {
-                        for (int i = 0; i < currentLevel.BlockInfos.Length; i++)
+                        if (currentLevel.BlockInfos.Length == 1)
                         {
-                            if (currentLevel.BlockInfos[0].BlockHash == currentHash)
+                            shouldRemoveLevel = true;
+                        }
+                        else
+                        {
+                            for (int i = 0; i < currentLevel.BlockInfos.Length; i++)
                             {
-                                currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
-                                break;
+                                if (currentLevel.BlockInfos[0].BlockHash == currentHash)
+                                {
+                                    currentLevel.BlockInfos = currentLevel.BlockInfos.Where(bi => bi.BlockHash != currentHash).ToArray();
+                                    break;
+                                }
                             }
                         }
                     }
-                }
 
-                // just finding what the next descendant will be
-                if (nextLevel != null)
-                {
-                    nextHash = FindChild(nextLevel, currentHash);
-                }
+                    // just finding what the next descendant will be
+                    if (nextLevel != null)
+                    {
+                        nextHash = FindChild(nextLevel, currentHash);
+                    }
 
-                UpdateDeletePointer(nextHash);
+                    UpdateDeletePointer(nextHash);
 
-                using (var batch = _blockInfoRepository.StartBatch())
-                {
+
                     if (shouldRemoveLevel)
                     {
                         BestKnownNumber = Math.Min(BestKnownNumber, currentNumber - 1);
-                        _blockInfoRepository.Delete(currentNumber, batch);
+                        _chainLevelInfoRepository.Delete(currentNumber, batch);
                     }
                     else
                     {
-                        _blockInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
+                        _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
                     }                    
+                    
+
+                    if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
+                    _blockCache.Delete(currentHash);
+                    _blockDb.Delete(currentHash);
+                    _headerCache.Delete(currentHash);
+                    _headerDb.Delete(currentHash);
+
+                    if (nextHash == null)
+                    {
+                        break;
+                    }
+
+                    currentNumber++;
+                    currentHash = nextHash;
+                    nextHash = null;
                 }
-
-                if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
-                _blockCache.Delete(currentHash);
-                _blockDb.Delete(currentHash);
-                _headerCache.Delete(currentHash);
-                _headerDb.Delete(currentHash);
-
-                if (nextHash == null)
-                {
-                    break;
-                }
-
-                currentNumber++;
-                currentHash = nextHash;
-                nextHash = null;
             }
         }
 
@@ -958,7 +960,7 @@ namespace Nethermind.Blockchain
 
             long lastNumber = ascendingOrder ? processedBlocks[processedBlocks.Length - 1].Number : processedBlocks[0].Number;
             long previousHeadNumber = Head?.Number ?? 0L;
-            using (var batch = _blockInfoRepository.StartBatch())
+            using (var batch = _chainLevelInfoRepository.StartBatch())
             {
                 if (previousHeadNumber > lastNumber)
                 {
@@ -968,7 +970,7 @@ namespace Nethermind.Blockchain
 
                         ChainLevelInfo level = LoadLevel(levelNumber);
                         level.HasBlockOnMainChain = false;
-                        _blockInfoRepository.PersistLevel(levelNumber, level, batch);
+                        _chainLevelInfoRepository.PersistLevel(levelNumber, level, batch);
                     }
                 }
 
@@ -1009,7 +1011,7 @@ namespace Nethermind.Blockchain
             }
 
             level.HasBlockOnMainChain = true;
-            _blockInfoRepository.PersistLevel(block.Number, level, batch);
+            _chainLevelInfoRepository.PersistLevel(block.Number, level, batch);
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
@@ -1136,7 +1138,7 @@ namespace Nethermind.Blockchain
 
         private void UpdateOrCreateLevel(long number, BlockInfo blockInfo)
         {
-            using (var batch = _blockInfoRepository.StartBatch())
+            using (var batch = _chainLevelInfoRepository.StartBatch())
             {
                 ChainLevelInfo level = LoadLevel(number, false);
 
@@ -1157,7 +1159,7 @@ namespace Nethermind.Blockchain
                     level = new ChainLevelInfo(false, new[] {blockInfo});
                 }
 
-                _blockInfoRepository.PersistLevel(number, level, batch);                
+                _chainLevelInfoRepository.PersistLevel(number, level, batch);                
             }
         }
 
@@ -1193,7 +1195,7 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return _blockInfoRepository.LoadLevel(number);
+            return _chainLevelInfoRepository.LoadLevel(number);
         }
 
         private long LoadNumberOnly(Keccak blockHash)

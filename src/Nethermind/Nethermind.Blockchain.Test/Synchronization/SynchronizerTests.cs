@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
                 var blockInfoDb = new MemDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(),  blockInfoDb, new BlockInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
+                BlockTree = new BlockTree(new MemDb(), new MemDb(),  blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, syncConfig, 25, _logManager);
 

@@ -205,13 +205,15 @@ namespace Nethermind.Blockchain
                 }
 
                 block = PrepareBlockForProcessing(suggestedBlock);
-                _additionalBlockProcessor?.PreProcess(block);
+                var additionalBlockProcessor = GetAdditionalBlockProcessor(options);
+                
+                additionalBlockProcessor?.PreProcess(block);
                 
                 var receipts = ProcessTransactions(block, options, blockTracer);
                 SetReceiptsRoot(block, receipts);
                 ApplyMinerRewards(block, blockTracer);
                 
-                _additionalBlockProcessor?.PostProcess(block, receipts);
+                additionalBlockProcessor?.PostProcess(block, receipts);
                 
                 _stateProvider.Commit(_specProvider.GetSpec(block.Number));
 
@@ -236,9 +238,16 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0)
+            {
+                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
+            }
+
             return block;
         }
+
+        private IAdditionalBlockProcessor GetAdditionalBlockProcessor(ProcessingOptions options) => 
+            options.HasFlag(ProcessingOptions.ReadOnlyChain) ? null : _additionalBlockProcessor;
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
