@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
@@ -38,42 +39,42 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         public ResultWrapper<string> eth_protocolVersion()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<SyncingResult> eth_syncing()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<Address> eth_coinbase()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<bool?> eth_mining()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<byte[]> eth_snapshot()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_hashrate()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_gasPrice()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<IEnumerable<Address>> eth_accounts()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public async Task<ResultWrapper<UInt256?>> eth_blockNumber()
@@ -85,162 +86,162 @@ namespace Nethermind.JsonRpc.Modules.Eth
         public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
             BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Keccak blockHash)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<Keccak> eth_sendRawTransaction(byte[] transaction)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter,
             bool returnFullTransactionObjects)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockHashAndIndex(Keccak blockHash,
             UInt256 positionIndex)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<TransactionForRpc> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter,
             UInt256 positionIndex)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<ReceiptForRpc> eth_getTransactionReceipt(Keccak txHashData)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter,
             UInt256 positionIndex)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_newFilter(Filter filter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_newBlockFilter()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(UInt256 filterId)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<IEnumerable<byte[]>> eth_getWork()
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<bool?> eth_submitWork(byte[] nonce, Keccak headerPowHash, byte[] mixDigest)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<bool?> eth_submitHashrate(string hashRate, string id)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         public ResultWrapper<AccountProof> eth_getProof(Address accountAddress, byte[][] hashRate,
             BlockParameter blockParameter)
         {
-            throw new System.NotImplementedException();
+            throw new NotSupportedException();
         }
 
         private static BlockParameterModel MapBlockParameter(BlockParameter blockParameter)

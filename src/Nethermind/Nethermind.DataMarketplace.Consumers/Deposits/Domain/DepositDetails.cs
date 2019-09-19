@@ -54,7 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Consumer = consumer;
             Pepper = pepper;
             Timestamp = timestamp;
-            SetTransactionHash(transactionHash);
+            TransactionHash = transactionHash;
             SetConfirmationTimestamp(confirmationTimestamp);
             Rejected = rejected;
             EarlyRefundTicket = earlyRefundTicket;
@@ -74,7 +74,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
         public void SetTransactionHash(Keccak transactionHash)
         {
-            TransactionHash = transactionHash;
+            TransactionHash = transactionHash ?? throw new ArgumentNullException(nameof(transactionHash));
         }
 
         public void Reject()

@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -83,14 +85,19 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
 
         [TestCase(0)]
         [TestCase(1)]
-        [TestCase(10)]
+        [TestCase(3)]
         public async Task send_should_fail_if_active_session_does_not_exist(int fetchSessionRetries)
         {
-            const int fetchSessionRetryDelayMilliseconds = 0;
+            const int fetchSessionRetryDelayMilliseconds = 100;
             var receipt = GetDataDeliveryReceiptRequest();
             var deposit = GetDepositDetails();
             _depositProvider.GetAsync(receipt.DepositId).Returns(deposit);
+            var stopwatch = new Stopwatch();
+            stopwatch.Start();
             await _receiptService.SendAsync(receipt, fetchSessionRetries, fetchSessionRetryDelayMilliseconds);
+            stopwatch.Stop();
+            stopwatch.ElapsedMilliseconds.Should()
+                .BeGreaterOrEqualTo(fetchSessionRetryDelayMilliseconds * fetchSessionRetries);
             await _depositProvider.Received().GetAsync(receipt.DepositId);
             _sessionService.Received(fetchSessionRetries + 1).GetActive(receipt.DepositId);
         }

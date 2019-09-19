@@ -41,7 +41,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 return new TransactionVerifierResult(false, 0, _requiredBlockConfirmations);
             }
 
-            while (latestBlock.Number >= transaction.BlockNumber)
+            do
             {
                 confirmations++;
                 if (latestBlock.Hash == transaction.BlockHash)
@@ -52,6 +52,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 latestBlock = await _blockchainBridge.FindBlockAsync(latestBlock.ParentHash);
                 if (latestBlock is null)
                 {
+                    confirmations = 0;
                     break;
                 }
                 
@@ -59,7 +60,8 @@ namespace Nethermind.DataMarketplace.Core.Services
                 {
                     break;
                 }
-            }
+                
+            } while (confirmations < _requiredBlockConfirmations);
             
             return new TransactionVerifierResult(true, confirmations, _requiredBlockConfirmations);
         }

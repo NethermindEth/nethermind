@@ -92,6 +92,11 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private async Task<(uint confirmations, bool rejected)> VerifyDepositConfirmationsAsync(DepositDetails deposit,
             NdmTransaction transaction, long headNumber)
         {
+            if (headNumber <= transaction.BlockNumber)
+            {
+                return (0, false);
+            }
+            
             var confirmations = 0u;
             var block = await _blockchainBridge.FindBlockAsync(headNumber);
             do
