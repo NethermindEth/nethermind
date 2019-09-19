@@ -195,7 +195,6 @@ namespace Nethermind.Runner.Runners
             _ethereumJsonSerializer = ethereumJsonSerializer;
             _logger = _logManager.GetClassLogger();
 
-            InitRlp();
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
@@ -215,6 +214,7 @@ namespace Nethermind.Runner.Runners
 
             SetupKeyStore();
             LoadChainSpec();
+            InitRlp();
             UpdateDiscoveryConfig();
             await InitBlockchain();
             RegisterJsonRpcModules();
@@ -228,6 +228,10 @@ namespace Nethermind.Runner.Runners
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+            {
+                Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
+            }
         }
 
         private void SetupKeyStore()
