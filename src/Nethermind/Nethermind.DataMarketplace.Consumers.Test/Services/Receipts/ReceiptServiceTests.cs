@@ -96,8 +96,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
             stopwatch.Start();
             await _receiptService.SendAsync(receipt, fetchSessionRetries, fetchSessionRetryDelayMilliseconds);
             stopwatch.Stop();
-            stopwatch.ElapsedMilliseconds.Should()
-                .BeGreaterOrEqualTo(fetchSessionRetryDelayMilliseconds * fetchSessionRetries);
+            var expectedTime = 0.9 * fetchSessionRetryDelayMilliseconds * fetchSessionRetries;
+            stopwatch.ElapsedMilliseconds.Should().BeGreaterOrEqualTo((long)expectedTime);
             await _depositProvider.Received().GetAsync(receipt.DepositId);
             _sessionService.Received(fetchSessionRetries + 1).GetActive(receipt.DepositId);
         }
