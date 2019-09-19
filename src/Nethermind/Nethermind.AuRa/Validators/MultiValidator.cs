@@ -107,6 +107,8 @@ namespace Nethermind.AuRa.Validators
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
                 InitCurrentValidator();
             }
+
+            _currentValidator?.SetFinalizationManager(finalizationManager);
         }
 
         private bool TryUpdateValidator(long finalizedBlockHeaderNumber, long finalizedAtBlockNumber)
@@ -122,6 +124,7 @@ namespace Nethermind.AuRa.Validators
 
         private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)
         {
+            _currentValidator?.SetFinalizationManager(null);
             _currentValidator = _validatorFactory.CreateValidatorProcessor(validator, finalizedAtBlockNumber + 1);
             _currentValidator.SetFinalizationManager(_blockFinalizationManager);
         }

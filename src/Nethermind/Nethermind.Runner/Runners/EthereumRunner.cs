@@ -440,6 +440,12 @@ namespace Nethermind.Runner.Runners
                 _syncConfig,
                 _logManager);
 
+            // Init state if we need system calls before actual processing starts
+            if (_blockTree.Head != null)
+            {
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            }
+
             _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
             
             _snapshotManager = null;            
@@ -673,7 +679,7 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _logManager)
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _blockTree, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                         
                     _sealer = new AuRaSealer();

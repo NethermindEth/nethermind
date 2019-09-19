@@ -14,8 +14,9 @@ namespace Nethermind.AuRa.Validators
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
+            IBlockTree blockTree,
             ILogManager logManager,
-            long startBlockNumber) : base(validator, stateDb, stateProvider, abiEncoder, transactionProcessor, logManager, startBlockNumber)
+            long startBlockNumber) : base(validator, stateDb, stateProvider, abiEncoder, transactionProcessor, blockTree, logManager, startBlockNumber)
         {
         }
 

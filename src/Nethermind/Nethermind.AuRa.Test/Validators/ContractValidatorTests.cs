@@ -57,7 +57,8 @@ namespace Nethermind.AuRa.Test.Validators
         private byte[] _getValidatorsData = new byte[] {0, 1, 2};
         private byte[] _finalizeChangeData= new byte[] {3, 4, 5};
         private Address[] _initialValidators;
-        
+        private IBlockTree _blockTree;
+
 
         [SetUp]
         public void SetUp()
@@ -67,6 +68,7 @@ namespace Nethermind.AuRa.Test.Validators
             _stateProvider = Substitute.For<IStateProvider>();
             _abiEncoder = Substitute.For<IAbiEncoder>();
             _logManager = Substitute.For<ILogManager>();
+            _blockTree = Substitute.For<IBlockTree>();
             _blockFinalizationManager = Substitute.For<IBlockFinalizationManager>();
             _validator = new AuRaParameters.Validator()
             {
@@ -90,42 +92,49 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
-            Action act = () => new ContractValidator(null, _db, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            Action act = () => new ContractValidator(null, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void throws_ArgumentNullException_on_empty_stateDb()
         {
-            Action act = () => new ContractValidator(_validator, null, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            Action act = () => new ContractValidator(_validator, null, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void throws_ArgumentNullException_on_empty_stateProvider()
         {
-            Action act = () => new ContractValidator(_validator, _db, null, _abiEncoder, _transactionProcessor, _logManager, 1);
+            Action act = () => new ContractValidator(_validator, _db, null, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void throws_ArgumentNullException_on_empty_abiEncoder()
         {
-            Action act = () => new ContractValidator(_validator, _db, _stateProvider, null, _transactionProcessor, _logManager, 1);
+            Action act = () => new ContractValidator(_validator, _db, _stateProvider, null, _transactionProcessor, _blockTree, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
 
         [Test]
         public void throws_ArgumentNullException_on_empty_transactionProcessor()
         {
-            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, null, _logManager, 1);
+            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, null, _blockTree, _logManager, 1);
+            act.Should().Throw<ArgumentNullException>();
+        }
+        
+        [Test]
+        public void throws_ArgumentNullException_on_empty_blockTree()
+        {
+            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, null, _logManager, 1);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void throws_ArgumentNullException_on_empty_logManager()
         {
-            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, null, 1);
+            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, null, 1);
             act.Should().Throw<ArgumentNullException>();
         }
 
@@ -133,7 +142,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void throws_ArgumentNullException_on_empty_contractAddress()
         {
             _validator.Addresses = new Address[0];
-            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            Action act = () => new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             act.Should().Throw<ArgumentException>();
         }
 
@@ -141,7 +150,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void creates_system_account_on_start_block()
         {
             SetupInitialValidators(Address.FromNumber(2000));
-            var validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            var validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             
             validator.PreProcess(_block);
             
@@ -159,7 +168,7 @@ namespace Nethermind.AuRa.Test.Validators
             var rlp = Rlp.Encode(pendingValidators);
             _db[ContractValidator.PendingValidatorsKey.Bytes].Returns(rlp.Bytes);
             
-            IAuRaValidatorProcessor validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            IAuRaValidatorProcessor validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             
             validator.SetFinalizationManager(_blockFinalizationManager);
             _blockFinalizationManager.BlocksFinalized +=
@@ -175,7 +184,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             var initialValidator = TestItem.AddressA;
             SetupInitialValidators(initialValidator);
-            IAuRaValidatorProcessor validator = new ContractValidator(_validator, new MemDb(), _stateProvider, _abiEncoder, _transactionProcessor, _logManager, 1);
+            IAuRaValidatorProcessor validator = new ContractValidator(_validator, new MemDb(), _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             
             _block.Number = 1;
             _block.Beneficiary = initialValidator;
@@ -478,7 +487,7 @@ namespace Nethermind.AuRa.Test.Validators
             var currentValidators = GenerateValidators(1);
             SetupInitialValidators(currentValidators);
             
-            IAuRaValidatorProcessor validator = new ContractValidator(_validator, new MemDb(), _stateProvider, _abiEncoder, _transactionProcessor, _logManager, test.StartBlockNumber);
+            IAuRaValidatorProcessor validator = new ContractValidator(_validator, new MemDb(), _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, test.StartBlockNumber);
             validator.SetFinalizationManager(_blockFinalizationManager);
             
             test.TryDoReorganisations(test.StartBlockNumber, out _);

@@ -48,13 +48,13 @@ namespace Nethermind.AuRa
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _blockProcessor.BlockProcessed += OnBlockProcessed;
-            InitLastFinalizedBLock();
-            auRaValidator.SetFinalizationManager(this);
+            Initialize();
         }
 
-        private void InitLastFinalizedBLock()
+        private void Initialize()
         {
-            var level = _blockTree.Head == null ? 0 : _blockTree.Head.Number + 1;
+            var hasHead = _blockTree.Head != null;
+            var level = hasHead ? _blockTree.Head.Number + 1 : 0;
             ChainLevelInfo chainLevel;
             do
             {
@@ -64,6 +64,14 @@ namespace Nethermind.AuRa
             while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
             LastFinalizedBlockLevel = level;
+            
+            _auRaValidator.SetFinalizationManager(this);
+            
+            // This is needed if processing was stopped between processing last block and running finalization logic 
+            if (hasHead)
+            {
+                FinalizeBlocks(_blockTree.Head);
+            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
