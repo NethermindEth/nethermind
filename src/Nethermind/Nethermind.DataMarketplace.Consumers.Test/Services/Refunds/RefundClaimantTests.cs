@@ -33,7 +33,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Services
+namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
 {
     public class RefundClaimantTests : ContractInteractionTest
     {
@@ -41,6 +41,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
         private IDepositDetailsRepository _depositRepository;
         private ITransactionVerifier _transactionVerifier;
         private IRefundClaimant _refundClaimant;
+        private ITimestamper _timestamper;
         private Keccak _claimedRefundTransactionHash;
 
         [SetUp]
@@ -49,15 +50,16 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             Prepare();
             _claimedRefundTransactionHash = TestItem.KeccakA;
             _refundService = Substitute.For<IRefundService>();
-            _refundService.ClaimRefund(Arg.Any<Address>(), Arg.Any<RefundClaim>())
+            _refundService.ClaimRefundAsync(Arg.Any<Address>(), Arg.Any<RefundClaim>())
                 .Returns(_claimedRefundTransactionHash);
-            _refundService.ClaimEarlyRefund(Arg.Any<Address>(), Arg.Any<EarlyRefundClaim>())
+            _refundService.ClaimEarlyRefundAsync(Arg.Any<Address>(), Arg.Any<EarlyRefundClaim>())
                 .Returns(_claimedRefundTransactionHash);
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
             _transactionVerifier = Substitute.For<ITransactionVerifier>();
-            _transactionVerifier.Verify(Arg.Any<TxReceipt>()).Returns(new TransactionVerifierResult(true, 1, 1));
-            _refundClaimant = new RefundClaimant(_refundService, _bridge, _depositRepository,
-                _transactionVerifier, LimboLogs.Instance);
+            _transactionVerifier.VerifyAsync(Arg.Any<NdmTransaction>()).Returns(new TransactionVerifierResult(true, 1, 1));
+            _timestamper = new Timestamper();
+            _refundClaimant = new RefundClaimant(_refundService, _ndmBridge, _depositRepository,
+                _transactionVerifier, _timestamper, LimboLogs.Instance);
         }
 
         [Test]
@@ -68,7 +70,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
-            _refundService.DidNotReceiveWithAnyArgs().ClaimRefund(null, null);
+            await _refundService.DidNotReceiveWithAnyArgs().ClaimRefundAsync(null, null);
             deposit.RefundClaimed.Should().BeFalse();
         }
 
@@ -81,7 +83,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
-            _refundService.DidNotReceiveWithAnyArgs().ClaimRefund(null, null);
+            await _refundService.DidNotReceiveWithAnyArgs().ClaimRefundAsync(null, null);
             deposit.RefundClaimed.Should().BeFalse();
         }
 
@@ -95,7 +97,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
             deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
-            _refundService.Received(1).ClaimRefund(refundTo, Arg.Any<RefundClaim>());
+            await _refundService.Received(1).ClaimRefundAsync(refundTo, Arg.Any<RefundClaim>());
             deposit.RefundClaimed.Should().BeTrue();
         }
 
@@ -113,7 +115,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             }
 
             deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
-            _refundService.Received(1).ClaimRefund(refundTo, Arg.Any<RefundClaim>());
+            await _refundService.Received(1).ClaimRefundAsync(refundTo, Arg.Any<RefundClaim>());
             deposit.RefundClaimed.Should().BeTrue();
         }
 
@@ -125,7 +127,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
-            _refundService.DidNotReceiveWithAnyArgs().ClaimEarlyRefund(null, null);
+            await _refundService.DidNotReceiveWithAnyArgs().ClaimEarlyRefundAsync(null, null);
             deposit.RefundClaimed.Should().BeFalse();
         }
 
@@ -138,7 +140,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
-            _refundService.DidNotReceiveWithAnyArgs().ClaimEarlyRefund(null, null);
+            await _refundService.DidNotReceiveWithAnyArgs().ClaimEarlyRefundAsync(null, null);
             deposit.RefundClaimed.Should().BeFalse();
         }
 
@@ -152,7 +154,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
             deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
-            _refundService.Received(1).ClaimEarlyRefund(refundTo, Arg.Any<EarlyRefundClaim>());
+            await _refundService.Received(1).ClaimEarlyRefundAsync(refundTo, Arg.Any<EarlyRefundClaim>());
             deposit.RefundClaimed.Should().BeTrue();
         }
 
@@ -170,7 +172,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services
             }
 
             deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
-            _refundService.Received(1).ClaimEarlyRefund(refundTo, Arg.Any<EarlyRefundClaim>());
+            await _refundService.Received(1).ClaimEarlyRefundAsync(refundTo, Arg.Any<EarlyRefundClaim>());
             deposit.RefundClaimed.Should().BeTrue();
         }
 

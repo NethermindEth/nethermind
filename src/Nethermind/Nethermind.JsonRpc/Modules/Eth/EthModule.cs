@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -115,31 +116,31 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        public ResultWrapper<UInt256?> eth_blockNumber()
+        public Task<ResultWrapper<UInt256?>> eth_blockNumber()
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<UInt256?>.Fail($"Incorrect head block", ErrorType.InternalError, null);
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"Incorrect head block", ErrorType.InternalError, null));
             }
 
             var number = _blockchainBridge.Head.Number;
-            return ResultWrapper<UInt256?>.Success((UInt256)number);
+            return Task.FromResult(ResultWrapper<UInt256?>.Success((UInt256) number));
         }
 
-        public ResultWrapper<UInt256?> eth_getBalance(Address address, BlockParameter blockParameter)
+        public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<UInt256?>.Fail("Incorrect head block", ErrorType.InternalError, null);
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail("Incorrect head block", ErrorType.InternalError, null));
             }
 
             var result = GetAccountBalance(address, blockParameter);
             if (result.Result.ResultType == ResultType.Failure)
             {
-                return ResultWrapper<UInt256?>.Fail($"Could not find balance of {address} at {blockParameter}", ErrorType.InternalError, null);
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"Could not find balance of {address} at {blockParameter}", ErrorType.InternalError, null));
             }
 
-            return result;
+            return Task.FromResult(result);
         }
 
         public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter)

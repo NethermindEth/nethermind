@@ -16,13 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface ITransactionVerifier
     {
-        TransactionVerifierResult Verify(TxReceipt receipt);
+        Task<TransactionVerifierResult> VerifyAsync(NdmTransaction transaction);
     }
 }

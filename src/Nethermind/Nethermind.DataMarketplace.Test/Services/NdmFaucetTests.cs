@@ -26,8 +26,8 @@ using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Facade;
 using Nethermind.Logging;
+using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,13 +35,14 @@ namespace Nethermind.DataMarketplace.Test.Services
 {
     public class NdmFaucetTests
     {
-        private IBlockchainBridge _blockchainBridge;
+        private INdmBlockchainBridge _blockchainBridge;
         private IEthRequestRepository _repository;
         private Address _faucetAddress;
         private UInt256 _maxValue;
         private UInt256 _dailyRequestsTotalValueEth;
         private bool _enabled;
         private ITimestamper _timestamper;
+        private IWallet _wallet;
         private ILogManager _logManager;
         private INdmFaucet _faucet;
         private string _host;
@@ -53,7 +54,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         [SetUp]
         public void Setup()
         {
-            _blockchainBridge = Substitute.For<IBlockchainBridge>();
+            _blockchainBridge = Substitute.For<INdmBlockchainBridge>();
             _repository = Substitute.For<IEthRequestRepository>();
             _repository.SumDailyRequestsTotalValueAsync(Arg.Any<DateTime>()).ReturnsForAnyArgs(UInt256.Zero);
             _faucetAddress = Address.FromNumber(1);
@@ -61,14 +62,15 @@ namespace Nethermind.DataMarketplace.Test.Services
             _dailyRequestsTotalValueEth = 500;
             _enabled = true;
             _timestamper = new Timestamper();
+            _wallet = Substitute.For<IWallet>();
             _logManager = LimboLogs.Instance;
             _host = "127.0.0.1";
             _address = Address.FromNumber(2);
             _value = 1.Ether();
             _faucetAccount = Account.TotallyEmpty;
             _transactionHash = Keccak.Zero;
-            _blockchainBridge.GetAccount(_faucetAddress).Returns(_faucetAccount);
-            _blockchainBridge.SendTransaction(Arg.Any<Transaction>(), true).Returns(_transactionHash);
+            _blockchainBridge.GetNonceAsync(_faucetAddress).Returns(UInt256.Zero);
+            _blockchainBridge.SendOwnTransactionAsync(Arg.Any<Transaction>()).Returns(_transactionHash);
         }
 
         [Test]
@@ -208,7 +210,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         private async Task InitFaucetAsync()
         {
             _faucet = new NdmFaucet(_blockchainBridge, _repository, _faucetAddress, _maxValue,
-                _dailyRequestsTotalValueEth, _enabled, _timestamper, _logManager);
+                _dailyRequestsTotalValueEth, _enabled, _timestamper, _wallet, _logManager);
             await Task.Delay(1);
         }
 

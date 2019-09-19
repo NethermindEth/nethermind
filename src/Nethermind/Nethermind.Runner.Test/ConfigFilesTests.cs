@@ -158,6 +158,14 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(false, config.ProducerEnabled);
         }
         
+        [TestCase("ndm_consumer_local.cfg")]
+        public void IsMining_enabled_for_ndm_consumer_local(string configFile)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            IInitConfig config = configProvider.GetConfig<IInitConfig>();
+            Assert.AreEqual(true, config.IsMining);
+        }
+        
         [TestCase("ropsten_archive.cfg")]
         [TestCase("ropsten.cfg")]
         [TestCase("rinkeby_archive.cfg")]

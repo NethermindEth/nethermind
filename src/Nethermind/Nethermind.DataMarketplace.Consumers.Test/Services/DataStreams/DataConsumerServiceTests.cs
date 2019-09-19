@@ -35,7 +35,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.DataMarketplace.Consumers.Test.Services
+namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
 {
     public class DataConsumerServiceTests
     {
