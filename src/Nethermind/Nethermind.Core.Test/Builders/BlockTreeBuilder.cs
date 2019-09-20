@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -53,8 +54,12 @@ namespace Nethermind.Core.Test.Builders
             blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
 
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(blocksDb, headersDb, new MemDb(), RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            var blockInfoDb = new MemDb();
+            ChainLevelInfoRepository = new ChainLevelInfoRepository(blockInfoDb);
+            TestObjectInternal = new BlockTree(blocksDb, headersDb, blockInfoDb, ChainLevelInfoRepository,  RopstenSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
         }
+
+        public ChainLevelInfoRepository ChainLevelInfoRepository { get; private set; }
 
         public BlockTreeBuilder OfHeadersOnly
         {
@@ -65,9 +70,9 @@ namespace Nethermind.Core.Test.Builders
             }
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0)
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
         {
-            OfChainLength(out _, chainLength, splitVariant, splitFrom);
+            OfChainLength(out _, chainLength, splitVariant, splitFrom, blockBeneficiaries);
             return this;
         }
 
@@ -75,7 +80,7 @@ namespace Nethermind.Core.Test.Builders
         private IEthereumEcdsa _ecdsa;
         private Func<Block, Transaction, IEnumerable<LogEntry>> _logCreationFunction;
 
-        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0)
+        public BlockTreeBuilder OfChainLength(out Block headBlock, int chainLength, int splitVariant = 0, int splitFrom = 0, params Address[] blockBeneficiaries)
         {
             Block current = _genesisBlock;
             headBlock = _genesisBlock;
@@ -83,6 +88,7 @@ namespace Nethermind.Core.Test.Builders
             bool skipGenesis = TestObjectInternal.Genesis != null;
             for (int i = 0; i < chainLength; i++)
             {
+                Address beneficiary = blockBeneficiaries.Length == 0 ? Address.Zero : blockBeneficiaries[i%blockBeneficiaries.Length];
                 headBlock = current;
                 if (_onlyHeaders)
                 {
@@ -92,7 +98,7 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent);
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
                 }
                 else
                 {
@@ -105,14 +111,15 @@ namespace Nethermind.Core.Test.Builders
                     }
 
                     Block parent = current;
-                    current = CreateBlock(splitVariant, splitFrom, i, parent);
+                    
+                    current = CreateBlock(splitVariant, splitFrom, i, parent, beneficiary);
                 }
             }
 
             return this;
         }
 
-        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent)
+        private Block CreateBlock(int splitVariant, int splitFrom, int blockIndex, Block parent, Address beneficiary)
         {
             Block current;
             if (_receiptStorage != null && blockIndex % 3 == 0)
@@ -122,13 +129,14 @@ namespace Nethermind.Core.Test.Builders
                     Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject,
                     Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa, TestItem.PrivateKeyA, blockIndex + 1).TestObject
                 };
-                
+
                 current = Build.A.Block
                     .WithNumber(blockIndex + 1)
                     .WithParent(parent)
                     .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
                     .WithTransactions(transactions)
                     .WithBloom(new Bloom())
+                    .WithBeneficiary(beneficiary)
                     .TestObject;
 
                 List<TxReceipt> receipts = new List<TxReceipt>();
@@ -152,7 +160,11 @@ namespace Nethermind.Core.Test.Builders
             }
             else
             {
-                current = Build.A.Block.WithNumber(blockIndex + 1).WithParent(parent).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant)).TestObject;
+                current = Build.A.Block.WithNumber(blockIndex + 1)
+                    .WithParent(parent)
+                    .WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (splitFrom > parent.Number ? 0 : (ulong) splitVariant))
+                    .WithBeneficiary(beneficiary)
+                    .TestObject;
             }
 
             return current;

@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -49,7 +50,8 @@ namespace Nethermind.Core.Test
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
             _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new Ethash(NullLogManager.Instance));
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(),  new MemDb(), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
+            var blockInfoDb = new MemDb();
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
             
             _validator = new HeaderValidator(blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;

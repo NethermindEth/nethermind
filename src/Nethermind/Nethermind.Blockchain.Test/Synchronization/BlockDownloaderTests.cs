@@ -35,6 +35,7 @@ using Nethermind.Mining;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ExceptionExtensions;
@@ -157,7 +158,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void Setup()
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
+            var blockInfoDb = new MemDb();
+            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, LimboLogs.Instance);
             _blockTree.SuggestBlock(genesis);
 
             _testHeaderMapping = new Dictionary<long, Keccak>();

@@ -100,6 +100,7 @@ using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using Nethermind.Store.Rpc;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -174,6 +175,8 @@ namespace Nethermind.Runner.Runners
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
         private INetworkConfig _networkConfig;
+        private ChainLevelInfoRepository _chainLevelInfoRepository;
+        private IBlockFinalizationManager _finalizationManager;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -192,7 +195,6 @@ namespace Nethermind.Runner.Runners
             _ethereumJsonSerializer = ethereumJsonSerializer;
             _logger = _logManager.GetClassLogger();
 
-            InitRlp();
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
@@ -212,6 +214,7 @@ namespace Nethermind.Runner.Runners
 
             SetupKeyStore();
             LoadChainSpec();
+            InitRlp();
             UpdateDiscoveryConfig();
             await InitBlockchain();
             RegisterJsonRpcModules();
@@ -225,6 +228,10 @@ namespace Nethermind.Runner.Runners
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
+            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+            {
+                Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
+            }
         }
 
         private void SetupKeyStore()
@@ -438,15 +445,24 @@ namespace Nethermind.Runner.Runners
                 _txPoolConfig, _stateProvider, _logManager);
             var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
+
+            _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
             
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.HeadersDb,
                 _dbProvider.BlockInfosDb,
+                _chainLevelInfoRepository, 
                 _specProvider,
                 _txPool,
                 _syncConfig,
                 _logManager);
+
+            // Init state if we need system calls before actual processing starts
+            if (_blockTree.Head != null)
+            {
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            }
 
             _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
             
@@ -525,6 +541,8 @@ namespace Nethermind.Runner.Runners
                 _initConfig.StoreReceipts,
                 _initConfig.StoreTraces);
 
+            _finalizationManager = InitFinalizationManager(blockPreProcessors);
+
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
@@ -579,6 +597,18 @@ namespace Nethermind.Runner.Runners
             _disposeStack.Push(subscription);
 
             await InitializeNetwork();
+        }
+
+        private IBlockFinalizationManager InitFinalizationManager(IList<IAdditionalBlockProcessor> blockPreProcessors)
+        {
+            switch (_chainSpec.SealEngineType)
+            {
+                case SealEngineType.AuRa:
+                    return new AuRaBlockFinalizationManager(_blockTree, _chainLevelInfoRepository, _blockProcessor, 
+                            blockPreProcessors.OfType<IAuRaValidator>().First(), _logManager);
+                default:
+                    return null;
+            }
         }
 
         private void InitBlockProducers()
@@ -667,7 +697,7 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _transactionProcessor, _logManager)
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _blockTree, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                         
                     _sealer = new AuRaSealer();
@@ -846,7 +876,9 @@ namespace Nethermind.Runner.Runners
 
         private void CreateSystemAccounts()
         {
-            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+            var isAura = _chainSpec.SealEngineType == SealEngineType.AuRa;
+            var hasConstructorAllocation = _chainSpec.Allocations.Values.Any(a => a.Constructor != null);
+            if (isAura && hasConstructorAllocation)
             {
                 _stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
                 _storageProvider.Commit();

@@ -28,7 +28,7 @@ namespace Nethermind.AuRa.Validators
 {
     public class ListValidator : IAuRaValidatorProcessor
     {
-        private readonly ISet<Address> _validatorAddresses;
+        private readonly ISet<Address> _validators;
 
         public ListValidator(AuRaParameters.Validator validator)
         {
@@ -36,7 +36,7 @@ namespace Nethermind.AuRa.Validators
             if (validator.ValidatorType != AuRaParameters.ValidatorType.List) 
                 throw new ArgumentException("Wrong validator type.", nameof(validator));
             
-            _validatorAddresses = validator.Addresses?.Length > 0
+            _validators = validator.Addresses?.Length > 0
                 ? validator.Addresses.ToHashSet()
                 : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
         }
@@ -47,7 +47,10 @@ namespace Nethermind.AuRa.Validators
 
         public void Initialize(Block block, TransactionProcessor transactionProcessor) { }
 
-        public bool IsValidSealer(Address address) => _validatorAddresses.Contains(address);
+        public bool IsValidSealer(Address address) => _validators.Contains(address);
+        public int MinSealersForFinalization => _validators.MinSealersForFinalization();
+        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager) { } // ListValidator doesn't change its behaviour/state based on Finalization of blocks, only Multi and Contract validators do.
+
         public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.List;
     }
 }

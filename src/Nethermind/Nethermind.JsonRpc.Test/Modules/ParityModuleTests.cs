@@ -32,6 +32,7 @@ using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -55,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IDb blockDb = new MemDb();
             IDb headerDb = new MemDb();
             IDb blockInfoDb = new MemDb();
-            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, LimboLogs.Instance);
+            IBlockTree blockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, LimboLogs.Instance);
             
             IReceiptStorage receiptStorage = new InMemoryReceiptStorage();
             _parityModule = new ParityModule(new EthereumEcdsa(specProvider,logger), txPool, blockTree, receiptStorage, logger);

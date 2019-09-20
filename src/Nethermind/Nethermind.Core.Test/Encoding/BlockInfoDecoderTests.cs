@@ -43,6 +43,13 @@ namespace Nethermind.Core.Test.Encoding
         }
         
         [Test]
+        public void Can_do_roundtrip_with_finalization()
+        {
+            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
+            Can_do_roundtrip();
+        }
+        
+        [Test]
         public void Can_handle_nulls()
         {
             Rlp rlp = Rlp.Encode((BlockInfo)null);

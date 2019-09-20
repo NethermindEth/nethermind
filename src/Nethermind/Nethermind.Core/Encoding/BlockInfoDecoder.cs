@@ -22,6 +22,15 @@ namespace Nethermind.Core.Encoding
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
     {
+        private readonly bool _chainWithFinalization;
+
+        public BlockInfoDecoder(bool chainWithFinalization)
+        {
+            _chainWithFinalization = chainWithFinalization;
+        }
+
+        public BlockInfoDecoder() : this(false) { }
+        
         public BlockInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
@@ -32,10 +41,17 @@ namespace Nethermind.Core.Encoding
             
             int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-            BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = rlpStream.DecodeKeccak();
-            blockInfo.WasProcessed = rlpStream.DecodeBool();
-            blockInfo.TotalDifficulty = rlpStream.DecodeUInt256();
+            BlockInfo blockInfo = new BlockInfo
+            {
+                BlockHash = rlpStream.DecodeKeccak(),
+                WasProcessed = rlpStream.DecodeBool(),
+                TotalDifficulty = rlpStream.DecodeUInt256()
+            };
+
+            if (_chainWithFinalization)
+            {
+                blockInfo.IsFinalized = rlpStream.DecodeBool();
+            }
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
@@ -52,10 +68,16 @@ namespace Nethermind.Core.Encoding
                 return Rlp.OfEmptySequence;
             }
             
-            Rlp[] elements = new Rlp[3];
+            Rlp[] elements = new Rlp[_chainWithFinalization ? 4 : 3];
             elements[0] = Rlp.Encode(item.BlockHash);
             elements[1] = Rlp.Encode(item.WasProcessed);
             elements[2] = Rlp.Encode(item.TotalDifficulty);
+            
+            if (_chainWithFinalization)
+            {
+                elements[3] = Rlp.Encode(item.IsFinalized);
+            }
+
             return Rlp.Encode(elements);
         }
 
