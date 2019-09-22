@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain.Test.Runner
                         }
 
                         Setup(manager);
-                        Assert.True(RunTest(test).Pass);
+                        RunTest(test);
                     }                    
                 }
             }

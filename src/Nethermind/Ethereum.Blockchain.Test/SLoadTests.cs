@@ -17,41 +17,21 @@
  */
 
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
-using Nethermind.Core;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture][Parallelizable(ParallelScope.All)]
-    public class RevertTests : BlockchainTestBase
+    public class SLoadTests : BlockchainTestBase
     {
-        private string[] ignored = new string[]
-        {
-            "RevertPrecompiledTouch_d0g0v0",
-            "RevertPrecompiledTouch_d3g0v0",
-            "RevertPrecompiledTouchExactOOG_d7g1v0",
-            "RevertPrecompiledTouchExactOOG_d7g2v0",
-            "RevertPrecompiledTouchExactOOG_d31g1v0",
-            "RevertPrecompiledTouchExactOOG_d31g2v0",
-            "RevertPrecompiledTouch_storage_d0g0v0",
-            "RevertPrecompiledTouch_storage_d3g0v0",
-            "TouchToEmptyAccountRevert3_d0g0v0"
-        };
-        
-        [Todo(Improve.TestCoverage, "Investigate if the skipped tests only affected by retesteth - they worked before the test format changes")]
         [TestCaseSource(nameof(LoadTests))]
         public void Test(BlockchainTest test)
-        {
-            if (ignored.Any(i => test.Name.Contains(i)))
-            {
-                return;
-            }
-            
+        {    
             Assert.True(RunTest(test).Pass);
         }
         
-        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stRevertTest").LoadTests(); }
+        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stSLoadTest").LoadTests(); }
     }
 }
