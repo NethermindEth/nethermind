@@ -1904,11 +1904,12 @@ namespace Nethermind.Evm
                                 }
                             }
                         }
-                        else // eip1283enabled
+                        else // net metered
                         {
                             if (newSameAsCurrent)
                             {
-                                if(!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
+                                long netMeteredStoreCost = spec.IsEip2200Enabled ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SStoreNetMeteredEip1283;  
+                                if(!UpdateGas(netMeteredStoreCost, ref gasAvailable))
                                 {
                                     EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;
@@ -1930,7 +1931,7 @@ namespace Nethermind.Evm
                                             return CallResult.OutOfGasException;
                                         }
                                     }
-                                    else // eip1283enabled, C == O != N, !currentIsZero
+                                    else // eip1283enabled, current == original != new, !currentIsZero
                                     {
                                         if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
                                         {
@@ -1945,15 +1946,16 @@ namespace Nethermind.Evm
                                         }
                                     }
                                 }
-                                else // eip1283enabled, N != C != O
+                                else // net metered, new != current != original
                                 {
-                                    if (!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
+                                    long netMeteredStoreCost = spec.IsEip2200Enabled ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SStoreNetMeteredEip1283;
+                                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable))
                                     {
                                         EndInstructionTraceError(OutOfGasErrorText);
                                         return CallResult.OutOfGasException;
                                     }
 
-                                    if (!originalIsZero) // eip1283enabled, N != C != O != 0
+                                    if (!originalIsZero) // net metered, new != current != original != 0
                                     {
                                         if (currentIsZero)
                                         {
@@ -1971,16 +1973,18 @@ namespace Nethermind.Evm
                                     bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
                                     if(newSameAsOriginal)
                                     {
+                                        long refundFromReversal;
                                         if (originalIsZero)
                                         {
-                                            evmState.Refund += RefundOf.SSetReversed;
-                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SSetReversed);
+                                            refundFromReversal = spec.IsEip2200Enabled ? RefundOf.SSetReversedEip2200 : RefundOf.SSetReversedEip1283;
                                         }
                                         else
                                         {
-                                            evmState.Refund += RefundOf.SClearReversed;
-                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClearReversed);
+                                            refundFromReversal = spec.IsEip2200Enabled ? RefundOf.SClearReversedEip2200 : RefundOf.SClearReversedEip1283;
                                         }
+                                        
+                                        evmState.Refund += refundFromReversal;
+                                        if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(refundFromReversal);
                                     }
                                 }  
                             }
