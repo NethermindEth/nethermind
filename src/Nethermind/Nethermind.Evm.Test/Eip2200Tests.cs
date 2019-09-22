@@ -31,23 +31,23 @@ namespace Nethermind.Evm.Test
         
         protected override ISpecProvider SpecProvider => RopstenSpecProvider.Instance;
 
-        [TestCase("0x60006000556000600055", 412, 0, 0)]
-        [TestCase("0x60006000556001600055", 20212, 0, 0)]
-        [TestCase("0x60016000556000600055", 20212, 19800, 0)]
-        [TestCase("0x60016000556002600055", 20212, 0, 0)]
-        [TestCase("0x60016000556001600055", 20212, 0, 0)]
-        [TestCase("0x60006000556000600055", 5212, 15000, 1)]
-        [TestCase("0x60006000556001600055", 5212, 4800, 1)]
-        [TestCase("0x60006000556002600055", 5212, 0, 1)]
-        [TestCase("0x60026000556000600055", 5212, 15000, 1)]
-        [TestCase("0x60026000556003600055", 5212, 0, 1)]
-        [TestCase("0x60026000556001600055", 5212, 4800, 1)]
-        [TestCase("0x60026000556002600055", 5212, 0, 1)]
-        [TestCase("0x60016000556000600055", 5212, 15000, 1)]
-        [TestCase("0x60016000556002600055", 5212, 0, 1)]
-        [TestCase("0x60016000556001600055", 412, 0, 1)]
-        [TestCase("0x600160005560006000556001600055", 40218, 19800, 0)]
-        [TestCase("0x600060005560016000556000600055", 10218, 19800, 1)]
+        [TestCase("0x60006000556000600055", 1612, 0, 0)]
+        [TestCase("0x60006000556001600055", 20812, 0, 0)]
+        [TestCase("0x60016000556000600055", 20812, 19200, 0)]
+        [TestCase("0x60016000556002600055", 20812, 0, 0)]
+        [TestCase("0x60016000556001600055", 20812, 0, 0)]
+        [TestCase("0x60006000556000600055", 5812, 15000, 1)]
+        [TestCase("0x60006000556001600055", 5812, 4200, 1)]
+        [TestCase("0x60006000556002600055", 5812, 0, 1)]
+        [TestCase("0x60026000556000600055", 5812, 15000, 1)]
+        [TestCase("0x60026000556003600055", 5812, 0, 1)]
+        [TestCase("0x60026000556001600055", 5812, 4200, 1)]
+        [TestCase("0x60026000556002600055", 5812, 0, 1)]
+        [TestCase("0x60016000556000600055", 5812, 15000, 1)]
+        [TestCase("0x60016000556002600055", 5812, 0, 1)]
+        [TestCase("0x60016000556001600055", 1612, 0, 1)]
+        [TestCase("0x600160005560006000556001600055", 40818, 19200, 0)]
+        [TestCase("0x600060005560016000556000600055", 10818, 19200, 1)]
         public void Test(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
@@ -59,23 +59,23 @@ namespace Nethermind.Evm.Test
             AssertGas(receipt, gasUsed + GasCostOf.Transaction - Math.Min((gasUsed + GasCostOf.Transaction) / 2, refund));
         }
         
-        [TestCase("0x60006000556000600055", 412, 0, 0)]
-        [TestCase("0x60006000556001600055", 20212, 0, 0)]
-        [TestCase("0x60016000556000600055", 20212, 19800, 0)]
-        [TestCase("0x60016000556002600055", 20212, 0, 0)]
-        [TestCase("0x60016000556001600055", 20212, 0, 0)]
-        [TestCase("0x60006000556000600055", 5212, 15000, 1)]
-        [TestCase("0x60006000556001600055", 5212, 4800, 1)]
-        [TestCase("0x60006000556002600055", 5212, 0, 1)]
-        [TestCase("0x60026000556000600055", 5212, 15000, 1)]
-        [TestCase("0x60026000556003600055", 5212, 0, 1)]
-        [TestCase("0x60026000556001600055", 5212, 4800, 1)]
-        [TestCase("0x60026000556002600055", 5212, 0, 1)]
-        [TestCase("0x60016000556000600055", 5212, 15000, 1)]
-        [TestCase("0x60016000556002600055", 5212, 0, 1)]
-        [TestCase("0x60016000556001600055", 412, 0, 1)]
-        [TestCase("0x600160005560006000556001600055", 40218, 19800, 0)]
-        [TestCase("0x600060005560016000556000600055", 10218, 19800, 1)]
+        [TestCase("0x60006000556000600055", 1612, 0, 0)]
+        [TestCase("0x60006000556001600055", 20812, 0, 0)]
+        [TestCase("0x60016000556000600055", 20812, 19200, 0)]
+        [TestCase("0x60016000556002600055", 20812, 0, 0)]
+        [TestCase("0x60016000556001600055", 20812, 0, 0)]
+        [TestCase("0x60006000556000600055", 5812, 15000, 1)]
+        [TestCase("0x60006000556001600055", 5812, 4200, 1)]
+        [TestCase("0x60006000556002600055", 5812, 0, 1)]
+        [TestCase("0x60026000556000600055", 5812, 15000, 1)]
+        [TestCase("0x60026000556003600055", 5812, 0, 1)]
+        [TestCase("0x60026000556001600055", 5812, 4200, 1)]
+        [TestCase("0x60026000556002600055", 5812, 0, 1)]
+        [TestCase("0x60016000556000600055", 5812, 15000, 1)]
+        [TestCase("0x60016000556002600055", 5812, 0, 1)]
+        [TestCase("0x60016000556001600055", 1612, 0, 1)]
+        [TestCase("0x600160005560006000556001600055", 40818, 19200, 0)]
+        [TestCase("0x600060005560016000556000600055", 10818, 19200, 1)]
         public void Test_when_gas_at_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
@@ -83,12 +83,12 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(BlockNumber, 23512, Bytes.FromHexString(codeHex));
-            Assert.AreEqual(0, receipt.StatusCode);
+            var receipt = Execute(BlockNumber, 21000 + gasUsed + (2300 - 800), Bytes.FromHexString(codeHex));
+            Assert.AreEqual(1, receipt.StatusCode);
         }
         
-        [TestCase("0x60006000556000600055", 412, 0, 0)]
-        [TestCase("0x60016000556001600055", 412, 0, 1)]
+        [TestCase("0x60006000556000600055", 1612, 0, 0)]
+        [TestCase("0x60016000556001600055", 1612, 0, 1)]
         public void Test_when_gas_just_above_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
@@ -96,12 +96,12 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(BlockNumber, 23513, Bytes.FromHexString(codeHex));
+            var receipt = Execute(BlockNumber, 21000 + gasUsed + (2301 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(1, receipt.StatusCode);
         }
         
-        [TestCase("0x60006000556000600055", 412, 0, 0)]
-        [TestCase("0x60016000556001600055", 412, 0, 1)]
+        [TestCase("0x60006000556000600055", 1612, 0, 0)]
+        [TestCase("0x60016000556001600055", 1612, 0, 1)]
         public void Test_when_gas_just_below_stipend(string codeHex, long gasUsed, long refund, byte originalValue)
         {
             TestState.CreateAccount(Recipient, 0);
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test
             Storage.Commit();
             TestState.Commit(RopstenSpecProvider.Instance.GenesisSpec);
             
-            var receipt = Execute(BlockNumber, 23511, Bytes.FromHexString(codeHex));
+            var receipt = Execute(BlockNumber, 21000 + gasUsed + (2299 - 800), Bytes.FromHexString(codeHex));
             Assert.AreEqual(0, receipt.StatusCode);
         }
     }

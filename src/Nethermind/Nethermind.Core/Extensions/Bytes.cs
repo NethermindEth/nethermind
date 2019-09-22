@@ -645,6 +645,7 @@ namespace Nethermind.Core.Extensions
             return leadingZeros;
         }
 
+        [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
         {
             if (hexString == null)
