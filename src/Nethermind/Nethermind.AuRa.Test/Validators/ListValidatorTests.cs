@@ -34,13 +34,13 @@ namespace Nethermind.AuRa.Test.Validators
         private const string Include1 = "0xffffffffffffffffffffffffffffffffffffffff";
         private const string Include2 = "0xfffffffffffffffffffffffffffffffffffffffe";
         
-        [TestCase(Include1, 0ul, ExpectedResult = true)]
-        [TestCase(Include1, 1ul, ExpectedResult = false)]
-        [TestCase(Include2, 1ul, ExpectedResult = true)]
-        [TestCase(Include2, 0ul, ExpectedResult = false)]
-        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", 0ul, ExpectedResult = false)]
-        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", 1ul, ExpectedResult = false)]
-        public bool should_validate_correctly(string address, ulong index)
+        [TestCase(Include1, 0L, ExpectedResult = true)]
+        [TestCase(Include1, 1L, ExpectedResult = false)]
+        [TestCase(Include2, 1L, ExpectedResult = true)]
+        [TestCase(Include2, 0L, ExpectedResult = false)]
+        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", 0L, ExpectedResult = false)]
+        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", 1L, ExpectedResult = false)]
+        public bool should_validate_correctly(string address, long index)
         {
             var validator = new ListValidator(
                 new AuRaParameters.Validator()

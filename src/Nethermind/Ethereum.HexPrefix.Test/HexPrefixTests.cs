@@ -25,6 +25,7 @@ using NUnit.Framework;
 
 namespace Ethereum.HexPrefix.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class HexPrefixTests
     {
         // ReSharper disable once MemberCanBePrivate.Global

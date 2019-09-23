@@ -16,11 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.JsonRpc.Data;
+
 namespace Nethermind.JsonRpc.Modules.Parity
 {
     [RpcModule(ModuleType.Parity)]
     public interface IParityModule : IModule
     {
         ResultWrapper<ParityTransaction[]> parity_pendingTransactions();
+        ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter);
     }
 }

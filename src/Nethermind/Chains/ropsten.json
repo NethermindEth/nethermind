@@ -46,12 +46,12 @@
 		"eip1052Transition": "0x408b70",
 		"eip1283Transition": "0x408b70",
 		"eip1283DisableTransition": "0x4b5e82",
-		"eip152Transition": "0x989680",
-		"eip1108Transition": "0x989680",
-		"eip1344Transition": "0x989680",
-		"eip1884Transition": "0x989680",
-		"eip2028Transition": "0x989680",
-		"eip2200Transition": "0x989680"
+		"eip152Transition": "0x62F756",
+		"eip1108Transition": "0x62F756",
+		"eip1344Transition": "0x62F756",
+		"eip1884Transition": "0x62F756",
+		"eip2028Transition": "0x62F756",
+		"eip2200Transition": "0x62F756"
 	},
 	"genesis": {
 		"seal": {

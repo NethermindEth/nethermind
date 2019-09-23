@@ -40,11 +40,15 @@ namespace Nethermind.AuRa.Test
         [TestCase(AuRaParameters.ValidatorType.Multi, typeof(MultiValidator))]
         public void returns_correct_validator_type(AuRaParameters.ValidatorType validatorType, Type expectedType)
         {
+            var stateDb = Substitute.For<IDb>();
+            stateDb[Arg.Any<byte[]>()].Returns((byte[]) null);
+            
             var factory = new AuRaAdditionalBlockProcessorFactory(
+                stateDb,
                 Substitute.For<IStateProvider>(),
-                Substitute.For<IBlockTree>(),
                 Substitute.For<IAbiEncoder>(), 
                 Substitute.For<ITransactionProcessor>(),
+                Substitute.For<IBlockTree>(),
                 Substitute.For<ILogManager>());
 
             var validator = new AuRaParameters.Validator()

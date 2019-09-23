@@ -46,7 +46,7 @@ namespace Nethermind.Runner.Runners
             ILogManager logManager,
             ITxPool customTxPool,
             IReceiptStorage receiptStorage, 
-            Func<IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> additionalBlockProcessorsFactory)
+            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> additionalBlockProcessorsFactory)
         {
             ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, ReadOnlyStateProvider, logManager);
@@ -55,7 +55,7 @@ namespace Nethermind.Runner.Runners
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, ReadOnlyStateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
             IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, 
-                additionalBlockProcessorsFactory?.Invoke(ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager));
+                additionalBlockProcessorsFactory?.Invoke(dbProvider.StateDb, ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager));
             Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false));
         }
     }

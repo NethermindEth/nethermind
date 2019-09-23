@@ -26,8 +26,8 @@ namespace Nethermind.Network
     {
         PublicKey PublicKey { get; }
         Address Address { get; }
-        IPAddress IpAddress { get; }
-        int P2PPort { get; }
+        IPAddress HostIp { get; }
+        int Port { get; }
         string Info { get; }
     }
 }

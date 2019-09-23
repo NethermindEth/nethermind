@@ -22,21 +22,12 @@ namespace Nethermind.Runner.Config
 {
     public interface IInitConfig : IConfig
     {
-        [ConfigItem(Description = "If 'true' then it enables the Kafka producer which can be configured to stream the transactions data.", DefaultValue = "false")]
-        bool PubSubEnabled { get; set; }
-        
         [ConfigItem(Description = "If 'true' then it enables the wallet / key store in the application.", DefaultValue = "false")]
         bool EnableUnsecuredDevWallet { get; set; }
         
         [ConfigItem(Description = "If 'true' then any accounts created will be only valid during the session and deleted when application closes.", DefaultValue = "false")]
         bool KeepDevWalletInMemory{ get; set; }
-        
-        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup at the 'HttpPort'", DefaultValue = "false")]
-        bool JsonRpcEnabled { get; set; }
-        
-        [ConfigItem(Description = "Defines which RPC modules should be enabled.", DefaultValue = "\"Clique,Db,Debug,Eth,Net,Trace,TxPool,Web3\"")]
-        string[] JsonRpcEnabledModules { get; set; }
-        
+
         [ConfigItem(Description = "Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'", DefaultValue = "false")]
         bool WebSocketsEnabled { get; set; }
         
@@ -54,19 +45,7 @@ namespace Nethermind.Runner.Config
         
         [ConfigItem(Description = "If 'true' then the node will try to seal/mine new blocks", DefaultValue = "false")]
         bool IsMining { get; set; }
-        
-        [ConfigItem(Description = "Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "\"127.0.0.1\"")]
-        string HttpHost { get; set; }
-        
-        [ConfigItem(Description = "Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "8545")]
-        int HttpPort { get; set; }
-        
-        [ConfigItem(Description = "UDP port number for incoming discovery connections.", DefaultValue = "30303")]
-        int DiscoveryPort { get; set; }
-        
-        [ConfigItem(Description = "TPC/IP port number for incoming P2P connections.", DefaultValue = "30303")]
-        int P2PPort { get; set; }
-        
+
         [ConfigItem(Description = "Path to the chain definition file (Parity chainspec or Geth genesis file).", DefaultValue = "null")]
         string ChainSpecPath { get; set; }
         

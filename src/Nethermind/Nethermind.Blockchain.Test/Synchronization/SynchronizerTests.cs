@@ -37,6 +37,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -284,7 +285,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 syncConfig.FastSync = synchronizerType == SynchronizerType.Fast;
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
-                BlockTree = new BlockTree(new MemDb(), new MemDb(),  new MemDb(), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
+                var blockInfoDb = new MemDb();
+                BlockTree = new BlockTree(new MemDb(), new MemDb(),  blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
                 var stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, syncConfig, 25, _logManager);
 

@@ -16,19 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class ZeroKnowledge2Tests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stZeroKnowledge2" })]
-        public async Task Test(BlockchainTest test)
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(BlockchainTest test)
         {
-            await RunTest(test);
+            Assert.True(RunTest(test).Pass);
         }
+        
+        public static IEnumerable<BlockchainTest> LoadTests() { return new DirectoryTestsSource("stZeroKnowledge2").LoadTests(); }
     }
 }

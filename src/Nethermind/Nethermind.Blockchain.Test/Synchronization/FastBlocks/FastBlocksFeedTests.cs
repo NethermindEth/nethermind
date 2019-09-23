@@ -31,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -150,7 +151,8 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
         private void SetupLocalTree(int length = 1)
         {
-            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
+            var blockInfoDb = new MemDb();
+            _localBlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), MainNetSpecProvider.Instance, NullTxPool.Instance, _syncConfig, LimboLogs.Instance);
             for (int i = 0; i < length; i++)
             {
                 _localBlockTree.SuggestBlock(_validTree2048.FindBlock(i, BlockTreeLookupOptions.None));

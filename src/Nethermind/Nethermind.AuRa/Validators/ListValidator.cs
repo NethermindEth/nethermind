@@ -48,8 +48,10 @@ namespace Nethermind.AuRa.Validators
 
         public void Initialize(Block block, TransactionProcessor transactionProcessor) { }
 
-        public bool IsValidSealer(Address address, ulong step) => _validatorAddresses.GetItemRoundRobin(step) == address;
-        
+        public bool IsValidSealer(Address address, long step) => _validatorAddresses.GetItemRoundRobin(step) == address;
+        public int MinSealersForFinalization => _validatorAddresses.MinSealersForFinalization();
+        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager) { } // ListValidator doesn't change its behaviour/state based on Finalization of blocks, only Multi and Contract validators do.
+
         public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.List;
     }
 }

@@ -17,11 +17,8 @@
  */
 
 using System.Collections.Generic;
-using System.Numerics;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -51,6 +48,7 @@ namespace Nethermind.Facade
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction, bool isOwn = false);
         TxReceipt GetReceipt(Keccak txHash);
+        TxReceipt[] GetReceipts(Block block);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
         long EstimateGas(Block block, Transaction transaction);
 

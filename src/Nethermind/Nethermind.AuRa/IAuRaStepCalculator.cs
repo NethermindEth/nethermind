@@ -20,7 +20,7 @@ namespace Nethermind.AuRa
 {
     public interface IAuRaStepCalculator
     {
-        ulong CurrentStep { get; }
+        long CurrentStep { get; }
         TimeSpan TimeToNextStep { get; }
     }
 }

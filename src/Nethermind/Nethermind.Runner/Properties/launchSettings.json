@@ -9,7 +9,7 @@
     },
     "MainNet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath D:\\mainnet_fast --SyncConfig.FastSync true",
+      "commandLineArgs": "--config configs\\mainnet.cfg --baseDbPath D:\\mainnet_fast --Sync.FastSync true",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -23,23 +23,27 @@
     },
     "Goerli": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\ --InitConfig.JsonRpcEnabled true"
+      "commandLineArgs": "--config configs\\goerli_archive.cfg --baseDbPath C:\\ --JsonRpc.Enabled true"
     },
     "Sokol": {
       "commandName": "Project",
-      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
     },
     "Poacore": {
       "commandName": "Project",
-      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\poacore.cfg --baseDbPath C:\\nethermind_db"
+    },
+    "xDai": {
+      "commandName": "Project",
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
     },
     "AuRaTestMiner": {
       "commandName": "Project",
-      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner --KeyStoreConfig.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38 --InitConfig.IsMining true --InitConfig.EnableUnsecuredDevWallet true"
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Miner --KeyStore.TestNodeKey 0xcff9b5a51f50cfddbbd227a273c769164dfe6b6185b56f63e4eb2c545bf5ca38 --Init.IsMining true --Init.EnableUnsecuredDevWallet true"
     },
     "AuRaTestDownloader": {
       "commandName": "Project",
-      "commandLineArgs": "--InitConfig.JsonRpcEnabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Downloader --KeyStoreConfig.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --InitConfig.DiscoveryPort 30304 --InitConfig.P2PPort 30304 --InitConfig.HttpPort 8546 --InitConfig.EnableUnsecuredDevWallet true"
-    }
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Downloader --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Init.DiscoveryPort 30304 --Init.P2PPort 30304 --Init.HttpPort 8546 --Init.EnableUnsecuredDevWallet true"
+    }    
   }
 }

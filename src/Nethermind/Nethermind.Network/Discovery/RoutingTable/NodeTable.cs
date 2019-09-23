@@ -32,18 +32,23 @@ namespace Nethermind.Network.Discovery.RoutingTable
     public class NodeTable : INodeTable
     {
         private ILogger _logger;
+        private INetworkConfig _networkConfig;
         private IDiscoveryConfig _discoveryConfig;
         private INodeDistanceCalculator _nodeDistanceCalculator;
+        
         private ConcurrentDictionary<Keccak, Node> _nodes = new ConcurrentDictionary<Keccak, Node>(); 
 
-        public NodeTable(INodeDistanceCalculator nodeDistanceCalculator, IDiscoveryConfig discoveryConfig, ILogManager logManager)
+        public NodeTable(INodeDistanceCalculator nodeDistanceCalculator, IDiscoveryConfig discoveryConfig, INetworkConfig networkConfig, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
+            
             _nodeDistanceCalculator = nodeDistanceCalculator ?? throw new ArgumentNullException(nameof(nodeDistanceCalculator)); 
         }
 
         public Node MasterNode { get; private set; }    
+        
         public NodeBucket[] Buckets { get; private set; }
 
         public NodeAddResult AddNode(Node node)
@@ -111,7 +116,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public void Initialize(PublicKey masterNodeKey)
         {
             Buckets = new NodeBucket[_discoveryConfig.BucketsCount];
-            MasterNode = new Node(masterNodeKey, _discoveryConfig.MasterHost, _discoveryConfig.MasterPort);
+            MasterNode = new Node(masterNodeKey, _networkConfig.ExternalIp, _networkConfig.DiscoveryPort);
             if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
 
             for (var i = 0; i < Buckets.Length; i++)

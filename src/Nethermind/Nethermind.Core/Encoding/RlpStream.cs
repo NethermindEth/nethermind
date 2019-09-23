@@ -212,6 +212,11 @@ namespace Nethermind.Core.Encoding
             }
         }
 
+        public void Encode(bool value)
+        {
+            Encode(value ? (byte) 1 : (byte) 0);
+        }
+
         public void Encode(int value)
         {
             Encode((long) value);

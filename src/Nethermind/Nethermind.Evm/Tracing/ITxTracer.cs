@@ -56,6 +56,7 @@ namespace Nethermind.Evm.Tracing
         void ReportActionError(EvmExceptionType evmExceptionType);
         void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode);
         void ReportByteCode(byte[] byteCode);
-        void ReportRefund(long gasAvailable);
+        void ReportRefundForVmTrace(long refund, long gasAvailable);
+        void ReportRefund(long refund);
     }
 }

@@ -24,6 +24,7 @@ namespace Nethermind.Network
         TargetUnreachable,
         Timeout,
         Validation,
+        Discovery,
         Other
     }
 }

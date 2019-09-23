@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.Reflection;
 using Nethermind.JsonRpc.Modules;
@@ -26,6 +25,7 @@ using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.Logging;
 using Newtonsoft.Json;
 using NSubstitute;
 
@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 {
     internal class TestRpcModuleProvider<T> : IRpcModuleProvider where T : class, IModule
     {
-        private RpcModuleProvider _provider = new RpcModuleProvider(new JsonRpcConfig());
+        private RpcModuleProvider _provider = new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance);
 
         public TestRpcModuleProvider(T module)
         {

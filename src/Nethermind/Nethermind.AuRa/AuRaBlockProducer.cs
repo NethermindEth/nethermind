@@ -179,7 +179,7 @@ namespace Nethermind.AuRa
         }
 
         private UInt256 CalculateDifficulty(BlockHeader parent) =>
-            UInt128MaxValue + (UInt256) parent.AuRaStep.Value - _auRaStepCalculator.CurrentStep; // TODO: + empty_steps
+            UInt128MaxValue + (UInt256) (parent.AuRaStep.Value - _auRaStepCalculator.CurrentStep); // TODO: + empty_steps
 
         private void ProduceNewBlock(BlockHeader parentHeader)
         {

@@ -37,7 +37,7 @@ namespace Nethermind.AuRa
             _timestamper = timestamper;
         }
 
-        public ulong CurrentStep => _timestamper.EpochSeconds / _stepDuration;
+        public long CurrentStep => (long) (_timestamper.EpochSeconds / _stepDuration);
 
         public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInMilliseconds);
 

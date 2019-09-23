@@ -84,9 +84,9 @@ namespace Nethermind.AuRa
 
         public bool CanSeal(long blockNumber, Keccak parentHash)
         {
-            bool StepNotYetProduced(ulong step) => !_blockTree.Head.AuRaStep.HasValue || _blockTree.Head.AuRaStep.Value < (long) step;
+            bool StepNotYetProduced(long step) => !_blockTree.Head.AuRaStep.HasValue || _blockTree.Head.AuRaStep.Value < (long) step;
             
-            bool IsThisNodeTurn(ulong step) => _validator.IsValidSealer(_nodeAddress, step);
+            bool IsThisNodeTurn(long step) => _validator.IsValidSealer(_nodeAddress, step);
             
             var currentStep = _auRaStepCalculator.CurrentStep;
             return StepNotYetProduced(currentStep) && IsThisNodeTurn(currentStep);

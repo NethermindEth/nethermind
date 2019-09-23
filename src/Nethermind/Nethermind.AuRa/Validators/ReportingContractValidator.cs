@@ -10,12 +10,13 @@ namespace Nethermind.AuRa.Validators
     public class ReportingContractValidator : ContractValidator
     {
         public ReportingContractValidator(AuRaParameters.Validator validator,
+            IDb stateDb,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             ILogManager logManager,
-            long startBlockNumber) : base(validator, stateProvider, abiEncoder, transactionProcessor, blockTree, logManager, startBlockNumber)
+            long startBlockNumber) : base(validator, stateDb, stateProvider, abiEncoder, transactionProcessor, blockTree, logManager, startBlockNumber)
         {
         }
 

@@ -167,11 +167,14 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 units, value, expiryTime, pepper, dataAsset.Provider.Address, address);
             var depositId = Keccak.Compute(abiHash);
             var deposit = new Deposit(depositId, units, expiryTime, value);
-            var transactionHash = _depositService.MakeDeposit(address, deposit);
             var depositDetails = new DepositDetails(deposit, dataAsset, address, pepper, now,
-                transactionHash, requiredConfirmations: _requiredBlockConfirmations);
+                null, requiredConfirmations: _requiredBlockConfirmations);
             await _depositRepository.AddAsync(depositDetails);
+            if (_logger.IsInfo) _logger.Info($"Created a deposit with id: '{depositId}', for data asset: '{assetId}', address: '{address}'.");
+            var transactionHash = await _depositService.MakeDepositAsync(address, deposit);
             if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{address}'.");
+            depositDetails.SetTransactionHash(transactionHash);
+            await _depositRepository.UpdateAsync(depositDetails);
                 
             return depositId;
         }

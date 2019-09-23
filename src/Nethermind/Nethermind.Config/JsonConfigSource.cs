@@ -33,10 +33,10 @@ namespace Nethermind.Config
 
         private void ApplyJsonConfig(string jsonContent)
         {
-            var json = (JArray) JToken.Parse(jsonContent);
+            var json = (JObject) JToken.Parse(jsonContent);
             foreach (var moduleEntry in json)
             {
-                LoadModule(moduleEntry);
+                LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
             }
         }
 
@@ -77,11 +77,9 @@ namespace Nethermind.Config
             ApplyJsonConfig(File.ReadAllText(configFilePath));
         }
 
-        private void LoadModule(JToken moduleEntry)
+        private void LoadModule(string moduleName, JObject value)
         {
-            var moduleName = (string) moduleEntry["ConfigModule"];
-
-            var configItems = (JObject) moduleEntry["ConfigItems"];
+            var configItems = value;
             var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
             foreach (var configItem in configItems)
@@ -105,6 +103,11 @@ namespace Nethermind.Config
 
         private void ApplyConfigValues(string configModule, Dictionary<string, string> items)
         {
+            if (!configModule.EndsWith("Config"))
+            {
+                configModule = configModule + "Config";
+            }
+            
             _values[configModule] = items;
             _parsedValues[configModule] = new Dictionary<string, object>(StringComparer.InvariantCultureIgnoreCase);
         }

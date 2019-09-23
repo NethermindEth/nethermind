@@ -89,6 +89,7 @@ namespace Nethermind.Evm.Tracing
 
         public void ReportActionEnd(long gas, Address deploymentAddress, byte[] deployedCode) => throw new InvalidOperationException(ErrorMessage);
         public void ReportByteCode(byte[] byteCode) => throw new InvalidOperationException(ErrorMessage);
-        public void ReportRefund(long gasAvailable)=> throw new InvalidOperationException(ErrorMessage);
+        public void ReportRefundForVmTrace(long refund, long gasAvailable)=> throw new InvalidOperationException(ErrorMessage);
+        public void ReportRefund(long refund) => throw new InvalidOperationException(ErrorMessage);
     }
 }

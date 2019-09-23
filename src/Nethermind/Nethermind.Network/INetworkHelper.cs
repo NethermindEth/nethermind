@@ -20,9 +20,9 @@ using System.Net;
 
 namespace Nethermind.Network
 {
-    public interface INetworkHelper
+    public interface IIpResolver
     {
-        IPAddress GetLocalIp();
-        IPAddress GetExternalIp();
+        IPAddress LocalIp { get; }
+        IPAddress ExternalIp { get; }
     }
 }
