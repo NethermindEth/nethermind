@@ -105,13 +105,13 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void should_ignore_old_scheme_signatures()
+        public void should_not_ignore_old_scheme_signatures()
         {
             _txPool = CreatePool(_noTxStorage);
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, 1).TestObject;
             AddTxResult result = _txPool.AddTransaction(tx, 1);
-            _txPool.GetPendingTransactions().Length.Should().Be(0);
-            result.Should().Be(AddTxResult.OldScheme);
+            _txPool.GetPendingTransactions().Length.Should().Be(1);
+            result.Should().Be(AddTxResult.Added);
         }
 
         [Test]

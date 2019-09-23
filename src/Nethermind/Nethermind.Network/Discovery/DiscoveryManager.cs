@@ -182,7 +182,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (_logger.IsWarn)
                 {
-                    _logger.Warn($"Received ping message with empty address, message: {message}");
+                    _logger.Warn($"Received a ping message with empty address, message: {message}");
                 }
             }
 
@@ -190,7 +190,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (_logger.IsWarn)
                 {
-                    _logger.Warn("Received message with incorrect destination address, message: {message}");
+                    _logger.Warn($"Received a message with incorrect destination address, message: {message}");
                 }
             }
 
@@ -210,7 +210,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Warn($"Received message with incorect source port, message: {message}");
+                    _logger.Warn($"Received a message with incorect source port, message: {message}");
                 }
             }
         }

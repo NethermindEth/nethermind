@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Validators
                 return signature.V == 27 || signature.V == 28;
             }
 
-            return (signature.GetChainId ?? _chainIdValue) == _chainIdValue;
+            return (signature.ChainId ?? _chainIdValue) == _chainIdValue;
         }
     }
 }

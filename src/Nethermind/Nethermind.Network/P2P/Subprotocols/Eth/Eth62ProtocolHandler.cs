@@ -348,7 +348,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     _notAcceptedTxsSinceLastCheck++;
                 }
 
-                if (Logger.IsTrace) Logger.Trace($"{Node:c} sent {transaction.Hash} tx and it was {result} (chain ID = {transaction.Signature.GetChainId})");
+                if (Logger.IsTrace) Logger.Trace($"{Node:c} sent {transaction.Hash} tx and it was {result} (chain ID = {transaction.Signature.ChainId})");
             }
         }
 

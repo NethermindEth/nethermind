@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test.Crypto
         public void Test(int v, int? chainId)
         {
             Signature signature = new Signature(0, 0, v);
-            Assert.AreEqual(chainId, signature.GetChainId);
+            Assert.AreEqual(chainId, signature.ChainId);
         }
     }
 }

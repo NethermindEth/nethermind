@@ -82,6 +82,12 @@ namespace Nethermind.Cli.Modules
         {
             return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) amountInWei);
         }
+        
+        [CliFunction("eth", "sendRawTransaction")]
+        public string SendWei(string txRlp)
+        {
+            return NodeManager.Post<string>("eth_sendRawTransaction", txRlp).Result;
+        }
 
         [CliProperty("eth", "blockNumber")]
         public long BlockNumber()
