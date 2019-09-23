@@ -65,7 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
             Raw = raw;
             Input = transaction.Data ?? transaction.Init;
             PublicKey = publicKey;
-            ChainId = transaction.Signature.GetChainId;
+            ChainId = transaction.Signature.ChainId;
             R = transaction.Signature.R;
             S = transaction.Signature.S;
             V = new UInt256(transaction.Signature.V);
