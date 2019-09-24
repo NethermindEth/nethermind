@@ -7,7 +7,7 @@
             .xml;
             .json;
         </AllowedReferenceRelatedFileExtensions>
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="spawner_discovery_large.json" />
