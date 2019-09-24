@@ -1,10 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
         <AssemblyName>Nethermind.PubSub.Kafka</AssemblyName>
         <RootNamespace>Nethermind.PubSub.Kafka</RootNamespace>
-        <LangVersion>7.2</LangVersion>
+        <LangVersion>8.0</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>
