@@ -21,8 +21,8 @@ namespace Nethermind.AuRa
 {
     public class AuRaStepCalculator : IAuRaStepCalculator
     {
-        private readonly uint _stepDuration;
-        private readonly uint _stepDurationMilliseconds;
+        private readonly int _stepDuration;
+        private readonly int _stepDurationMilliseconds;
         private readonly ITimestamper _timestamper;
         
         /// <summary>
@@ -30,19 +30,19 @@ namespace Nethermind.AuRa
         /// </summary>
         /// <param name="stepDuration">Step duration in seconds.</param>
         /// <param name="timestamper"></param>
-        public AuRaStepCalculator(uint stepDuration, ITimestamper timestamper)
+        public AuRaStepCalculator(int stepDuration, ITimestamper timestamper)
         {
             _stepDuration = stepDuration;
             _stepDurationMilliseconds = stepDuration * 1000;
             _timestamper = timestamper;
         }
 
-        public long CurrentStep => (long) (_timestamper.EpochSeconds / _stepDuration);
+        public long CurrentStep => _timestamper.EpochSecondsLong / _stepDuration;
 
         public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInMilliseconds);
 
         public TimeSpan TimeToNextStepWithSyncThreshold => new TimeSpan(TimeToNextStepInMilliseconds + _stepDuration / 10 * TimeSpan.TicksPerSecond);
         
-        private long TimeToNextStepInMilliseconds => (long) (_timestamper.EpochMilliseconds % _stepDurationMilliseconds * TimeSpan.TicksPerMillisecond);
+        private long TimeToNextStepInMilliseconds => _timestamper.EpochMillisecondsLong % _stepDurationMilliseconds * TimeSpan.TicksPerMillisecond;
     }
 }

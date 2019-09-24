@@ -30,10 +30,14 @@ namespace Nethermind.Core
             _constantDate = constantDate;
         }
         
-        public ulong EpochSeconds => (ulong) Offset.ToUnixTimeSeconds();
+        public ulong EpochSeconds => (ulong) EpochSecondsLong;
         
-        public ulong EpochMilliseconds => (ulong) Offset.ToUnixTimeMilliseconds();
+        public ulong EpochMilliseconds => (ulong) EpochMillisecondsLong;
         
+        public long EpochSecondsLong => Offset.ToUnixTimeSeconds();
+        
+        public long EpochMillisecondsLong => Offset.ToUnixTimeMilliseconds();
+
         public DateTime UtcNow => _constantDate ?? DateTime.UtcNow;
         
         private DateTimeOffset Offset =>  new DateTimeOffset(UtcNow);

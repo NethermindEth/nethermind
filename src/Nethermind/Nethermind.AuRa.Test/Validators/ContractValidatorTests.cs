@@ -205,7 +205,7 @@ namespace Nethermind.AuRa.Test.Validators
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
             
             // initial validator should be true
-            validator.IsValidSealer(initialValidator,5).Should().BeTrue();
+            validator.IsValidSealer(initialValidator, 5).Should().BeTrue();
         }
 
         public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData
