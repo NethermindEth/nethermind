@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk.Worker">
 
   <PropertyGroup>
+    <Version>0.0.1</Version>
+    <Authors>Gryphon Technology</Authors>
+    <Product>Cortex</Product>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
