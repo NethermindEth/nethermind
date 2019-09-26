@@ -1,7 +1,9 @@
 CLI
 ***
 
-CLI access is not currently included in the Nethermind launcher but will be added very soon.
+
+Refer to the documentation at https://github.com/ethereum/wiki/wiki/JSON-RPC
+
 
 clique
 ^^^^^^
