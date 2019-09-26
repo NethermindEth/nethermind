@@ -12,8 +12,10 @@
 
 ### Compile and run the Beacon Node
 
+To run with the ```minimal.yaml``` config (default if not specified is ```mainnet.yaml```)
+
 ```
-dotnet run --project src/Cortex.BeaconNode.Host
+dotnet run --project src/Cortex.BeaconNode.Host --config minimal
 ```
 
 ### Test it works

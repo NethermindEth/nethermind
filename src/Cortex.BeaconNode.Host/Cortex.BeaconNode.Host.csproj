@@ -7,12 +7,14 @@
     <UserSecretsId>dotnet-Cortex.BeaconNode.Host-376091C2-AFFA-41D5-A229-A31991A2A89F</UserSecretsId>
     <Authors>Gryphon Technology</Authors>
     <Product>Cortex</Product>
+    <Version>0.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="3.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.0.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="3.0.0" />
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="1.6.0" />
   </ItemGroup>
 
   <ItemGroup>

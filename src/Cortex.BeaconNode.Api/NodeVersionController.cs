@@ -25,7 +25,7 @@ namespace Cortex.BeaconNode.Api
 
         [HttpGet()]
         /// <summary>Get version string of the running beacon node.</summary>
-        public ActionResult<string> Version() 
+        public ActionResult<string> Get() 
         {
             _logger.LogDebug("Version request");
             return _versionString;

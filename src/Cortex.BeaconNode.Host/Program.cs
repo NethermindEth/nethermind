@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -10,6 +11,9 @@ namespace Cortex.BeaconNode
 {
     public class Program
     {
+        private const string DefaultYamlConfig = "mainnet";
+        private const string YamlConfigKey = "config";
+
         public static void Main(string[] args)
         {
             CreateHostBuilder(args).Build().Run();
@@ -22,8 +26,16 @@ namespace Cortex.BeaconNode
                 // configure logging to console, debug, and event source,
                 // and, when 'Development', enables scope validation on the dependency injection container.
                 .UseWindowsService()
-                .ConfigureAppConfiguration((context, config) =>
+                .ConfigureAppConfiguration((hostContext, config) =>
                 {
+                    var yamlConfig = hostContext.Configuration[YamlConfigKey];
+                    if (string.IsNullOrWhiteSpace(yamlConfig))
+                    {
+                        yamlConfig = DefaultYamlConfig;
+                        config.AddInMemoryCollection(new Dictionary<string, string> {{ YamlConfigKey, yamlConfig}});
+                    }
+                    config.AddYamlFile($"{yamlConfig}.yaml");
+                    config.AddCommandLine(args);
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
