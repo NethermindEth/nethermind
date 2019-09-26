@@ -25,7 +25,7 @@ namespace Nethermind.Facade.Proxy
     public interface IEthJsonRpcClientProxy
     {
         Task<RpcResult<UInt256>> eth_chainId();
-        Task<RpcResult<UInt256?>> eth_blockNumber();
+        Task<RpcResult<long?>> eth_blockNumber();
         Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<UInt256?>> eth_getTransactionCount(Address address, BlockParameterModel blockParameter = null);
         Task<RpcResult<ReceiptModel>> eth_getTransactionReceipt(Keccak transactionHash);

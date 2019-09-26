@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_hashrate();
         ResultWrapper<UInt256?> eth_gasPrice();
         ResultWrapper<IEnumerable<Address>> eth_accounts();
-        Task<ResultWrapper<UInt256?>> eth_blockNumber();
+        Task<ResultWrapper<long?>> eth_blockNumber();
         Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter);
         ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter);
         ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter);

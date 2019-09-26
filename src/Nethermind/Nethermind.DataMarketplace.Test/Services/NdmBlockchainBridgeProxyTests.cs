@@ -62,11 +62,11 @@ namespace Nethermind.DataMarketplace.Test.Services
         [Test]
         public async Task get_latest_block_number_should_invoke_proxy_eth_blockNumber_and_return_number_if_result_is_valid()
         {
-            UInt256 number = 1;
-            _proxy.eth_blockNumber().Returns(RpcResult<UInt256?>.Ok(number));
+            long number = 1;
+            _proxy.eth_blockNumber().Returns(RpcResult<long?>.Ok(number));
             var result = await _ndmBridge.GetLatestBlockNumberAsync();
             await _proxy.Received().eth_blockNumber();
-            result.Should().Be((long)number);
+            result.Should().Be(number);
         }
 
         [Test]
