@@ -13,7 +13,7 @@
 ### Compile and run the Beacon Node
 
 ```
-dotnet run --project src/Cortex.BeaconNode
+dotnet run --project src/Cortex.BeaconNode.Host
 ```
 
 ### Test it works
@@ -31,7 +31,7 @@ To build a release version, with a gitversion based version number:
 Then run the DLL that was created:
 
 ```
-dotnet ./src/Cortex.BeaconNode/bin/Release/netcoreapp3.0/publish/Cortex.BeaconNode.dll
+dotnet ./src/Cortex.BeaconNode.Host/bin/Release/netcoreapp3.0/publish/Cortex.BeaconNode.Host.dll
 ```
 
 

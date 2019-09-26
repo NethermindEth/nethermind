@@ -7,7 +7,7 @@
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <OutputType>Exe</OutputType>
     <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
-    <UserSecretsId>dotnet-Cortex.BeaconNode-376091C2-AFFA-41D5-A229-A31991A2A89F</UserSecretsId>
+    <UserSecretsId>dotnet-Cortex.BeaconNode.Host-376091C2-AFFA-41D5-A229-A31991A2A89F</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
