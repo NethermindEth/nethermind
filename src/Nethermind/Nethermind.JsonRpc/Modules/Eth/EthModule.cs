@@ -116,15 +116,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        public Task<ResultWrapper<UInt256?>> eth_blockNumber()
+        public Task<ResultWrapper<long?>> eth_blockNumber()
         {
             if (_blockchainBridge.Head == null)
             {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"Incorrect head block", ErrorType.InternalError, null));
+                return Task.FromResult(ResultWrapper<long?>.Fail($"Incorrect head block", ErrorType.InternalError, null));
             }
 
             var number = _blockchainBridge.Head.Number;
-            return Task.FromResult(ResultWrapper<UInt256?>.Success((UInt256) number));
+            return Task.FromResult(ResultWrapper<long?>.Success(number));
         }
 
         public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)

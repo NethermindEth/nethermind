@@ -143,7 +143,7 @@ namespace Nethermind.JsonRpc.Test
         public void NetPeerCountTest()
         {
             INetModule netModule = Substitute.For<INetModule>();
-            netModule.net_peerCount().ReturnsForAnyArgs(x => ResultWrapper<BigInteger>.Success(new BigInteger(2)));
+            netModule.net_peerCount().ReturnsForAnyArgs(x => ResultWrapper<int>.Success(2));
             JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_peerCount");
             Assert.AreEqual("2", response.Result.ToString());
         }

@@ -359,7 +359,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_call_no_sender()
         {
-            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.To = TestItem.AddressB;
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
@@ -369,7 +369,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_call_no_recipient()
         {
-            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
@@ -379,7 +379,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Eth_call_ok()
         {
-            var transaction = new TransactionForRpc(Keccak.Zero, BigInteger.One, 1, new Transaction());
+            var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
             transaction.To = TestItem.AddressB;
 
