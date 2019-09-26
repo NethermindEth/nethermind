@@ -6,7 +6,9 @@
 
 ### Pre-requisites
 
-* .NET Core 3.0 tools
+* .NET Core 3.0 development tools
+* PowerShell Core, to run build scripts
+* An editor, e.g. VS Code, if you want to contribute
 
 ### Compile and run the Beacon Node
 
@@ -20,16 +22,16 @@ Open a browser to ```http://localhost:5000/node/version``` and it should respond
 
 ### Build with version number
 
-To build with a specific version number from command line:
+To build a release version, with a gitversion based version number:
 
 ```
-dotnet build src/Cortex.BeaconNode /p:InformationalVersion=0.0.2
+./build.ps1
 ```
 
 Then run the DLL that was created:
 
 ```
-dotnet .\src\Cortex.BeaconNode\bin\Debug\netcoreapp3.0\Cortex.BeaconNode.dll
+dotnet ./src/Cortex.BeaconNode/bin/Release/netcoreapp3.0/publish/Cortex.BeaconNode.dll
 ```
 
 

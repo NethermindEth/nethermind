@@ -17,10 +17,13 @@ namespace Cortex.BeaconNode
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
+                // Default loads host configuration from DOTNET_ and command line,
+                // app configuration from appsettings.json, user secrets, environment variables, and command line,
+                // configure logging to console, debug, and event source,
+                // and, when 'Development', enables scope validation on the dependency injection container.
                 .UseWindowsService()
                 .ConfigureAppConfiguration((context, config) =>
                 {
-
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
