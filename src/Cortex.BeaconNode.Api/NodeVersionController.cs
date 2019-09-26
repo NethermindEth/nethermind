@@ -2,15 +2,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Net.Mime;
-using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 
-namespace Cortex.BeaconNode.Controllers
+namespace Cortex.BeaconNode.Api
 {
-    // TODO: Move the controllers into an API package (so the host is mostly empty)
-
     [ApiController]
     [Produces(MediaTypeNames.Application.Json)]
     [Route("node/version")]
@@ -19,7 +17,7 @@ namespace Cortex.BeaconNode.Controllers
         private readonly ILogger _logger;
         private readonly string _versionString;
 
-        public NodeVersionController(ILogger<NodeVersionController> logger, IWebHostEnvironment environment)
+        public NodeVersionController(ILogger<NodeVersionController> logger, IHostEnvironment environment)
         {
             _logger = logger;
             _versionString = BuildVersionString(environment.ApplicationName, environment.EnvironmentName);
@@ -40,7 +38,7 @@ namespace Cortex.BeaconNode.Controllers
             var versionAttribute = assembley.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             var version = versionAttribute.InformationalVersion;
             var versionString = $"{applicationName}/{version}";
-            if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != "Production") 
+            if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production) 
             {
                 versionString += $" ({environmentName})";
             }

@@ -1,3 +1,5 @@
+using System.Reflection;
+using Cortex.BeaconNode.Api;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -17,16 +19,12 @@ namespace Cortex.BeaconNode
 
         public void ConfigureServices(IServiceCollection services)
         {
-            // Only required if the service uses Razor Pages.
-            //services.AddRazorPages()
-            //    .AddNewtonsoftJson();
-            services.AddControllers();
+            var apiAssembly = typeof(NodeVersionController).GetTypeInfo().Assembly;
+            services.AddMvc().AddApplicationPart(apiAssembly);
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
-            // This pipeline is only required if the service uses Razor Pages.
-
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -46,7 +44,6 @@ namespace Cortex.BeaconNode
 
             app.UseEndpoints(endpoints =>
             {
-                //endpoints.MapRazorPages();
                 endpoints.MapControllers();
             });
         }
