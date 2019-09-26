@@ -48,17 +48,11 @@ switch to the new user
 Get Nethermind
 -------------------
 
-download the package
+download the latest Nethermind (not NDM) package (list is here: http://downloads.nethermind.io/)
 
 ::
 
  wget [LINUX_PACKAGE_URL]
-
-For version 0.9.9
-
-::
-
- wget https://nethdev.blob.core.windows.net/builds/nethermind-linux-amd64-0.9.9-47c4e5e.zip
 
 extract the files
 
