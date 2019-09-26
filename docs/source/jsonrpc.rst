@@ -40,11 +40,6 @@ clique
 
  - clique_propose(signer, vote)
 
-data
-^^^^
-
- - data_streamBlocks(startBlockNumber, endBlockNumber)
-
 debug
 ^^^^^
 
@@ -113,6 +108,8 @@ eth
 
  - eth_getLogs(filter)
 
+ - eth_getProof(accountAddress, hashRate, blockParameter)
+
  - eth_getStorageAt(address, positionIndex, blockParameter)
 
  - eth_getTransactionByBlockHashAndIndex(blockHash, positionIndex)
@@ -170,6 +167,8 @@ net
 
  - net_listening()
 
+ - net_localAddress()
+
  - net_localEnode()
 
  - net_peerCount()
@@ -178,6 +177,8 @@ net
 
 parity
 ^^^^^^
+
+ - parity_getBlockReceipts(blockParameter)
 
  - parity_pendingTransactions()
 

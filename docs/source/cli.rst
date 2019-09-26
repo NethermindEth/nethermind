@@ -67,9 +67,13 @@ eth
 
  - eth.getCode(address, blockParameter) - 
 
+ - eth.getLogs(json) - 
+
  - eth.getStorageAt(address, positionIndex, blockParameter) - 
 
  - eth.getTransactionByBlockNumberAndIndex(blockParameter, index) - 
+
+ - eth.getTransactionCount(address, blockParameter) - 
 
  - eth.getTransactionReceipt(txHash) - 
 
@@ -80,6 +84,8 @@ eth
  - eth.sendEth(from, to, amountInEth) - 
 
  - eth.sendWei(from, to, amountInWei) - 
+
+ - eth.sendRawTransaction(txRlp) - 
 
 net
 ^^^
@@ -107,6 +113,8 @@ node
 
 parity
 ^^^^^^
+
+ - parity.getBlockReceipts(blockParameter) - Returns receipts from all transactions from particular block
 
  - parity.pendingTransactions() - Returns the pending transactions using Parity format
 
