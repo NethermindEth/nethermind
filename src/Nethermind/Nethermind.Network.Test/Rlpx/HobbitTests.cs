@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Common;
@@ -61,13 +62,7 @@ namespace Nethermind.Network.Test.Rlpx
             _frame[2] = 16; // size   
         }
 
-        [TestCase(StackType.Allocating, StackType.Allocating, true)]
-        [TestCase(StackType.Allocating, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Allocating, true)]
         [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Allocating, StackType.Allocating, false)]
-        [TestCase(StackType.Allocating, StackType.Zero, false)]
-        [TestCase(StackType.Zero, StackType.Allocating, false)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Get_block_bodies_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
@@ -86,13 +81,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
         }
 
-        [TestCase(StackType.Allocating, StackType.Allocating, true)]
-        [TestCase(StackType.Allocating, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Allocating, true)]
         [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Allocating, StackType.Allocating, false)]
-        [TestCase(StackType.Allocating, StackType.Zero, false)]
-        [TestCase(StackType.Zero, StackType.Allocating, false)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Block_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
@@ -108,13 +97,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
         }
 
-        [TestCase(StackType.Allocating, StackType.Allocating, true)]
-        [TestCase(StackType.Allocating, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Allocating, true)]
         [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Allocating, StackType.Allocating, false)]
-        [TestCase(StackType.Allocating, StackType.Zero, false)]
-        [TestCase(StackType.Zero, StackType.Allocating, false)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Two_frame_block_there_and_back(StackType inbound, StackType outbound, bool framingEnabled)
         {
@@ -133,13 +116,7 @@ namespace Nethermind.Network.Test.Rlpx
             Assert.AreEqual(newBlockMessage.Block.Transactions.Length, decodedMessage.Block.Transactions.Length);
         }
         
-        [TestCase(StackType.Allocating, StackType.Allocating, true)]
-        [TestCase(StackType.Allocating, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Allocating, true)]
         [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Allocating, StackType.Allocating, false)]
-        [TestCase(StackType.Allocating, StackType.Zero, false)]
-        [TestCase(StackType.Zero, StackType.Allocating, false)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Receipts_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
@@ -160,13 +137,7 @@ namespace Nethermind.Network.Test.Rlpx
             Assert.AreEqual(message.BlockHashes.Length, decodedMessage.BlockHashes.Length);
         }
         
-        [TestCase(StackType.Allocating, StackType.Allocating, true)]
-        [TestCase(StackType.Allocating, StackType.Zero, true)]
-        [TestCase(StackType.Zero, StackType.Allocating, true)]
         [TestCase(StackType.Zero, StackType.Zero, true)]
-        [TestCase(StackType.Allocating, StackType.Allocating, false)]
-        [TestCase(StackType.Allocating, StackType.Zero, false)]
-        [TestCase(StackType.Zero, StackType.Allocating, false)]
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
@@ -238,19 +209,19 @@ namespace Nethermind.Network.Test.Rlpx
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
             IChannelHandler decoder = inbound == StackType.Zero
                 ? new ZeroFrameDecoder(_frameCipherB, _macProcessorB, LimboLogs.Instance)
-                : (IChannelHandler) new NettyFrameDecoder(_frameCipherB, _macProcessorB, LimboLogs.Instance);
-            
+                : throw new NotSupportedException();
+
             IChannelHandler merger = inbound == StackType.Zero
                 ? new ZeroFrameMerger(LimboLogs.Instance)
-                : (IChannelHandler) new NettyFrameMerger(LimboLogs.Instance);
+                : throw new NotSupportedException();
             
             IChannelHandler encoder = outbound == StackType.Zero
                 ? new ZeroFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance)
-                : (IChannelHandler) new NettyFrameEncoder(_frameCipherA, _macProcessorA, LimboLogs.Instance);
+                : throw new NotSupportedException();
             
             IFramingAware splitter = outbound == StackType.Zero
                 ? new ZeroPacketSplitter(LimboLogs.Instance)
-                : (IFramingAware) new NettyPacketSplitter(LimboLogs.Instance);
+                : throw new NotSupportedException();
 
             Assert.AreEqual(Frame.DefaultMaxFrameSize, splitter.MaxFrameSize, "default max frame size");
             
@@ -271,8 +242,7 @@ namespace Nethermind.Network.Test.Rlpx
         
         public enum StackType
         {
-            Zero,
-            Allocating
+            Zero
         }
     }
 }

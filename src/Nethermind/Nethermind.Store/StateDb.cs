@@ -126,7 +126,7 @@ namespace Nethermind.Store
         }
 
         /// <summary>
-        ///     Note that state DB assumes that they keys are hashes of values so trying to update values may to lead unexpected
+        ///     Note that state DB assumes that they keys are hashes of values so trying to update values may lead to unexpected
         ///     results.
         ///     If the value has already been committed to the DB then the update succeeds, otherwise it is ignored.
         /// </summary>
