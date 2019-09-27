@@ -30,6 +30,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Store;
 
 namespace Nethermind.AuRa
 {
@@ -42,6 +43,7 @@ namespace Nethermind.AuRa
         private readonly IAuRaStepCalculator _auRaStepCalculator;
         private readonly Address _nodeAddress;
         private readonly ISealer _sealer;
+        private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
 
         private readonly IBlockchainProcessor _processor;
@@ -60,7 +62,8 @@ namespace Nethermind.AuRa
             ITimestamper timestamper,
             IAuRaStepCalculator auRaStepCalculator,
             Address nodeAddress,
-            ISealer sealer, 
+            ISealer sealer,
+            IStateProvider stateProvider,
             ILogManager logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -70,6 +73,7 @@ namespace Nethermind.AuRa
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
+            _stateProvider = stateProvider  ?? throw new ArgumentNullException(nameof(stateProvider));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -179,10 +183,13 @@ namespace Nethermind.AuRa
         }
 
         private UInt256 CalculateDifficulty(BlockHeader parent) =>
-            UInt128MaxValue + (UInt256) (parent.AuRaStep.Value - _auRaStepCalculator.CurrentStep); // TODO: + empty_steps
+            UInt128MaxValue + (UInt256)parent.AuRaStep.Value - (UInt256)_auRaStepCalculator.CurrentStep; // TODO: + empty_steps
 
         private void ProduceNewBlock(BlockHeader parentHeader)
         {
+            // need to set state for AuRa contract
+            _stateProvider.StateRoot = parentHeader.StateRoot;
+            
             Block block = PrepareBlock(parentHeader);
             if (block == null)
             {

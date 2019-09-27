@@ -46,13 +46,11 @@ namespace Nethermind.AuRa.Validators
                 : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
         }
 
-        private void InitCurrentValidator()
+        private void InitCurrentValidator(long blockNumber)
         {
-            var lastFinalized = _blockFinalizationManager.LastFinalizedBlockLevel;
-            var validator = _validators.TakeWhile(kvp => lastFinalized >= kvp.Key).Select(x => x.Value).LastOrDefault();
-            if (validator != null)
+            if (TryGetLastValidator(blockNumber, out var validator))
             {
-                SetCurrentValidator(lastFinalized, validator);
+                SetCurrentValidator(validator.Value.Key, validator.Value.Value);
             }
         }
 
@@ -68,25 +66,43 @@ namespace Nethermind.AuRa.Validators
             }
         }
         
-        public void PreProcess(Block block)
+        public void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            if (_logger.IsInfo)
+            if (options.IsProducingBlock())
             {
-                if (TryGetValidator(block.Header.Number, out var validator))
+                InitCurrentValidator(block.Number);
+            }
+            else
+            {
+                if (_logger.IsInfo && TryGetValidator(block.Number, out var validator))
                 {
                     _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.Number}.");
-                }
-
+                }                
             }
-            _currentValidator?.PreProcess(block);
+            
+            _currentValidator?.PreProcess(block, options);
         }
 
-        private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => 
-            _validators.TryGetValue(blockNumber, out validator);
-
-        public void PostProcess(Block block, TxReceipt[] receipts)
+        private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
+        
+        private bool TryGetLastValidator(long blockNumber, out KeyValuePair<long, AuRaParameters.Validator>? validator)
         {
-            _currentValidator?.PostProcess(block, receipts);
+            validator = null;
+            
+            foreach (var kvp in _validators)
+            {
+                if (kvp.Key <= blockNumber)
+                {
+                    validator = kvp;
+                }
+            }
+            
+            return validator != null;
+        }
+
+        public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        {
+            _currentValidator?.PostProcess(block, receipts, options);
         }
         
         public bool IsValidSealer(Address address, long step) => _currentValidator?.IsValidSealer(address, step) == true;
@@ -105,7 +121,7 @@ namespace Nethermind.AuRa.Validators
             if (_blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                InitCurrentValidator();
+                InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
             }
 
             _currentValidator?.SetFinalizationManager(finalizationManager);
