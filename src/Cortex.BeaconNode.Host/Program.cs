@@ -39,6 +39,7 @@ namespace Cortex.BeaconNode
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
+                    services.AddBeaconNode();
                     services.AddHostedService<Worker>();
                 })
                 .ConfigureWebHostDefaults(webBuilder =>

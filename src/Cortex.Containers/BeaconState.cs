@@ -4,9 +4,9 @@ namespace Cortex.Containers
 {
     public class BeaconState
     {
-        public UInt64 GenesisTime  { get; }
+        public ulong GenesisTime  { get; }
 
-        public BeaconState(UInt64 genesisTime)
+        public BeaconState(ulong genesisTime)
         {
             GenesisTime = genesisTime;
         }

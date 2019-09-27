@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Cortex.BeaconNode;
 
 namespace Cortex.BeaconNode.Api
 {
@@ -15,22 +16,22 @@ namespace Cortex.BeaconNode.Api
     [Route("node/genesis_time")]
     public class NodeGenesisTimeController : ControllerBase
     {
-        private readonly IConfiguration _configuration;
+        private readonly BeaconChain _beaconChain;
         private readonly ILogger _logger;
 
-        public NodeGenesisTimeController(ILogger<NodeVersionController> logger, IConfiguration configuration)
+        public NodeGenesisTimeController(ILogger<NodeVersionController> logger, BeaconChain beaconChain)
         {
             _logger = logger;
-            _configuration = configuration;
+            _beaconChain = beaconChain;
         }
 
         [HttpGet()]
         /// <summary>Get version string of the running beacon node.</summary>
-        public ActionResult<UInt64> Get() 
+        public ActionResult<ulong> Get() 
         {
             _logger.LogDebug("Genesis Time request");
-            var minTime = _configuration.GetValue<UInt64>("MIN_GENESIS_TIME");
-            return minTime;
+            var genesisTime = _beaconChain.State.GenesisTime;
+            return genesisTime;
         }
 
     }

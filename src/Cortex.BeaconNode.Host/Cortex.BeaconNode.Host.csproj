@@ -19,5 +19,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cortex.BeaconNode.Api\Cortex.BeaconNode.Api.csproj" />
+    <ProjectReference Include="..\Cortex.BeaconNode\Cortex.BeaconNode.csproj" />
   </ItemGroup>
 </Project>

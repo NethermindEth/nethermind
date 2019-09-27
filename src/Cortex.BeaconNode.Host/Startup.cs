@@ -19,8 +19,7 @@ namespace Cortex.BeaconNode
 
         public void ConfigureServices(IServiceCollection services)
         {
-            var apiAssembly = typeof(NodeVersionController).GetTypeInfo().Assembly;
-            services.AddMvc().AddApplicationPart(apiAssembly);
+            services.AddBeaconNodeApi();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
