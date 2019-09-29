@@ -12,9 +12,9 @@ namespace Cortex.BeaconNode.Api
 
         /// <summary>Get version string of the running beacon node.</summary>
         /// <returns>Request successful</returns>
-        public Task<string> VersionAsync()
+        public async Task<string> VersionAsync()
         {
-            return Task.FromResult("Test-Cortex/0.0.1");
+            return "Test-Cortex/0.0.1";
         }
 
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
