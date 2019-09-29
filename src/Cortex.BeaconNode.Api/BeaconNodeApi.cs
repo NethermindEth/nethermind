@@ -20,7 +20,11 @@ namespace Cortex.BeaconNode.Api
         /// <summary>Get version string of the running beacon node.</summary>
         /// <returns>Request successful</returns>
         System.Threading.Tasks.Task<string> VersionAsync();
-    
+
+        /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
+        /// <returns>Request successful</returns>
+        System.Threading.Tasks.Task<int> TimeAsync();
+
         /// <summary>Poll to see if the the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
         System.Threading.Tasks.Task<Response> SyncingAsync();
@@ -77,7 +81,15 @@ namespace Cortex.BeaconNode.Api
         {
             return _implementation.VersionAsync();
         }
-    
+
+        /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
+        /// <returns>Request successful</returns>
+        [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("node/genesis_time")]
+        public System.Threading.Tasks.Task<int> Time()
+        {
+            return _implementation.TimeAsync();
+        }
+
         /// <summary>Poll to see if the the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
         [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("node/syncing")]
@@ -145,35 +157,6 @@ namespace Cortex.BeaconNode.Api
     
     }
     
-    [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.2.0 (NJsonSchema v10.0.24.0 (Newtonsoft.Json v12.0.0.0))")]
-    public interface IBeaconNodeApiController
-    {
-        /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
-        /// <returns>Request successful</returns>
-        System.Threading.Tasks.Task<int> TimeAsync();
-    
-    }
-    
-    [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.2.0 (NJsonSchema v10.0.24.0 (Newtonsoft.Json v12.0.0.0))")]
-    public partial class BeaconNodeApiController : Microsoft.AspNetCore.Mvc.Controller
-    {
-        private IBeaconNodeApiController _implementation;
-    
-        public BeaconNodeApiController(IBeaconNodeApiController implementation)
-        {
-            _implementation = implementation;
-        }
-    
-        /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
-        /// <returns>Request successful</returns>
-        [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("node/genesis_time")]
-        public System.Threading.Tasks.Task<int> Time()
-        {
-            return _implementation.TimeAsync();
-        }
-    
-    }
-
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "10.0.24.0 (Newtonsoft.Json v12.0.0.0)")]
     public partial class ValidatorDuty 
     {
