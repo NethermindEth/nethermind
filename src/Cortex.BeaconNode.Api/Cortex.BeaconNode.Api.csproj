@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Cortex.BeaconNode\Cortex.BeaconNode.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Remove="BeaconNodeApi-generated.cs" />
+  </ItemGroup>
+
 </Project>

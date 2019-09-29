@@ -43,6 +43,14 @@ dotnet ./src/Cortex.BeaconNode.Host/bin/Release/netcoreapp3.0/publish/Cortex.Bea
 
 ### API generation
 
+Controller code:
+
+```
+dotnet tools/nswag/dotnet-nswag.dll openapi2cscontroller /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeApi /namespace:Cortex.BeaconNode.Api /output:src/Cortex.BeaconNode.Api/BeaconNodeApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
+```
+
+Client code:
+
 ```
 dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
