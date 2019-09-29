@@ -1,0 +1,394 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.Generation</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.Generation.IOpenApiDocumentGenerator">
+            <summary>The <see cref="T:NSwag.Generation.IOpenApiDocumentGenerator"/> interface.</summary>
+        </member>
+        <member name="M:NSwag.Generation.IOpenApiDocumentGenerator.GenerateAsync(System.String)">
+            <summary>Generates the specified document.</summary>
+            <param name="documentName">The document name.</param>
+            <returns>The document.</returns>
+        </member>
+        <member name="T:NSwag.Generation.OpenApiDocumentGenerator">
+            <summary>Provides services to for Swagger generators like the creation of parameters and handling of schemas.</summary>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGenerator.#ctor(NSwag.Generation.OpenApiDocumentGeneratorSettings,NJsonSchema.Generation.JsonSchemaResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.OpenApiDocumentGenerator"/> class.</summary>
+            <param name="settings">The settings.</param>
+            <param name="schemaResolver">The schema resolver.</param>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGenerator.CreateUntypedPathParameter(System.String,System.String)">
+            <summary>Creates a path parameter for a given type.</summary>
+            <param name="parameterName">Name of the parameter.</param>
+            <param name="parameterType">Type of the parameter.</param>
+            <returns>The parameter.</returns>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGenerator.CreatePrimitiveParameter(System.String,Namotion.Reflection.ContextualParameterInfo)">
+            <summary>Creates a primitive parameter for the given parameter information reflection object.</summary>
+            <param name="name">The name.</param>
+            <param name="contextualParameter">The parameter.</param>
+            <returns>The parameter.</returns>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGenerator.CreatePrimitiveParameter(System.String,System.String,Namotion.Reflection.ContextualType)">
+            <summary>Creates a primitive parameter for the given parameter information reflection object.</summary>
+            <param name="name">The name.</param>
+            <param name="description">The description.</param>
+            <param name="contextualParameter">Type of the parameter.</param>
+            <returns>The parameter.</returns>
+        </member>
+        <member name="T:NSwag.Generation.OpenApiDocumentGeneratorSettings">
+            <summary>Settings for the Swagger generator.</summary>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGeneratorSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.OpenApiDocumentGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.SchemaGenerator">
+            <summary>Gets or sets the JSON Schema generator.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.Title">
+            <summary>Gets or sets the Swagger specification title.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.Description">
+            <summary>Gets or sets the Swagger specification description.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.Version">
+            <summary>Gets or sets the Swagger specification version.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.AllowNullableBodyParameters">
+            <summary>Gets or sets a value indicating whether nullable body parameters are allowed (ignored when MvcOptions.AllowEmptyInputInBodyModelBinding is available (ASP.NET Core 2.0+), default: true).</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.DefaultResponseReferenceTypeNullHandling">
+            <summary>Gets or sets the default response reference type null handling when no nullability information is available (if NotNullAttribute and CanBeNullAttribute are missing, default: NotNull).</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.OperationProcessors">
+            <summary>Gets the operation processors.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.DocumentProcessors">
+            <summary>Gets the document processors.</summary>
+        </member>
+        <member name="P:NSwag.Generation.OpenApiDocumentGeneratorSettings.DocumentTemplate">
+            <summary>Gets or sets the document template representing the initial Swagger specification (JSON data).</summary>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGeneratorSettings.AddOperationFilter(System.Func{NSwag.Generation.Processors.Contexts.OperationProcessorContext,System.Boolean})">
+            <summary>Inserts a function based operation processor at the beginning of the pipeline to be used to filter operations.</summary>
+            <param name="filter">The processor filter.</param>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiDocumentGeneratorSettings.ApplySettings(Newtonsoft.Json.JsonSerializerSettings,System.Object)">
+            <summary>Applies the given settings to this settings object.</summary>
+            <param name="serializerSettings">The serializer settings.</param>
+            <param name="mvcOptions">The MVC options.</param>
+        </member>
+        <member name="T:NSwag.Generation.OpenApiSchemaGenerator">
+            <summary>A <see cref="T:NJsonSchema.Generation.JsonSchemaGenerator"/> which only generate the schema for the root type. 
+            Referenced types are added to the service's Definitions collection. </summary>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiSchemaGenerator.#ctor(NJsonSchema.Generation.JsonSchemaGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.OpenApiSchemaGenerator" /> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiSchemaGenerator.GenerateObject(NJsonSchema.JsonSchema,NJsonSchema.Generation.JsonTypeDescription,NJsonSchema.Generation.JsonSchemaResolver)">
+            <summary>Generates the properties for the given type and schema.</summary>
+            <param name="typeDescription">The type desription.</param>
+            <param name="schema">The properties</param>
+            <param name="schemaResolver">The schema resolver.</param>
+            <returns></returns>
+        </member>
+        <member name="M:NSwag.Generation.OpenApiSchemaGenerator.GenerateWithReferenceAndNullability``1(Namotion.Reflection.ContextualType,System.Boolean,NJsonSchema.Generation.JsonSchemaResolver,System.Action{``0,NJsonSchema.JsonSchema})">
+            <summary>Generetes a schema directly or referenced for the requested schema type; also adds nullability if required.</summary>
+            <typeparam name="TSchemaType">The resulted schema type which may reference the actual schema.</typeparam>
+            <param name="contextualType">The type of the schema to generate.</param>
+            <param name="isNullable">Specifies whether the property, parameter or requested schema type is nullable.</param>
+            <param name="schemaResolver">The schema resolver.</param>
+            <param name="transformation">An action to transform the resulting schema (e.g. property or parameter) before the type of reference is determined (with $ref or allOf/oneOf).</param>
+            <returns>The requested schema object.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.ActionDocumentProcessor">
+            <summary>A generic action/function based document processor.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.ActionDocumentProcessor.#ctor(System.Action{NSwag.Generation.Processors.Contexts.DocumentProcessorContext})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.ActionDocumentProcessor"/> class.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.ActionDocumentProcessor.Process(NSwag.Generation.Processors.Contexts.DocumentProcessorContext)">
+            <summary>Processes the specified Swagger document.</summary>
+            <param name="context">The processor context.</param>
+        </member>
+        <member name="T:NSwag.Generation.Processors.ApiVersionProcessor">
+            <summary>An operation processor which replaces {version:apiVersion} route placeholders and filters the included versions.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.ApiVersionProcessor.IncludedVersions">
+            <summary>Gets or sets the list of versions which should be included in the generated document (leave empty to include all versions).</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.ApiVersionProcessor.IgnoreParameter">
+            <summary>Gets or sets a value indicating whether to ignore the global API version parameter (ASP.NET Core only, default: true).</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.ApiVersionProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context">The processor context.</param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Collections.DocumentProcessorCollection">
+            <summary>A collection of docment processors.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Collections.DocumentProcessorCollection.TryGet``1">
+            <summary>Gets an operation processor of the specified type.</summary>
+            <typeparam name="T">The operation processor type.</typeparam>
+            <returns>The operation processor.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Collections.OperationProcessorCollection">
+            <summary>A collection of operation processors.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Collections.OperationProcessorCollection.TryGet``1">
+            <summary>Gets an operation processor of the specified type.</summary>
+            <typeparam name="T">The operation processor type.</typeparam>
+            <returns>The operation processor.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Collections.OperationProcessorCollection.Replace``1(NSwag.Generation.Processors.IOperationProcessor)">
+            <summary>Replaces the first element of type <typeparamref name="T"/>
+            with <paramref name="newItem"/>.</summary>
+            <typeparam name="T">The operation processor type to replace.</typeparam>
+            <param name="newItem">The replacement item.</param>
+            <returns>true, if an item was replaced; otherwise false.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Contexts.DocumentProcessorContext">
+            <summary>The <see cref="T:NSwag.Generation.Processors.IDocumentProcessor"/> context.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.#ctor(NSwag.OpenApiDocument,System.Collections.Generic.IEnumerable{System.Type},System.Collections.Generic.IEnumerable{System.Type},NJsonSchema.Generation.JsonSchemaResolver,NJsonSchema.Generation.JsonSchemaGenerator,NSwag.Generation.OpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Contexts.DocumentProcessorContext" /> class.</summary>
+            <param name="document">The document.</param>
+            <param name="allControllerTypes">The controller types.</param>
+            <param name="controllerTypes">The controller types.</param>
+            <param name="schemaResolver">The schema resolver.</param>
+            <param name="schemaGenerator">The schema generator.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.Document">
+            <summary>Gets the Swagger document.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.AllControllerTypes">
+            <summary>Gets the all controller types even the excluded/ignored ones.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.ControllerTypes">
+            <summary>Gets the controller types which have actually been used for operation generation.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.SchemaResolver">
+            <summary>Gets or sets the schema resolver.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.SchemaGenerator">
+            <summary>Gets the schema generator (call Generate() with JsonSchemaResolver property!).</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.DocumentProcessorContext.Settings">
+            <summary>Gets the settings.</summary>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Contexts.OperationProcessorContext">
+            <summary>The <see cref="T:NSwag.Generation.Processors.IOperationProcessor"/> context.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Contexts.OperationProcessorContext.#ctor(NSwag.OpenApiDocument,NSwag.OpenApiOperationDescription,System.Type,System.Reflection.MethodInfo,NSwag.Generation.OpenApiDocumentGenerator,NJsonSchema.Generation.JsonSchemaGenerator,NJsonSchema.Generation.JsonSchemaResolver,NSwag.Generation.OpenApiDocumentGeneratorSettings,System.Collections.Generic.IList{NSwag.OpenApiOperationDescription})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Contexts.OperationProcessorContext" /> class.</summary>
+            <param name="document">The document.</param>
+            <param name="operationDescription">The operation description.</param>
+            <param name="controllerType">Type of the controller.</param>
+            <param name="methodInfo">The method information.</param>
+            <param name="openApiDocumentGenerator">The swagger generator.</param>
+            <param name="schemaResolver">The schema resolver.</param>
+            <param name="settings">The settings.</param>
+            <param name="allOperationDescriptions">All operation descriptions.</param>
+            <param name="schemaGenerator">The schema generator.</param>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.Document">
+            <summary>Gets the Swagger document.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.OperationDescription">
+            <summary>Gets or sets the operation description.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.ControllerType">
+            <summary>Gets the type of the controller.</summary>
+            <value>The type of the controller.</value>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.MethodInfo">
+            <summary>Gets or sets the method information.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.DocumentGenerator">
+            <summary>Gets or sets the Swagger generator.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.SchemaResolver">
+            <summary>Gets the schema resolver.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.Settings">
+            <summary>Gets the settings.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.SchemaGenerator">
+            <summary>Gets the schema generator.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.AllOperationDescriptions">
+            <summary>Gets or sets all operation descriptions.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.Contexts.OperationProcessorContext.Parameters">
+            <summary>Gets the ParameterInfo to SwaggerParameter mappings.</summary>
+        </member>
+        <member name="T:NSwag.Generation.Processors.DocumentExtensionDataProcessor">
+            <summary>Processes the SwaggerExtensionDataAttribute on the controller classes.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.DocumentExtensionDataProcessor.Process(NSwag.Generation.Processors.Contexts.DocumentProcessorContext)">
+            <summary>
+            Processes the specified Swagger document.
+            </summary>
+            <param name="context">The processor context.</param>
+        </member>
+        <member name="T:NSwag.Generation.Processors.DocumentTagsProcessor">
+            <summary>Processes the SwaggerTagAttribute and SwaggerTagsAttribute on the controller classes.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.DocumentTagsProcessor.Process(NSwag.Generation.Processors.Contexts.DocumentProcessorContext)">
+            <summary>Processes the specified Swagger document.</summary>
+            <param name="context"></param>
+        </member>
+        <member name="T:NSwag.Generation.Processors.IDocumentProcessor">
+            <summary>Post processes a generated <see cref="T:NSwag.OpenApiDocument"/>.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.IDocumentProcessor.Process(NSwag.Generation.Processors.Contexts.DocumentProcessorContext)">
+            <summary>Processes the specified Swagger document.</summary>
+            <param name="context">The processor context.</param>
+        </member>
+        <member name="T:NSwag.Generation.Processors.IOperationProcessor">
+            <summary>Post processes a generated <see cref="T:NSwag.OpenApiOperation"/>.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.IOperationProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context">The processor context.</param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.OperationExtensionDataProcessor">
+            <summary>Processes the SwaggerExtensionDataAttribute on the operation method.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationExtensionDataProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>
+            Processes the specified method information.
+            </summary>
+            <param name="context">The processor context.</param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.OperationProcessor">
+            <summary>A function based operation processor.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationProcessor.#ctor(System.Func{NSwag.Generation.Processors.Contexts.OperationProcessorContext,System.Boolean})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.OperationProcessor"/> class.</summary>
+            <param name="func">The processor function.</param>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context">The processor context.</param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.OperationResponseDescription">
+            <summary>Describes an operation response.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationResponseDescription.#ctor(System.String,System.Type,System.Boolean,System.String)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.OperationResponseDescription"/> class with 'Bearer' name.</summary>
+            <param name="statusCode">The HTTP status code.</param>
+            <param name="responseType">The response type.</param>
+            <param name="isNullable">Specifies whether the response is nullable.</param>
+            <param name="description">The description of the response.</param>
+        </member>
+        <member name="P:NSwag.Generation.Processors.OperationResponseDescription.StatusCode">
+            <summary>Gets the HTTP status code.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.OperationResponseDescription.ResponseType">
+            <summary>Gets the response type..</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.OperationResponseDescription.IsNullable">
+            <summary>Gets a value indicating whether the response is nullable.</summary>
+        </member>
+        <member name="P:NSwag.Generation.Processors.OperationResponseDescription.Description">
+            <summary>Gets description.</summary>
+        </member>
+        <member name="T:NSwag.Generation.Processors.OperationResponseProcessorBase">
+            <summary>The OperationResponseProcessor base class.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationResponseProcessorBase.#ctor(NSwag.Generation.OpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.OperationResponseProcessorBase"/> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationResponseProcessorBase.GetVoidResponseStatusCode">
+            <summary>Gets the response HTTP status code for an empty/void response and the given generator.</summary>
+            <returns>The status code.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationResponseProcessorBase.ProcessResponseTypeAttributes(NSwag.Generation.Processors.Contexts.OperationProcessorContext,System.Collections.Generic.IEnumerable{System.Attribute})">
+            <summary>Generates the responses based on the given return type attributes.</summary>
+            <param name="operationProcessorContext">The context.</param>
+            <param name="responseTypeAttributes">The response type attributes.</param>
+            <returns>The task.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationResponseProcessorBase.UpdateResponseDescription(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Updates the response description based on the return parameter or the response tags in the method's xml docs.</summary>
+            <param name="operationProcessorContext">The context.</param>
+            <returns>The task.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationResponseProcessorBase.GetResponseXmlDocsElement(System.Reflection.MethodInfo,System.String)">
+            <summary>Gets the XML documentation element for the given response code or null.</summary>
+            <param name="methodInfo">The method info.</param>
+            <param name="responseCode">The response code.</param>
+            <returns>The XML element or null.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.OperationSummaryAndDescriptionProcessor">
+            <summary>Loads the operation summary and description from the DescriptionAttribute and the XML documentation.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationSummaryAndDescriptionProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context">The operation processor context.</param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.OperationTagsProcessor">
+            <summary>Processes the SwaggerTagsAttribute on the operation method.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationTagsProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.OperationTagsProcessor.AddControllerNameTag(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Adds the controller name as operation tag.</summary>
+            <param name="context">The context.</param>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor">
+            <summary>Generates the OAuth2 security scopes for an operation by reflecting the AuthorizeAttribute attributes.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor"/> class with 'Bearer' name.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor.#ctor(System.String)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor"/> class.</summary>
+            <param name="name">The security definition name.</param>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor.GetScopes(NSwag.OpenApiOperationDescription,System.Reflection.MethodInfo)">
+            <summary>Gets the security scopes for an operation.</summary>
+            <param name="operationDescription">The operation description.</param>
+            <param name="methodInfo">The method information.</param>
+            <returns>The scopes.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Security.SecurityDefinitionAppender">
+            <summary>Appends the OAuth2 security scheme to the document's security definitions.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.SecurityDefinitionAppender.#ctor(System.String,NSwag.OpenApiSecurityScheme)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Security.SecurityDefinitionAppender" /> class where the security requirement must be manually added.</summary>
+            <param name="name">The name/key of the security scheme/definition.</param>
+            <param name="swaggerSecurityScheme">The Swagger security scheme.</param>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.SecurityDefinitionAppender.#ctor(System.String,System.Collections.Generic.IEnumerable{System.String},NSwag.OpenApiSecurityScheme)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Security.SecurityDefinitionAppender" /> class.</summary>
+            <param name="name">The name/key of the security scheme/definition.</param>
+            <param name="globalScopeNames">The global scope names to add to as security requirement with the scheme name in the document's 'security' property (can be an empty list).</param>
+            <param name="swaggerSecurityScheme">The Swagger security scheme.</param>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.SecurityDefinitionAppender.Process(NSwag.Generation.Processors.Contexts.DocumentProcessorContext)">
+            <summary>Processes the specified Swagger document.</summary>
+            <param name="context"></param>
+        </member>
+    </members>
+</doc>

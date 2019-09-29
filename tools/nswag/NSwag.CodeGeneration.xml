@@ -1,0 +1,782 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.CodeGeneration</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.CodeGeneration.ClientGeneratorBase`3">
+            <summary>The client generator base.</summary>
+            <typeparam name="TOperationModel">The type of the operation model.</typeparam>
+            <typeparam name="TParameterModel">The type of the parameter model.</typeparam>
+            <typeparam name="TResponseModel">The type of the response model.</typeparam>
+            <seealso cref="T:NSwag.CodeGeneration.IClientGenerator" />
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.#ctor(NSwag.OpenApiDocument,NJsonSchema.CodeGeneration.CodeGeneratorSettingsBase,NJsonSchema.CodeGeneration.TypeResolverBase)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.ClientGeneratorBase`3"/> class.</summary>
+            <param name="document">The document.</param>
+            <param name="settings">The code generator settings.</param>
+            <param name="resolver">The type resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBase`3.BaseSettings">
+            <summary>Gets the base settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBase`3.Resolver">
+            <summary>Gets the type resolver.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GetTypeName(NJsonSchema.JsonSchema,System.Boolean,System.String)">
+            <summary>Gets the type.</summary>
+            <param name="schema">The schema.</param>
+            <param name="isNullable">Specifies whether the type is nullable..</param>
+            <param name="typeNameHint">The type name hint.</param>
+            <returns>The type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GetBinaryResponseTypeName">
+            <summary>Gets the file response type name.</summary>
+            <returns>The type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GenerateFile">
+            <summary>Generates the the whole file containing all needed types.</summary>
+            <returns>The code</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GenerateFile(NSwag.CodeGeneration.ClientGeneratorOutputType)">
+            <summary>Generates the the whole file containing all needed types.</summary>
+            <param name="outputType">Type of the output.</param>
+            <returns>The code</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GenerateFile(System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},NSwag.CodeGeneration.ClientGeneratorOutputType)">
+            <summary>Generates the file.</summary>
+            <param name="clientTypes">The client types.</param>
+            <param name="dtoTypes">The DTO types.</param>
+            <param name="outputType">Type of the output.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GenerateAllClientTypes">
+            <summary>Generates the client types.</summary>
+            <returns>The code artifact collection.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GenerateClientTypes(System.String,System.String,System.Collections.Generic.IEnumerable{`0})">
+            <summary>Generates the client class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="controllerClassName">Name of the controller class.</param>
+            <param name="operations">The operations.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.GenerateDtoTypes">
+            <summary>Generates all DTO types.</summary>
+            <returns>The code artifact collection.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBase`3.CreateOperationModel(NSwag.OpenApiOperation,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates an operation model.</summary>
+            <param name="operation">The operation.</param>
+            <param name="settings">The settings.</param>
+            <returns>The operation model.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.ClientGeneratorBaseSettings">
+            <summary>Settings for the ClientGeneratorBase.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBaseSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.ClientGeneratorBaseSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.CodeGeneratorSettings">
+            <summary>Gets the code generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.ClassName">
+            <summary>Gets or sets the class name of the service client or controller.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.GenerateDtoTypes">
+            <summary>Gets or sets a value indicating whether to generate DTO classes (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.GenerateClientInterfaces">
+            <summary>Gets or sets a value indicating whether to generate interfaces for the client classes (default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.GenerateClientClasses">
+            <summary>Gets or sets a value indicating whether to generate client types (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.OperationNameGenerator">
+            <summary>Gets or sets the operation name generator.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.GenerateOptionalParameters">
+            <summary>Gets or sets a value indicating whether to reorder parameters (required first, optional at the end) and generate optional parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.ParameterNameGenerator">
+            <summary>Gets or sets the parameter name generator.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.ExcludedParameterNames">
+            <summary>Gets or sets the globally excluded parameter names.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ClientGeneratorBaseSettings.GenerateControllerName(System.String)">
+            <summary>Generates the name of the controller based on the provided settings.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <returns>The controller name.</returns>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.WrapResponses">
+            <summary>Gets or sets a value indicating whether to wrap success responses to allow full response access.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.WrapResponseMethods">
+            <summary>Gets or sets the list of methods where responses are wrapped ("ControllerName.MethodName", WrapResponses must be true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.GenerateResponseClasses">
+            <summary>Gets or sets a value indicating whether to generate the response classes (only needed when WrapResponses == true, default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ClientGeneratorBaseSettings.ResponseClass">
+            <summary>Gets or sets the name of the response class (supports the '{controller}' placeholder).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.ClientGeneratorOutputType">
+            <summary>Specifies the output type.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.ClientGeneratorOutputType.Full">
+            <summary>A single output with contracts and implementation.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.ClientGeneratorOutputType.Contracts">
+            <summary>The contracts output.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.ClientGeneratorOutputType.Implementation">
+            <summary>The implementation output.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.ControllerGeneratorBaseSettings">
+            <summary>Settings for the ClientGeneratorBase.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.ControllerGeneratorBaseSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.ClientGeneratorBaseSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.ControllerGeneratorBaseSettings.GenerateDtoTypes">
+            <summary>Gets or sets a value indicating whether to generate DTO classes (default: true).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.DefaultParameterNameGenerator">
+            <summary>The default parameter name generator.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.DefaultParameterNameGenerator.Generate(NSwag.OpenApiParameter,System.Collections.Generic.IEnumerable{NSwag.OpenApiParameter})">
+            <summary>Generates the parameter name for the given parameter.</summary>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <returns>The parameter name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.DefaultTemplateFactory">
+            <summary>The default template factory which loads templates from embedded resources.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.DefaultTemplateFactory.#ctor(NJsonSchema.CodeGeneration.CodeGeneratorSettingsBase,System.Reflection.Assembly[])">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.DefaultTemplateFactory" /> class.</summary>
+            <param name="settings">The settings.</param>
+            <param name="assemblies">The assemblies.</param>
+        </member>
+        <member name="M:NSwag.CodeGeneration.DefaultTemplateFactory.GetToolchainVersion">
+            <summary>Gets the current toolchain version.</summary>
+            <returns>The toolchain version.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.DefaultTemplateFactory.GetEmbeddedLiquidTemplate(System.String,System.String)">
+            <summary>Tries to load an embedded Liquid template.</summary>
+            <param name="language">The language.</param>
+            <param name="template">The template name.</param>
+            <returns>The template.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.IClientGenerator">
+            <summary>The client generator interface.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.IClientGenerator.GetTypeName(NJsonSchema.JsonSchema,System.Boolean,System.String)">
+            <summary>Gets the type.</summary>
+            <param name="schema">The schema.</param>
+            <param name="isNullable">Specifies whether the type is nullable..</param>
+            <param name="typeNameHint">The type name hint.</param>
+            <returns>The type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.IClientGenerator.GetBinaryResponseTypeName">
+            <summary>Gets the file/binary response type name.</summary>
+            <returns>The type name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.IParameterNameGenerator">
+            <summary>The parameter name generator interface.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.IParameterNameGenerator.Generate(NSwag.OpenApiParameter,System.Collections.Generic.IEnumerable{NSwag.OpenApiParameter})">
+            <summary>Generates the parameter name for the given parameter.</summary>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <returns>The parameter name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.JsonSchema4Extensions">
+            <summary>JSON Schema extensions.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.JsonSchema4Extensions.UsesComplexObjectSchema(NJsonSchema.JsonSchema)">
+            <summary>Checks whether the schema uses an object schema somewhere (i.e. does it require a DTO class).</summary>
+            <param name="schema">The schema.</param>
+            <returns>true or false</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.Models.IOperationModel">
+            <summary>The operation model interface.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.IOperationModel.Responses">
+            <summary>Gets the responses.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.IOperationModel.Produces">
+            <summary>Gets Swagger operation's mime type.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.Models.OperationModelBase`2">
+            <summary>The Swagger operation template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.OperationModelBase`2.#ctor(NJsonSchema.JsonSchema,NSwag.OpenApiOperation,NJsonSchema.CodeGeneration.TypeResolverBase,NSwag.CodeGeneration.IClientGenerator,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.Models.OperationModelBase`2"/> class.</summary>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="operation">The operation.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="generator">The generator.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.OperationModelBase`2.CreateResponseModel(NSwag.OpenApiOperation,System.String,NSwag.OpenApiResponse,NJsonSchema.JsonSchema,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates the response model.</summary>
+            <param name="operation">The operation.</param>
+            <param name="statusCode">The status code.</param>
+            <param name="response">The response.</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="settings">The settings.</param>
+            <returns>The response model.</returns>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Id">
+            <summary>Gets the operation ID.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Path">
+            <summary>Gets or sets the HTTP path (i.e. the absolute route).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HttpMethod">
+            <summary>Gets or sets the HTTP method.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.OperationName">
+            <summary>Gets or sets the name of the operation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ActualOperationName">
+            <summary>Gets the actual name of the operation (language specific).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HttpMethodUpper">
+            <summary>Gets the HTTP method in uppercase.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HttpMethodLower">
+            <summary>Gets the HTTP method in lowercase.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.IsGetOrDeleteOrHead">
+            <summary>Gets a value indicating whether the HTTP method is GET or DELETE or HEAD.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.IsGetOrHead">
+            <summary>Gets a value indicating whether the HTTP method is GET or HEAD.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasResultType">
+            <summary>Gets or sets a value indicating whether the operation has a result type (i.e. not void).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ResultType">
+            <summary>Gets or sets the type of the result.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.UnwrappedResultType">
+            <summary>Gets the type of the unwrapped result type (without Task).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasResultDescription">
+            <summary>Gets a value indicating whether the result has description.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ResultDescription">
+            <summary>Gets or sets the result description.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ControllerName">
+            <summary>Gets the name of the controller.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ExceptionType">
+            <summary>Gets or sets the type of the exception.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Responses">
+            <summary>Gets or sets the responses.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasDefaultResponse">
+            <summary>Gets a value indicating whether the operation has default response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.DefaultResponse">
+            <summary>Gets or sets the default response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasSuccessResponse">
+            <summary>Gets a value indicating whether the operation has an explicit success response defined.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.SuccessResponse">
+            <summary>Gets the success response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.NSwag#CodeGeneration#Models#IOperationModel#Responses">
+            <summary>Gets the responses.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Parameters">
+            <summary>Gets or sets the parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasOnlyDefaultResponse">
+            <summary>Gets a value indicating whether the operation has only a default response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasContent">
+            <summary>Gets a value indicating whether the operation has content parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasBody">
+            <summary>Gets a value indicating whether the the request has a body.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ContentParameter">
+            <summary>Gets the content parameter.</summary>
+            <exception cref="T:System.InvalidOperationException" accessor="get">Multiple body parameters found in operation.</exception>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.PathParameters">
+            <summary>Gets the path parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.QueryParameters">
+            <summary>Gets the query parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasQueryParameters">
+            <summary>Gets a value indicating whether the operation has query parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HeaderParameters">
+            <summary>Gets the header parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasAcceptHeaderParameterParameter">
+            <summary>Gets or sets a value indicating whether the accept header is defined in a parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasFormParameters">
+            <summary>Gets a value indicating whether the operation has form parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ConsumesFormUrlEncoded">
+            <summary>Gets a value indicating whether the operation consumes 'application/x-www-form-urlencoded'.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.FormParameters">
+            <summary>Gets the form parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasSummary">
+            <summary>Gets a value indicating whether the operation has summary.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Summary">
+            <summary>Gets the summary text.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasDocumentation">
+            <summary>Gets a value indicating whether the operation has any documentation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.IsDeprecated">
+            <summary>Gets a value indicating whether the operation is deprecated.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasXmlBodyParameter">
+            <summary>Gets or sets a value indicating whether this operation has an XML body parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.HasBinaryBodyParameter">
+            <summary>Gets or sets a value indicating whether this operation has an binary body parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Consumes">
+            <summary>Gets the mime type of the request body.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.Produces">
+            <summary>Gets the mime type of the response body.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.IsFile">
+            <summary>Gets a value indicating whether a file response is expected from one of the responses.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.WrapResponse">
+            <summary>Gets a value indicating whether to wrap the response of this operation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.OperationModelBase`2.ExtensionData">
+            <summary>Gets the operation extension data.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.OperationModelBase`2.GetSuccessResponse">
+            <summary>Gets the success response.</summary>
+            <returns>The response.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.OperationModelBase`2.GetParameterVariableName(NSwag.OpenApiParameter,System.Collections.Generic.IEnumerable{NSwag.OpenApiParameter})">
+            <summary>Gets the name of the parameter variable.</summary>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <returns>The parameter variable name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.OperationModelBase`2.ResolveParameterType(NSwag.OpenApiParameter)">
+            <summary>Resolves the type of the parameter.</summary>
+            <param name="parameter">The parameter.</param>
+            <returns>The parameter type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.OperationModelBase`2.GetActualParameters">
+            <summary>Gets the actual parameters ignoring the excluded ones.</summary>
+            <returns>The parameters.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.Models.ParameterModelBase">
+            <summary>The parameter template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.ParameterModelBase.#ctor(System.String,System.String,System.String,NSwag.OpenApiParameter,System.Collections.Generic.IList{NSwag.OpenApiParameter},NJsonSchema.CodeGeneration.CodeGeneratorSettingsBase,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.Models.ParameterModelBase" /> class.</summary>
+            <param name="parameterName">Name of the parameter.</param>
+            <param name="variableName">Name of the variable.</param>
+            <param name="typeName">The type name.</param>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The client generator base.</param>
+            <param name="typeResolver">The type resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Type">
+            <summary>Gets the type of the parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Name">
+            <summary>Gets the name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.VariableName">
+            <summary>Gets the variable name in (usually lowercase).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.HasDefault">
+            <summary>Gets a value indicating whether a default value is available.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Default">
+            <summary>The default value for the variable.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Kind">
+            <summary>Gets the parameter kind.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Style">
+            <summary>Gets the parameter style.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Explode">
+            <summary>Gets the the value indicating if the parameter values should be exploded when included in the query string.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsDeepObject">
+            <summary>Gets a value indicating whether the parameter is a deep object (OpenAPI 3).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.PropertyNames">
+            <summary>Gets the contained value property names (OpenAPI 3).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.CollectionPropertyNames">
+            <summary>Gets the contained collection property names (OpenAPI 3).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.HasDescription">
+            <summary>Gets a value indicating whether the parameter has a description.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Description">
+            <summary>Gets the parameter description.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.Schema">
+            <summary>Gets the schema.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsRequired">
+            <summary>Gets a value indicating whether the parameter is required.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsNullable">
+            <summary>Gets a value indicating whether the parameter is nullable.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsOptional">
+            <summary>Gets a value indicating whether the parameter is optional (i.e. not required).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.HasDescriptionOrIsOptional">
+            <summary>Gets a value indicating whether the parameter has a description or is optional.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsLast">
+            <summary>Gets a value indicating whether the parameter is the last parameter of the operation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsXmlBodyParameter">
+            <summary>Gets a value indicating whether this is an XML body parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsDate">
+            <summary>Gets a value indicating whether the parameter is of type date.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsArray">
+            <summary>Gets a value indicating whether the parameter is of type array.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsStringArray">
+            <summary>Gets a value indicating whether the parameter is a string array.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsFile">
+            <summary>Gets a value indicating whether this is a file parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsBinaryBody">
+            <summary>Gets a value indicating whether the parameter is a binary body parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsDictionary">
+            <summary>Gets a value indicating whether the parameter is of type dictionary.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsDateArray">
+            <summary>Gets a value indicating whether the parameter is of type date array.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsObjectArray">
+            <summary>Gets a value indicating whether the parameter is of type object array.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsBody">
+            <summary>Gets a value indicating whether the parameter is of type object.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsQuery">
+            <summary>Gets a value indicating whether the parameter is supplied as query parameter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.IsHeader">
+            <summary>Gets a value indicating whether the parameter is supplied through the request headers.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ParameterModelBase.ExtensionData">
+            <summary>Gets the operation extension data.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.Models.PropertyModel">
+            <summary>
+            A model representing the property or field of a structure or class
+            </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.PropertyModel.Key">
+            <summary>
+            The key under which the <see cref="P:NSwag.CodeGeneration.Models.PropertyModel.JsonProperty"/> is located in the parent JSON object
+            </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.PropertyModel.JsonProperty">
+            <summary>
+            The <see cref="P:NSwag.CodeGeneration.Models.PropertyModel.JsonProperty"/> represented by this <see cref="T:NSwag.CodeGeneration.Models.PropertyModel"/>
+            </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.PropertyModel.Name">
+            <summary>
+            The generated property name suitable for use in the target language
+            </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.PropertyModel.IsCollection">
+            <summary>
+            Indicates whether the property is a collection
+            </summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.PropertyModel.#ctor(System.String,NJsonSchema.JsonSchemaProperty,System.String)">
+            <inheritdoc />
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.PropertyModel.ToString">
+            <inheritdoc />
+        </member>
+        <member name="T:NSwag.CodeGeneration.Models.ResponseModelBase">
+            <summary>The response template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.Models.ResponseModelBase.#ctor(NSwag.CodeGeneration.Models.IOperationModel,NSwag.OpenApiOperation,System.String,NSwag.OpenApiResponse,System.Boolean,NJsonSchema.JsonSchema,NJsonSchema.CodeGeneration.TypeResolverBase,NJsonSchema.CodeGeneration.CodeGeneratorSettingsBase,NSwag.CodeGeneration.IClientGenerator)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.Models.ResponseModelBase" /> class.</summary>
+            <param name="operationModel">The operation model.</param>
+            <param name="operation">The operation.</param>
+            <param name="statusCode">The status code.</param>
+            <param name="response">The response.</param>
+            <param name="isPrimarySuccessResponse">Specifies whether this is the success response.</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The client generator.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.StatusCode">
+            <summary>Gets the HTTP status code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.ActualResponseSchema">
+            <summary>Gets the actual response schema.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.CheckChunkedStatusCode">
+            <summary>Gets a value indicating whether to check for the chunked HTTP status code (206, true when file response and 200/204).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.Type">
+            <summary>Gets the type of the response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.HasType">
+            <summary>Gets a value indicating whether the response has a type (i.e. not void).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.ExpectedSchemas">
+            <summary>Gets or sets the expected child schemas of the base schema (can be used for generating enhanced typings/documentation).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.IsDate">
+            <summary>Gets a value indicating whether the response is of type date.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.IsPlainText">
+            <summary>Gets a value indicating whether this is a text/plain response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.IsFile">
+            <summary>Gets a value indicating whether this is a file response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.ExceptionDescription">
+            <summary>Gets the response's exception description.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.ResolvableResponseSchema">
+            <summary>Gets the response schema.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.IsNullable">
+            <summary>Gets a value indicating whether the response is nullable.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.InheritsExceptionSchema">
+            <summary>Gets a value indicating whether the response type inherits from exception.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.IsPrimarySuccessResponse">
+            <summary>Gets a value indicating whether this is the primary success response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.IsSuccess">
+            <summary>Gets a value indicating whether this is success response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.ThrowsException">
+            <summary>Gets a value indicating whether this is an exceptional response.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.ExtensionData">
+            <summary>Gets the response extension data.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.Models.ResponseModelBase.Produces">
+            <summary>Gets the produced mime type of this response if available.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.IOperationNameGenerator">
+            <summary>Generates the client and operation name for a given operation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.IOperationNameGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.IOperationNameGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.IOperationNameGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the operation name for a given operation.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndOperationIdGenerator">
+            <summary>Generates the client name based on the first tag and operation name based on the operation id (operation name = operationId, client name = first tag).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndOperationIdGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndOperationIdGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndOperationIdGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the operation name for a given operation.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndPathSegmentsOperationNameGenerator">
+            <summary>Generates the client name based on the first tag and operation name based on the path segments (operation name = last segment, client name = first tag).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndPathSegmentsOperationNameGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndPathSegmentsOperationNameGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndPathSegmentsOperationNameGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the operation name for a given operation.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromFirstTagAndPathSegmentsOperationNameGenerator.ConvertPathToName(System.String)">
+            <summary>Converts the path to an operation name.</summary>
+            <param name="path">The HTTP path.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromOperationIdOperationNameGenerator">
+            <summary>Generates multiple clients and operation names based on the Swagger operation ID (underscore separated).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromOperationIdOperationNameGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromOperationIdOperationNameGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromOperationIdOperationNameGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the operation name for a given operation.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromPathSegmentsOperationNameGenerator">
+            <summary>Generates the client and operation name based on the path segments (operation name = last segment, client name = second to last segment).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromPathSegmentsOperationNameGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromPathSegmentsOperationNameGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromPathSegmentsOperationNameGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromPathSegmentsOperationNameGenerator.ConvertPathToName(System.String)">
+            <summary>Converts the path to an operation name.</summary>
+            <param name="path">The HTTP path.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.MultipleClientsFromPathSegmentsOperationNameGenerator.CapitalizeFirst(System.String)">
+            <summary>Capitalizes first letter.</summary>
+            <param name="name">The name to capitalize.</param>
+            <returns>Capitalized name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromOperationIdOperationNameGenerator">
+            <summary>Generates the client and operation name based on the Swagger operation ID.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromOperationIdOperationNameGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromOperationIdOperationNameGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromOperationIdOperationNameGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromPathSegmentsOperationNameGenerator">
+            <summary>Generates the client and operation name based on the path segments (operation name = last segment, client name = second to last segment).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromPathSegmentsOperationNameGenerator.SupportsMultipleClients">
+            <summary>Gets a value indicating whether the generator supports multiple client classes.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromPathSegmentsOperationNameGenerator.GetClientName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromPathSegmentsOperationNameGenerator.GetOperationName(NSwag.OpenApiDocument,System.String,System.String,NSwag.OpenApiOperation)">
+            <summary>Gets the client name for a given operation (may be empty).</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="path">The HTTP path.</param>
+            <param name="httpMethod">The HTTP method.</param>
+            <param name="operation">The operation.</param>
+            <returns>The client name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromPathSegmentsOperationNameGenerator.ConvertPathToName(System.String)">
+            <summary>Converts the path to an operation name.</summary>
+            <param name="path">The HTTP path.</param>
+            <returns>The operation name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.OperationNameGenerators.SingleClientFromPathSegmentsOperationNameGenerator.CapitalizeFirst(System.String)">
+            <summary>Capitalizes first letter.</summary>
+            <param name="name">The name to capitalize.</param>
+            <returns>Capitalized name.</returns>
+        </member>
+    </members>
+</doc>

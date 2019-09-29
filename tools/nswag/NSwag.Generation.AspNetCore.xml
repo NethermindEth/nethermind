@@ -1,0 +1,124 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.Generation.AspNetCore</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator">
+            <summary>Generates a <see cref="T:NSwag.OpenApiDocument"/> using <see cref="T:Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription"/>. </summary>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.#ctor(NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator" /> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.Settings">
+            <summary>Gets the generator settings.</summary>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.GenerateAsync(System.Object)">
+            <summary>Generates the <see cref="T:NSwag.OpenApiDocument"/> with services from the given service provider.</summary>
+            <param name="serviceProvider">The service provider.</param>
+            <returns>The document</returns>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.GetJsonSerializerSettings(System.IServiceProvider)">
+            <summary>Loads the <see cref="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.GetJsonSerializerSettings(System.IServiceProvider)"/> from the given service provider.</summary>
+            <param name="serviceProvider">The service provider.</param>
+            <returns>The settings.</returns>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.GenerateAsync(Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescriptionGroupCollection)">
+            <summary>Generates a Swagger specification for the given <see cref="T:Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescriptionGroupCollection"/>.</summary>
+            <param name="apiDescriptionGroups">The <see cref="T:Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescriptionGroupCollection"/>.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument" />.</returns>
+            <exception cref="T:System.InvalidOperationException">The operation has more than one body parameter.</exception>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator.GetSystemTextJsonSettings">
+            <summary>Gets the default serializer settings representing System.Text.Json.</summary>
+            <returns>The settings.</returns>
+        </member>
+        <member name="T:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings">
+            <summary>Settings for the <see cref="T:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGenerator"/>.</summary>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings.DocumentName">
+            <summary>Gets the document name (internal identifier, default: v1).</summary>
+        </member>
+        <member name="P:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings.ApiGroupNames">
+            <summary>Gets or sets the ASP.NET Core API Explorer group names to include (default: empty/null = all, often used to select API version).</summary>
+        </member>
+        <member name="P:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings.RequireParametersWithoutDefault">
+            <summary>Gets or sets a value indicating whether parameters without default value are always required
+            (legacy, default: false).</summary>
+            <remarks>Use BindRequiredAttribute to mark parameters as required.</remarks>
+        </member>
+        <member name="P:NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings.PostProcess">
+            <summary>Gets or sets the Swagger post process action.</summary>
+        </member>
+        <member name="T:NSwag.Generation.AspNetCore.AspNetCoreOperationProcessorContext">
+            <summary>The <see cref="T:NSwag.Generation.Processors.IOperationProcessor"/> context that use <see cref="T:Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription"/>.</summary>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.AspNetCoreOperationProcessorContext.#ctor(NSwag.OpenApiDocument,NSwag.OpenApiOperationDescription,System.Type,System.Reflection.MethodInfo,NSwag.Generation.OpenApiDocumentGenerator,NJsonSchema.Generation.JsonSchemaGenerator,NJsonSchema.Generation.JsonSchemaResolver,NSwag.Generation.OpenApiDocumentGeneratorSettings,System.Collections.Generic.IList{NSwag.OpenApiOperationDescription})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.AspNetCore.AspNetCoreOperationProcessorContext" /> class.</summary>
+            <param name="document">The document.</param>
+            <param name="operationDescription">The operation description.</param>
+            <param name="controllerType">Type of the controller.</param>
+            <param name="methodInfo">The method information.</param>
+            <param name="swaggerGenerator">The swagger generator.</param>
+            <param name="schemaResolver">The schema resolver.</param>
+            <param name="settings">The sett</param>
+            <param name="allOperationDescriptions">All operation descriptions.</param>
+            <param name="schemaGenerator">The schema generator.</param>
+        </member>
+        <member name="P:NSwag.Generation.AspNetCore.AspNetCoreOperationProcessorContext.ApiDescription">
+            <summary>The <see cref="T:Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription"/>.</summary>
+        </member>
+        <member name="T:NSwag.Generation.AspNetCore.Processors.AspNetCoreOperationTagsProcessor">
+            <summary>Processes the SwaggerTagsAttribute on the operation method.</summary>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.Processors.AspNetCoreOperationTagsProcessor.AddControllerNameTag(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Adds the controller name as operation tag.</summary>
+            <param name="context">The context.</param>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.Processors.OperationParameterProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="operationProcessorContext"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.AspNetCore.Processors.OperationResponseProcessor">
+            <summary>Generates the operation's response objects based on reflection and the ResponseTypeAttribute, SwaggerResponseAttribute and ProducesResponseTypeAttribute attributes.</summary>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.Processors.OperationResponseProcessor.#ctor(NSwag.Generation.AspNetCore.AspNetCoreOpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.AspNetCore.Processors.OperationParameterProcessor"/> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.Processors.OperationResponseProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="operationProcessorContext"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="M:NSwag.Generation.AspNetCore.Processors.OperationResponseProcessor.GetVoidResponseStatusCode">
+            <summary>Gets the response HTTP status code for an empty/void response and the given generator.</summary>
+            <returns>The status code.</returns>
+        </member>
+        <member name="T:NSwag.Generation.Processors.Security.AspNetCoreOperationSecurityScopeProcessor">
+            <summary>Generates the OAuth2 security scopes for an operation by reflecting the AuthorizeAttribute attributes.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.AspNetCoreOperationSecurityScopeProcessor.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor"/> class with 'Bearer' name.</summary>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.AspNetCoreOperationSecurityScopeProcessor.#ctor(System.String)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.Processors.Security.OperationSecurityScopeProcessor"/> class.</summary>
+            <param name="name">The security definition name.</param>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.AspNetCoreOperationSecurityScopeProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="M:NSwag.Generation.Processors.Security.AspNetCoreOperationSecurityScopeProcessor.GetScopes(System.Collections.Generic.IEnumerable{Microsoft.AspNetCore.Authorization.AuthorizeAttribute})">
+            <summary>Gets the security scopes for an operation.</summary>
+            <param name="authorizeAttributes">The authorize attributes.</param>
+            <returns>The scopes.</returns>
+        </member>
+    </members>
+</doc>
