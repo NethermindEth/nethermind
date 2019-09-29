@@ -7,8 +7,6 @@
 ### Pre-requisites
 
 * .NET Core 3.0 development tools
-* PowerShell Core, to run build scripts
-* An editor, e.g. VS Code, if you want to contribute
 
 ### Compile and run the Beacon Node
 
@@ -21,6 +19,11 @@ dotnet run --project src/Cortex.BeaconNode.Host --config minimal
 ### Test it works
 
 Open a browser to ```http://localhost:5000/node/version``` and it should respond with the name and version.
+
+### Optional requirements
+
+* PowerShell Core, to run build scripts
+* An editor, e.g. VS Code, if you want to contribute
 
 ### Build with version number
 
@@ -35,6 +38,15 @@ Then run the DLL that was created:
 ```
 dotnet ./src/Cortex.BeaconNode.Host/bin/Release/netcoreapp3.0/publish/Cortex.BeaconNode.Host.dll
 ```
+
+## Development
+
+### API generation
+
+```
+dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient.cs
+```
+
 
 
 ## To Do
