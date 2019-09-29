@@ -7,6 +7,7 @@ namespace Cortex.BeaconNode
         public static void AddBeaconNode(this IServiceCollection services)
         {
             services.AddSingleton<BeaconChain>();
+            services.AddSingleton<BeaconNodeConfiguration>();
         }
     }
 }

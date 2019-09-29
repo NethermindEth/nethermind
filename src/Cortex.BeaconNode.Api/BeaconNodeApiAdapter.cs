@@ -9,19 +9,23 @@ namespace Cortex.BeaconNode.Api
     public class BeaconNodeApiAdapter : IBeaconNodeApiController
     {
         private readonly BeaconChain _beaconChain;
+        private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
         private readonly ILogger _logger;
 
-        public BeaconNodeApiAdapter(ILogger<BeaconNodeApiAdapter> logger, BeaconChain beaconChain)
+        public BeaconNodeApiAdapter(ILogger<BeaconNodeApiAdapter> logger, 
+            BeaconChain beaconChain,
+            BeaconNodeConfiguration beaconNodeConfiguration)
         {
             _logger = logger;
             _beaconChain = beaconChain;
+            _beaconNodeConfiguration = beaconNodeConfiguration;
         }
 
         /// <summary>Get version string of the running beacon node.</summary>
         /// <returns>Request successful</returns>
         public async Task<string> VersionAsync()
-        {
-            return "Test-Cortex/0.0.1";
+        {            
+            return await Task.Run(() => _beaconNodeConfiguration.Version);
         }
 
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
