@@ -23,7 +23,7 @@ namespace Cortex.BeaconNode.Api
 
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <returns>Request successful</returns>
-        System.Threading.Tasks.Task<int> TimeAsync();
+        System.Threading.Tasks.Task<ulong> TimeAsync();
 
         /// <summary>Poll to see if the the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
@@ -85,7 +85,7 @@ namespace Cortex.BeaconNode.Api
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <returns>Request successful</returns>
         [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("node/genesis_time")]
-        public System.Threading.Tasks.Task<int> Time()
+        public System.Threading.Tasks.Task<ulong> Time()
         {
             return _implementation.TimeAsync();
         }

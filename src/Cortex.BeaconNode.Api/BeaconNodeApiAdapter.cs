@@ -1,13 +1,20 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Cortex.BeaconNode;
 
 namespace Cortex.BeaconNode.Api
 {
     public class BeaconNodeApiAdapter : IBeaconNodeApiController
     {
-        public BeaconNodeApiAdapter()
+        private readonly BeaconChain _beaconChain;
+        private readonly ILogger _logger;
+
+        public BeaconNodeApiAdapter(ILogger<BeaconNodeApiAdapter> logger, BeaconChain beaconChain)
         {
+            _logger = logger;
+            _beaconChain = beaconChain;
         }
 
         /// <summary>Get version string of the running beacon node.</summary>
@@ -19,9 +26,10 @@ namespace Cortex.BeaconNode.Api
 
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <returns>Request successful</returns>
-        public Task<int> TimeAsync()
+        public Task<ulong> TimeAsync()
         {
-            throw new NotImplementedException();
+            var genesisTime = _beaconChain.State.GenesisTime;
+            return Task.FromResult(genesisTime);
         }
 
         /// <summary>Poll to see if the the beacon node is syncing.</summary>
