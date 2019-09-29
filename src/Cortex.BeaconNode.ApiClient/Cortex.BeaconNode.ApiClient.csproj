@@ -8,5 +8,5 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="BeaconNodeClient-generated.cs" />
-</ItemGroup>
+  </ItemGroup>
 </Project>

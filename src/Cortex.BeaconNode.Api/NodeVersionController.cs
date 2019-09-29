@@ -11,7 +11,7 @@ namespace Cortex.BeaconNode.Api
 {
     [ApiController]
     [Produces(MediaTypeNames.Application.Json)]
-    [Route("node/version")]
+    [Route("xxxnode/version")]
     public class NodeVersionController : ControllerBase
     {
         private readonly ILogger _logger;

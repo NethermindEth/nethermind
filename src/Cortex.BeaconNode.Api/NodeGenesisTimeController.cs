@@ -13,7 +13,7 @@ namespace Cortex.BeaconNode.Api
 {
     [ApiController]
     [Produces(MediaTypeNames.Application.Json)]
-    [Route("node/genesis_time")]
+    [Route("xxxnode/genesis_time")]
     public class NodeGenesisTimeController : ControllerBase
     {
         private readonly BeaconChain _beaconChain;

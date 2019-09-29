@@ -11,6 +11,9 @@ namespace Cortex.BeaconNode.Api
     {
         public static void AddBeaconNodeApi(this IServiceCollection services)
         {
+            // Register adapter
+            services.AddScoped<IBeaconNodeApiController, BeaconNodeApiAdapter>();
+            // Register controllers            
             var apiAssembly = typeof(BeaconNodeServiceCollectionExtensions).GetTypeInfo().Assembly;
             services.AddMvc().AddApplicationPart(apiAssembly);
         }
