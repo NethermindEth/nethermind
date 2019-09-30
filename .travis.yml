@@ -25,7 +25,8 @@ after_success:
   - sonar-scanner
   - bash <(curl -s https://codecov.io/bash)
 script:
-  - snap alias dotnet-sdk.dotnet dotnet
+  - sudo snap alias dotnet-sdk.dotnet dotnet
+  - snap aliases
   - dotnet --version
 jobs:
   include:
