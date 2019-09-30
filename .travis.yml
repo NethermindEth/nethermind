@@ -5,8 +5,8 @@ dist: xenial
 addons:
   snaps:
   - name: dotnet-sdk
-    classic: true
-    channel: latest/beta
+    confinement: classic
+    channel: latest/stable
   sonarcloud:
     organization: nethermindeth
     token:
