@@ -42,7 +42,7 @@ namespace Cortex.BeaconNode.Api
         /// <param name="slot">The slot for which the block should be proposed.</param>
         /// <param name="randao_reveal">The validator's randao reveal value.</param>
         /// <returns>Success response</returns>
-        System.Threading.Tasks.Task<BeaconBlock> BlockAsync(int slot, byte[] randao_reveal);
+        System.Threading.Tasks.Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal);
     
         /// <summary>Publish a signed block.</summary>
         /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
@@ -120,7 +120,7 @@ namespace Cortex.BeaconNode.Api
         /// <param name="randao_reveal">The validator's randao reveal value.</param>
         /// <returns>Success response</returns>
         [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("validator/block")]
-        public System.Threading.Tasks.Task<BeaconBlock> Block([Microsoft.AspNetCore.Mvc.FromQuery] int slot, [Microsoft.AspNetCore.Mvc.FromQuery] byte[] randao_reveal)
+        public System.Threading.Tasks.Task<BeaconBlock> Block([Microsoft.AspNetCore.Mvc.FromQuery] ulong slot, [Microsoft.AspNetCore.Mvc.FromQuery] byte[] randao_reveal)
         {
             return _implementation.BlockAsync(slot, randao_reveal);
         }
@@ -260,7 +260,7 @@ namespace Cortex.BeaconNode.Api
     {
         /// <summary>The slot to which this block corresponds.</summary>
         [Newtonsoft.Json.JsonProperty("slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Slot { get; set; }
+        public ulong Slot { get; set; }
     
         /// <summary>The signing merkle root of the parent `BeaconBlock`.</summary>
         [Newtonsoft.Json.JsonProperty("parent_root", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]

@@ -8,6 +8,8 @@ namespace Cortex.BeaconNode
         {
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<BeaconNodeConfiguration>();
+
+            services.AddScoped<BlockProducer>();
         }
     }
 }

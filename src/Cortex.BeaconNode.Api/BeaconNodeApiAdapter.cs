@@ -10,15 +10,18 @@ namespace Cortex.BeaconNode.Api
     {
         private readonly BeaconChain _beaconChain;
         private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
+        private readonly BlockProducer _blockProducer;
         private readonly ILogger _logger;
 
         public BeaconNodeApiAdapter(ILogger<BeaconNodeApiAdapter> logger, 
             BeaconChain beaconChain,
-            BeaconNodeConfiguration beaconNodeConfiguration)
+            BeaconNodeConfiguration beaconNodeConfiguration,
+            BlockProducer blockProducer)
         {
             _logger = logger;
             _beaconChain = beaconChain;
             _beaconNodeConfiguration = beaconNodeConfiguration;
+            _blockProducer = blockProducer;
         }
 
         /// <summary>Get version string of the running beacon node.</summary>
@@ -30,10 +33,9 @@ namespace Cortex.BeaconNode.Api
 
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <returns>Request successful</returns>
-        public Task<ulong> TimeAsync()
+        public async Task<ulong> TimeAsync()
         {
-            var genesisTime = _beaconChain.State.GenesisTime;
-            return Task.FromResult(genesisTime);
+            return await Task.Run(() => _beaconChain.State.GenesisTime);
         }
 
         /// <summary>Poll to see if the the beacon node is syncing.</summary>
@@ -62,9 +64,19 @@ namespace Cortex.BeaconNode.Api
         /// <param name="slot">The slot for which the block should be proposed.</param>
         /// <param name="randao_reveal">The validator's randao reveal value.</param>
         /// <returns>Success response</returns>
-        public Task<BeaconBlock> BlockAsync(int slot, byte[] randao_reveal)
+        public async Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal)
         {
-            throw new NotImplementedException();
+            var data = await _blockProducer.NewBlockAsync(slot, randao_reveal);
+
+            var result = new BeaconBlock()
+            {
+                Slot = data.Slot,
+                Body = new BeaconBlockBody()
+                {
+                    Randao_reveal = data.Body.RandaoReveal
+                }
+            };
+            return result;
         }
     
         /// <summary>Publish a signed block.</summary>
