@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Microsoft.Extensions.Logging;
@@ -8,28 +9,35 @@ namespace Cortex.BeaconNode
 {
     public class BeaconNodeConfiguration
     {
+        private const string ProductToken = "Cortex";
         private readonly ILogger _logger;
 
         public BeaconNodeConfiguration(ILogger<BeaconNodeConfiguration> logger, IHostEnvironment environment)
         {
             _logger = logger;
-            Version = BuildVersionString(environment.ApplicationName, environment.EnvironmentName);
+            Version = BuildVersionString(ProductToken, environment.EnvironmentName);
         }
 
         public string Version { get; }
 
-        private string BuildVersionString(string applicationName, string environmentName)
+        private string BuildVersionString(string productToken, string environmentName)
         {
+            var parts = new List<string>();
+
             var assembley = typeof(BeaconNodeConfiguration).Assembly;
             var versionAttribute = assembley.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             var version = versionAttribute.InformationalVersion;
-            var versionString = $"{applicationName}/{version}";
+            var product1 = $"{productToken}/{version}";
+            parts.Add(product1);
+
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production) 
             {
-                versionString += $" ({environmentName})";
+                var comment1 = $"({environmentName})";
+                parts.Add(comment1);
             }
+
+            var versionString = string.Join(" ", parts);
             return versionString;   
         }
-
     }
 }
