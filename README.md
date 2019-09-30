@@ -11,6 +11,7 @@
 | Website | | http://nethermind.io/ |
 |Docker||https://hub.docker.com/r/nethermind/nethermind|
 |Codecov.io| [![codecov](https://codecov.io/gh/NethermindEth/nethermind/branch/master/graph/badge.svg)](https://codecov.io/gh/NethermindEth/nethermind) | https://codecov.io/gh/NethermindEth/nethermind |
+| Fund | with Gitcoin | https://gitcoin.co/grants/142/nethermind |
 
 ## Download and run:
 
