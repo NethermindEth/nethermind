@@ -12,21 +12,22 @@ namespace Cortex.BeaconNode
         private const string YamlConfigKey = "config";
 
         private readonly IConfiguration _configuration;
-        private readonly IHostEnvironment _environment;
+        private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
         private readonly ILogger _logger;
 
-        public Worker(ILogger<Worker> logger, IHostEnvironment environment, IConfiguration configuration)
+        public Worker(ILogger<Worker> logger, IConfiguration configuration, BeaconNodeConfiguration beaconNodeConfiguration)
         {
             _logger = logger;
-            _environment = environment;
             _configuration = configuration;
+            _beaconNodeConfiguration = beaconNodeConfiguration;
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
+            var version = _beaconNodeConfiguration.Version;
             var yamlConfig = _configuration[YamlConfigKey];
-            _logger.LogInformation("{ApplicationName} started with config '{Config}'",
-                _environment.ApplicationName, yamlConfig);
+            _logger.LogInformation("'{ProductTokenVersion}' started with config '{Config}'",
+                version, yamlConfig);
 
             while (!stoppingToken.IsCancellationRequested)
             {
