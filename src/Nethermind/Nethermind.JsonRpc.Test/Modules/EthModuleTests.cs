@@ -448,5 +448,18 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x5e2590\",\"highestBlock\":\"0x5e44d0\"}}", serialized);
         }
+        
+        [Test]
+        public void Eth_chain_id()
+        {
+            IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+            bridge.GetChainId().Returns(1);
+
+            IEthModule module = new EthModule(NullLogManager.Instance, bridge);
+
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, module, "eth_chainid");
+
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":1", serialized);
+        }
     }
 }

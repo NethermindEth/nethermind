@@ -202,6 +202,11 @@ namespace Nethermind.Facade
             return callOutputTracer.GasSpent;
         }
 
+        public long GetChainId()
+        {
+            return _blockTree.ChainId;
+        }
+
         public byte[] GetCode(Address address)
         {
             return _stateReader.GetCode(_blockTree.Head.StateRoot, address);

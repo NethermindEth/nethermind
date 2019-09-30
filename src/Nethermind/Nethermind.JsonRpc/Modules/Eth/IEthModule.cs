@@ -31,6 +31,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
     [RpcModule(ModuleType.Eth)]
     public interface IEthModule : IModule
     {
+        ResultWrapper<long> eth_chainId();
         ResultWrapper<string> eth_protocolVersion();
         ResultWrapper<SyncingResult> eth_syncing();
         ResultWrapper<Address> eth_coinbase();

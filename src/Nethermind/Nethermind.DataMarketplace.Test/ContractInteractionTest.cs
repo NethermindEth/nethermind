@@ -154,22 +154,22 @@ namespace Nethermind.DataMarketplace.Test
 
             public IReadOnlyCollection<Address> GetWalletAccounts()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Signature Sign(Address address, Keccak message)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Signature Sign(Address address, byte[] message)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public void Sign(Transaction transaction)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int GetNetworkId()
@@ -222,12 +222,12 @@ namespace Nethermind.DataMarketplace.Test
 
             public Block FindHeadBlock()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Block FindGenesisBlock()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
@@ -240,7 +240,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public Keccak GetBlockHash(Keccak transactionHash)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             private BlockReceiptsTracer _receiptsTracer;
@@ -270,17 +270,22 @@ namespace Nethermind.DataMarketplace.Test
 
             public long EstimateGas(Block block, Transaction transaction)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
+            }
+
+            public long GetChainId()
+            {
+                throw new NotImplementedException();
             }
 
             public byte[] GetCode(Address address)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public byte[] GetCode(Keccak codeHash)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             Dictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>();
@@ -303,82 +308,82 @@ namespace Nethermind.DataMarketplace.Test
 
             public UInt256 GetBalance(Address address)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public byte[] GetStorage(Address address, UInt256 index)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Account GetAccount(Address address)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Account GetAccount(Address address, Keccak stateRoot)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int NewBlockFilter()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int NewPendingTransactionFilter()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public void UninstallFilter(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public bool FilterExists(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterLog[] GetLogFilterChanges(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Keccak[] GetBlockFilterChanges(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Keccak[] GetPendingTransactionFilterChanges(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterType GetFilterType(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterLog[] GetFilterLogs(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
@@ -388,7 +393,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public TxPoolInfo GetTxPoolInfo()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
         }
     }
