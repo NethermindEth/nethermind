@@ -8,6 +8,6 @@ namespace Cortex.BeaconNode
 {
     public class TimeParameters
     {
-        public Slot SlotsPerEpoch { get; set; } // = 2 ^ 6;
+        public Slot SlotsPerEpoch { get; set; }
     }
 }
