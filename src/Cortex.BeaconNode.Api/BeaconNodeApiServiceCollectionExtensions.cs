@@ -1,9 +1,5 @@
-using System.Reflection;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
+﻿using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 
 namespace Cortex.BeaconNode.Api
 {
@@ -13,9 +9,23 @@ namespace Cortex.BeaconNode.Api
         {
             // Register adapter
             services.AddScoped<IBeaconNodeApiController, BeaconNodeApiAdapter>();
-            // Register controllers            
+            // Register controllers
             var apiAssembly = typeof(BeaconNodeServiceCollectionExtensions).GetTypeInfo().Assembly;
-            services.AddMvc().AddApplicationPart(apiAssembly);
+            //services.AddControllers()
+            //    .AddJsonOptions(options => { });
+            services.AddMvc(setup =>
+            {
+                setup.ModelBinderProviders.Insert(0, new PrefixedHexByteArrayModelBinderProvider());
+             })
+                //.AddNewtonsoftJson(setup =>
+                //{
+                //    setup.SerializerSettings.Converters.Add(new ByteToPrefixedHexNewtonsoftJsonConverter());
+                //})
+                .AddJsonOptions(options =>
+                {
+                    options.JsonSerializerOptions.Converters.Add(new PrefixedHexByteArrayJsonConverter());
+                })
+                .AddApplicationPart(apiAssembly);
         }
     }
 }
