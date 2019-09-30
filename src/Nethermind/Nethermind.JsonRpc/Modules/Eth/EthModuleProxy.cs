@@ -37,6 +37,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _proxy = proxy;
         }
 
+        public ResultWrapper<long> eth_chainId()
+        {
+            throw new NotSupportedException();
+        }
+
         public ResultWrapper<string> eth_protocolVersion()
         {
             throw new NotSupportedException();
