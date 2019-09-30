@@ -9,7 +9,7 @@ namespace Cortex.BeaconNode
         {
             services.Configure<TimeParameters>(timeParameters =>
             {
-                timeParameters.SlotsPerEpoch = configuration.GetValue<ulong>("SLOTS_PER_EPOCH", 1);
+                timeParameters.SlotsPerEpoch = configuration.GetValue<ulong>("SLOTS_PER_EPOCH");
             });
 
             services.AddSingleton<BeaconChain>();
