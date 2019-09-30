@@ -51,7 +51,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             
             _channel = Substitute.For<IChannel>();
             _channel.Pipeline.Returns(_pipeline);
-            _channel.RemoteAddress.Returns(new IPEndPoint(new IPAddress(new byte[] {127, 0, 0, 1}), 8003));
+            _channel.RemoteAddress.Returns(new IPEndPoint(IPAddress.Loopback, 8003));
 
             _channelHandlerContext = Substitute.For<IChannelHandlerContext>();
             _channelHandlerContext.Channel.Returns(_channel);

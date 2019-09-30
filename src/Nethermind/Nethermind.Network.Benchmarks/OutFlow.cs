@@ -51,11 +51,8 @@ namespace Nethermind.Network.Benchmarks
 
         private NewBlockMessageSerializer _newBlockMessageSerializer;
         private Block _block;
-        private TestSplitter _splitter;
         private TestZeroSplitter _zeroSplitter;
         private TestZeroEncoder _zeroEncoder;
-        private TestEncoder _encoder;
-        private TestSnappy _snappyEncoder;
         private TestZeroSnappy _zeroSnappyEncoder;
         private NewBlockMessage _newBlockMessage;
         private PacketSender _packetSender;
@@ -67,9 +64,6 @@ namespace Nethermind.Network.Benchmarks
             SetupAll();
             Current();
             Check();
-            SetupAll();
-            Improved();
-            Check();
             SetupAll(true);
         }
 
@@ -79,13 +73,9 @@ namespace Nethermind.Network.Benchmarks
             
             FrameCipher frameCipher = new FrameCipher(secrets.A.AesSecret);
             FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, secrets.A);
-            _encoder = new TestEncoder(frameCipher, frameMacProcessor);
-            _splitter = new TestSplitter();
-            _splitter.DisableFraming();
             _zeroSplitter = new TestZeroSplitter();
             _zeroSplitter.DisableFraming();
             _zeroEncoder = new TestZeroEncoder(frameCipher, frameMacProcessor);
-            _snappyEncoder = new TestSnappy();
             _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
@@ -104,19 +94,6 @@ namespace Nethermind.Network.Benchmarks
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
         }
 
-        private class TestEncoder : Rlpx.NettyFrameEncoder
-        {
-            public void Encode(byte[] message, IByteBuffer buffer)
-            {
-                base.Encode(null, message, buffer);
-            }
-
-            public TestEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
-                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-            }
-        }
-
         private class TestZeroEncoder : Rlpx.ZeroFrameEncoder
         {
             public void Encode(IByteBuffer message, IByteBuffer buffer)
@@ -126,18 +103,6 @@ namespace Nethermind.Network.Benchmarks
 
             public TestZeroEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
                 : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-            }
-        }
-
-        private class TestSplitter : Rlpx.NettyPacketSplitter
-        {
-            public void Encode(Packet message, List<object> output)
-            {
-                base.Encode(null, message, output);
-            }
-
-            public TestSplitter() : base(LimboLogs.Instance)
             {
             }
         }
@@ -152,21 +117,6 @@ namespace Nethermind.Network.Benchmarks
             public void Encode(IByteBuffer input, IByteBuffer output)
             {
                 base.Encode(null, input, output);
-            }
-        }
-
-        public class TestSnappy : SnappyEncoder
-        {
-            public TestSnappy()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            public Packet TestEncode(Packet input)
-            {
-                List<object> result = new List<object>();
-                Encode(null, input, result);
-                return (Packet) result[0];
             }
         }
 
@@ -197,24 +147,13 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        [Benchmark]
-        public void Improved()
+        [Benchmark(Baseline = true)]
+        public void Current()
         {
             _newBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
             _zeroSnappyEncoder.TestEncode(_snappyBuffer, _splitterBuffer);
             _zeroSplitter.Encode(_splitterBuffer, _encoderBuffer);
             _zeroEncoder.Encode(_encoderBuffer, _outputBuffer);
-        }
-
-        [Benchmark(Baseline = true)]
-        public void Current()
-        {
-            byte[] message = _newBlockMessageSerializer.Serialize(_newBlockMessage);
-            Packet packet = new Packet("eth", 7, message);
-            Packet ensnapped = _snappyEncoder.TestEncode(packet);
-            List<object> output = new List<object>();
-            _splitter.Encode(ensnapped, output);
-            _encoder.Encode((byte[]) output[0], _outputBuffer);
         }
     }
 }
