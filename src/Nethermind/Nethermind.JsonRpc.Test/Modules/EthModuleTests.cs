@@ -459,7 +459,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, module, "eth_chainid");
 
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":1", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x1\"}", serialized);
         }
     }
 }
