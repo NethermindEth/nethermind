@@ -16,7 +16,7 @@ namespace Cortex.BeaconNode.Api
             services.AddMvc(setup =>
             {
                 setup.ModelBinderProviders.Insert(0, new PrefixedHexByteArrayModelBinderProvider());
-             })
+            })
                 //.AddNewtonsoftJson(setup =>
                 //{
                 //    setup.SerializerSettings.Converters.Add(new ByteToPrefixedHexNewtonsoftJsonConverter());

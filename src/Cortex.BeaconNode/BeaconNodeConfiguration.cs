@@ -1,9 +1,8 @@
-using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode
 {
@@ -30,14 +29,14 @@ namespace Cortex.BeaconNode
             var product1 = $"{productToken}/{version}";
             parts.Add(product1);
 
-            if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production) 
+            if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)
             {
                 var comment1 = $"({environmentName})";
                 parts.Add(comment1);
             }
 
             var versionString = string.Join(" ", parts);
-            return versionString;   
+            return versionString;
         }
     }
 }

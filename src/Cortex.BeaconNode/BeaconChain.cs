@@ -1,5 +1,4 @@
-﻿using System;
-using Cortex.Containers;
+﻿using Cortex.Containers;
 
 namespace Cortex.BeaconNode
 {

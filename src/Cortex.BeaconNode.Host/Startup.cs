@@ -1,5 +1,4 @@
-using System.Reflection;
-using Cortex.BeaconNode.Api;
+﻿using Cortex.BeaconNode.Api;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
@@ -10,17 +9,12 @@ namespace Cortex.BeaconNode
 {
     public class Startup
     {
-        public IConfiguration Configuration { get; }
-
         public Startup(IConfiguration configuration)
         {
             Configuration = configuration;
         }
 
-        public void ConfigureServices(IServiceCollection services)
-        {
-            services.AddBeaconNodeApi();
-        }
+        public IConfiguration Configuration { get; }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
@@ -45,6 +39,11 @@ namespace Cortex.BeaconNode
             {
                 endpoints.MapControllers();
             });
+        }
+
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddBeaconNodeApi();
         }
     }
 }

@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
+﻿using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
@@ -28,7 +25,7 @@ namespace Cortex.BeaconNode
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var yamlConfig = _configuration[YamlConfigKey];
-            _logger.LogInformation("{ApplicationName} started with config '{Config}'", 
+            _logger.LogInformation("{ApplicationName} started with config '{Config}'",
                 _environment.ApplicationName, yamlConfig);
 
             while (!stoppingToken.IsCancellationRequested)

@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -13,11 +10,6 @@ namespace Cortex.BeaconNode
     {
         private const string DefaultYamlConfig = "mainnet";
         private const string YamlConfigKey = "config";
-
-        public static void Main(string[] args)
-        {
-            CreateHostBuilder(args).Build().Run();
-        }
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Host.CreateDefaultBuilder(args)
@@ -32,7 +24,7 @@ namespace Cortex.BeaconNode
                     if (string.IsNullOrWhiteSpace(yamlConfig))
                     {
                         yamlConfig = DefaultYamlConfig;
-                        config.AddInMemoryCollection(new Dictionary<string, string> {{ YamlConfigKey, yamlConfig}});
+                        config.AddInMemoryCollection(new Dictionary<string, string> { { YamlConfigKey, yamlConfig } });
                     }
                     config.AddYamlFile($"{yamlConfig}.yaml");
                     config.AddCommandLine(args);
@@ -46,5 +38,10 @@ namespace Cortex.BeaconNode
                 {
                     webBuilder.UseStartup<Startup>();
                 });
+
+        public static void Main(string[] args)
+        {
+            CreateHostBuilder(args).Build().Run();
+        }
     }
 }
