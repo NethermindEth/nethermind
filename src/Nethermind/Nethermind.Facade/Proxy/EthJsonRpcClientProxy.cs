@@ -35,8 +35,8 @@ namespace Nethermind.Facade.Proxy
         public Task<RpcResult<UInt256>> eth_chainId()
             => _proxy.SendAsync<UInt256>(nameof(eth_chainId));
 
-        public Task<RpcResult<UInt256?>> eth_blockNumber()
-            => _proxy.SendAsync<UInt256?>(nameof(eth_blockNumber));
+        public Task<RpcResult<long?>> eth_blockNumber()
+            => _proxy.SendAsync<long?>(nameof(eth_blockNumber));
 
         public Task<RpcResult<UInt256?>> eth_getBalance(Address address, BlockParameterModel blockParameter = null)
             => _proxy.SendAsync<UInt256?>(nameof(eth_getBalance), address, MapBlockParameter(blockParameter));

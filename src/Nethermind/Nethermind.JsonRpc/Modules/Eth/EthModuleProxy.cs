@@ -77,8 +77,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public async Task<ResultWrapper<UInt256?>> eth_blockNumber()
-            => ResultWrapper<UInt256?>.From(await _proxy.eth_blockNumber());
+        public async Task<ResultWrapper<long?>> eth_blockNumber()
+            => ResultWrapper<long?>.From(await _proxy.eth_blockNumber());
 
         public async Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)
             => ResultWrapper<UInt256?>.From(await _proxy.eth_getBalance(address, MapBlockParameter(blockParameter)));

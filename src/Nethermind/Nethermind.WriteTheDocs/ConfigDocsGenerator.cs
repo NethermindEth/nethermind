@@ -56,7 +56,7 @@ Use '/' as the path separator so the configs can be shared between all platforms
 
 ::
 
-    [
+    {
 ");
 
             List<(Type ConfigType, Type ConfigInterface)> configTypes = new List<(Type, Type)>();
@@ -83,14 +83,14 @@ Use '/' as the path separator so the configs can be shared between all platforms
                 {
                     descriptionsBuilder.AppendLine($"{categoryAttribute.Description}").AppendLine();
                 }
-
-                exampleBuilder.AppendLine("      {");
-                exampleBuilder.AppendLine($"        \"ConfigModule\": \"{configType.Name}\"");
-                exampleBuilder.AppendLine("        \"ConfigItems\": {");
+                
+                exampleBuilder.AppendLine($"        \"{configType.Name.Replace("Config", string.Empty)}\": {{");
 
                 var properties = configType.GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                int propertyIndex = 0;
                 foreach (PropertyInfo propertyInfo in properties.OrderBy(p => p.Name))
                 {
+                    propertyIndex++;
                     PropertyInfo interfaceProperty = configInterface.GetProperty(propertyInfo.Name);
                     if (interfaceProperty == null)
                     {
@@ -99,9 +99,16 @@ Use '/' as the path separator so the configs can be shared between all platforms
                     
                     ConfigItemAttribute attribute = interfaceProperty.GetCustomAttribute<ConfigItemAttribute>();
                     string defaultValue = attribute == null ? "[MISSING_DOCS]" : attribute.DefaultValue;
-                    
-                    exampleBuilder.AppendLine($"          \"{propertyInfo.Name}\" : {defaultValue},");
-                    
+
+                    if (propertyIndex == properties.Length)
+                    {
+                        exampleBuilder.AppendLine($"              \"{propertyInfo.Name}\" : {defaultValue}");
+                    }
+                    else
+                    {
+                        exampleBuilder.AppendLine($"              \"{propertyInfo.Name}\" : {defaultValue},");
+                    }
+
                     if (attribute == null)
                     {
                         descriptionsBuilder.AppendLine($" {propertyInfo.Name}").AppendLine();
@@ -115,22 +122,16 @@ Use '/' as the path separator so the configs can be shared between all platforms
                         .AppendLine();
                 }
 
-                if (exampleBuilder.Length > 0 && exampleBuilder[exampleBuilder.Length - 1] == ',')
-                {
-                    exampleBuilder.Remove(exampleBuilder.Length - 1, 1);
-                }
-                
-                exampleBuilder.AppendLine("        }");
-                exampleBuilder.AppendLine("      },");
+                exampleBuilder.AppendLine("        },");
             }
 
-            exampleBuilder.AppendLine("    ]");
+            exampleBuilder.AppendLine("    }");
 
             string result = string.Concat(descriptionsBuilder.ToString(), exampleBuilder.ToString());
 
             Console.WriteLine(result);
             File.WriteAllText("configuration.rst", result);
-            File.WriteAllText("../../../docs/source/configuration.rst", result);
+            File.WriteAllText("../../../../../../docs/source/configuration.rst", result);
         }
     }
 }

@@ -76,7 +76,7 @@ Some of the methods listed below are not implemented by Nethermind (they are mar
 
             Console.WriteLine(result);
             File.WriteAllText("jsonrpc.rst", result);
-            File.WriteAllText("../../../docs/source/jsonrpc.rst", result);
+            File.WriteAllText("../../../../../../docs/source/jsonrpc.rst", result);
         }
     }
 }
