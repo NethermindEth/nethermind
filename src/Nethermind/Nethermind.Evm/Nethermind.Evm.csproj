@@ -15,12 +15,4 @@
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="1.2.2" />
     <PackageReference Include="System.Buffers" Version="4.5.0" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="System.Memory">
-      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\system.memory\4.5.0-preview1-26216-02\ref\netstandard2.1\System.Memory.dll</HintPath>
-    </Reference>
-    <Reference Include="System.Numerics.Vectors">
-      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\system.numerics.vectors\4.5.0-preview1-26216-02\ref\netstandard2.1\System.Numerics.Vectors.dll</HintPath>
-    </Reference>
-  </ItemGroup>
 </Project>

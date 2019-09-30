@@ -24,9 +24,4 @@
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="1.2.2" />
     <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Microsoft.IO.RecyclableMemoryStream">
-      <HintPath>C:\Users\glesniakiewicz\.nuget\packages\microsoft.io.recyclablememorystream\1.2.2\lib\netstandard1.4\Microsoft.IO.RecyclableMemoryStream.dll</HintPath>
-    </Reference>
-  </ItemGroup>
 </Project>
