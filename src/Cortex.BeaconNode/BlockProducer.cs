@@ -5,12 +5,18 @@ namespace Cortex.BeaconNode
 {
     public class BlockProducer
     {
-        public BlockProducer()
+        private readonly Store _store;
+
+        public BlockProducer(Store store)
         {
+            _store = store;
         }
 
         public async Task<BeaconBlock> NewBlockAsync(ulong slot, byte[] randaoReveal)
         {
+
+            var head = await _store.GetHeadAsync();
+
             // get previous head block, based on the fork choice
             // get latest state
             // process outstanding slots for state
