@@ -1,9 +1,12 @@
 language: csharp
 mono: none
 sudo: required
-dist: bionic
-dotnet: 2.2
+dist: xenial
 addons:
+  snaps:
+  - name: dotnet-sdk
+    classic: true
+    channel: latest/beta
   sonarcloud:
     organization: nethermindeth
     token:
@@ -21,6 +24,9 @@ notifications:
 after_success:
   - sonar-scanner
   - bash <(curl -s https://codecov.io/bash)
+script:
+  - sudo snap alias dotnet-sdk.dotnet dotnet
+  - dotnet --version
 jobs:
   include:
     # - script: dotnet test -c Release src/Nethermind/Ethereum.VM.Test
