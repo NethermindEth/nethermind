@@ -8,8 +8,6 @@ namespace Cortex.BeaconNode
     {
         public BeaconChain()
         {
-            // FIXME: This is a testing intialization
-            State = new BeaconState(106185600);
         }
 
         public BeaconState State { get; }
