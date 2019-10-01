@@ -24,7 +24,9 @@ using Jint;
 using Jint.Native;
 using Jint.Parser;
 using Jint.Runtime.Interop;
+using Nethermind.Cli.Converters;
 using Nethermind.Cli.Modules;
+using Nethermind.Core.Converters;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Cli
@@ -43,6 +45,7 @@ namespace Nethermind.Cli
 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Console.WriteLine(v.ToString());
             }));
+            JintEngine.ClrTypeConverter = new FallbackTypeConverter(JintEngine.ClrTypeConverter, new BigIntegerTypeConverter());
         }
 
         private void LoadFile(string filePath)
