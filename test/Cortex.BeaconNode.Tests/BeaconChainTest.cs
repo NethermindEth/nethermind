@@ -27,11 +27,21 @@ namespace Cortex.BeaconNode.Tests
         public async Task GenesisWithEmptyParametersTimeShouldReject()
         {
             // Arrange
-            var beaconChain = new BeaconChain();
+            var beaconChainParameters = new BeaconChainParameters()
+            {
+                MinGenesisActiveValidatorCount = 2,
+                MinGenesisTime = 1578009600 // Jan 3, 2020
+            };
+            var initalValues = new InitialValues()
+            {
+                GenesisEpoch = 0
+            };
+            var timeParameters = new TimeParameters();
+            var beaconChain = new BeaconChain(null, beaconChainParameters, initalValues, timeParameters);
 
             // Act
             var eth1BlockHash = new byte[] { };
-            var eth1Timestamp = (ulong)0;
+            var eth1Timestamp = (ulong)106185600; // 1973-05-14
             var deposits = new Deposit[] { };
             var success = await beaconChain.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
 

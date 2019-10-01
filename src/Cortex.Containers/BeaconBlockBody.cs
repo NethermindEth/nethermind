@@ -6,6 +6,10 @@ namespace Cortex.Containers
 {
     public class BeaconBlockBody
     {
+        public BeaconBlockBody()
+        {
+        }
+
         public BeaconBlockBody(BlsSignature[] randaoReveal)
         {
             RandaoReveal = randaoReveal;
