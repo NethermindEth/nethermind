@@ -10,7 +10,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="MathNet.Numerics.FSharp" Version="4.7.0" />
+      <PackageReference Include="MathNet.Numerics.FSharp" Version="4.8.1" />
     </ItemGroup>
 
 </Project>
