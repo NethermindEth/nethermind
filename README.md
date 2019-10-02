@@ -55,7 +55,11 @@ Client code:
 dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
+## Contributions
 
+Donations can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
+
+Help me try and reach the 32 Eth needed to be a validator.
 
 ## To Do
 
@@ -64,6 +68,3 @@ dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oap
 * Commands to install as a Windows Service
 
 https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/windows-service?view=aspnetcore-3.0&tabs=netcore-cli
-
-
-
