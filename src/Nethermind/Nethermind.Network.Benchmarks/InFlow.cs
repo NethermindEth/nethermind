@@ -50,11 +50,8 @@ namespace Nethermind.Network.Benchmarks
         private NewBlockMessageSerializer _newBlockMessageSerializer;
         private NewBlockMessageSerializer _zeroNewBlockMessageSerializer;
         private Block _block;
-        private TestMerger _merger;
         private TestZeroMerger _zeroMerger;
         private TestZeroDecoder _zeroDecoder;
-        private TestDecoder _decoder;
-        private TestSnappy _snappyEncoder;
 //        private TestZeroSnappy _zeroSnappyEncoder;
         private NewBlockMessage _newBlockMessage;
         private MessageSerializationService _serializationService;
@@ -91,15 +88,12 @@ namespace Nethermind.Network.Benchmarks
             _secrets = NetTestVectors.GetSecretsPair();
             FrameCipher frameCipher = new FrameCipher(_secrets.B.AesSecret);
             FrameMacProcessor frameMacProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, _secrets.B);
-            _decoder = new TestDecoder(frameCipher, frameMacProcessor);
             _zeroDecoder = new TestZeroDecoder(frameCipher, frameMacProcessor);
         }
 
         private void SetupAll(bool useLimboOutput = false)
         {
-            _merger = new TestMerger();
             _zeroMerger = new TestZeroMerger();
-            _snappyEncoder = new TestSnappy();
 //            _zeroSnappyEncoder = new TestZeroSnappy();
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
@@ -111,25 +105,6 @@ namespace Nethermind.Network.Benchmarks
             _serializationService = new MessageSerializationService();
             _serializationService.Register(_newBlockMessageSerializer);
             ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Paranoid;
-        }
-
-        private class TestDecoder : NettyFrameDecoder
-        {
-            public List<byte[]> Decode(IByteBuffer buffer)
-            {
-                var result = new List<object>();
-                while (buffer.ReadableBytes > 0)
-                {
-                    base.Decode(null, buffer, result);
-                }
-
-                return result.Cast<byte[]>().ToList();
-            }
-
-            public TestDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
-                : base(frameCipher, frameMacProcessor, LimboLogs.Instance)
-            {
-            }
         }
 
         private class TestZeroDecoder : ZeroFrameDecoder
@@ -147,25 +122,6 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private class TestMerger : Rlpx.NettyFrameMerger
-        {
-            public TestMerger()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            public Packet Decode(List<byte[]> input)
-            {
-                var result = new List<object>();
-                for (int i = 0; i < input.Count; i++)
-                {
-                    base.Decode(null, input[i], result);    
-                }
-                
-                return (Packet) result[0];
-            }
-        }
-
         private class TestZeroMerger : Rlpx.ZeroFrameMerger
         {
             public TestZeroMerger()
@@ -178,21 +134,6 @@ namespace Nethermind.Network.Benchmarks
                 var result = new List<object>();
                 base.Decode(null, input, result);
                 return (IByteBuffer) result[0];
-            }
-        }
-
-        public class TestSnappy : SnappyEncoder
-        {
-            public TestSnappy()
-                : base(LimboLogs.Instance)
-            {
-            }
-
-            public Packet TestEncode(Packet input)
-            {
-                List<object> result = new List<object>();
-                Encode(null, input, result);
-                return (Packet) result[0];
             }
         }
 
@@ -217,23 +158,14 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        [Benchmark]
-        public void Improved()
+        [Benchmark(Baseline = true)]
+        public void Current()
         {
             _decoderBuffer.WriteBytes(_input);
             IByteBuffer decoded = _zeroDecoder.Decode(_decoderBuffer);
             IByteBuffer merged = _zeroMerger.Decode(decoded);
             merged.ReadByte();
             _outputMessage = _newBlockMessageSerializer.Deserialize(merged.ReadAllBytes());
-        }
-
-        [Benchmark]
-        public void Current()
-        {
-            _decoderBuffer.WriteBytes(_input);
-            List<byte[]> decoded = _decoder.Decode(_decoderBuffer);
-            Packet merged = _merger.Decode(decoded);
-            _outputMessage = _newBlockMessageSerializer.Deserialize(merged.Data);
         }
     }
 }

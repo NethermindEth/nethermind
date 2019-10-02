@@ -45,7 +45,7 @@ namespace Nethermind.Network.P2P
 
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            if (_logger.IsDebug) _logger.Debug($"Registering {nameof(NettyP2PHandler)}");
+            if (_logger.IsDebug) _logger.Debug($"Registering {nameof(ZeroNettyP2PHandler)}");
             base.ChannelRegistered(context);
         }
 

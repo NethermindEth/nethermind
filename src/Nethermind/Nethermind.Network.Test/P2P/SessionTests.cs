@@ -49,7 +49,7 @@ namespace Nethermind.Network.Test.P2P
             _pipeline = Substitute.For<IChannelPipeline>();
             _channelHandlerContext.Channel.Returns(_channel);
             _channel.Pipeline.Returns(_pipeline);
-            _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter(LimboLogs.Instance));
+            _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter(LimboLogs.Instance));
             _packetSender = Substitute.For<IPacketSender>();
         }
 
@@ -160,8 +160,8 @@ namespace Nethermind.Network.Test.P2P
         public void Can_enable_snappy()
         {
             Session session = new Session(30312, LimboLogs.Instance, _channel, new Node("127.0.0.1", 8545));
-            NettyP2PHandler handler = new NettyP2PHandler(session, LimboLogs.Instance);
-            _pipeline.Get<NettyP2PHandler>().Returns(handler);
+            ZeroNettyP2PHandler handler = new ZeroNettyP2PHandler(session, LimboLogs.Instance);
+            _pipeline.Get<ZeroNettyP2PHandler>().Returns(handler);
             Assert.False(handler.SnappyEnabled);
             session.Handshake(TestItem.PublicKeyA);
             session.Init(5, _channelHandlerContext, _packetSender);

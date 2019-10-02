@@ -67,7 +67,7 @@ namespace Nethermind.Network
             catch (Exception e)
             {
                 if(_logger.IsError) _logger.Error("Error while getting external ip", e);
-                return IPAddress.Parse("127.0.0.1");
+                return IPAddress.Loopback;
             }
         }
 

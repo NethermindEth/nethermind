@@ -8,9 +8,10 @@
 | One day we will tweet at |  | https://twitter.com/nethermindeth |
 | Releases | [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases) | https://github.com/NethermindEth/nethermind/releases |
 | Travis CI | [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind) | https://travis-ci.org/NethermindEth/nethermind |
-| Website | | http://nethermind.io/ |
+| Website | | https://nethermind.io/ |
 |Docker||https://hub.docker.com/r/nethermind/nethermind|
 |Codecov.io| [![codecov](https://codecov.io/gh/NethermindEth/nethermind/branch/master/graph/badge.svg)](https://codecov.io/gh/NethermindEth/nethermind) | https://codecov.io/gh/NethermindEth/nethermind |
+| Fund | with Gitcoin | https://gitcoin.co/grants/142/nethermind |
 
 ## Download and run:
 
@@ -77,7 +78,7 @@ At Nethermind we are building an open source multiplatform Ethereum client imple
 
 Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. The latest prod version of Nethermind can be found at downloads.nethermind.io.
 # Links
-http://nethermind.io/
+https://nethermind.io/
 
 # License
 [![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)

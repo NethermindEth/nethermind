@@ -47,8 +47,8 @@ namespace Nethermind.Network.Test.Discovery
         private List<IChannel> _channels;
         private List<NettyDiscoveryHandler> _discoveryHandlers;
         private List<IDiscoveryManager> _discoveryManagers;
-        private readonly IPEndPoint _address = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 10001);
-        private readonly IPEndPoint _address2 = new IPEndPoint(IPAddress.Parse("127.0.0.1"), 10002);
+        private readonly IPEndPoint _address = new IPEndPoint(IPAddress.Loopback, 10001);
+        private readonly IPEndPoint _address2 = new IPEndPoint(IPAddress.Loopback, 10002);
         private int _channelActivatedCounter;
 
         [SetUp]

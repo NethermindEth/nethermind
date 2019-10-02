@@ -18,6 +18,8 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
@@ -43,23 +45,22 @@ namespace Nethermind.Network.Test.Rlpx
             {
                 List<object> result = new List<object>();
                 Decode(null, new Packet(input), result);
-                return ((Packet)result[0]).Data;
+                return ((Packet) result[0]).Data;
             }
         }
 
-        public class SnappyEncoderForTest : SnappyEncoder
+        public class ZeroSnappyEncoderForTest : ZeroSnappyEncoder
         {
-            public SnappyEncoderForTest()
+            public ZeroSnappyEncoderForTest()
                 : base(LimboLogs.Instance)
             {
-                
             }
-            
+
             public byte[] TestEncode(byte[] input)
             {
-                List<object> result = new List<object>();
-                Encode(null, new Packet(input), result);
-                return ((Packet)result[0]).Data;
+                var result = UnpooledByteBufferAllocator.Default.Buffer();
+                Encode(null, input.ToUnpooledByteBuffer(), result);
+                return result.ReadAllBytes();
             }
         }
 
@@ -103,26 +104,26 @@ namespace Nethermind.Network.Test.Rlpx
             byte[] bytes = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             Assert.Greater(bytes.Length, 70 * 1024);
         }
-        
+
         [Test]
-        public void Uses_same_compression_as_py()
+        public void Uses_same_compression_as_py_zero()
         {
             byte[] bytesPy = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
-            
-            SnappyEncoderForTest encoder = new SnappyEncoderForTest();
-            byte[] compressed = encoder.TestEncode(bytesUncompressed);
-            Assert.AreEqual(bytesPy, compressed);
+
+            ZeroSnappyEncoderForTest encoder = new ZeroSnappyEncoderForTest();
+            byte[] compressed = encoder.TestEncode(Bytes.Concat(1, bytesUncompressed));
+            Assert.AreEqual(bytesPy, compressed.Skip(1).ToArray());
         }
 
         [Test]
-        public void Roundtrip()
+        public void Roundtrip_zero()
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
-            SnappyEncoderForTest encoder = new SnappyEncoderForTest();
+            ZeroSnappyEncoderForTest encoder = new ZeroSnappyEncoderForTest();
             byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
-            byte[] compressed = encoder.TestEncode(expectedUncompressed);
-            byte[] uncompressedResult = decoder.TestDecode(compressed);
+            byte[] compressed = encoder.TestEncode(Bytes.Concat(1, expectedUncompressed));
+            byte[] uncompressedResult = decoder.TestDecode(compressed.Skip(1).ToArray());
             Assert.AreEqual(expectedUncompressed, uncompressedResult);
         }
     }
