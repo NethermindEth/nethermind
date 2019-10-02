@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace Cortex.SimpleSerialize
 {
@@ -13,10 +11,7 @@ namespace Cortex.SimpleSerialize
         /// </summary>
         public SszByteArray(ReadOnlySpan<byte> value) => SetByteArray(value);
 
-        private void SetByteArray(ReadOnlySpan<byte> value)
-        {
-            _value = value.ToArray();
-        }
+        public override bool IsVariableSize { get { return false; } }
 
         public override ReadOnlySpan<byte> HashTreeRoot()
         {
@@ -27,6 +22,11 @@ namespace Cortex.SimpleSerialize
         public override ReadOnlySpan<byte> Serialize()
         {
             return _value;
+        }
+
+        private void SetByteArray(ReadOnlySpan<byte> value)
+        {
+            _value = value.ToArray();
         }
     }
 }

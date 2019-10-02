@@ -8,8 +8,6 @@ namespace Cortex.SimpleSerialize.Tests
     [TestClass]
     public class SszByteArrayTest
     {
-        private readonly HashAlgorithm hash = SHA256.Create();
-
         [DataTestMethod]
         public void ByteArray16Serialize()
         {
@@ -173,10 +171,7 @@ namespace Cortex.SimpleSerialize.Tests
 
         private byte[] Hash(byte[] c1, byte[] c2)
         {
-            var b = new byte[64];
-            c1.CopyTo(b, 0);
-            c2.CopyTo(b, 32);
-            return hash.ComputeHash(b);
+            return HashUtility.Hash(c1, c2);
         }
     }
 }

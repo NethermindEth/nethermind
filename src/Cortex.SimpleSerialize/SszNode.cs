@@ -29,7 +29,9 @@ namespace Cortex.SimpleSerialize
 
         // a) hash (to store, summarize, check or validate)
         // b) serialize and hash to sign
-        // c) just serialize 
+        // c) just serialize
+
+        public abstract bool IsVariableSize { get; }
 
         public abstract ReadOnlySpan<byte> HashTreeRoot();
 
