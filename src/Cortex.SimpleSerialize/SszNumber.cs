@@ -13,9 +13,15 @@ namespace Cortex.SimpleSerialize
         /// </summary>
         public SszNumber(ulong value) => SetUInt64(value);
 
-        public ReadOnlySpan<byte> ToBytes()
+        public override ReadOnlySpan<byte> Serialize()
         {
             return _value;
+        }
+
+        public override ReadOnlySpan<byte> HashTreeRoot()
+        {
+            var chunks = Pack(_value);
+            return Merkleize(chunks);
         }
 
         /// <summary>
