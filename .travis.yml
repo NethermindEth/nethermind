@@ -2,7 +2,7 @@ language: csharp
 mono: none
 sudo: required
 dist: bionic
-dotnet: 2.2
+dotnet: 3.0.100
 addons:
   sonarcloud:
     organization: nethermindeth

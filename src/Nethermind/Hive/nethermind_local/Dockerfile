@@ -1,5 +1,5 @@
 # Docker container spec for Nethermind Ethereum Client
-FROM microsoft/dotnet:2.2-aspnetcore-runtime
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.0
 RUN apt update -y && apt install -y libsnappy-dev libc6-dev libc6 unzip jq
 
 COPY Nethermind/ .
@@ -18,7 +18,5 @@ ENV NETHERMIND_INITCONFIG_JSONRPCENABLED true
 ENV NETHERMIND_INITCONFIG_P2PPORT 30303
 ENV NETHERMIND_INITCONFIG_DISCOVERYPORT 30303
 ENV NETHERMIND_URL http://*:8545
-
-EXPOSE 8545 30303
 
 ENTRYPOINT ["/nethermind.sh"]
