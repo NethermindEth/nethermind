@@ -18,7 +18,6 @@
 
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Reflection;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -133,7 +132,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void IncorrectMethodNameTest()
         {
-            JsonRpcResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method");
+            JsonRpcErrorResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method") as JsonRpcErrorResponse;
             Assert.AreEqual(response.Error.Code, JsonRpcService.ErrorCodes[ErrorType.MethodNotFound]);
             Assert.AreEqual(null, response.Result);
             Assert.AreEqual(response.JsonRpc, "2.0");
@@ -155,7 +154,7 @@ namespace Nethermind.JsonRpc.Test
             netModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
             JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_version");
             Assert.AreEqual(response.Result, "1");
-            Assert.IsNull(response.Error);
+            Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
             Assert.AreEqual("2.0", response.JsonRpc);
         }
 

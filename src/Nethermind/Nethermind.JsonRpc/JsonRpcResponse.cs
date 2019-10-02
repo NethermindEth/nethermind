@@ -27,15 +27,21 @@ namespace Nethermind.JsonRpc
         [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
         public string JsonRpc { get; set; }
 
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 2)]
         public object Result { get; set; }
-
-        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
-        public Error Error { get; set; }
 
         [JsonConverter(typeof(UInt256Converter), NumberConversion.Decimal)]
         [JsonProperty(PropertyName = "id", Order = 0)]
         public UInt256 Id { get; set; }
+    }
+    
+    public class JsonRpcErrorResponse : JsonRpcResponse
+    {
+        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Ignore, Order = 2)]
+        public new object Result { get; set; }
+        
+        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
+        public Error Error { get; set; }
     }
 
     public class JsonRpcResponse<T>
