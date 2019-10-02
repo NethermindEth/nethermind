@@ -13,6 +13,6 @@ namespace Cortex.Containers
 
         public Hash[] BlockHash { get; }
         public ulong DepositCount { get; }
-        public Hash DepositRoot { get; }
+        public Hash[] DepositRoot { get; }
     }
 }
