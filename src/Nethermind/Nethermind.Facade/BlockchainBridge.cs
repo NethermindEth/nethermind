@@ -138,7 +138,11 @@ namespace Nethermind.Facade
         public TxReceipt GetReceipt(Keccak txHash)
         {
             var txReceipt = _receiptStorage.Find(txHash);
-            txReceipt.TxHash = txHash;
+            if (txReceipt != null)
+            {
+                txReceipt.TxHash = txHash;
+            }
+
             return txReceipt;
         }
 

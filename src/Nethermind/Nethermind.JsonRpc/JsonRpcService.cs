@@ -274,17 +274,17 @@ namespace Nethermind.JsonRpc
             return response;
         }
 
-        public JsonRpcResponse GetErrorResponse(ErrorType errorType, string message)
+        public JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message)
         {
             return GetErrorResponse(errorType, message, 0, null);
         }
 
         public IList<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, UInt256 id, string methodName, object result = null)
+        private JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message, UInt256 id, string methodName, object result = null)
         {
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
-            var response = new JsonRpcResponse
+            var response = new JsonRpcErrorResponse
             {
                 JsonRpc = JsonRpcVersion,
                 Id = id,
