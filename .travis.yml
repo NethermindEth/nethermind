@@ -1,12 +1,9 @@
 language: csharp
 mono: none
 sudo: required
-dist: xenial
+dist: bionic
+dotnet: 3.0.100
 addons:
-  snaps:
-  - name: dotnet-sdk
-    confinement: classic
-    channel: latest/stable
   sonarcloud:
     organization: nethermindeth
     token:
@@ -15,8 +12,6 @@ git:
   depth: false
   submodules: false
 before_script:
-  - sudo snap alias dotnet-sdk.dotnet dotnet
-  - dotnet --version
   - chmod -R +x scripts
 notifications:
   slack:
