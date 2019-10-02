@@ -1,7 +1,7 @@
 Security
 ********
 
-DO NOT use Nethermind walletr / signers for mainnet ETH handling!
+DO NOT use Nethermind wallet / signers for mainnet ETH handling!
 
 
 JSON RPC endpoint (port 8545) should not be exposed publicly (should be behind the firewall).
