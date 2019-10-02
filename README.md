@@ -26,7 +26,7 @@ it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
 
 ### Prerequisites
 
-.NET 2.2 SDK
+.NET 3.0 SDK
 
 #### Windows
 
