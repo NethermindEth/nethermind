@@ -90,10 +90,11 @@ namespace Nethermind.JsonRpc
                 
                 Metrics.JsonRpcRequests++;
                 JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
-                if (response.Error != null)
+                JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
+                if (localErrorResponse != null)
                 {
                     if (_logger.IsError)
-                        _logger.Error($"Failed to respond to {rpcRequest.Model.Method} {response.Error.Message}");
+                        _logger.Error($"Failed to respond to {rpcRequest.Model.Method} {localErrorResponse.Error.Message}");
                     Metrics.JsonRpcErrors++;
                 }
                 else
@@ -121,10 +122,11 @@ namespace Nethermind.JsonRpc
                     
                     Metrics.JsonRpcRequests++;
                     JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(jsonRpcRequest);
-                    if (response.Error != null)
+                    JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
+                    if (localErrorResponse != null)
                     {
                         if (_logger.IsError)
-                            _logger.Error($"Failed to respond to {jsonRpcRequest.Method} {response.Error.Message}");
+                            _logger.Error($"Failed to respond to {jsonRpcRequest.Method} {localErrorResponse.Error.Message}");
                         Metrics.JsonRpcErrors++;
                     }
                     else
@@ -145,7 +147,7 @@ namespace Nethermind.JsonRpc
             }
 
             Metrics.JsonRpcInvalidRequests++;
-            JsonRpcResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
+            JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
             TraceResult(errorResponse);
             stopwatch.Stop();
             if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
