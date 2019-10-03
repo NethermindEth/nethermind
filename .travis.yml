@@ -87,6 +87,14 @@ jobs:
           dotnet test -c Release src/Nethermind/Nethermind.Evm.Test;
         fi
       name: "Nethermind.Evm.Test"
+    - script: 
+      - git -c submodule."src/tests".update=none submodule update --init
+      - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Facade.Test;
+        else 
+          dotnet test -c Release src/Nethermind/Nethermind.Evm.Test;
+        fi
+      name: "Nethermind.Facade.Test"
     - script:
       - git -c submodule."src/tests".update=none submodule update --init
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
