@@ -28,9 +28,9 @@ echo =======================================================
 echo Packing Nethermind Cli for different platforms...
 echo =======================================================
 
-warp-packer --arch linux-x64 --input_dir $PUBLISH_PATH/$LINUX/publish --exec $EXEC --output $OUT/$LINUX/$EXEC
-warp-packer --arch macos-x64 --input_dir $PUBLISH_PATH/$OSX/publish --exec $EXEC --output $OUT/$OSX/$EXEC
-warp-packer --arch windows-x64 --input_dir $PUBLISH_PATH/$WIN10/publish --exec $EXEC.exe --output $OUT/$WIN10/$EXEC.exe
+/usr/local/bin/warp-packer --arch linux-x64 --input_dir $PUBLISH_PATH/$LINUX/publish --exec $EXEC --output $OUT/$LINUX/$EXEC
+/usr/local/bin/warp-packer --arch macos-x64 --input_dir $PUBLISH_PATH/$OSX/publish --exec $EXEC --output $OUT/$OSX/$EXEC
+/usr/local/bin/warp-packer --arch windows-x64 --input_dir $PUBLISH_PATH/$WIN10/publish --exec $EXEC.exe --output $OUT/$WIN10/$EXEC.exe
 
 mkdir -p $RELEASE_DIRECTORY/$LIN_RELEASE
 mkdir -p $RELEASE_DIRECTORY/$OSX_RELEASE
