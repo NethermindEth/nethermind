@@ -1,13 +1,18 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 
 namespace Cortex.SimpleSerialize
 {
     public class SszTree
     {
+        private const int BITS_PER_BYTE = 8;
         private const int BYTES_PER_CHUNK = 32;
+        private const int BYTES_PER_LENGTH_OFFSET = 4;
+
         private const int MAX_DEPTH = 25;
+        private const int MAX_LENGTH = 2 ^ (BYTES_PER_LENGTH_OFFSET * BITS_PER_BYTE);
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
         private static readonly byte[] _hashZeros = _hashAlgorithm.ComputeHash(new byte[BYTES_PER_CHUNK << 1]);
 
@@ -25,7 +30,7 @@ namespace Cortex.SimpleSerialize
 
         public ReadOnlySpan<byte> Serialize()
         {
-            return SerializeRecursive(RootElement);
+            return SerializeRecursive(RootElement).Bytes;
         }
 
         private ReadOnlySpan<byte> Hash(ReadOnlySpan<byte> data)
@@ -120,11 +125,11 @@ namespace Cortex.SimpleSerialize
             return chunks;
         }
 
-        private ReadOnlySpan<byte> SerializeRecursive(SszElement element)
+        private SerializeResult SerializeRecursive(SszElement element)
         {
             if (element is SszLeafElement leaf)
             {
-                return leaf.GetBytes();
+                return new SerializeResult(leaf.GetBytes(), leaf.IsVariableSize);
             }
             else if (element is SszCompositeElement composite)
             {
@@ -133,19 +138,62 @@ namespace Cortex.SimpleSerialize
                 //return composite.GetChildren()
                 //    .SelectMany(x => SerializeRecursive(x).ToArray())
                 //    .ToArray();
-                using (var memory = new MemoryStream())
+                //using (var memory = new MemoryStream())
+                //{
+                //    foreach (var child in composite.GetChildren())
+                //    {
+                //        memory.Write(SerializeRecursive(child));
+                //    }
+                //    return memory.ToArray();
+                //}
+                var parts = composite.GetChildren().Select(x => SerializeRecursive(x));
+                var isVariableSize = parts.Any(x => x.IsVariableSize);
+                var offset = parts.Where(x => !x.IsVariableSize).Sum(x => x.Bytes.Length)
+                    + parts.Count(x => x.IsVariableSize) * BYTES_PER_LENGTH_OFFSET;
+                var length = offset + parts.Where(x => x.IsVariableSize).Sum(x => x.Bytes.Length);
+                var result = new Span<byte>(new byte[length]);
+                var index = 0;
+                foreach (var part in parts)
                 {
-                    foreach (var child in composite.GetChildren())
+                    if (!part.IsVariableSize)
                     {
-                        memory.Write(SerializeRecursive(child));
+                        part.Bytes.CopyTo(result.Slice(index));
+                        index += part.Bytes.Length;
                     }
-                    return memory.ToArray();
+                    else
+                    {
+                        // Write offset in fixed part
+                        var serializedOffset = BitConverter.GetBytes((uint)offset);
+                        if (!BitConverter.IsLittleEndian)
+                        {
+                            Array.Reverse(serializedOffset);
+                        }
+                        serializedOffset.CopyTo(result.Slice(index));
+                        index += BYTES_PER_LENGTH_OFFSET;
+                        // Write variable parts at offset
+                        part.Bytes.CopyTo(result.Slice(offset));
+                        offset += part.Bytes.Length;
+                    }
                 }
+                return new SerializeResult(result, isVariableSize);
             }
             else
             {
                 throw new NotSupportedException();
             }
         }
+    }
+
+    internal class SerializeResult
+    {
+        public SerializeResult(ReadOnlySpan<byte> bytes, bool isVariableSize)
+        {
+            Bytes = bytes.ToArray();
+            IsVariableSize = isVariableSize;
+        }
+
+        public byte[] Bytes { get; }
+
+        public bool IsVariableSize { get; }
     }
 }

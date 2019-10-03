@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Security.Cryptography;
 
 namespace Cortex.SimpleSerialize.Tests
@@ -20,6 +21,19 @@ namespace Cortex.SimpleSerialize.Tests
             var chunk = new Span<byte>(new byte[32]);
             input.CopyTo(chunk);
             return chunk;
+        }
+
+        public static ReadOnlySpan<byte> Merge(ReadOnlySpan<byte> input1, ReadOnlySpan<byte> input2)
+        {
+            var result = new Span<byte>(new byte[input1.Length + input2.Length]);
+            input1.CopyTo(result);
+            input2.CopyTo(result.Slice(input1.Length));
+            return result;
+        }
+
+        public static ReadOnlySpan<byte> ZeroHashes(int start, int end)
+        {
+            return new byte[32];
         }
     }
 }
