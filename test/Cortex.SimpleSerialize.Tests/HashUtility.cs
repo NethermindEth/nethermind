@@ -1,4 +1,5 @@
-﻿using System.Security.Cryptography;
+﻿using System;
+using System.Security.Cryptography;
 
 namespace Cortex.SimpleSerialize.Tests
 {
@@ -6,12 +7,19 @@ namespace Cortex.SimpleSerialize.Tests
     {
         private static readonly HashAlgorithm hash = SHA256.Create();
 
-        public static byte[] Hash(byte[] c1, byte[] c2)
+        public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
-            var b = new byte[64];
-            c1.CopyTo(b, 0);
-            c2.CopyTo(b, 32);
-            return hash.ComputeHash(b);
+            var combined = new Span<byte>(new byte[64]);
+            a.CopyTo(combined);
+            b.CopyTo(combined.Slice(32));
+            return hash.ComputeHash(combined.ToArray());
+        }
+
+        public static ReadOnlySpan<byte> Chunk(ReadOnlySpan<byte> input)
+        {
+            var chunk = new Span<byte>(new byte[32]);
+            input.CopyTo(chunk);
+            return chunk;
         }
     }
 }
