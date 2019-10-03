@@ -10,6 +10,14 @@ namespace Cortex.SimpleSerialize
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
         private static readonly byte[] _hashZeros = _hashAlgorithm.ComputeHash(new byte[BYTES_PER_CHUNK << 1]);
 
+
+        // SszNodeType
+        // leaf nodes (e.g. basic types/vectors of basic types)
+        //  => have GetLeafBytes(), also length?, and IsVariableSize
+        // other nodes (containers, lists)
+        //  => have IEnumerable<node> of children
+        // 3x visitors, for Merkleization, Serialization, and both (self-signed)
+
         // X - A
         //   - B - C
         //         D

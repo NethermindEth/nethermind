@@ -8,7 +8,7 @@ namespace Cortex.SimpleSerialize.Tests
     [TestClass]
     public class SszByteArrayTest
     {
-        [DataTestMethod]
+        [TestMethod]
         public void ByteArray16Serialize()
         {
             // Arrange
@@ -32,7 +32,7 @@ namespace Cortex.SimpleSerialize.Tests
             hashTreeRootString.ShouldBe(expectedHashTreeRootString);
         }
 
-        [DataTestMethod]
+        [TestMethod]
         public void ByteArray32Serialize()
         {
             // Arrange
@@ -55,7 +55,7 @@ namespace Cortex.SimpleSerialize.Tests
             hashTreeRootString.ShouldBe(expectedHashTreeRootString);
         }
 
-        [DataTestMethod]
+        [TestMethod]
         public void ByteArray64Serialize()
         {
             // Arrange
@@ -85,7 +85,7 @@ namespace Cortex.SimpleSerialize.Tests
             hashTreeRootString.ShouldBe(expectedHashTreeRootString);
         }
 
-        [DataTestMethod]
+        [TestMethod]
         public void ByteArray96Serialize()
         {
             // Arrange
@@ -120,7 +120,7 @@ namespace Cortex.SimpleSerialize.Tests
             hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
 
-        [DataTestMethod]
+        [TestMethod]
         public void ByteArray192Serialize()
         {
             // Arrange
