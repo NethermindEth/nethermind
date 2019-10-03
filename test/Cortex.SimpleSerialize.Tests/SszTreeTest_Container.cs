@@ -1,4 +1,7 @@
 ﻿using System;
+using System.Collections.Generic;
+using Cortex.SimpleSerialize.Tests.Containers;
+using Cortex.SimpleSerialize.Tests.Ssz;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 using static Cortex.SimpleSerialize.Tests.HashUtility;
@@ -12,12 +15,8 @@ namespace Cortex.SimpleSerialize.Tests
         public void SmallContainer()
         {
             // Arrange
-            var tree = new SszTree(
-                new SszCompositeElement(new [] {
-                    new SszLeafElement((ushort)0x4567),
-                    new SszLeafElement((ushort)0x0123)
-                })
-            );
+            var container = new SmallTestContainer() { A = (ushort)0x4567, B = (ushort)0x0123 };
+            var tree = new SszTree(container.ToSszElement());
 
             // Act
             var bytes = tree.Serialize();
@@ -44,18 +43,12 @@ namespace Cortex.SimpleSerialize.Tests
         public void SingleFieldContainer()
         {
             // Arrange
-            var node = new SszContainer(new SszNode[] {
-                new SszNumber((byte)0xab)
-            });
-            var tree = new SszTree(
-                new SszCompositeElement(new[] {
-                    new SszLeafElement((byte)0xab)
-                })
-            );
+            var container = new SingleFieldTestContainer() { A = (byte)0xab };
+            var tree = new SszTree(container.ToSszElement());
 
             // Act
-            var bytes = node.Serialize();
-            var hashTreeRoot = node.HashTreeRoot();
+            var bytes = tree.Serialize();
+            var hashTreeRoot = tree.HashTreeRoot();
 
             // Assert
             var expectedByteString = "ab";
@@ -64,6 +57,54 @@ namespace Cortex.SimpleSerialize.Tests
             var expectedHashTreeRootString = "ab00000000000000000000000000000000000000000000000000000000000000";
             var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
             hashTreeRootString.ShouldBe(expectedHashTreeRootString);
+        }
+    }
+
+    namespace Containers
+    {
+        // Define containers as plain classes
+
+        class SingleFieldTestContainer
+        {
+            public byte A { get; set; }
+        }
+
+        class SmallTestContainer
+        {
+            public ushort A { get; set; }
+            public ushort B { get; set; }
+        }
+    }
+
+    namespace Ssz
+    {
+        // Define builder extensions that construct SSZ elements from containers
+
+        static class SingleFieldTestContainerExtensions
+        {
+            public static SszElement ToSszElement(this SingleFieldTestContainer item)
+            {
+                return new SszCompositeElement(GetChildren(item));
+            }
+
+            private static IEnumerable<SszElement> GetChildren(SingleFieldTestContainer item)
+            {
+                yield return new SszLeafElement(item.A);
+            }
+        }
+
+        static class SmallTestContainerExtensions
+        {
+            public static SszElement ToSszElement(this SmallTestContainer item)
+            {
+                return new SszCompositeElement(GetChildren(item));
+            }
+
+            private static IEnumerable<SszElement> GetChildren(SmallTestContainer item)
+            {
+                yield return new SszLeafElement(item.A);
+                yield return new SszLeafElement(item.B);
+            }
         }
     }
 }
