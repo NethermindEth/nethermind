@@ -25,20 +25,18 @@ namespace Nethermind.Logging
     {
         private readonly string _logFileName;
         private readonly string _logDirectory;
-        private readonly string _workingDirectory;
 
-        public NLogManager(string logFileName, string logDirectory, string workingDirectory)
+        public NLogManager(string logFileName, string logDirectory)
         {
             _logFileName = logFileName;
             _logDirectory = logDirectory;
-            _workingDirectory = workingDirectory;
         }
 
         private ConcurrentDictionary<Type, NLogLogger> _loggers = new ConcurrentDictionary<Type, NLogLogger>();
 
         private NLogLogger BuildLogger(Type type)
         {
-            return new NLogLogger(type, _logFileName, _logDirectory,  workingDirectory:_workingDirectory);
+            return new NLogLogger(type, _logFileName, _logDirectory);
         }
 
         public ILogger GetClassLogger(Type type)
@@ -53,12 +51,12 @@ namespace Nethermind.Logging
 
         public ILogger GetClassLogger()
         {
-            return new NLogLogger(_logFileName, _logDirectory, workingDirectory: _workingDirectory);
+            return new NLogLogger(_logFileName, _logDirectory);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return new NLogLogger(_logFileName, _logDirectory, loggerName, _workingDirectory);
+            return new NLogLogger(_logFileName, _logDirectory, loggerName);
         }
     }
 }

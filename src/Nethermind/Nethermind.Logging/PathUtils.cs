@@ -16,7 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 
 namespace Nethermind.Logging
@@ -25,7 +28,17 @@ namespace Nethermind.Logging
     {
         public static string GetExecutingDirectory()
         {
-            return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);;
+            var process = Process.GetCurrentProcess();
+            if (process.ProcessName.StartsWith("dotnet", StringComparison.InvariantCultureIgnoreCase))
+            {
+                return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            }
+            
+            var filePath = process.MainModule.FileName;
+            var fileName = filePath.Split(Path.DirectorySeparatorChar).LastOrDefault();
+            var fileNameIndex = filePath.LastIndexOf(fileName, StringComparison.InvariantCultureIgnoreCase);
+
+            return filePath.Substring(0, fileNameIndex);
         }
     }
 }

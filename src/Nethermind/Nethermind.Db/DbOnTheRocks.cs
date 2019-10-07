@@ -40,7 +40,8 @@ namespace Nethermind.Db
 
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
         {
-            var fullPath = Path.Combine(basePath, dbPath);
+            var directory = PathUtils.GetExecutingDirectory();
+            var fullPath = Path.Combine(directory, basePath, dbPath);
             var logger = logManager?.GetClassLogger();
             if (!Directory.Exists(fullPath))
             {

@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Text;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         {
             if (!Path.IsPathRooted(filePath))
             {
-                filePath = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filePath));
+                filePath = Path.Combine(Path.Combine(PathUtils.GetExecutingDirectory(), filePath));
             }
 
             if (!File.Exists(filePath))

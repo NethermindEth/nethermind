@@ -174,6 +174,7 @@ namespace Nethermind.Runner.Runners
         private INetworkConfig _networkConfig;
         private ChainLevelInfoRepository _chainLevelInfoRepository;
         private IBlockFinalizationManager _finalizationManager;
+        private readonly string _executingDirectory;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -190,6 +191,7 @@ namespace Nethermind.Runner.Runners
             _ndmInitializer = ndmInitializer;
             _webSocketsManager = webSocketsManager;
             _ethereumJsonSerializer = ethereumJsonSerializer;
+            _executingDirectory = PathUtils.GetExecutingDirectory();
             _logger = _logManager.GetClassLogger();
 
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
@@ -947,7 +949,7 @@ namespace Nethermind.Runner.Runners
             _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
             await _staticNodesManager.InitAsync();
 
-            var peersDb = new SimpleFilePublicKeyDb("PeersDB", Path.Combine(_initConfig.BaseDbPath, PeersDbPath), _logManager);
+            var peersDb = new SimpleFilePublicKeyDb("PeersDB", Path.Combine(_executingDirectory, _initConfig.BaseDbPath, PeersDbPath), _logManager);
             var peerStorage = new NetworkStorage(peersDb, _logManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
@@ -1022,7 +1024,7 @@ namespace Nethermind.Runner.Runners
                 discoveryConfig,
                 _logManager);
 
-            var discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", Path.Combine(_initConfig.BaseDbPath, DiscoveryNodesDbPath), _logManager);
+            var discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", Path.Combine(_executingDirectory, _initConfig.BaseDbPath, DiscoveryNodesDbPath), _logManager);
             var discoveryStorage = new NetworkStorage(
                 discoveryDb,
                 _logManager);
