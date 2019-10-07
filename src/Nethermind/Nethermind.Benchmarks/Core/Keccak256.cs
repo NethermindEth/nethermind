@@ -61,7 +61,7 @@ namespace Nethermind.Benchmarks.Core
             return MeadowHash.ComputeHashBytes(_a);
         }
         
-        [Benchmark]
+        [Benchmark(Baseline = true)]
         public byte[] Current()
         {
             return Keccak.Compute(_a).Bytes;

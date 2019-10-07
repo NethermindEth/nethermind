@@ -6,7 +6,8 @@ namespace Nethermind.Perfshop
     {
         static void Main(string[] args)
         {
-            BenchmarkRunner.Run<Blake2Benchmark>();
+            BenchmarkRunner.Run<SumBenchmark>();
+//            BenchmarkRunner.Run<Blake2Benchmark>();
 //            BenchmarkRunner.Run<SwapBytes>();
 //            BenchmarkRunner.Run<Int256Benchmark>();
 //            BenchmarkRunner.Run<ReverseBytesBenchmark>();

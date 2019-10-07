@@ -14,9 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Linq;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Perfshop
@@ -24,32 +25,69 @@ namespace Nethermind.Perfshop
     [MemoryDiagnoser]
     [DisassemblyDiagnoser(printAsm: true)]
     [CoreJob(baseline: true)]
-    public class Blake2Benchmark
+    public class SumBenchmark
     {
-        private Blake2 _blake2 = new Blake2();
-        private Blake2Optimized _blake2Optimized = new Blake2Optimized();
-
-        private byte[] input = Bytes.FromHexString("0000000148c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001");
+        private byte[] Scenario0 = new byte[1024];
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!Bytes.AreEqual(Blake2FirstVersion(), Blake2OptimizedVersion()))
-            {
-                throw new InvalidBenchmarkDeclarationException("blakes");
-            }
-        }
-
-        [Benchmark(Baseline = true)]
-        public byte[] Blake2FirstVersion()
-        {
-            return _blake2.Compress(input);
+            new Random().NextBytes(Scenario0);
         }
 
         [Benchmark]
-        public byte[] Blake2OptimizedVersion()
+        public int Foreach2()
         {
-            return _blake2Optimized.Compress(input);
+            int result = 0;
+            foreach (int b in Scenario0)
+            {
+                result += b;
+            }
+
+            return result;
+        }
+        
+        [Benchmark(Baseline = true)]
+        public int Foreach()
+        {
+            int result = 0;
+            foreach (byte b in Scenario0)
+            {
+                result += b;
+            }
+
+            return result;
+        }
+
+        [Benchmark]
+        public int For()
+        {
+            int result = 0;
+            for (int i = 0; i < Scenario0.Length; i++)
+            {
+                result += Scenario0[i];
+            }
+
+            return result;
+        }
+        
+        [Benchmark]
+        public int For2()
+        {
+            int result = 0;
+            int length = Scenario0.Length;
+            for (int i = 0; i < length; i++)
+            {
+                result += Scenario0[i];
+            }
+
+            return result;
+        }
+        
+        [Benchmark]
+        public int Sum()
+        {
+            return Scenario0.Sum(b => (int) b);
         }
     }
 }
