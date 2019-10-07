@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;

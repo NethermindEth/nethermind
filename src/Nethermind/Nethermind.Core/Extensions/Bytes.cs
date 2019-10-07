@@ -24,6 +24,8 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -297,6 +299,14 @@ namespace Nethermind.Core.Extensions
 
             return result;
         }
+        
+        public static void ReverseInPlace(byte[] bytes)
+        {
+            for (int i = 0; i < bytes.Length / 2; i++)
+            {
+                (bytes[i], bytes[bytes.Length - i - 1]) = (bytes[bytes.Length - i - 1], bytes[i]);
+            }
+        }
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
@@ -308,6 +318,35 @@ namespace Nethermind.Core.Extensions
             return new BigInteger(bytes, true, endianness == Endianness.Big);
         }
 
+        private static byte[] _reverseMask = {15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+        private static Vector256<byte> _reverseMaskVec;
+
+        static Bytes()
+        {
+            unsafe
+            {
+                fixed (byte* ptr_mask = _reverseMask)
+                {
+                    _reverseMaskVec = Avx2.LoadVector256(ptr_mask);
+                }
+            }
+        }
+
+        public static void Avx2Reverse256InPlace(Span<byte> bytes)
+        {
+            unsafe
+            {
+                fixed (byte* inputPointer = bytes)
+                {
+                    Vector256<byte> inputVector = Avx2.LoadVector256(inputPointer);
+                    Vector256<byte> resultVector = Avx2.Shuffle(inputVector, _reverseMaskVec);
+                    resultVector = Avx2.Permute4x64(resultVector.As<byte, ulong>(), 0b01001110).As<ulong, byte>();
+
+                    Avx2.Store(inputPointer, resultVector);
+                }
+            }
+        }
+        
         /// <summary>
         /// Fix, so no allocations are made
         /// </summary>
