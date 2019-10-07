@@ -497,7 +497,11 @@ namespace Nethermind.Core.Extensions
 
         private static byte Reverse(byte b)
         {
-            return BinaryPrimitives.ReverseEndianness(b);
+//            return BinaryPrimitives.ReverseEndianness(b);
+            b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);
+            b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);	
+            b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);	
+            return b;
         }
 
         public static byte[] ToBytes(this BitArray bits)
