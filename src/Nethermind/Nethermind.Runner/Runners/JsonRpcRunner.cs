@@ -17,14 +17,12 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
-using Nethermind.Runner.Config;
 using Microsoft.Extensions.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;

@@ -36,7 +36,6 @@ using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
-using Nethermind.Grpc.Clients;
 using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -81,14 +80,14 @@ namespace Nethermind.Runner
 
         public void Run(string[] args)
         {
-            var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
+            var (app, buildConfigProvider, getDbBasePath, geWorkingDirectory) = BuildCommandLineApp();
             ManualResetEventSlim appClosed = new ManualResetEventSlim(false);
             app.OnExecute(async () =>
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-
-                Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
+                var workingDirectory = geWorkingDirectory();
+                Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory, workingDirectory: workingDirectory);
                 LogMemoryConfiguration();
 
                 var pathDbPath = getDbBasePath();
@@ -110,7 +109,7 @@ namespace Nethermind.Runner
 
                 _cancelKeySource = new TaskCompletionSource<object>();
 
-                await StartRunners(configProvider);
+                await StartRunners(configProvider, workingDirectory);
                 await _cancelKeySource.Task;
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
@@ -132,12 +131,12 @@ namespace Nethermind.Runner
         }
 
         [Todo(Improve.Refactor, "network config can be handled internally in EthereumRunner")]
-        protected async Task StartRunners(IConfigProvider configProvider)
+        protected async Task StartRunners(IConfigProvider configProvider, string workingDirectory)
         {
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
             var metricsParams = configProvider.GetConfig<IMetricsConfig>();
-            var logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
+            var logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory, workingDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
@@ -240,7 +239,7 @@ namespace Nethermind.Runner
             }
         }
 
-        protected abstract (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp();
+        protected abstract (CommandLineApplication, Func<IConfigProvider>, Func<string>, Func<string>) BuildCommandLineApp();
 
         protected async Task StopAsync()
         {

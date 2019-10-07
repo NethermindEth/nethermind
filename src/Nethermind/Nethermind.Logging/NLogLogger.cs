@@ -33,12 +33,16 @@ namespace Nethermind.Logging
 
         internal readonly NLog.Logger Logger;
 
-        public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null)
+        public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null,
+            string workingDirectory = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
             Logger = NLog.LogManager.GetLogger(loggerName);
 
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            var directory = string.IsNullOrWhiteSpace(workingDirectory)
+                ? PathUtils.GetExecutingDirectory()
+                : workingDirectory;
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(directory, "logs") : logDirectory;
             if (!Directory.Exists(logsDir))
             {
                 Directory.CreateDirectory(logsDir);
@@ -46,7 +50,7 @@ namespace Nethermind.Logging
 
             if (NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
-                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine("logs", fileName) : fileName;
+                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine(logsDir, fileName) : fileName;
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
@@ -58,12 +62,16 @@ namespace Nethermind.Logging
             IsError = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
         }
 
-        public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
+        public NLogLogger(string fileName, string logDirectory = null, string loggerName = null,
+            string workingDirectory = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = NLog.LogManager.GetLogger(loggerName);
 
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            var directory = string.IsNullOrWhiteSpace(workingDirectory)
+                ? PathUtils.GetExecutingDirectory()
+                : workingDirectory;
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(directory, "logs") : logDirectory;
             if (!Directory.Exists(logsDir))
             {
                 Directory.CreateDirectory(logsDir);
@@ -71,7 +79,7 @@ namespace Nethermind.Logging
 
             if (NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
-                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine("logs", fileName) : fileName;
+                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine(logsDir, fileName) : fileName;
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */

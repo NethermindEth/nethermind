@@ -213,7 +213,7 @@ namespace Nethermind.PerfTest
             Rlp.RegisterDecoders(typeof(ParityTraceDecoder).Assembly);
             
             /* logging & instrumentation */
-            _logManager = new NLogManager("perfTest.logs.txt", null);
+            _logManager = new NLogManager("perfTest.logs.txt", null, null);
             _logger = _logManager.GetClassLogger();
 
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");

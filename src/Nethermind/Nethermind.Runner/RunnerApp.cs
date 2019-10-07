@@ -23,40 +23,22 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.CommandLineUtils;
-using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
-using Nethermind.Db.Config;
-using Nethermind.EthStats;
-using Nethermind.EthStats.Configs;
-using Nethermind.Grpc;
-using Nethermind.Grpc.Clients;
-using Nethermind.JsonRpc;
-using Nethermind.KeyStore.Config;
-using Nethermind.Network.Config;
-using Nethermind.Runner.Config;
-using Nethermind.Stats;
 using NLog;
 using ILogger = Nethermind.Logging.ILogger;
-using LogLevel = Nethermind.Logging.LogLevel;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
-using Nethermind.PubSub.Kafka;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner
 {
     public class RunnerApp : RunnerAppBase, IRunnerApp
     {
-        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet.cfg");
+        private const string DefaultConfigsDirectory = "configs";
+        private readonly string _defaultConfigFile = Path.Combine(DefaultConfigsDirectory, "mainnet.cfg");
 
         public RunnerApp(ILogger logger) : base(logger)
         {
         }
  
-        protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
+        protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>, Func<string>) BuildCommandLineApp()
         {
             var pluginsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugins");
             if (Directory.Exists(pluginsDirectory))
@@ -89,7 +71,9 @@ namespace Nethermind.Runner
             var configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             var dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             var logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
+            var workingDirectory = app.Option("-w|--workingDirectory <path>", "working directory", CommandOptionType.SingleValue);
 
+            
             foreach (Type configType in configs)
             {
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -159,12 +143,42 @@ namespace Nethermind.Runner
                 {
                     configFilePath = configPathVariable;
                 }
+                
+                string workingDirectoryPath = workingDirectory.HasValue() ? workingDirectory.Value() : string.Empty;
+                if (!string.IsNullOrWhiteSpace(workingDirectoryPath))
+                {
+                    Console.WriteLine($"Working directory {workingDirectoryPath}");
+                    configFilePath = Path.Combine(workingDirectoryPath, configFilePath);
+                }
 
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
                 {
-                    string redirectedConfigPath = Path.Combine("configs", string.Concat(configFilePath, ".cfg"));
+                    string redirectedConfigPath = Path.Combine(DefaultConfigsDirectory, string.Concat(configFilePath, ".cfg"));
                     Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
+                    if (!File.Exists(configFilePath))
+                    {
+                        throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
+                    }
+                }
+
+                if (!Path.HasExtension(configFilePath))
+                {
+                    configFilePath = string.Concat(configFilePath, ".cfg");
+                }
+                
+                // Fallback to "{workingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
+                if (!File.Exists(configFilePath))
+                {
+                    var configName = configFilePath.Split(Path.DirectorySeparatorChar).LastOrDefault() ?? string.Empty;
+                    string redirectedConfigPath = Path.Combine(configFilePath.Replace(configName, string.Empty),
+                        DefaultConfigsDirectory, configName);
+                    Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
+                    configFilePath = redirectedConfigPath;
+                    if (!File.Exists(configFilePath))
+                    {
+                        throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
+                    }
                 }
 
                 Console.WriteLine($"Reading config file from {configFilePath}");
@@ -177,7 +191,12 @@ namespace Nethermind.Runner
                 return dbBasePath.HasValue() ? dbBasePath.Value() : null;
             }
 
-            return (app, BuildConfigProvider, GetBaseDbPath);
+            string GetWorkingDirectory()
+            {
+                return workingDirectory.HasValue() ? workingDirectory.Value() : string.Empty;
+            }
+
+            return (app, BuildConfigProvider, GetBaseDbPath, GetWorkingDirectory);
         }
     }
 }
