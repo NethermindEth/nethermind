@@ -36,8 +36,11 @@ namespace Nethermind.Core.Test
         public void compression_function_should_return_valid_output(string input, string output)
         {
             var blake2 = new Blake2();
+            var blake2Optimized = new Blake2Optimized();
             var result = blake2.Compress(Bytes.FromHexString(input)).ToHexString();
+            var result2 = blake2Optimized.Compress(Bytes.FromHexString(input)).ToHexString();
             result.Should().BeEquivalentTo(output);
+            result2.Should().BeEquivalentTo(output);
         }
     }
 }

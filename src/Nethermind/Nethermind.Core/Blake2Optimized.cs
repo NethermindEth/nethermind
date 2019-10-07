@@ -17,6 +17,9 @@
  */
 
 using System;
+using System.Buffers.Binary;
+using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
@@ -58,8 +61,8 @@ namespace Nethermind.Core
         {
             Init(input);
             
-            Array.Copy(_h, 0, _v, 0, 8);
-            Array.Copy(IV, 0, _v, 8, 8);
+            _h.AsSpan().CopyTo(_v.AsSpan(0, 8));
+            IV.AsSpan().CopyTo(_v.AsSpan(8, 8));
 
             _v[12] ^= _t[0];
             _v[13] ^= _t[1];
@@ -69,9 +72,9 @@ namespace Nethermind.Core
                 _v[14] ^= 0xfffffffffffffffful;
             }
 
-            for (var i = 0; i < _rounds; ++i)
+            for (int i = 0; i < _rounds; ++i)
             {
-                var s = Precomputed[i % 10];
+                byte[] s = Precomputed[i % 10];
                 Compute(_m[s[0]], _m[s[4]], 0, 4, 8, 12);
                 Compute(_m[s[1]], _m[s[5]], 1, 5, 9, 13);
                 Compute(_m[s[2]], _m[s[6]], 2, 6, 10, 14);
@@ -82,39 +85,22 @@ namespace Nethermind.Core
                 Compute(_m[s[11]], _m[s[15]], 3, 4, 9, 14);
             }
 
-            for (var offset = 0; offset < _h.Length; offset++)
+            for (int offset = 0; offset < _h.Length; offset++)
             {
                 _h[offset] ^= _v[offset] ^ _v[offset + 8];
             }
             
             var result = new byte[_h.Length * 8];
-            for (var i = 0; i < _h.Length; i++)
-            {
-                Array.Copy(_h[i].ToByteArray(Bytes.Endianness.Little), 0, result, i * 8, 8);
-            }
-
+            MemoryMarshal.Cast<ulong, byte>(_h.AsSpan()).CopyTo(result);
             return result;
         }
 
-        private void Init(byte[] input)
+        private void Init(Span<byte> input)
         {
-            _rounds = input.Slice(0, 4).ToUInt32();
-            var h = input.Slice(4, 64);
-            var m = input.Slice(68, 128);
-            for (var i = 0; i < _h.Length; i++)
-            {
-                var offset = i * 8;
-                _h[i] = h.Slice(offset, 8).ToUInt64(Bytes.Endianness.Little);
-            }
-
-            for (var i = 0; i < _m.Length; i++)
-            {
-                var offset = i * 8;
-                _m[i] = m.Slice(offset, 8).ToUInt64(Bytes.Endianness.Little);
-            }
-
-            _t[0] = input.Slice(196, 8).ToUInt64(Bytes.Endianness.Little);
-            _t[1] = input.Slice(204, 8).ToUInt64(Bytes.Endianness.Little);
+            _rounds = BinaryPrimitives.ReadUInt32BigEndian(input.Slice(0,4));
+            MemoryMarshal.Cast<byte, ulong>(input.Slice(4, 64)).CopyTo(_h);
+            MemoryMarshal.Cast<byte, ulong>(input.Slice(68, 128)).CopyTo(_m);
+            MemoryMarshal.Cast<byte, ulong>(input.Slice(196, 16)).CopyTo(_t);
             _f = input[212] != 0;
         }
 

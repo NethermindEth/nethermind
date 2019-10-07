@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -392,6 +393,17 @@ namespace Nethermind.Core.Extensions
 
             return BitConverter.ToUInt32(bytes.Length == 4 ? bytes : bytes.PadLeft(4), 0);
         }
+        
+        /// <summary>
+        /// Not tested, possibly broken
+        /// </summary>
+        /// <param name="bytes"></param>
+        /// <param name="endianness"></param>
+        /// <returns></returns>
+        public static uint ToUInt32New(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            return endianness == Endianness.Big ? BinaryPrimitives.ReadUInt32BigEndian(bytes) : BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+        }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength,
             Endianness endianness = Endianness.Big)
@@ -477,26 +489,15 @@ namespace Nethermind.Core.Extensions
             ulong result = BitConverter.ToUInt64(bytes, 0);
             return result;
         }
-
-        public static long ToInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
+        
+        public static ulong ToUInt64New(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
-                !BitConverter.IsLittleEndian && endianness == Endianness.Little)
-            {
-                Array.Reverse(bytes);
-            }
-
-            bytes = PadRight(bytes, 8);
-            long result = BitConverter.ToInt64(bytes, 0);
-            return result;
+            return endianness == Endianness.Big ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : BinaryPrimitives.ReadUInt64LittleEndian(bytes);
         }
 
         private static byte Reverse(byte b)
         {
-            b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);
-            b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);
-            b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);
-            return b;
+            return BinaryPrimitives.ReverseEndianness(b);
         }
 
         public static byte[] ToBytes(this BitArray bits)

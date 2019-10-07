@@ -22,7 +22,7 @@ namespace Nethermind.Perfshop
     [MemoryDiagnoser]
     [DisassemblyDiagnoser(printAsm:true)]
     [CoreJob(baseline: true)]
-    public class SwapBytes
+    public class SwapBytesBenchmark
     {
         private const ulong number = 1230123812841984UL;
         

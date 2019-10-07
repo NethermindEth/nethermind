@@ -31,7 +31,7 @@ namespace Nethermind.Core.Crypto
         internal const int Size = 32;
         public fixed byte Bytes[Size];
 
-        public Span<byte> BytesAsSpan =>  MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+        public Span<byte> BytesAsSpan => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
         
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>

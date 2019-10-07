@@ -1,5 +1,4 @@
-﻿using System;
-using BenchmarkDotNet.Running;
+﻿using BenchmarkDotNet.Running;
 
 namespace Nethermind.Perfshop
 {
@@ -7,9 +6,10 @@ namespace Nethermind.Perfshop
     {
         static void Main(string[] args)
         {
-            BenchmarkRunner.Run<SwapBytes>();
-            BenchmarkRunner.Run<Int256Benchmark>();
-            BenchmarkRunner.Run<ReverseBytesBenchmark>();
+            BenchmarkRunner.Run<Blake2Benchmark>();
+//            BenchmarkRunner.Run<SwapBytes>();
+//            BenchmarkRunner.Run<Int256Benchmark>();
+//            BenchmarkRunner.Run<ReverseBytesBenchmark>();
         }
     }
 }
