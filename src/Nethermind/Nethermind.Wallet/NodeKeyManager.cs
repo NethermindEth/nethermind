@@ -73,7 +73,7 @@ namespace Nethermind.Wallet
             if (_config.TestNodeKey == null)
             {
                 string oldPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath();
-                string newPath = Path.Combine(_config.KeyStoreDirectory.GetApplicationResourcePath(), UnsecuredNodeKeyFilePath);
+                string newPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath(_config.KeyStoreDirectory);
                 
                 if (!File.Exists(newPath))
                 {
