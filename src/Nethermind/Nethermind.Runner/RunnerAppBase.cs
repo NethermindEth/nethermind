@@ -89,8 +89,7 @@ namespace Nethermind.Runner
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-                var executingDirectory = PathUtils.GetExecutingDirectory();
-                LogManager.Configuration = new XmlLoggingConfiguration(Path.Combine(executingDirectory, "NLog.config"));
+                LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
                 Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 LogMemoryConfiguration();
 

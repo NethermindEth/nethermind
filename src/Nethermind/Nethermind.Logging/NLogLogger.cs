@@ -38,7 +38,7 @@ namespace Nethermind.Logging
             loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
             Logger = NLog.LogManager.GetLogger(loggerName);
 
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath() : logDirectory;
             if (!Directory.Exists(logsDir))
             {
                 Directory.CreateDirectory(logsDir);
@@ -63,7 +63,7 @@ namespace Nethermind.Logging
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = NLog.LogManager.GetLogger(loggerName);
 
-            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath(): logDirectory;
             if (!Directory.Exists(logsDir))
             {
                 Directory.CreateDirectory(logsDir);

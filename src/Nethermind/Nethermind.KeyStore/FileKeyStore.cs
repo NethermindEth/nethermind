@@ -70,7 +70,6 @@ namespace Nethermind.KeyStore
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
-        private readonly string _executingDirectory;
 
         public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
@@ -81,7 +80,6 @@ namespace Nethermind.KeyStore
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _keyStoreEncoding = Encoding.GetEncoding(_config.KeyStoreEncoding);
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
-            _executingDirectory = PathUtils.GetExecutingDirectory();
         }
 
         public int Version => 3;
@@ -289,7 +287,7 @@ namespace Nethermind.KeyStore
 
         private string GetStoreDirectory()
         {
-            var directory = Path.Combine(_executingDirectory, _config.KeyStoreDirectory);
+            var directory = _config.KeyStoreDirectory.GetApplicationResourcePath();
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);

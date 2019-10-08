@@ -27,11 +27,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
     {
         public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
         {
-            if (!Path.IsPathRooted(filePath))
-            {
-                filePath = Path.Combine(Path.Combine(PathUtils.GetExecutingDirectory(), filePath));
-            }
-
+            filePath = filePath.GetApplicationResourcePath();
             if (!File.Exists(filePath))
             {
                 StringBuilder missingChainspecFileMessage = new StringBuilder($"Chainspec file does not exist {filePath}");

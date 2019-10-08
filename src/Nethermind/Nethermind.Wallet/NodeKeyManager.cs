@@ -72,15 +72,14 @@ namespace Nethermind.Wallet
             // this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
             if (_config.TestNodeKey == null)
             {
-                var executingDirectory = PathUtils.GetExecutingDirectory();
-                string oldPath = Path.Combine(executingDirectory, UnsecuredNodeKeyFilePath);
-                string newPath = Path.Combine(executingDirectory, _config.KeyStoreDirectory, UnsecuredNodeKeyFilePath);
+                string oldPath = UnsecuredNodeKeyFilePath.GetApplicationResourcePath();
+                string newPath = Path.Combine(_config.KeyStoreDirectory.GetApplicationResourcePath(), UnsecuredNodeKeyFilePath);
                 
                 if (!File.Exists(newPath))
                 {
                     if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration) - stored in plain + key store for JSON RPC unlocking");
                     PrivateKey nodeKey = File.Exists(oldPath) ? new PrivateKey(File.ReadAllBytes(oldPath)) : new PrivateKeyGenerator(_cryptoRandom).Generate();
-                    var keyStoreDirectory = Path.Combine(executingDirectory, _config.KeyStoreDirectory);
+                    var keyStoreDirectory = _config.KeyStoreDirectory.GetApplicationResourcePath();
                     if (!Directory.Exists(keyStoreDirectory))
                     {
                         Directory.CreateDirectory(keyStoreDirectory);

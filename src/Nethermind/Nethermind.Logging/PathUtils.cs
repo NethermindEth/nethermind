@@ -19,26 +19,46 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 
 namespace Nethermind.Logging
 {
     public static class PathUtils
     {
-        public static string GetExecutingDirectory()
+        public static string ExecutingDirectory { get; }
+
+        static PathUtils()
         {
             var process = Process.GetCurrentProcess();
             if (process.ProcessName.StartsWith("dotnet", StringComparison.InvariantCultureIgnoreCase))
             {
-                return Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                ExecutingDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                return;
+            }
+
+            ExecutingDirectory = Path.GetDirectoryName(process.MainModule.FileName);
+        }
+
+        public static string GetApplicationResourcePath(this string resourcePath, string overridePrefixPath = null)
+        {
+            if (string.IsNullOrWhiteSpace(resourcePath))
+            {
+                return ExecutingDirectory;
             }
             
-            var filePath = process.MainModule.FileName;
-            var fileName = filePath.Split(Path.DirectorySeparatorChar).LastOrDefault();
-            var fileNameIndex = filePath.LastIndexOf(fileName, StringComparison.InvariantCultureIgnoreCase);
+            if (Path.IsPathRooted(resourcePath))
+            {
+                return resourcePath;
+            }
 
-            return filePath.Substring(0, fileNameIndex);
+            if (string.IsNullOrEmpty(overridePrefixPath))
+            {
+                return Path.Combine(ExecutingDirectory, resourcePath);
+            }
+
+            return Path.IsPathRooted(overridePrefixPath)
+                ? Path.Combine(overridePrefixPath, resourcePath)
+                : Path.Combine(ExecutingDirectory, overridePrefixPath, resourcePath);
         }
     }
 }

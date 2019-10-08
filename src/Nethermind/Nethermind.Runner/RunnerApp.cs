@@ -143,9 +143,7 @@ namespace Nethermind.Runner
                     configFilePath = configPathVariable;
                 }
 
-                string executingDirectory = PathUtils.GetExecutingDirectory();
-                Console.WriteLine($"Executing directory {executingDirectory}");
-                configFilePath = Path.Combine(executingDirectory, configFilePath);
+                configFilePath = configFilePath.GetApplicationResourcePath();
 
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
                 {
