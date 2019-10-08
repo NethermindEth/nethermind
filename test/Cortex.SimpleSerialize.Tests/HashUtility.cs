@@ -1,19 +1,22 @@
 ﻿using System;
-using System.Linq;
 using System.Security.Cryptography;
 
 namespace Cortex.SimpleSerialize.Tests
 {
     public static class HashUtility
     {
-        private static readonly HashAlgorithm hash = SHA256.Create();
+        private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
 
-        public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        private static readonly byte[][] _zeroHashes;
+
+        static HashUtility()
         {
-            var combined = new Span<byte>(new byte[64]);
-            a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
-            return hash.ComputeHash(combined.ToArray());
+            _zeroHashes = new byte[32][];
+            _zeroHashes[0] = new byte[32];
+            for (var index = 1; index < 32; index++)
+            {
+                _zeroHashes[index] = Hash(_zeroHashes[index - 1], _zeroHashes[index - 1]);
+            }
         }
 
         public static ReadOnlySpan<byte> Chunk(ReadOnlySpan<byte> input)
@@ -23,17 +26,27 @@ namespace Cortex.SimpleSerialize.Tests
             return chunk;
         }
 
-        public static ReadOnlySpan<byte> Merge(ReadOnlySpan<byte> input1, ReadOnlySpan<byte> input2)
+        public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
-            var result = new Span<byte>(new byte[input1.Length + input2.Length]);
-            input1.CopyTo(result);
-            input2.CopyTo(result.Slice(input1.Length));
+            var combined = new Span<byte>(new byte[64]);
+            a.CopyTo(combined);
+            b.CopyTo(combined.Slice(32));
+            return _hashAlgorithm.ComputeHash(combined.ToArray());
+        }
+
+        public static ReadOnlySpan<byte> Merge(ReadOnlySpan<byte> a, byte[][] branch)
+        {
+            var result = a;
+            foreach (var b in branch)
+            {
+                result = Hash(result, b);
+            }
             return result;
         }
 
-        public static ReadOnlySpan<byte> ZeroHashes(int start, int end)
+        public static byte[][] ZeroHashes(int start, int end)
         {
-            return new byte[32];
+            return _zeroHashes[start..end];
         }
     }
 }

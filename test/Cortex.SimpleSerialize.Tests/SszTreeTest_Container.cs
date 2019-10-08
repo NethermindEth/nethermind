@@ -123,11 +123,7 @@ namespace Cortex.SimpleSerialize.Tests
             var expectedHashTreeRootString = BitConverter.ToString(expectedHashTreeRoot).Replace("-", "").ToLowerInvariant();
 
             var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
-
-            // TODO: Need to implement ZeroHashes test function
-            // TODO: Need to implement List limit virtual zeroed chunks
-
-            //hashTreeRootString.ShouldBe(expectedHashTreeRootString);
+            hashTreeRootString.ShouldBe(expectedHashTreeRootString);
         }
     }
 
@@ -228,7 +224,7 @@ namespace Cortex.SimpleSerialize.Tests
             private static IEnumerable<SszElement> GetChildren(VarTestContainer item)
             {
                 yield return new SszLeafElement(item.A);
-                yield return new SszLeafElement(item.B.ToArray(), isVariableSize: true);
+                yield return new SszLeafElement(item.B.ToArray(), isVariableSize: true, limit: 1024);
                 yield return new SszLeafElement(item.C);
             }
         }

@@ -11,10 +11,28 @@ namespace Cortex.SimpleSerialize
         private const int BYTES_PER_CHUNK = 32;
         private const int BYTES_PER_LENGTH_OFFSET = 4;
 
-        private const int MAX_DEPTH = 25;
-        private const int MAX_LENGTH = 2 ^ (BYTES_PER_LENGTH_OFFSET * BITS_PER_BYTE);
+        private const int MAX_DEPTH = 32;
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
-        private static readonly byte[] _hashZeros = _hashAlgorithm.ComputeHash(new byte[BYTES_PER_CHUNK << 1]);
+        private static readonly byte[] _zeroHashes;
+
+        static SszTree()
+        {
+            _zeroHashes = new byte[BYTES_PER_CHUNK * MAX_DEPTH];
+            var hash = new byte[BYTES_PER_CHUNK];
+            var buffer = new byte[BYTES_PER_CHUNK << 1];
+            // Span accessors
+            var hashes = _zeroHashes.AsSpan();
+            var buffer1 = buffer.AsSpan(0, BYTES_PER_CHUNK);
+            var buffer2 = buffer.AsSpan(BYTES_PER_CHUNK, BYTES_PER_CHUNK);
+            // Fill
+            for (var index = 1; index < MAX_DEPTH; index ++)
+            {
+                hash.CopyTo(buffer1);
+                hash.CopyTo(buffer2);
+                hash = _hashAlgorithm.ComputeHash(buffer);
+                hash.CopyTo(hashes.Slice(index * BYTES_PER_CHUNK));
+            }
+        }
 
         public SszTree(SszElement rootElement)
         {
@@ -43,7 +61,20 @@ namespace Cortex.SimpleSerialize
         {
             if (element is SszLeafElement leaf)
             {
-                return Merkleize(Pack(leaf.GetBytes()));
+                var bytes = leaf.GetBytes();
+                var packed = Pack(bytes);
+                var paddedLength = leaf.IsVariableSize
+                    ? leaf.ChunkCount * BYTES_PER_CHUNK
+                    : packed.Length;
+                var merkle = Merkleize(packed, paddedLength);
+                if (leaf.IsVariableSize)
+                {
+                    return MixInLength(merkle, (uint)leaf.Length);
+                }
+                else
+                {
+                    return merkle;
+                }
             }
             else if (element is SszCompositeElement composite)
             {
@@ -56,7 +87,8 @@ namespace Cortex.SimpleSerialize
                     {
                         memory.Write(HashTreeRootRecursive(child));
                     }
-                    return Merkleize(memory.ToArray());
+                    var bytes = memory.ToArray();
+                    return Merkleize(bytes, bytes.Length);
                 }
             }
             else
@@ -65,47 +97,67 @@ namespace Cortex.SimpleSerialize
             }
         }
 
-        private ReadOnlySpan<byte> Merkleize(ReadOnlySpan<byte> chunks)
+        private ReadOnlySpan<byte> MixInLength(ReadOnlySpan<byte> root, uint length)
         {
-            if (chunks.Length % BYTES_PER_CHUNK != 0)
+            var serializedLength = BitConverter.GetBytes(length);
+            if (!BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(serializedLength);
+            }
+            var mixed = new Span<byte>(new byte[BYTES_PER_CHUNK << 1]);
+            root.CopyTo(mixed);
+            serializedLength.CopyTo(mixed.Slice(BYTES_PER_CHUNK));
+            return Hash(mixed.ToArray());
+        }
+
+        private ReadOnlySpan<byte> Merkleize(ReadOnlySpan<byte> chunks, int paddedLength)
+        {
+            if (paddedLength % BYTES_PER_CHUNK != 0)
             {
                 throw new ArgumentOutOfRangeException("chunks.Length", chunks.Length, $"Chunks must by a multiple of {BYTES_PER_CHUNK} bytes");
             }
-            if (chunks.Length <= BYTES_PER_CHUNK)
+            if (paddedLength <= BYTES_PER_CHUNK)
             {
                 return chunks;
             }
-            return MerkleizeRecursive(0, chunks);
+            var depth = 0;
+            var width = BYTES_PER_CHUNK;
+            while (width < paddedLength)
+            {
+                depth++;
+                width <<= 1;
+                if (depth > MAX_DEPTH)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(depth), depth, "System data length limit exceeded");
+                }
+            }
+            if (chunks.Length > paddedLength)
+            {
+                throw new Exception("Input exceeds limit");
+            }
+
+            return MerkleizeRecursive(depth, chunks);
         }
 
         private ReadOnlySpan<byte> MerkleizeRecursive(int depth, ReadOnlySpan<byte> chunks)
         {
-            if (depth > MAX_DEPTH)
-            {
-                throw new ArgumentOutOfRangeException(nameof(depth), depth, "System data length limit exceeded");
-            }
-
-            var width = BYTES_PER_CHUNK << depth;
-            if (chunks.Length <= width)
+            if (depth == 0)
             {
                 return chunks;
             }
 
-            var data = MerkleizeRecursive(depth + 1, chunks);
-
-            var hashes = new Span<byte>(new byte[width]);
-            for (var index = 0; index < width; index += BYTES_PER_CHUNK)
+            var data = MerkleizeRecursive(depth - 1, chunks);
+            var hashWidth = ((data.Length / BYTES_PER_CHUNK + 1) >> 1) * BYTES_PER_CHUNK;
+            var hashes = new Span<byte>(new byte[hashWidth]);
+            for (var index = 0; index < hashWidth; index += BYTES_PER_CHUNK)
             {
                 var dataIndex = index << 1;
                 ReadOnlySpan<byte> hash;
-                if (dataIndex >= data.Length)
-                {
-                    hash = _hashZeros;
-                }
-                else if (dataIndex + BYTES_PER_CHUNK >= data.Length)
+                if (dataIndex + BYTES_PER_CHUNK >= data.Length)
                 {
                     var padded = new Span<byte>(new byte[BYTES_PER_CHUNK << 1]);
                     data.Slice(dataIndex, BYTES_PER_CHUNK).CopyTo(padded);
+                    _zeroHashes.AsSpan((depth - 1) * BYTES_PER_CHUNK, BYTES_PER_CHUNK).CopyTo(padded.Slice(BYTES_PER_CHUNK));
                     hash = Hash(padded);
                 }
                 else
@@ -133,19 +185,6 @@ namespace Cortex.SimpleSerialize
             }
             else if (element is SszCompositeElement composite)
             {
-                // TODO: Not sure which is fastest; maybe a Span/buffer based solution?
-
-                //return composite.GetChildren()
-                //    .SelectMany(x => SerializeRecursive(x).ToArray())
-                //    .ToArray();
-                //using (var memory = new MemoryStream())
-                //{
-                //    foreach (var child in composite.GetChildren())
-                //    {
-                //        memory.Write(SerializeRecursive(child));
-                //    }
-                //    return memory.ToArray();
-                //}
                 var parts = composite.GetChildren().Select(x => SerializeRecursive(x));
                 var isVariableSize = parts.Any(x => x.IsVariableSize);
                 var offset = parts.Where(x => !x.IsVariableSize).Sum(x => x.Bytes.Length)
