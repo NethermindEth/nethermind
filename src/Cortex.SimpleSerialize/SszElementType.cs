@@ -5,6 +5,9 @@
         Unknown = 0,
         Basic = 1,
         BasicVector = 2,
-        BasicList = 3
+        BasicList = 3,
+        Vector = 4,
+        List = 5,
+        Container = 6
     }
 }

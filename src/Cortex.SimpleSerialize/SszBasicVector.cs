@@ -2,7 +2,7 @@
 
 namespace Cortex.SimpleSerialize
 {
-    public class SszBasicVector : SszLeafElement
+    public class SszBasicVector : SszComposite
     {
         private readonly byte[] _bytes;
 
@@ -26,8 +26,8 @@ namespace Cortex.SimpleSerialize
             _bytes = ToLittleEndianBytes(value, sizeof(ulong));
         }
 
-        public override SszElementType ElementType { get { return SszElementType.BasicVector; } }
+        public override SszElementType ElementType => SszElementType.BasicVector;
 
-        public override ReadOnlySpan<byte> GetBytes() => _bytes;
+        public ReadOnlySpan<byte> GetBytes() => _bytes;
     }
 }

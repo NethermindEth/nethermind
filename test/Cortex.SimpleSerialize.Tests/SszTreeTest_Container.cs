@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Linq;
-using System.Collections.Generic;
 using Cortex.SimpleSerialize.Tests.Containers;
 using Cortex.SimpleSerialize.Tests.Ssz;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -13,48 +11,6 @@ namespace Cortex.SimpleSerialize.Tests
     public class SszTreeTest_Container
     {
         [TestMethod]
-        public void SmallContainer()
-        {
-            // Arrange
-            var container = new SmallTestContainer() { A = (ushort)0x4567, B = (ushort)0x0123 };
-            var tree = new SszTree(container.ToSszElement());
-
-            // Act
-            var bytes = tree.Serialize();
-            var hashTreeRoot = tree.HashTreeRoot();
-
-            // Assert
-            var expectedByteString = "67452301";
-            var byteString = BitConverter.ToString(bytes.ToArray()).Replace("-", "").ToLowerInvariant();
-            byteString.ShouldBe(expectedByteString);
-
-            var expectedHashTreeRoot = Hash(Chunk(new byte[] { 0x67, 0x45 }), Chunk(new byte[] { 0x23, 0x01 }));
-            var expectedHashTreeRootString = BitConverter.ToString(expectedHashTreeRoot).Replace("-", "").ToLowerInvariant();
-            var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
-            hashTreeRootString.ShouldBe(expectedHashTreeRootString);
-        }
-
-        [TestMethod]
-        public void SingleFieldContainer()
-        {
-            // Arrange
-            var container = new SingleFieldTestContainer() { A = (byte)0xab };
-            var tree = new SszTree(container.ToSszElement());
-
-            // Act
-            var bytes = tree.Serialize();
-            var hashTreeRoot = tree.HashTreeRoot();
-
-            // Assert
-            var expectedByteString = "ab";
-            var byteString = BitConverter.ToString(bytes.ToArray()).Replace("-", "").ToLowerInvariant();
-            byteString.ShouldBe(expectedByteString);
-            var expectedHashTreeRootString = "ab00000000000000000000000000000000000000000000000000000000000000";
-            var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
-            hashTreeRootString.ShouldBe(expectedHashTreeRootString);
-        }
-
-        [TestMethod]
         public void FixedContainer()
         {
             // Arrange
@@ -64,7 +20,7 @@ namespace Cortex.SimpleSerialize.Tests
                 B = (ulong)0xaabbccdd00112233,
                 C = (uint)0x12345678
             };
-            var tree = new SszTree(container.ToSszElement());
+            var tree = new SszTree(container.ToSszContainer());
 
             // Act
             var bytes = tree.Serialize();
@@ -86,6 +42,48 @@ namespace Cortex.SimpleSerialize.Tests
         }
 
         [TestMethod]
+        public void SingleFieldContainer()
+        {
+            // Arrange
+            var container = new SingleFieldTestContainer() { A = (byte)0xab };
+            var tree = new SszTree(container.ToSszContainer());
+
+            // Act
+            var bytes = tree.Serialize();
+            var hashTreeRoot = tree.HashTreeRoot();
+
+            // Assert
+            var expectedByteString = "ab";
+            var byteString = BitConverter.ToString(bytes.ToArray()).Replace("-", "").ToLowerInvariant();
+            byteString.ShouldBe(expectedByteString);
+            var expectedHashTreeRootString = "ab00000000000000000000000000000000000000000000000000000000000000";
+            var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
+            hashTreeRootString.ShouldBe(expectedHashTreeRootString);
+        }
+
+        [TestMethod]
+        public void SmallContainer()
+        {
+            // Arrange
+            var container = new SmallTestContainer() { A = (ushort)0x4567, B = (ushort)0x0123 };
+            var tree = new SszTree(container.ToSszContainer());
+
+            // Act
+            var bytes = tree.Serialize();
+            var hashTreeRoot = tree.HashTreeRoot();
+
+            // Assert
+            var expectedByteString = "67452301";
+            var byteString = BitConverter.ToString(bytes.ToArray()).Replace("-", "").ToLowerInvariant();
+            byteString.ShouldBe(expectedByteString);
+
+            var expectedHashTreeRoot = Hash(Chunk(new byte[] { 0x67, 0x45 }), Chunk(new byte[] { 0x23, 0x01 }));
+            var expectedHashTreeRootString = BitConverter.ToString(expectedHashTreeRoot).Replace("-", "").ToLowerInvariant();
+            var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
+            hashTreeRootString.ShouldBe(expectedHashTreeRootString);
+        }
+
+        [TestMethod]
         public void VarContainer_Some()
         {
             // Arrange
@@ -95,7 +93,7 @@ namespace Cortex.SimpleSerialize.Tests
                 B = new ushort[] { 1, 2, 3 },
                 C = 0xff
             };
-            var tree = new SszTree(container.ToSszElement());
+            var tree = new SszTree(container.ToSszContainer());
 
             // Act
             var bytes = tree.Serialize();
@@ -106,7 +104,7 @@ namespace Cortex.SimpleSerialize.Tests
             var byteString = BitConverter.ToString(bytes.ToArray()).Replace("-", "").ToLowerInvariant();
             byteString.ShouldBe(expectedByteString);
 
-            var expectedHashTreeRoot = 
+            var expectedHashTreeRoot =
                 Hash(
                     Hash(
                         Chunk(new byte[] { 0xcd, 0xab }),
@@ -124,109 +122,6 @@ namespace Cortex.SimpleSerialize.Tests
 
             var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
             hashTreeRootString.ShouldBe(expectedHashTreeRootString);
-        }
-    }
-
-    namespace Containers
-    {
-        // Define containers as plain classes
-
-        class SingleFieldTestContainer
-        {
-            public byte A { get; set; }
-        }
-
-        class SmallTestContainer
-        {
-            public ushort A { get; set; }
-            public ushort B { get; set; }
-        }
-
-        class FixedTestContainer
-        {
-            public byte A { get; set; }
-            public ulong B { get; set; }
-            public uint C { get; set; }
-        }
-
-        class VarTestContainer
-        {
-            public ushort A { get; set; }
-            public IList<ushort> B { get; set; } // max = 1024
-            public byte C { get; set; }
-        }
-
-        //class ComplexTestContainer
-        //{
-        //    public ushort A { get; set; }
-        //    public IList<ushort> B { get; set; } // max = 128
-        //    public byte C { get; set; }
-        //    public byte[] D { get; set; } // length = 256
-        //    public VarTestContainer E { get; set; }
-        //    public FixedTestContainer[] F { get; set; }// length = 4
-        //    public VarTestContainer[] G { get; set; } // length = 2
-        //}
-    }
-
-    namespace Ssz
-    {
-        // Define builder extensions that construct SSZ elements from containers
-
-        static class SingleFieldTestContainerExtensions
-        {
-            public static SszElement ToSszElement(this SingleFieldTestContainer item)
-            {
-                return new SszCompositeElement(GetChildren(item));
-            }
-
-            private static IEnumerable<SszElement> GetChildren(SingleFieldTestContainer item)
-            {
-                yield return new SszBasicElement(item.A);
-            }
-        }
-
-        static class SmallTestContainerExtensions
-        {
-            public static SszElement ToSszElement(this SmallTestContainer item)
-            {
-                return new SszCompositeElement(GetChildren(item));
-            }
-
-            private static IEnumerable<SszElement> GetChildren(SmallTestContainer item)
-            {
-                yield return new SszBasicElement(item.A);
-                yield return new SszBasicElement(item.B);
-            }
-        }
-
-        static class FixedTestContainerExtensions
-        {
-            public static SszElement ToSszElement(this FixedTestContainer item)
-            {
-                return new SszCompositeElement(GetChildren(item));
-            }
-
-            private static IEnumerable<SszElement> GetChildren(FixedTestContainer item)
-            {
-                yield return new SszBasicElement(item.A);
-                yield return new SszBasicElement(item.B);
-                yield return new SszBasicElement(item.C);
-            }
-        }
-
-        static class VarTestContainerExtensions
-        {
-            public static SszElement ToSszElement(this VarTestContainer item)
-            {
-                return new SszCompositeElement(GetChildren(item));
-            }
-
-            private static IEnumerable<SszElement> GetChildren(VarTestContainer item)
-            {
-                yield return new SszBasicElement(item.A);
-                yield return new SszBasicList(item.B.ToArray(), limit: 1024);
-                yield return new SszBasicElement(item.C);
-            }
         }
     }
 }

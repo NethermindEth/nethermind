@@ -6,7 +6,7 @@ using static Cortex.SimpleSerialize.Tests.HashUtility;
 namespace Cortex.SimpleSerialize.Tests
 {
     [TestClass]
-    public class SszTreeTest_Vector
+    public class SszTreeTest_BasicVector
     {
         [TestMethod]
         public void UInt16Vector()

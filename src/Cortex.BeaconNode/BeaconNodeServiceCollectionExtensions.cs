@@ -20,6 +20,10 @@ namespace Cortex.BeaconNode
             {
                 x.SlotsPerEpoch = configuration.GetValue<ulong>("SLOTS_PER_EPOCH");
             });
+            services.Configure<MaxOperationsPerBlock>(x =>
+            {
+                x.MaxDeposits = configuration.GetValue<int>("MAX_DEPOSITS");
+            });
 
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<BeaconNodeConfiguration>();

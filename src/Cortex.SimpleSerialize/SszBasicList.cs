@@ -2,7 +2,7 @@
 
 namespace Cortex.SimpleSerialize
 {
-    public class SszBasicList : SszLeafElement
+    public class SszBasicList : SszComposite
     {
         private readonly byte[] _bytes;
 
@@ -38,10 +38,11 @@ namespace Cortex.SimpleSerialize
         }
 
         public int ByteLimit { get; }
-        public override SszElementType ElementType { get { return SszElementType.BasicList; } }
+
+        public override SszElementType ElementType => SszElementType.BasicList;
 
         public int Length { get; }
 
-        public override ReadOnlySpan<byte> GetBytes() => _bytes;
+        public ReadOnlySpan<byte> GetBytes() => _bytes;
     }
 }

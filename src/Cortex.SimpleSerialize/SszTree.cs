@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
@@ -60,6 +61,20 @@ namespace Cortex.SimpleSerialize
         {
             switch (element)
             {
+                case SszBasicElement basic:
+                    {
+                        var bytes = basic.GetBytes();
+                        var packed = Pack(bytes);
+                        var paddedLength = packed.Length;
+                        return Merkleize(packed, paddedLength);
+                    }
+                case SszBasicVector vector:
+                    {
+                        var bytes = vector.GetBytes();
+                        var packed = Pack(bytes);
+                        var paddedLength = packed.Length;
+                        return Merkleize(packed, paddedLength);
+                    }
                 case SszBasicList list:
                     {
                         var bytes = list.GetBytes();
@@ -69,27 +84,37 @@ namespace Cortex.SimpleSerialize
                         var merkle = Merkleize(packed, paddedLength);
                         return MixInLength(merkle, (uint)list.Length);
                     }
-                case SszLeafElement leaf:
-                    {
-                        var bytes = leaf.GetBytes();
-                        var packed = Pack(bytes);
-                        var paddedLength = packed.Length;
-                        return Merkleize(packed, paddedLength);
-                    }
-                case SszCompositeElement composite:
+                case SszContainer container:
                     {
                         //return Merkleize(composite.GetChildren()
                         //    .SelectMany(x => HashTreeRootRecursive(x).ToArray())
                         //    .ToArray());
+                        byte[] bytes;
                         using (var memory = new MemoryStream())
                         {
-                            foreach (var child in composite.GetChildren())
+                            foreach (var value in container.GetValues())
                             {
-                                memory.Write(HashTreeRootRecursive(child));
+                                memory.Write(HashTreeRootRecursive(value));
                             }
-                            var bytes = memory.ToArray();
-                            return Merkleize(bytes, bytes.Length);
+                            bytes = memory.ToArray();
                         }
+                        return Merkleize(bytes, bytes.Length);
+                    }
+                case SszList list:
+                    {
+                        byte[] bytes;
+                        using (var memory = new MemoryStream())
+                        {
+                            foreach (var value in list.GetValues())
+                            {
+                                memory.Write(HashTreeRootRecursive(value));
+                            }
+                            bytes = memory.ToArray();
+                        }
+                        var paddedLength =
+                            ((list.ByteLimit + BytesPerChunk - 1) / BytesPerChunk) * BytesPerChunk;
+                        var merkle = Merkleize(bytes, paddedLength);
+                        return MixInLength(merkle, (uint)list.Length);
                     }
                 default:
                     {
@@ -182,52 +207,65 @@ namespace Cortex.SimpleSerialize
         {
             switch (element)
             {
+                case SszBasicElement basic:
+                    {
+                        return new SerializeResult(basic.GetBytes(), isVariableSize: false);
+                    }
+                case SszBasicVector vector:
+                    {
+                        return new SerializeResult(vector.GetBytes(), isVariableSize: false);
+                    }
                 case SszBasicList list:
                     {
                         return new SerializeResult(list.GetBytes(), isVariableSize: true);
                     }
-                case SszLeafElement leaf:
+                case SszContainer container:
                     {
-                        return new SerializeResult(leaf.GetBytes(), isVariableSize: false);
+                        return SerializeCombineValues(container.GetValues());
                     }
-                case SszCompositeElement composite:
+                case SszList list:
                     {
-                        var parts = composite.GetChildren().Select(x => SerializeRecursive(x));
-                        var isVariableSize = parts.Any(x => x.IsVariableSize);
-                        var offset = parts.Where(x => !x.IsVariableSize).Sum(x => x.Bytes.Length)
-                            + parts.Count(x => x.IsVariableSize) * BytesPerLengthOffset;
-                        var length = offset + parts.Where(x => x.IsVariableSize).Sum(x => x.Bytes.Length);
-                        var result = new Span<byte>(new byte[length]);
-                        var index = 0;
-                        foreach (var part in parts)
-                        {
-                            if (!part.IsVariableSize)
-                            {
-                                part.Bytes.CopyTo(result.Slice(index));
-                                index += part.Bytes.Length;
-                            }
-                            else
-                            {
-                                // Write offset in fixed part
-                                var serializedOffset = BitConverter.GetBytes((uint)offset);
-                                if (!BitConverter.IsLittleEndian)
-                                {
-                                    Array.Reverse(serializedOffset);
-                                }
-                                serializedOffset.CopyTo(result.Slice(index));
-                                index += BytesPerLengthOffset;
-                                // Write variable parts at offset
-                                part.Bytes.CopyTo(result.Slice(offset));
-                                offset += part.Bytes.Length;
-                            }
-                        }
-                        return new SerializeResult(result, isVariableSize);
+                        return SerializeCombineValues(list.GetValues());
                     }
                 default:
                     {
                         throw new NotSupportedException();
                     }
             }
+        }
+
+        private SerializeResult SerializeCombineValues(IEnumerable<SszElement> values)
+        {
+            var parts = values.Select(x => SerializeRecursive(x));
+            var isVariableSize = parts.Any(x => x.IsVariableSize);
+            var offset = parts.Where(x => !x.IsVariableSize).Sum(x => x.Bytes.Length)
+                + parts.Count(x => x.IsVariableSize) * BytesPerLengthOffset;
+            var length = offset + parts.Where(x => x.IsVariableSize).Sum(x => x.Bytes.Length);
+            var result = new Span<byte>(new byte[length]);
+            var index = 0;
+            foreach (var part in parts)
+            {
+                if (!part.IsVariableSize)
+                {
+                    part.Bytes.CopyTo(result.Slice(index));
+                    index += part.Bytes.Length;
+                }
+                else
+                {
+                    // Write offset in fixed part
+                    var serializedOffset = BitConverter.GetBytes((uint)offset);
+                    if (!BitConverter.IsLittleEndian)
+                    {
+                        Array.Reverse(serializedOffset);
+                    }
+                    serializedOffset.CopyTo(result.Slice(index));
+                    index += BytesPerLengthOffset;
+                    // Write variable parts at offset
+                    part.Bytes.CopyTo(result.Slice(offset));
+                    offset += part.Bytes.Length;
+                }
+            }
+            return new SerializeResult(result, isVariableSize);
         }
     }
 }

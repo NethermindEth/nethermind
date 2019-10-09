@@ -5,7 +5,7 @@ using Shouldly;
 namespace Cortex.SimpleSerialize.Tests
 {
     [TestClass]
-    public class SszTreeTest_Number
+    public class SszTreeTest_BasicElement
     {
         [DataTestMethod]
         [DataRow((byte)0, "00",
