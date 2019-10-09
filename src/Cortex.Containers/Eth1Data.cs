@@ -9,6 +9,7 @@ namespace Cortex.Containers
         {
             BlockHash = eth1BlockHash.ToArray();
             DepositCount = depositCount;
+            DepositRoot = new Hash[0];
         }
 
         public Hash[] BlockHash { get; }

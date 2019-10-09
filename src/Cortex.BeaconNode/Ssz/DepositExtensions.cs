@@ -14,7 +14,7 @@ namespace Cortex.BeaconNode.Ssz
 
         public static SszElement ToSszList(this IEnumerable<Deposit> list, int limit)
         {
-            return new SszContainer(list.Select(x => x.ToSszContainer()));
+            return new SszList(list.Select(x => x.ToSszContainer()), limit);
         }
 
         private static IEnumerable<SszElement> GetValues(Deposit item)

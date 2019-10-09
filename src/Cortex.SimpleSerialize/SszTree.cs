@@ -61,6 +61,10 @@ namespace Cortex.SimpleSerialize
         {
             switch (element)
             {
+                case null:
+                    {
+                        return new byte[BytesPerChunk];
+                    }
                 case SszBasicElement basic:
                     {
                         var bytes = basic.GetBytes();
@@ -207,6 +211,10 @@ namespace Cortex.SimpleSerialize
         {
             switch (element)
             {
+                case null:
+                    {
+                        return new SerializeResult(new byte[0], isVariableSize: false);
+                    }
                 case SszBasicElement basic:
                     {
                         return new SerializeResult(basic.GetBytes(), isVariableSize: false);

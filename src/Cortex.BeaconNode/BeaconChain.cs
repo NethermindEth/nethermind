@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Cortex.SimpleSerialize;
 using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode
@@ -12,16 +14,19 @@ namespace Cortex.BeaconNode
         private readonly BeaconChainParameters _beaconChainParameters;
         private readonly InitialValues _initialValues;
         private readonly TimeParameters _timeParameters;
+        private readonly MaxOperationsPerBlock _maxOperationsPerBlock;
 
         public BeaconChain(ILogger<BeaconChain> logger, 
             BeaconChainParameters beaconChainParameters,
             InitialValues initialValues,
-            TimeParameters timeParameters)
+            TimeParameters timeParameters,
+            MaxOperationsPerBlock maxOperationsPerBlock)
         {
             _logger = logger;
             _beaconChainParameters = beaconChainParameters;
             _initialValues = initialValues;
             _timeParameters = timeParameters;
+            _maxOperationsPerBlock = maxOperationsPerBlock;
         }
 
         public BeaconState State { get; }
@@ -41,8 +46,13 @@ namespace Cortex.BeaconNode
             var genesisTime = eth1Timestamp - (eth1Timestamp % _timeParameters.SecondsPerDay) + (2 * _timeParameters.SecondsPerDay);
             var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count);
             var latestBlockHeader = new BeaconBlockHeader(HashTreeRoot(new BeaconBlockBody()));
-
             var state = new BeaconState(genesisTime, eth1Data, latestBlockHeader);
+
+            // Process deposits
+            // TODO:
+
+            // Process activations
+            // TODO:
 
             return state;
         }
@@ -63,9 +73,8 @@ namespace Cortex.BeaconNode
 
         private ReadOnlySpan<byte> HashTreeRoot(BeaconBlockBody beaconBlockBody)
         {
-            return new byte[] { };
-            // TODO: SSZ library / SSZ serialization
-            //throw new NotImplementedException();
+            var tree = new SszTree(beaconBlockBody.ToSszContainer(_maxOperationsPerBlock));
+            return tree.HashTreeRoot();
         }
 
         // Update store via... (store processor ?)

@@ -37,7 +37,12 @@ namespace Cortex.BeaconNode.Tests
                 GenesisEpoch = 0
             };
             var timeParameters = new TimeParameters();
-            var beaconChain = new BeaconChain(null, beaconChainParameters, initalValues, timeParameters);
+            var maxOperationsPerBlock = new MaxOperationsPerBlock()
+            { 
+                MaxDeposits = 16
+            };
+
+            var beaconChain = new BeaconChain(null, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
 
             // Act
             var eth1BlockHash = new byte[] { };
