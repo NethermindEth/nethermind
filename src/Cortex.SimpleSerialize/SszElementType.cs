@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Cortex.SimpleSerialize
+﻿namespace Cortex.SimpleSerialize
 {
     public enum SszElementType
     {

@@ -181,7 +181,7 @@ namespace Cortex.SimpleSerialize.Tests
 
             private static IEnumerable<SszElement> GetChildren(SingleFieldTestContainer item)
             {
-                yield return new SszLeafElement(item.A);
+                yield return new SszBasicElement(item.A);
             }
         }
 
@@ -194,8 +194,8 @@ namespace Cortex.SimpleSerialize.Tests
 
             private static IEnumerable<SszElement> GetChildren(SmallTestContainer item)
             {
-                yield return new SszLeafElement(item.A);
-                yield return new SszLeafElement(item.B);
+                yield return new SszBasicElement(item.A);
+                yield return new SszBasicElement(item.B);
             }
         }
 
@@ -208,9 +208,9 @@ namespace Cortex.SimpleSerialize.Tests
 
             private static IEnumerable<SszElement> GetChildren(FixedTestContainer item)
             {
-                yield return new SszLeafElement(item.A);
-                yield return new SszLeafElement(item.B);
-                yield return new SszLeafElement(item.C);
+                yield return new SszBasicElement(item.A);
+                yield return new SszBasicElement(item.B);
+                yield return new SszBasicElement(item.C);
             }
         }
 
@@ -223,9 +223,9 @@ namespace Cortex.SimpleSerialize.Tests
 
             private static IEnumerable<SszElement> GetChildren(VarTestContainer item)
             {
-                yield return new SszLeafElement(item.A);
-                yield return new SszLeafElement(item.B.ToArray(), isVariableSize: true, limit: 1024);
-                yield return new SszLeafElement(item.C);
+                yield return new SszBasicElement(item.A);
+                yield return new SszBasicList(item.B.ToArray(), limit: 1024);
+                yield return new SszBasicElement(item.C);
             }
         }
     }

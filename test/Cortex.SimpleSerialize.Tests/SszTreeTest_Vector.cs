@@ -13,7 +13,7 @@ namespace Cortex.SimpleSerialize.Tests
         {
             // Arrange
             var value = new ushort[] { 0x4567, 0x0123 };
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicVector(value));
 
             // Act
             var bytes = tree.Serialize();

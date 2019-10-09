@@ -17,7 +17,7 @@ namespace Cortex.SimpleSerialize.Tests
         public void ByteSerialize(byte value, string expectedByteString, string expectedHashTreeRoot)
         {
             // Arrange
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicElement(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -38,7 +38,7 @@ namespace Cortex.SimpleSerialize.Tests
         public void ByteUInt16(ushort value, string expectedByteString, string expectedHashTreeRoot)
         {
             // Arrange
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicElement(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -59,7 +59,7 @@ namespace Cortex.SimpleSerialize.Tests
         public void ByteUInt32(uint value, string expectedByteString, string expectedHashTreeRoot)
         {
             // Arrange
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicElement(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -80,7 +80,7 @@ namespace Cortex.SimpleSerialize.Tests
         public void UInt64Serialize(ulong value, string expectedByteString, string expectedHashTreeRoot)
         {
             // Arrange
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicElement(value));
 
             // Act
             var bytes = tree.Serialize();

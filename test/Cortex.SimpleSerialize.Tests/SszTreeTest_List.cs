@@ -13,7 +13,7 @@ namespace Cortex.SimpleSerialize.Tests
         {
             // Arrange
             var value = new ushort[] { 0xaabb, 0xc0ad, 0xeeff };
-            var tree = new SszTree(new SszLeafElement(value, isVariableSize: true, limit: 32));
+            var tree = new SszTree(new SszBasicList(value, limit: 32));
 
             // Act
             var bytes = tree.Serialize();
@@ -45,7 +45,7 @@ namespace Cortex.SimpleSerialize.Tests
         {
             // Arrange
             var value = new uint[] { 0xaabb, 0xc0ad, 0xeeff };
-            var tree = new SszTree(new SszLeafElement(value, isVariableSize: true, limit: 128));
+            var tree = new SszTree(new SszBasicList(value, limit: 128));
 
             // Act
             var bytes = tree.Serialize();

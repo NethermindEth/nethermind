@@ -1,142 +1,32 @@
 ﻿using System;
+using System.Runtime.InteropServices;
 
 namespace Cortex.SimpleSerialize
 {
-    public class SszLeafElement : SszElement
+    public abstract class SszLeafElement : SszElement
     {
-        private const int BYTES_PER_CHUNK = 32;
+        public abstract ReadOnlySpan<byte> GetBytes();
 
-        private readonly byte[] _bytes;
-        private readonly SszElementType _elementType;
-
-        public SszLeafElement(ulong value)
+        protected byte[] ToLittleEndianBytes<T>(ReadOnlySpan<T> value, int basicSize)
+            where T : struct
         {
-            var bytes = BitConverter.GetBytes(value);
-            if (!BitConverter.IsLittleEndian)
+            var bytes = MemoryMarshal.Cast<T, byte>(value);
+            if (BitConverter.IsLittleEndian)
             {
-                Array.Reverse(bytes);
+                return bytes.ToArray();
             }
-            _bytes = bytes;
-            _elementType = SszElementType.Basic;
-            ChunkCount = 1;
-        }
-
-        public SszLeafElement(byte value)
-        {
-            _bytes = new byte[] { value };
-            _elementType = SszElementType.Basic;
-            ChunkCount = 1;
-        }
-
-        public SszLeafElement(ushort value)
-        {
-            _bytes = Serialize(value);
-            _elementType = SszElementType.Basic;
-            ChunkCount = 1;
-        }
-
-        public SszLeafElement(uint value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (!BitConverter.IsLittleEndian)
+            else
             {
-                Array.Reverse(bytes);
+                var result = new byte[bytes.Length];
+                for (var index1 = 0; index1 < bytes.Length; index1 += basicSize)
+                {
+                    for (var index2 = 0; index2 < basicSize; index2++)
+                    {
+                        result[index1 + index2] = bytes[index1 + basicSize - index2 - 1];
+                    }
+                }
+                return result;
             }
-            _bytes = bytes;
-            _elementType = SszElementType.Basic;
-            ChunkCount = 1;
-        }
-
-        public SszLeafElement(byte[] value, bool isVariableSize = false)
-        {
-            _bytes = value;
-            _elementType = isVariableSize ? SszElementType.BasicList : SszElementType.BasicVector;
-            IsVariableSize = isVariableSize;
-            ChunkCount = (value.Length + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
-        }
-
-        public SszLeafElement(ushort[] value, bool isVariableSize = false, int limit = -1)
-        {
-            _bytes = new byte[value.Length << 1];
-            for (var index = 0; index < value.Length; index++)
-            {
-                var bytes = Serialize(value[index]);
-                bytes.CopyTo(_bytes, index << 1);
-            }
-            _elementType = isVariableSize ? SszElementType.BasicList : SszElementType.BasicVector;
-            IsVariableSize = isVariableSize;
-            Length = value.Length;
-            ChunkCount = (limit * 2 + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
-        }
-
-        public SszLeafElement(uint[] value, bool isVariableSize = false, int limit = -1)
-        {
-            _bytes = new byte[value.Length << 2];
-            for (var index = 0; index < value.Length; index++)
-            {
-                var bytes = Serialize(value[index]);
-                bytes.CopyTo(_bytes, index << 2);
-            }
-            _elementType = isVariableSize ? SszElementType.BasicList : SszElementType.BasicVector;
-            IsVariableSize = isVariableSize;
-            Length = value.Length;
-            ChunkCount = (limit * 4 + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
-        }
-
-        public SszLeafElement(ulong[] value, bool isVariableSize = false)
-        {
-            _bytes = new byte[value.Length << 3];
-            for (var index = 0; index < value.Length; index++)
-            {
-                var bytes = Serialize(value[index]);
-                bytes.CopyTo(_bytes, index << 3);
-            }
-            _elementType = isVariableSize ? SszElementType.BasicList : SszElementType.BasicVector;
-            IsVariableSize = isVariableSize;
-            ChunkCount = (value.Length * 8 + BYTES_PER_CHUNK - 1) / BYTES_PER_CHUNK;
-        }
-
-        public override SszElementType ElementType { get { return _elementType; } }
-
-        public bool IsVariableSize { get; }
-
-        public ReadOnlySpan<byte> GetBytes() => _bytes;
-
-        public int ChunkCount { get; }
-
-        public int Length { get; }
-
-        private static byte[] Serialize(ushort value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (!BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-
-            return bytes;
-        }
-
-        private static byte[] Serialize(uint value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (!BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-
-            return bytes;
-        }
-
-        private static byte[] Serialize(ulong value)
-        {
-            var bytes = BitConverter.GetBytes(value);
-            if (!BitConverter.IsLittleEndian)
-            {
-                Array.Reverse(bytes);
-            }
-
-            return bytes;
         }
     }
 }

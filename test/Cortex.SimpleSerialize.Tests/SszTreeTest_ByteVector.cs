@@ -15,7 +15,7 @@ namespace Cortex.SimpleSerialize.Tests
             var value = new byte[16];
             value[0] = 1;
             value[15] = 0xff;
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicVector(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -39,7 +39,7 @@ namespace Cortex.SimpleSerialize.Tests
             var value = new byte[32];
             value[0] = 1;
             value[31] = 0xff;
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicVector(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -62,7 +62,7 @@ namespace Cortex.SimpleSerialize.Tests
             var value = new byte[64];
             value[0] = 1;
             value[32] = 2;
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicVector(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -94,7 +94,7 @@ namespace Cortex.SimpleSerialize.Tests
             value[32] = 2;
             value[64] = 3;
             value[95] = 0xff;
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicVector(value));
 
             // Act
             var bytes = tree.Serialize();
@@ -132,7 +132,7 @@ namespace Cortex.SimpleSerialize.Tests
             value[96] = 4;
             value[128] = 5;
             value[160] = 6;
-            var tree = new SszTree(new SszLeafElement(value));
+            var tree = new SszTree(new SszBasicVector(value));
 
             // Act
             var bytes = tree.Serialize();
