@@ -14,8 +14,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: srt32/git-actions@v0.0.3
-    - args:
-      - 'git submodule update --init --recursive'
+      with:
+        args: 'git submodule update --init --recursive'
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
@@ -75,8 +75,8 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS-latest]
     steps:
     - uses: srt32/git-actions@v0.0.3
-    - args:
-      - 'git submodule update --init --recursive'
+      with:
+        args: 'git submodule update --init --recursive'
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
