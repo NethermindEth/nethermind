@@ -45,7 +45,7 @@ namespace Cortex.BeaconNode.Tests
             var beaconChain = new BeaconChain(null, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
 
             // Act
-            var eth1BlockHash = new byte[] { };
+            var eth1BlockHash = new Hash32();
             var eth1Timestamp = (ulong)106185600; // 1973-05-14
             var deposits = new Deposit[] { };
             var success = await beaconChain.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);

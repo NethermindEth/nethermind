@@ -1,7 +1,5 @@
 ﻿using System.Collections.Generic;
 
-using BlsSignature = System.Byte; // Byte96
-
 namespace Cortex.Containers
 {
     public class BeaconBlockBody
@@ -10,7 +8,7 @@ namespace Cortex.Containers
         {
         }
 
-        public BeaconBlockBody(BlsSignature[] randaoReveal)
+        public BeaconBlockBody(BlsSignature randaoReveal)
         {
             RandaoReveal = randaoReveal;
         }
@@ -18,7 +16,7 @@ namespace Cortex.Containers
         public IList<Deposit> Deposits { get; }
         public Eth1Data Eth1Data { get; }
         public byte[] Graffiti { get; }
-        public BlsSignature[] RandaoReveal { get; }
+        public BlsSignature RandaoReveal { get; }
         // Operations
 
         /*

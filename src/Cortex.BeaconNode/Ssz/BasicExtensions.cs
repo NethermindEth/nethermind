@@ -1,6 +1,4 @@
-﻿using System.Collections.Generic;
-using Cortex.Containers;
-using Cortex.SimpleSerialize;
+﻿using Cortex.SimpleSerialize;
 
 namespace Cortex.BeaconNode.Ssz
 {

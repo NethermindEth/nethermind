@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode.Api
@@ -63,7 +64,7 @@ namespace Cortex.BeaconNode.Api
                 Slot = data.Slot,
                 Body = new BeaconBlockBody()
                 {
-                    Randao_reveal = data.Body.RandaoReveal
+                    Randao_reveal = data.Body.RandaoReveal.AsBytes().ToArray()
                 }
             };
             return result;

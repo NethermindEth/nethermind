@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Cortex.Containers;
 using Cortex.SimpleSerialize;
 
@@ -6,6 +7,12 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class BeaconBlockBodyExtensions
     {
+        public static ReadOnlySpan<byte> HashTreeRoot(this BeaconBlockBody item, MaxOperationsPerBlock maxOperationsPerBlock)
+        {
+            var tree = new SszTree(item.ToSszContainer(maxOperationsPerBlock));
+            return tree.HashTreeRoot();
+        }
+
         public static SszContainer ToSszContainer(this BeaconBlockBody item, MaxOperationsPerBlock maxOperationsPerBlock)
         {
             return new SszContainer(GetValues(item, maxOperationsPerBlock));

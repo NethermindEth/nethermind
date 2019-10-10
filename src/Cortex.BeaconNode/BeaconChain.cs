@@ -31,7 +31,7 @@ namespace Cortex.BeaconNode
 
         public BeaconState State { get; }
 
-        public async Task<bool> TryGenesisAsync(byte[] eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        public async Task<bool> TryGenesisAsync(Hash32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
             var candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
 
@@ -41,11 +41,12 @@ namespace Cortex.BeaconNode
             return false;
         }
 
-        public BeaconState InitializeBeaconStateFromEth1(ReadOnlySpan<byte> eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
+        public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
             var genesisTime = eth1Timestamp - (eth1Timestamp % _timeParameters.SecondsPerDay) + (2 * _timeParameters.SecondsPerDay);
             var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count);
-            var latestBlockHeader = new BeaconBlockHeader(HashTreeRoot(new BeaconBlockBody()));
+            var emptyBlockBody = new BeaconBlockBody();
+            var latestBlockHeader = new BeaconBlockHeader(emptyBlockBody.HashTreeRoot(_maxOperationsPerBlock));
             var state = new BeaconState(genesisTime, eth1Data, latestBlockHeader);
 
             // Process deposits
@@ -69,12 +70,6 @@ namespace Cortex.BeaconNode
                 return false;
             }
             return true;
-        }
-
-        private ReadOnlySpan<byte> HashTreeRoot(BeaconBlockBody beaconBlockBody)
-        {
-            var tree = new SszTree(beaconBlockBody.ToSszContainer(_maxOperationsPerBlock));
-            return tree.HashTreeRoot();
         }
 
         // Update store via... (store processor ?)
