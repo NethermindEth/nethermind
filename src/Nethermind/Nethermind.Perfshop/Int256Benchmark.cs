@@ -24,8 +24,7 @@ using Nethermind.Dirichlet.Numerics;
 namespace Nethermind.Perfshop
 {
     [MemoryDiagnoser]
-    [DisassemblyDiagnoser(printAsm: true)]
-    [CoreJob(baseline: true)]
+    [DisassemblyDiagnoser]
     public class Int256Benchmark
     {
         public struct InputStruct
@@ -114,8 +113,6 @@ namespace Nethermind.Perfshop
             Bytes.Avx2Reverse256InPlace(Input.B);
             BigInteger a = new BigInteger(Input.A, true);
             BigInteger b = new BigInteger(Input.B, true);
-            Bytes.Avx2Reverse256InPlace(Input.A);
-            Bytes.Avx2Reverse256InPlace(Input.B);
             (a + b).TryWriteBytes(_result, out int bytesWritten, true, true);
         }
     }

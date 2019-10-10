@@ -19,6 +19,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -183,11 +184,10 @@ namespace Nethermind.Core
 
             return obj.GetType() == GetType() && Equals((Address) obj);
         }
-
-        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+        
         public override int GetHashCode()
         {
-            return Bytes.GetSimplifiedHashCode();
+            return MemoryMarshal.Read<int>(Bytes);
         }
 
         public static bool operator ==(Address a, Address b)

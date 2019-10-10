@@ -19,6 +19,7 @@
 using System;
 using System.Numerics;
 using System.Reflection.Metadata.Ecma335;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
@@ -135,7 +136,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return Bytes.GetXxHashCode() ^ V.GetHashCode();
+            return MemoryMarshal.Read<int>(Bytes);
         }
     }
 }

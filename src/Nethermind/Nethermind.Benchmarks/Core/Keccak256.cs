@@ -25,6 +25,7 @@ using Nethermind.HashLib;
 namespace Nethermind.Benchmarks.Core
 {
     [MemoryDiagnoser]
+    [DisassemblyDiagnoser]
     [CoreJob(baseline: true)]
     public class Keccak256
     {
@@ -40,7 +41,7 @@ namespace Nethermind.Benchmarks.Core
             TestItem.AddressA.Bytes
         };
 
-        [Params(0, 1, 2, 3)]
+        [Params(1)]
         public int ScenarioIndex { get; set; }
 
         [GlobalSetup]
@@ -48,18 +49,18 @@ namespace Nethermind.Benchmarks.Core
         {
             _a = _scenarios[ScenarioIndex];
         }
-        
-        [Benchmark]
-        public void MeadowHashSpan()
-        {
-            MeadowHash.ComputeHash(_a);
-        }
-        
-        [Benchmark]
-        public byte[] MeadowHashBytes()
-        {
-            return MeadowHash.ComputeHashBytes(_a);
-        }
+//        
+//        [Benchmark]
+//        public void MeadowHashSpan()
+//        {
+//            MeadowHash.ComputeHash(_a);
+//        }
+//        
+//        [Benchmark]
+//        public byte[] MeadowHashBytes()
+//        {
+//            return MeadowHash.ComputeHashBytes(_a);
+//        }
         
         [Benchmark(Baseline = true)]
         public byte[] Current()
@@ -68,9 +69,16 @@ namespace Nethermind.Benchmarks.Core
         }
         
         [Benchmark]
-        public byte[] HashLib()
+        public Span<byte> Current2()
         {
-            return _hash.ComputeBytes(_a).GetBytes();
+            return ValueKeccak.Compute(_a).BytesAsSpan;
         }
+        
+//        
+//        [Benchmark]
+//        public byte[] HashLib()
+//        {
+//            return _hash.ComputeBytes(_a).GetBytes();
+//        }
     }
 }

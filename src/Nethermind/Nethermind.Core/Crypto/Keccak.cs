@@ -200,6 +200,11 @@ namespace Nethermind.Core.Crypto
                 return hash;
             }
         }
+        
+        public int GetHashCode2()
+        {
+            return MemoryMarshal.Read<int>(Bytes);
+        }
 
         public static bool operator ==(Keccak a, Keccak b)
         {

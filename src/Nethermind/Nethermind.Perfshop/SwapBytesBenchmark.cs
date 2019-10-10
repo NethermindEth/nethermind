@@ -15,33 +15,48 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Perfshop
 {
-    [MemoryDiagnoser]
-    [DisassemblyDiagnoser(printAsm:true)]
-    [CoreJob(baseline: true)]
+    [DisassemblyDiagnoser]
     public class SwapBytesBenchmark
     {
-        private const ulong number = 1230123812841984UL;
-        
-        [Benchmark(Baseline = true)]
-        public void Custom()
-        {
-            UInt256.SwapBytes(number);
-        }
-        
-        [Benchmark]
-        public void ReverseEndianness()
-        {
-            UInt256.SwapBytes2(number);
-        }
-        
-        [Benchmark]
-        public void HostToNetwork()
-        {
-            UInt256.SwapBytes3(number);
-        }
+        private Keccak hash = Keccak.OfAnEmptyString;
+        private Address addr = Address.SystemUser;
+
+//        [Benchmark(Baseline = true)]
+//        public ulong Custom()
+//        {
+//            // swap adjacent 32-bit blocks
+//            result = (number >> 32) | (number << 32);
+//            // swap adjacent 16-bit blocks
+//            result = ((result & 0xFFFF0000FFFF0000) >> 16) | ((result & 0x0000FFFF0000FFFF) << 16);
+//            // swap adjacent 8-bit blocks
+//            result = ((result & 0xFF00FF00FF00FF00) >> 8) | ((result & 0x00FF00FF00FF00FF) << 8);
+//            return result;
+//        }
+//
+//        [Benchmark]
+//        public ulong HostToNetwork()
+//        {
+//            result = (ulong) IPAddress.HostToNetworkOrder((long) number);
+//            return result;
+//        }
+//        
+//        [Benchmark]
+//        public ulong ReverseEndiannessUL()
+//        {
+//            result = BinaryPrimitives.ReverseEndianness(number);
+//            return result;
+//        }
+//        
+//        [Benchmark]
+//        public ulong ReverseEndiannessL()
+//        {
+//            result = (ulong)BinaryPrimitives.ReverseEndianness((long)number);
+//            return result;
+//        }
     }
 }
