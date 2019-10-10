@@ -6,6 +6,9 @@
         {
             Slot = slot;
             Body = new BeaconBlockBody(randaoReveal);
+            ParentRoot = new Hash32();
+            Signature = new BlsSignature();
+            StateRoot = new Hash32();
         }
 
         public BeaconBlockBody Body { get; }

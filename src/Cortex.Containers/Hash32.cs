@@ -1,17 +1,18 @@
 ﻿using System;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
 
 namespace Cortex.Containers
 {
-    [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    public readonly struct Hash32
+    public class Hash32 : IEquatable<Hash32>
     {
         public const int Length = 32;
 
-        private readonly ulong _a;
-        private readonly ulong _b;
-        private readonly ulong _c;
-        private readonly ulong _d;
+        private readonly byte[] _bytes;
+
+        public Hash32()
+        {
+            _bytes = new byte[Length];
+        }
 
         public Hash32(ReadOnlySpan<byte> span)
         {
@@ -19,11 +20,7 @@ namespace Cortex.Containers
             {
                 throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
             }
-            var parts = MemoryMarshal.Cast<byte, ulong>(span);
-            _a = parts[0];
-            _b = parts[1];
-            _c = parts[2];
-            _d = parts[3];
+            _bytes = span.ToArray();
         }
 
         public static implicit operator Hash32(byte[] bytes) => new Hash32(bytes);
@@ -32,6 +29,32 @@ namespace Cortex.Containers
 
         public static implicit operator Hash32(ReadOnlySpan<byte> span) => new Hash32(span);
 
-        public static implicit operator ReadOnlySpan<byte>(Hash32 hash) => hash.AsBytes();
+        public static implicit operator ReadOnlySpan<byte>(Hash32 hash) => hash.AsSpan();
+
+        public ReadOnlySpan<byte> AsSpan()
+        {
+            return new ReadOnlySpan<byte>(_bytes);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as Hash32);
+        }
+
+        public bool Equals(Hash32 other)
+        {
+            return other != null &&
+                   EqualityComparer<byte[]>.Default.Equals(_bytes, other._bytes);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(_bytes);
+        }
+
+        public override string ToString()
+        {
+            return BitConverter.ToString(_bytes).Replace("-", "");
+        }
     }
 }

@@ -64,7 +64,7 @@ namespace Cortex.BeaconNode.Api
                 Slot = data.Slot,
                 Body = new BeaconBlockBody()
                 {
-                    Randao_reveal = data.Body.RandaoReveal.AsBytes().ToArray()
+                    Randao_reveal = data.Body.RandaoReveal.AsSpan().ToArray()
                 }
             };
             return result;

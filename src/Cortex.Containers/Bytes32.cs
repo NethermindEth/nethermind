@@ -3,33 +3,33 @@ using System.Collections.Generic;
 
 namespace Cortex.Containers
 {
-    public class BlsSignature : IEquatable<BlsSignature>
+    public class Bytes32 : IEquatable<Bytes32>
     {
-        public const int Length = 96;
+        public const int Length = 32;
 
         private readonly byte[] _bytes;
 
-        public BlsSignature()
+        public Bytes32()
         {
             _bytes = new byte[Length];
         }
 
-        public BlsSignature(ReadOnlySpan<byte> span)
+        public Bytes32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)
             {
-                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(BlsSignature)} must have exactly {Length} bytes");
+                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Bytes32)} must have exactly {Length} bytes");
             }
             _bytes = span.ToArray();
         }
 
-        public static implicit operator BlsSignature(byte[] bytes) => new BlsSignature(bytes);
+        public static implicit operator Bytes32(byte[] bytes) => new Bytes32(bytes);
 
-        public static implicit operator BlsSignature(Span<byte> span) => new BlsSignature(span);
+        public static implicit operator Bytes32(Span<byte> span) => new Bytes32(span);
 
-        public static implicit operator BlsSignature(ReadOnlySpan<byte> span) => new BlsSignature(span);
+        public static implicit operator Bytes32(ReadOnlySpan<byte> span) => new Bytes32(span);
 
-        public static implicit operator ReadOnlySpan<byte>(BlsSignature blsSignature) => blsSignature.AsSpan();
+        public static implicit operator ReadOnlySpan<byte>(Bytes32 hash) => hash.AsSpan();
 
         public ReadOnlySpan<byte> AsSpan()
         {
@@ -38,10 +38,10 @@ namespace Cortex.Containers
 
         public override bool Equals(object obj)
         {
-            return Equals(obj as BlsSignature);
+            return Equals(obj as Bytes32);
         }
 
-        public bool Equals(BlsSignature other)
+        public bool Equals(Bytes32 other)
         {
             return other != null &&
                    EqualityComparer<byte[]>.Default.Equals(_bytes, other._bytes);

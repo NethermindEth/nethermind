@@ -18,19 +18,23 @@ namespace Cortex.SimpleSerialize
         static SszTree()
         {
             _zeroHashes = new byte[BytesPerChunk * MaxDepth];
-            var hash = new byte[BytesPerChunk];
             var buffer = new byte[BytesPerChunk << 1];
             // Span accessors
             var hashes = _zeroHashes.AsSpan();
             var buffer1 = buffer.AsSpan(0, BytesPerChunk);
             var buffer2 = buffer.AsSpan(BytesPerChunk, BytesPerChunk);
             // Fill
+            var hash = hashes.Slice(0, BytesPerChunk);
             for (var index = 1; index < MaxDepth; index++)
             {
                 hash.CopyTo(buffer1);
                 hash.CopyTo(buffer2);
-                hash = _hashAlgorithm.ComputeHash(buffer);
-                hash.CopyTo(hashes.Slice(index * BytesPerChunk));
+                hash = hashes.Slice(index * BytesPerChunk, BytesPerChunk);
+                var success = _hashAlgorithm.TryComputeHash(buffer, hash, out var bytesWritten);
+                if (!success || bytesWritten != BytesPerChunk)
+                {
+                    throw new InvalidOperationException("Error generating zero hash values.");
+                }
             }
         }
 
@@ -49,12 +53,6 @@ namespace Cortex.SimpleSerialize
         public ReadOnlySpan<byte> Serialize()
         {
             return SerializeRecursive(RootElement).Bytes;
-        }
-
-        private ReadOnlySpan<byte> Hash(ReadOnlySpan<byte> data)
-        {
-            var hash = _hashAlgorithm.ComputeHash(data.ToArray());
-            return hash;
         }
 
         private ReadOnlySpan<byte> HashTreeRootRecursive(SszElement element)
@@ -169,19 +167,23 @@ namespace Cortex.SimpleSerialize
             for (var index = 0; index < hashWidth; index += BytesPerChunk)
             {
                 var dataIndex = index << 1;
-                ReadOnlySpan<byte> hash;
+                ReadOnlySpan<byte> input;
                 if (dataIndex + BytesPerChunk >= data.Length)
                 {
                     var padded = new Span<byte>(new byte[BytesPerChunk << 1]);
                     data.Slice(dataIndex, BytesPerChunk).CopyTo(padded);
                     _zeroHashes.AsSpan((depth - 1) * BytesPerChunk, BytesPerChunk).CopyTo(padded.Slice(BytesPerChunk));
-                    hash = Hash(padded);
+                    input = padded;
                 }
                 else
                 {
-                    hash = Hash(data.Slice(dataIndex, BytesPerChunk << 1));
+                    input = data.Slice(dataIndex, BytesPerChunk << 1);
                 }
-                hash.CopyTo(hashes.Slice(index, BytesPerChunk));
+                var success = _hashAlgorithm.TryComputeHash(input, hashes.Slice(index, BytesPerChunk), out var bytesWritten);
+                if (!success || bytesWritten != BytesPerChunk)
+                {
+                    throw new InvalidOperationException("Error generating hash value.");
+                }
             }
             return hashes;
         }
@@ -196,7 +198,13 @@ namespace Cortex.SimpleSerialize
             var mixed = new Span<byte>(new byte[BytesPerChunk << 1]);
             root.CopyTo(mixed);
             serializedLength.CopyTo(mixed.Slice(BytesPerChunk));
-            return Hash(mixed.ToArray());
+            var hash = new Span<byte>(new byte[BytesPerChunk]);
+            var success = _hashAlgorithm.TryComputeHash(mixed, hash, out var bytesWritten);
+            if (!success || bytesWritten != BytesPerChunk)
+            {
+                throw new InvalidOperationException("Error generating hash value.");
+            }
+            return hash;
         }
 
         private ReadOnlySpan<byte> Pack(ReadOnlySpan<byte> value)

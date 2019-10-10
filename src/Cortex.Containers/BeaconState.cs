@@ -1,8 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 using Epoch = System.UInt64;
+
 using ValidatorIndex = System.UInt64;
 
 namespace Cortex.Containers
@@ -11,18 +11,19 @@ namespace Cortex.Containers
     {
         public BeaconState(ulong genesisTime, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader)
         {
-            GenesisTime = genesisTime;
             Eth1Data = eth1Data;
+            GenesisTime = genesisTime;
             LatestBlockHeader = latestBlockHeader;
+            Validators = new List<Validator>();
         }
+
+        public Eth1Data Eth1Data { get; }
 
         public ulong GenesisTime { get; }
 
         public BeaconBlockHeader LatestBlockHeader { get; }
 
         public IList<Validator> Validators { get; }
-
-        public Eth1Data Eth1Data { get; }
 
         /// <summary>
         /// Return the sequence of active validator indices at ``epoch``.

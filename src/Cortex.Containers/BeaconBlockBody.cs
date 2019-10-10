@@ -6,16 +6,23 @@ namespace Cortex.Containers
     {
         public BeaconBlockBody()
         {
+            Deposits = new List<Deposit>();
+            Eth1Data = new Eth1Data(new Hash32(), 0);
+            Graffiti = new Bytes32();
+            RandaoReveal = new BlsSignature();
         }
 
         public BeaconBlockBody(BlsSignature randaoReveal)
         {
+            Deposits = new List<Deposit>();
+            Eth1Data = new Eth1Data(new Hash32(), 0);
+            Graffiti = new byte[32];
             RandaoReveal = randaoReveal;
         }
 
         public IList<Deposit> Deposits { get; }
         public Eth1Data Eth1Data { get; }
-        public byte[] Graffiti { get; }
+        public Bytes32 Graffiti { get; }
         public BlsSignature RandaoReveal { get; }
         // Operations
 

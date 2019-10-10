@@ -5,6 +5,9 @@
         public BeaconBlockHeader(Hash32 bodyRoot)
         {
             BodyRoot = bodyRoot;
+            ParentRoot = new Hash32();
+            Signature = new BlsSignature();
+            StateRoot = new Hash32();
         }
 
         public Hash32 BodyRoot { get; }

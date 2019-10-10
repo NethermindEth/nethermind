@@ -6,6 +6,7 @@
         {
             BlockHash = eth1BlockHash;
             DepositCount = depositCount;
+            DepositRoot = new Hash32();
         }
 
         public Hash32 BlockHash { get; }
