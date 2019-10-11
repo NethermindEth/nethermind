@@ -55,6 +55,17 @@ Client code:
 dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
+### BLS
+
+Library implementation from https://github.com/herumi/bls
+
+* Install Visual Studio C++ tools
+* Get BLS, MCL, and cybozulib_ext projects
+* Open 64-bit command prompt
+* "makelib.bat dll" for MCL, then BLS, as per instructions
+* (Can also compile and run test projects, as per instructions)
+* Copy the output DLL from bin folder to the library folder for Cortex
+
 ## Contributions
 
 Donations can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
