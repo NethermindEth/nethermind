@@ -33,7 +33,7 @@ namespace Cortex.BeaconNode.Api
             var value = valueProviderResult.FirstValue;
             var culture = valueProviderResult.Culture;
 
-            object model;
+            object? model;
             if (string.IsNullOrWhiteSpace(value))
             {
                 model = null;

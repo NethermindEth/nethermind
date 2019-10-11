@@ -38,7 +38,8 @@ namespace Cortex.Containers
 
         public override bool Equals(object obj)
         {
-            return Equals(obj as Hash32);
+            var hash = obj as Hash32;
+            return hash != null && Equals(hash);
         }
 
         public bool Equals(Hash32 other)

@@ -5,6 +5,8 @@
     <Product>Cortex Eth2.0 blockchain</Product>
     <Authors>Gryphon Technology</Authors>
     <Version>0.0.1</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
 
   <ItemGroup>

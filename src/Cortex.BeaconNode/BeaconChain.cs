@@ -41,7 +41,7 @@ namespace Cortex.BeaconNode
             _maxOperationsPerBlock = maxOperationsPerBlock;
         }
 
-        public BeaconState State { get; }
+        public BeaconState? State { get; }
 
         /// <summary>
         /// Returns the domain for the 'domain_type' and 'fork_version'
@@ -119,7 +119,7 @@ namespace Cortex.BeaconNode
         public void ProcessDeposit(BeaconState state, Deposit deposit)
         {
             // Verify the Merkle branch
-            bool isValid = IsValidMerkleBranch(
+            var isValid = IsValidMerkleBranch(
                 deposit.Data.HashTreeRoot(),
                 deposit.Proof,
                 DEPOSIT_CONTRACT_TREE_DEPTH + 1, // Add 1 for the 'List' length mix-in
