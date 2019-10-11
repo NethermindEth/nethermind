@@ -1,4 +1,6 @@
-﻿namespace Cortex.Containers
+﻿using System;
+
+namespace Cortex.Containers
 {
     public class Eth1Data
     {
@@ -11,6 +13,15 @@
 
         public Hash32 BlockHash { get; }
         public ulong DepositCount { get; }
-        public Hash32 DepositRoot { get; }
+        public Hash32 DepositRoot { get; private set; }
+
+        public void SetDepositRoot(Hash32 depositRoot)
+        {
+            if (depositRoot == null)
+            {
+                throw new ArgumentNullException(nameof(depositRoot));
+            }
+            DepositRoot = depositRoot;
+        }
     }
 }

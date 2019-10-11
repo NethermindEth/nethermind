@@ -1,29 +1,34 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
-
-using Epoch = System.UInt64;
-
-using ValidatorIndex = System.UInt64;
 
 namespace Cortex.Containers
 {
     public class BeaconState
     {
+        private readonly List<Gwei> _balances;
+        private readonly List<Validator> _validators;
+
         public BeaconState(ulong genesisTime, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader)
         {
             Eth1Data = eth1Data;
             GenesisTime = genesisTime;
             LatestBlockHeader = latestBlockHeader;
-            Validators = new List<Validator>();
+            _validators = new List<Validator>();
+            _balances = new List<Gwei>();
         }
 
+        public IReadOnlyList<Gwei> Balances { get { return _balances; } }
+
         public Eth1Data Eth1Data { get; }
+
+        public ulong Eth1DepositIndex { get; private set; }
 
         public ulong GenesisTime { get; }
 
         public BeaconBlockHeader LatestBlockHeader { get; }
 
-        public IList<Validator> Validators { get; }
+        public IReadOnlyList<Validator> Validators { get { return _validators; } }
 
         /// <summary>
         /// Return the sequence of active validator indices at ``epoch``.
@@ -33,8 +38,38 @@ namespace Cortex.Containers
             return Validators
                 .Select((validator, index) => new { validator, index })
                 .Where(x => x.validator.IsActiveValidator(epoch))
-                .Select(x => (ValidatorIndex)x.index)
+                .Select(x => (ValidatorIndex)(ulong)x.index)
                 .ToList();
+        }
+
+        public void IncreaseEth1DepositIndex()
+        {
+            Eth1DepositIndex++;
+        }
+
+        public void AddValidator(Validator validator)
+        {
+            _validators.Add(validator);
+        }
+
+        /// <summary>
+        /// Increase the validator balance at index 'index' by 'delta'.
+        /// </summary>
+        public void IncreaseBalance(ValidatorIndex index, Gwei amount)
+        {
+            Gwei balance;
+            var arrayIndex = (int)(ulong)index;
+            // TODO: Would a dictionary be better, to handle ulong index?
+            if (arrayIndex < _balances.Count)
+            {
+                balance = _balances[arrayIndex];
+            }
+            else
+            {
+                balance = new Gwei();
+            }
+            balance += amount;
+            _balances[arrayIndex] = balance;
         }
     }
 }
