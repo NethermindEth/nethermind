@@ -32,7 +32,7 @@ namespace Nethermind.Benchmarks
 //            BenchmarkRunner.Run<BytesCompare>();
 //            BenchmarkRunner.Run<BytesIsZero>();
 //            BenchmarkRunner.Run<BytesPad>();
-            BenchmarkRunner.Run<Keccak256>();
+//            BenchmarkRunner.Run<Keccak256>();
 //            BenchmarkRunner.Run<Keccak512>();
 //            
 //            BenchmarkRunner.Run<Bn128AddPrecompile>(); // complex, may require experimenting with other libraries
@@ -61,7 +61,7 @@ namespace Nethermind.Benchmarks
 //            BenchmarkRunner.Run<RlpDecodeAccount>();
 //            BenchmarkRunner.Run<RlpEncodeAccount>();
 //            BenchmarkRunner.Run<RlpDecodeBlock>();
-//            BenchmarkRunner.Run<RlpEncodeBlock>();
+            BenchmarkRunner.Run<RlpEncodeBlock>();
 //            BenchmarkRunner.Run<RlpEncodeHeader>();
 //            BenchmarkRunner.Run<RlpEncodeTransaction>();
 //              BenchmarkRunner.Run<RlpEncodeLong>();

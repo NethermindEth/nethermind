@@ -107,12 +107,28 @@ namespace Nethermind.Perfshop
             }
         }
 
+        [Benchmark(Baseline = true)]
+        public void LoopVersion()
+        {
+            byte[] bytes = Bytes;
+            for (int i = 0; i < bytes.Length / 2; i++)
+            {
+                (bytes[i], bytes[bytes.Length - i - 1]) = (bytes[bytes.Length - i - 1], bytes[i]);
+            }
+        }
+        
         [Benchmark]
         public void ArrayVersion()
         {
             Array.Reverse(Bytes);
         }
 
+        [Benchmark]
+        public void SpanVersion()
+        {
+            Bytes.AsSpan().Reverse();
+        }
+        
         private static byte[] _reverseMask = {15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
 
         [Benchmark]
@@ -137,22 +153,6 @@ namespace Nethermind.Perfshop
             Span<ulong> ulongs = MemoryMarshal.Cast<byte, ulong>(Bytes);
             (ulongs[0], ulongs[3]) = (BinaryPrimitives.ReverseEndianness(ulongs[3]), BinaryPrimitives.ReverseEndianness(ulongs[0]));
             (ulongs[1], ulongs[2]) = (BinaryPrimitives.ReverseEndianness(ulongs[2]), BinaryPrimitives.ReverseEndianness(ulongs[1]));
-        }
-
-        [Benchmark]
-        public void SpanVersion()
-        {
-            Bytes.AsSpan().Reverse();
-        }
-
-        [Benchmark(Baseline = true)]
-        public void LoopVersion()
-        {
-            byte[] bytes = Bytes;
-            for (int i = 0; i < bytes.Length / 2; i++)
-            {
-                (bytes[i], bytes[bytes.Length - i - 1]) = (bytes[bytes.Length - i - 1], bytes[i]);
-            }
         }
     }
 }

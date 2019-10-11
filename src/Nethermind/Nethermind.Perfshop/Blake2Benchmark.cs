@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Nethermind.Core;
@@ -22,7 +23,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Perfshop
 {
     [MemoryDiagnoser]
-    [DisassemblyDiagnoser(printAsm: true)]
+    [DisassemblyDiagnoser]
     [CoreJob(baseline: true)]
     public class Blake2Benchmark
     {
@@ -47,9 +48,11 @@ namespace Nethermind.Perfshop
         }
 
         [Benchmark]
-        public byte[] Blake2OptimizedVersion()
+        public Span<byte> Blake2OptimizedVersion()
         {
-            return _blake2Optimized.Compress(input);
+            Span<byte> result = new byte[64];
+            _blake2Optimized.Compress(input, result);
+            return result;
         }
     }
 }

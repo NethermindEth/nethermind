@@ -97,6 +97,15 @@ namespace Nethermind.Benchmarks.Rlp
         {
             return _blockDecoder.Encode(_block).Bytes;
         }
+        
+        [Benchmark]
+        public byte[] Improved3()
+        {
+            int length = _blockDecoder.GetLength(_block, RlpBehaviors.None);
+            RlpStream stream = new RlpStream(length);
+            _blockDecoder.Encode(stream, _block);
+            return Bytes.Empty;
+        }
 
         [Benchmark(Baseline = true)]
         public byte[] Current()

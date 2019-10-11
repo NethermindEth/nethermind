@@ -773,6 +773,7 @@ namespace Nethermind.Evm
                 }
             }
 
+            // ReSharper disable once ImplicitlyCapturedClosure
             Span<byte> PopBytes(Span<byte> stack)
             {
                 if (stackHead == 0)

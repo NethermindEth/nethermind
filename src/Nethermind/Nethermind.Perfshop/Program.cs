@@ -9,7 +9,9 @@ namespace Nethermind.Perfshop
 //            BenchmarkRunner.Run<BloomsBenchmark>();
 //            BenchmarkRunner.Run<SwapBytesBenchmark>();
 //            BenchmarkRunner.Run<Int256Benchmark>();
-            BenchmarkRunner.Run<SwapBytesBenchmark>();
+//            BenchmarkRunner.Run<ReverseBytesBenchmark>();
+            BenchmarkRunner.Run<Blake2Benchmark>();
+//            BenchmarkRunner.Run<SwapBytesBenchmark>();
         }
     }
 }

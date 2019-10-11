@@ -20,6 +20,7 @@ using System;
 using System.Buffers.Binary;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
@@ -49,72 +50,60 @@ namespace Nethermind.Core
             0xa54ff53a5f1d36f1ul, 0x510e527fade682d1ul, 0x9b05688c2b3e6c1ful,
             0x1f83d9abfb41bd6bul, 0x5be0cd19137e2179ul
         };
-
-        private ulong[] _h = new ulong[8];
-        private ulong[] _m = new ulong[16];
-        private ulong[] _t = new ulong[2];
-        private ulong[] _v = new ulong[16];
-        private bool _f;
-        private uint _rounds = 12;
-
-        public byte[] Compress(byte[] input)
+        
+        public void Compress(ReadOnlySpan<byte> input, Span<byte> output)
         {
-            Init(input);
+            Span<ulong> v = stackalloc ulong[16];
+
+            uint rounds = BinaryPrimitives.ReadUInt32BigEndian(input);
+            ReadOnlySpan<ulong> h = MemoryMarshal.Cast<byte, ulong>(input.Slice(4, 64));
+            ReadOnlySpan<ulong> m = MemoryMarshal.Cast<byte, ulong>(input.Slice(68, 128));
+            ReadOnlySpan<ulong> t = MemoryMarshal.Cast<byte, ulong>(input.Slice(196, 16));
+            bool f = input[212] != 0;
             
-            _h.AsSpan().CopyTo(_v.AsSpan(0, 8));
-            IV.AsSpan().CopyTo(_v.AsSpan(8, 8));
+            h.CopyTo(v.Slice(0, 8));
+            IV.AsSpan().CopyTo(v.Slice(8, 8));
 
-            _v[12] ^= _t[0];
-            _v[13] ^= _t[1];
+            v[12] ^= t[0];
+            v[13] ^= t[1];
 
-            if (_f)
+            if (f)
             {
-                _v[14] ^= 0xfffffffffffffffful;
+                v[14] ^= 0xfffffffffffffffful;
             }
 
-            for (int i = 0; i < _rounds; ++i)
+            for (int i = 0; i < rounds; ++i)
             {
                 byte[] s = Precomputed[i % 10];
-                Compute(_m[s[0]], _m[s[4]], 0, 4, 8, 12);
-                Compute(_m[s[1]], _m[s[5]], 1, 5, 9, 13);
-                Compute(_m[s[2]], _m[s[6]], 2, 6, 10, 14);
-                Compute(_m[s[3]], _m[s[7]], 3, 7, 11, 15);
-                Compute(_m[s[8]], _m[s[12]], 0, 5, 10, 15);
-                Compute(_m[s[9]], _m[s[13]], 1, 6, 11, 12);
-                Compute(_m[s[10]], _m[s[14]], 2, 7, 8, 13);
-                Compute(_m[s[11]], _m[s[15]], 3, 4, 9, 14);
+                Compute(v, m[s[0]], m[s[4]], 0, 4, 8, 12);
+                Compute(v, m[s[1]], m[s[5]], 1, 5, 9, 13);
+                Compute(v, m[s[2]], m[s[6]], 2, 6, 10, 14);
+                Compute(v, m[s[3]], m[s[7]], 3, 7, 11, 15);
+                Compute(v, m[s[8]], m[s[12]], 0, 5, 10, 15);
+                Compute(v, m[s[9]], m[s[13]], 1, 6, 11, 12);
+                Compute(v, m[s[10]], m[s[14]], 2, 7, 8, 13);
+                Compute(v, m[s[11]], m[s[15]], 3, 4, 9, 14);
             }
 
-            for (int offset = 0; offset < _h.Length; offset++)
+            MemoryMarshal.Cast<ulong, byte>(h).CopyTo(output);
+            Span<ulong> outputUlongs = MemoryMarshal.Cast<byte, ulong>(output);
+            for (int offset = 0; offset < h.Length; offset++)
             {
-                _h[offset] ^= _v[offset] ^ _v[offset + 8];
+                outputUlongs[offset] = h[offset] ^ v[offset] ^ v[offset + 8];
             }
-            
-            var result = new byte[_h.Length * 8];
-            MemoryMarshal.Cast<ulong, byte>(_h.AsSpan()).CopyTo(result);
-            return result;
         }
 
-        private void Init(Span<byte> input)
+        private void Compute(Span<ulong> v, ulong a, ulong b, int i, int j, int k, int l)
         {
-            _rounds = BinaryPrimitives.ReadUInt32BigEndian(input.Slice(0,4));
-            MemoryMarshal.Cast<byte, ulong>(input.Slice(4, 64)).CopyTo(_h);
-            MemoryMarshal.Cast<byte, ulong>(input.Slice(68, 128)).CopyTo(_m);
-            MemoryMarshal.Cast<byte, ulong>(input.Slice(196, 16)).CopyTo(_t);
-            _f = input[212] != 0;
-        }
+            v[i] += a + v[j];
+            v[l] = RotateLeft(v[l] ^ v[i], -32);
+            v[k] += v[l];
+            v[j] = RotateLeft(v[j] ^ v[k], -24);
 
-        private void Compute(ulong a, ulong b, int i, int j, int k, int l)
-        {
-            _v[i] += a + _v[j];
-            _v[l] = RotateLeft(_v[l] ^ _v[i], -32);
-            _v[k] += _v[l];
-            _v[j] = RotateLeft(_v[j] ^ _v[k], -24);
-
-            _v[i] += b + _v[j];
-            _v[l] = RotateLeft(_v[l] ^ _v[i], -16);
-            _v[k] += _v[l];
-            _v[j] = RotateLeft(_v[j] ^ _v[k], -63);
+            v[i] += b + v[j];
+            v[l] = RotateLeft(v[l] ^ v[i], -16);
+            v[k] += v[l];
+            v[j] = RotateLeft(v[j] ^ v[k], -63);
         }
         
         private static ulong RotateLeft(ulong value, int count)
