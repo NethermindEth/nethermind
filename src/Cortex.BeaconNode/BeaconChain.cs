@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using System.Threading.Tasks;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Cortex.Cryptography;
 using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode
@@ -24,24 +25,28 @@ namespace Cortex.BeaconNode
 
         // 1,000,000,000
         private readonly ILogger _logger;
-
+        private readonly BlsSignatureService _blsSignatureService;
         private readonly MaxOperationsPerBlock _maxOperationsPerBlock;
         private readonly TimeParameters _timeParameters;
 
         public BeaconChain(ILogger<BeaconChain> logger,
+            BlsSignatureService blsSignatureService,
             BeaconChainParameters beaconChainParameters,
             InitialValues initialValues,
             TimeParameters timeParameters,
             MaxOperationsPerBlock maxOperationsPerBlock)
         {
             _logger = logger;
+            _blsSignatureService = blsSignatureService;
             _beaconChainParameters = beaconChainParameters;
             _initialValues = initialValues;
             _timeParameters = timeParameters;
             _maxOperationsPerBlock = maxOperationsPerBlock;
         }
 
-        public BeaconState? State { get; }
+        public BeaconBlock? GenesisBlock { get; private set; }
+        public BeaconState? GenesisState { get; private set; }
+        public BeaconState? State { get; private set; }
 
         /// <summary>
         /// Returns the domain for the 'domain_type' and 'fork_version'
@@ -140,7 +145,7 @@ namespace Cortex.BeaconNode
                 // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
 
                 Domain domain = ComputeDomain(Domain.Deposit, new ForkVersion());
-                if (!BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
+                if (!_blsSignatureService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
                 {
                     return;
                 }
@@ -164,19 +169,19 @@ namespace Cortex.BeaconNode
             }
         }
 
-        public bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain)
-        {
-            throw new NotImplementedException();
-        }
-
         public async Task<bool> TryGenesisAsync(Hash32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
         {
-            var candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
-
-            // if is_valid_genesis_state(candidate_state) then genesis_state = candidate_state
-            // store = get_genesis_store(genesis_state)
-            //         genesis_block = BeaconBlock(state_root=hash_tree_root(genesis_state))
-            return false;
+            return await Task.Run(() =>
+            {
+                var candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+                if (IsValidGenesisState(candidateState))
+                {
+                    GenesisState = candidateState;
+                    GenesisBlock = new BeaconBlock(GenesisState.HashTreeRoot());
+                    return true;
+                }
+                return false;
+            });
         }
 
         private Hash32 Hash(Hash32 a, Hash32 b)

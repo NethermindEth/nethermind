@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Cortex.Containers\Cortex.Containers.csproj" />
+    <ProjectReference Include="..\Cortex.Cryptography\Cortex.Cryptography.csproj" />
     <ProjectReference Include="..\Cortex.SimpleSerialize\Cortex.SimpleSerialize.csproj" />
   </ItemGroup>
 

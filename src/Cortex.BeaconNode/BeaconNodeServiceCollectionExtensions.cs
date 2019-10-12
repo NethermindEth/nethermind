@@ -28,6 +28,7 @@ namespace Cortex.BeaconNode
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<BeaconNodeConfiguration>();
             services.AddSingleton<Store>();
+            services.AddSingleton<BlsSignatureService>();
 
             services.AddScoped<BlockProducer>();
         }
