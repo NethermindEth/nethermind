@@ -19,6 +19,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
@@ -72,7 +73,7 @@ namespace Nethermind.Core
                 v[14] ^= 0xfffffffffffffffful;
             }
 
-            for (int i = 0; i < rounds; ++i)
+            for (uint i = 0; i < rounds; ++i)
             {
                 byte[] s = Precomputed[i % 10];
                 Compute(v, m[s[0]], m[s[4]], 0, 4, 8, 12);
@@ -93,6 +94,7 @@ namespace Nethermind.Core
             }
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void Compute(Span<ulong> v, ulong a, ulong b, int i, int j, int k, int l)
         {
             v[i] += a + v[j];
