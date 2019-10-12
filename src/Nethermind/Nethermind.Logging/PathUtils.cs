@@ -43,9 +43,7 @@ namespace Nethermind.Logging
         {
             if (string.IsNullOrWhiteSpace(resourcePath))
             {
-                return string.IsNullOrWhiteSpace(overridePrefixPath) ? ExecutingDirectory :
-                    Path.IsPathRooted(overridePrefixPath) ? overridePrefixPath :
-                    Path.Combine(ExecutingDirectory, overridePrefixPath);
+                resourcePath = string.Empty;
             }
             
             if (Path.IsPathRooted(resourcePath))

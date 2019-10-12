@@ -156,17 +156,6 @@ namespace Nethermind.Runner
                     }
                 }
 
-                if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
-                {
-                    string redirectedConfigPath = Path.Combine(DefaultConfigsDirectory, string.Concat(configFilePath, ".cfg"));
-                    Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
-                    configFilePath = redirectedConfigPath;
-                    if (!File.Exists(configFilePath))
-                    {
-                        throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
-                    }
-                }
-
                 if (!Path.HasExtension(configFilePath))
                 {
                     configFilePath = string.Concat(configFilePath, ".cfg");
@@ -175,9 +164,9 @@ namespace Nethermind.Runner
                 // Fallback to "{executingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
                 if (!File.Exists(configFilePath))
                 {
-                    var configName = configFilePath.Split(Path.DirectorySeparatorChar).LastOrDefault() ?? string.Empty;
-                    string redirectedConfigPath = Path.Combine(configFilePath.Replace(configName, string.Empty),
-                        DefaultConfigsDirectory, configName);
+                    var configName = Path.GetFileName(configFilePath);
+                    var configDirectory = Path.GetDirectoryName(configFilePath);
+                    string redirectedConfigPath = Path.Combine(configDirectory, DefaultConfigsDirectory, configName);
                     Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
