@@ -45,7 +45,6 @@ namespace Cortex.BeaconNode
         }
 
         public BeaconBlock? GenesisBlock { get; private set; }
-        public BeaconState? GenesisState { get; private set; }
         public BeaconState? State { get; private set; }
 
         /// <summary>
@@ -176,8 +175,9 @@ namespace Cortex.BeaconNode
                 var candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
                 if (IsValidGenesisState(candidateState))
                 {
-                    GenesisState = candidateState;
-                    GenesisBlock = new BeaconBlock(GenesisState.HashTreeRoot());
+                    var genesisState = candidateState;
+                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot());
+                    State = genesisState;
                     return true;
                 }
                 return false;
