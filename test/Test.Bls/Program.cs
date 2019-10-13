@@ -42,6 +42,11 @@ namespace Test.Bls
             public ulong d_3;
             public ulong d_4;
             public ulong d_5;
+
+            public override string ToString()
+            {
+                return $"FP(ulong[{d_0:x},{d_1:x},{d_2:x},{d_3:x},{d_4:x},{d_5:x}])";
+            }
         }
 
         /*
@@ -55,6 +60,12 @@ namespace Test.Bls
         {
             public mclBnFp d_0;
             public mclBnFp d_1;
+
+            public override string ToString()
+            {
+                return $"FP2({d_0},{d_1})";
+            }
+
         }
 
         /*
@@ -72,6 +83,11 @@ namespace Test.Bls
             public ulong d_3;
             public ulong d_4;
             public ulong d_5;
+
+            public override string ToString()
+            {
+                return $"FR(ulong[{d_0:x},{d_1:x},{d_2:x},{d_3:x},{d_4:x},{d_5:x}])";
+            }
         }
 
         /*
@@ -86,6 +102,11 @@ namespace Test.Bls
             public mclBnFp x;
             public mclBnFp y;
             public mclBnFp z;
+
+            public override string ToString()
+            {
+                return $"G1(x={x},y={y},z={z})";
+            }
         }
 
         //typedef struct {
@@ -98,6 +119,11 @@ namespace Test.Bls
             public mclBnFp2 x;
             public mclBnFp2 y;
             public mclBnFp2 z;
+
+            public override string ToString()
+            {
+                return $"G2(x={x},y={y},z={z})";
+            }
         }
 
         //typedef struct {
@@ -110,7 +136,7 @@ namespace Test.Bls
 
             public override string ToString()
             {
-                return BitConverter.ToString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1)).ToArray());
+                return v.ToString();
             }
         }
 
@@ -128,7 +154,7 @@ namespace Test.Bls
 
             public override string ToString()
             {
-                return BitConverter.ToString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1)).ToArray());
+                return v.ToString();
             }
         }
 
@@ -145,7 +171,7 @@ namespace Test.Bls
 
             public override string ToString()
             {
-                return BitConverter.ToString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1)).ToArray());
+                return v.ToString();
             }
         }
 
@@ -199,6 +225,7 @@ namespace Test.Bls
         static void Main(string[] args)
         {
             Console.WriteLine("Test BLS");
+            Console.WriteLine();
 
             var curveType = MCL_BLS12_381;
             //var r = "52435875175126190479447740508185965837690552500527637822603658699938581184513";
@@ -206,6 +233,8 @@ namespace Test.Bls
 
             int ret = blsInit(curveType, MCLBN_COMPILED_TIME_VAR);
             Console.WriteLine("Init Result {0}", ret);
+            Console.WriteLine();
+
             bls_use_stackTest();
         }
 
@@ -220,12 +249,15 @@ namespace Test.Bls
 
             blsSecretKeySetByCSPRNG(out sec);
             Console.WriteLine("Secret key: {0}", sec);
+            Console.WriteLine();
 
             blsGetPublicKey(out pub, sec);
             Console.WriteLine("Public key: {0}", pub);
+            Console.WriteLine();
 
             blsSign(out sig, sec, msgBytes, msgSize);
             Console.WriteLine("Signature : {0}", sig);
+            Console.WriteLine();
 
             int ret = blsVerify(sig, pub, msgBytes, msgSize);
             Console.WriteLine("Verify Result {0}", ret);
