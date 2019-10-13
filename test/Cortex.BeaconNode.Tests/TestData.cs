@@ -52,7 +52,7 @@ namespace Cortex.BeaconNode.Tests
             } 
             else
             {
-                publicKeys = Enumerable.Repeat(new BlsPublicKey(), privateKeys.Length).ToArray();
+                publicKeys = privateKeys.Select(x => new BlsPublicKey(x)).ToArray();
             }
             var depositDataList = new List<DepositData>();
             var genesisDeposits = new List<Deposit>();
