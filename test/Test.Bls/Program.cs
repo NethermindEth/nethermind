@@ -25,10 +25,11 @@ namespace Test.Bls
         //#define MCLBN_FP_UNIT_SIZE 6
         //#define MCLBN_FR_UNIT_SIZE 6
         const int MCLBN_FP_UNIT_SIZE = 6;
-        const int MCLBN_FR_UNIT_SIZE = 6;
+        const int MCLBN_FR_UNIT_SIZE = 4;
 
         //#define MCLBN_COMPILED_TIME_VAR ((MCLBN_FR_UNIT_SIZE) * 10 + (MCLBN_FP_UNIT_SIZE))
-        const int MCLBN_COMPILED_TIME_VAR = MCLBN_FR_UNIT_SIZE * 10 + MCLBN_FP_UNIT_SIZE;
+        // (the +100 is for swap)
+        const int MCLBN_COMPILED_TIME_VAR = MCLBN_FR_UNIT_SIZE * 10 + MCLBN_FP_UNIT_SIZE + 100;
 
         //typedef struct {
         //uint64_t d[MCLBN_FP_UNIT_SIZE];
@@ -81,12 +82,10 @@ namespace Test.Bls
             public ulong d_1;
             public ulong d_2;
             public ulong d_3;
-            public ulong d_4;
-            public ulong d_5;
 
             public override string ToString()
             {
-                return $"FR(ulong[{d_0:x},{d_1:x},{d_2:x},{d_3:x},{d_4:x},{d_5:x}])";
+                return $"FR(ulong[{d_0:x},{d_1:x},{d_2:x},{d_3:x}])";
             }
         }
 
@@ -150,7 +149,7 @@ namespace Test.Bls
         //blsPublicKey;
         public struct blsPublicKey
         {
-            public mclBnG2 v;
+            public mclBnG1 v;
 
             public override string ToString()
             {
@@ -167,7 +166,7 @@ namespace Test.Bls
         //} blsSignature;
         public struct blsSignature
         {
-            public mclBnG1 v;
+            public mclBnG2 v;
 
             public override string ToString()
             {
@@ -196,7 +195,7 @@ namespace Test.Bls
 	        @note blsInit() is not thread safe
         */
         // BLS_DLL_API int blsInit(int curve, int compiledTimeVar);
-        [DllImport(@"bls384.dll")]
+        [DllImport(@"bls384_256.dll")]
         public static extern int blsInit(int curve, int compiledTimeVar);
 
         /*
@@ -204,21 +203,21 @@ namespace Test.Bls
 	        return 0 if success else -1
         */
         // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
-        [DllImport(@"bls384.dll")]
+        [DllImport(@"bls384_256.dll")]
         public static extern int blsSecretKeySetByCSPRNG(out blsSecretKey sec);
 
         // BLS_DLL_API void blsGetPublicKey(blsPublicKey* pub, const blsSecretKey* sec);
-        [DllImport(@"bls384.dll")]
+        [DllImport(@"bls384_256.dll")]
         public static extern int blsGetPublicKey(out blsPublicKey pub, blsSecretKey sec);
 
         // calculate the has of m and sign the hash
         // BLS_DLL_API void blsSign(blsSignature* sig, const blsSecretKey* sec, const void* m, mclSize size);
-        [DllImport(@"bls384.dll")]
+        [DllImport(@"bls384_256.dll")]
         public static extern int blsSign(out blsSignature sig, blsSecretKey sec, byte[] m, int size);
 
         // return 1 if valid
         // BLS_DLL_API int blsVerify(const blsSignature* sig, const blsPublicKey* pub, const void* m, mclSize size);
-        [DllImport(@"bls384.dll")]
+        [DllImport(@"bls384_256.dll")]
         public static extern int blsVerify(blsSignature sig, blsPublicKey pub, byte[] m, int size);
 
 

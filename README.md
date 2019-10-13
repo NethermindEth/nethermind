@@ -59,11 +59,16 @@ dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oap
 
 Library implementation from https://github.com/herumi/bls
 
+This has already been compiled and is in the lib folder.
+
+To re-generate (not usually needed):
+
 * Install Visual Studio C++ tools
 * Get BLS, MCL, and cybozulib_ext projects
-* Open 64-bit command prompt
-* "makelib.bat dll" for MCL, then BLS, as per instructions
-* (Can also compile and run test projects, as per instructions)
+* We G1 (48 byte) as minmal public key so modify bls\setvar.bat to change the CFLAGS line to define BLS_SWAP_G: "set CFLAGS=%CFLAGS% /I ..\mcl\include /I ./ /DBLS_SWAP_G"
+* Open 64-bit Visual Studio command prompt
+* Call "mklib.bat dll" for MCL, then BLS, as per instructions
+* (Can also compile and run test projects, as per instructions; NOTE: will use the modified setvar as above)
 * Copy the output DLL from bin folder to the library folder for Cortex
 
 ## Contributions
