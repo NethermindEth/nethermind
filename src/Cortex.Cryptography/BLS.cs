@@ -5,6 +5,12 @@ namespace Cortex.Cryptography
 {
     public abstract class BLS : AsymmetricAlgorithm
     {
+        // Draft standard: https://github.com/cfrg/draft-irtf-cfrg-bls-signature
+        // Want minimal-pubkey-size, with public keys points in G1, signatures points in G2
+        // G1 is 384-bit integer (48 bytes)
+        // G2 is pair of 384-bit integers (96 bytes)
+        // Private key is < r, which is ~256 bits (32 bytes)
+
         public override KeySizes[] LegalKeySizes
             => new[] { new KeySizes(48 * 8, 96 * 8, 48 * 8) };
 
