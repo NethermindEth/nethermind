@@ -34,5 +34,15 @@ namespace Cortex.Containers
         {
             return _value.ToString();
         }
+
+        public static bool operator ==(Slot left, Slot right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(Slot left, Slot right)
+        {
+            return !(left == right);
+        }
     }
 }

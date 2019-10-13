@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Cortex.Containers
 {
@@ -41,10 +42,10 @@ namespace Cortex.Containers
             return Equals(obj as BlsSignature);
         }
 
-        public bool Equals(BlsSignature other)
+        public bool Equals(BlsSignature? other)
         {
             return other != null &&
-                   EqualityComparer<byte[]>.Default.Equals(_bytes, other._bytes);
+                _bytes.SequenceEqual(other._bytes);
         }
 
         public override int GetHashCode()

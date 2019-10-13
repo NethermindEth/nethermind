@@ -80,7 +80,7 @@ namespace Cortex.BeaconNode.Tests
             var depositData = BuildDepositData(beaconChainUtility, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
             var index = depositDataList.Count;
             depositDataList.Add(depositData);
-            Hash32 root = depositDataList.HashTreeRoot(2 * DEPOSIT_CONTRACT_TREE_DEPTH);
+            Hash32 root = depositDataList.HashTreeRoot((ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH);
             var allLeaves = depositDataList.Select(x => new Hash32(x.HashTreeRoot()));
             var tree = TestUtility.CalculateMerkleTreeFromLeaves(allLeaves);
             var merkleProof = TestUtility.GetMerkleProof(tree, index, 32);

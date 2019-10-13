@@ -34,5 +34,15 @@ namespace Cortex.Containers
         {
             return _value.ToString();
         }
+
+        public static bool operator ==(Epoch left, Epoch right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(Epoch left, Epoch right)
+        {
+            return !(left == right);
+        }
     }
 }

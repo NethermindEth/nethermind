@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Cortex.Containers
 {
@@ -38,14 +39,13 @@ namespace Cortex.Containers
 
         public override bool Equals(object obj)
         {
-            var hash = obj as Hash32;
-            return hash != null && Equals(hash);
+            return Equals(obj as Hash32);
         }
 
-        public bool Equals(Hash32 other)
+        public bool Equals(Hash32? other)
         {
             return other != null &&
-                   EqualityComparer<byte[]>.Default.Equals(_bytes, other._bytes);
+                _bytes.SequenceEqual(other._bytes);
         }
 
         public override int GetHashCode()

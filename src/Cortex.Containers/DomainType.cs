@@ -55,5 +55,15 @@ namespace Cortex.Containers
         {
             return BitConverter.ToString(AsSpan().ToArray()).Replace("-", "");
         }
+
+        public static bool operator ==(DomainType left, DomainType right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(DomainType left, DomainType right)
+        {
+            return !(left == right);
+        }
     }
 }

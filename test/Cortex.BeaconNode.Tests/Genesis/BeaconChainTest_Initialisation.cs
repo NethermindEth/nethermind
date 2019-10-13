@@ -68,7 +68,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             // Assert
             state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % timeParameters.SecondsPerDay + 2 * timeParameters.SecondsPerDay);
             //state.Validators.Count.ShouldBe(depositCount);
-            //state.Eth1Data.DepositRoot.ShouldBe(depositRoot);
+            state.Eth1Data.DepositRoot.ShouldBe(depositRoot);
             state.Eth1Data.DepositCount.ShouldBe((ulong)depositCount);
         }
     }
