@@ -4,18 +4,12 @@ namespace Cortex.Containers
 {
     public class Deposit
     {
-        private const int DEPOSIT_CONTRACT_TREE_DEPTH = 2 ^ 5; // 32
-
         private readonly List<Hash32> _proof;
 
-        public Deposit()
+        public Deposit(IEnumerable<Hash32> proof, DepositData data)
         {
-            Data = new DepositData();
-            _proof = new List<Hash32>();
-            for (var index = 0; index < DEPOSIT_CONTRACT_TREE_DEPTH; index++)
-            {
-                _proof.Add(new Hash32());
-            }
+            _proof = new List<Hash32>(proof);
+            Data = data;
         }
 
         public DepositData Data { get; }

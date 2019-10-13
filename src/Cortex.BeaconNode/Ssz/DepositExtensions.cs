@@ -12,7 +12,7 @@ namespace Cortex.BeaconNode.Ssz
             return new SszContainer(GetValues(item));
         }
 
-        public static SszList ToSszList(this IEnumerable<Deposit> list, int limit)
+        public static SszList ToSszList(this IEnumerable<Deposit> list, ulong limit)
         {
             return new SszList(list.Select(x => x.ToSszContainer()), limit);
         }

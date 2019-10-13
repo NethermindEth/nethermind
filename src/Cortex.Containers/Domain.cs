@@ -7,12 +7,6 @@ namespace Cortex.Containers
     {
         public const int Length = 8;
 
-        public static readonly Domain BeaconAttester = new Domain(new byte[] { 0x01, 0x00, 0x00, 0x00 });
-        public static readonly Domain BeaconProposer = new Domain(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-        public static readonly Domain Deposit = new Domain(new byte[] { 0x03, 0x00, 0x00, 0x00 });
-        public static readonly Domain DomainTransfer = new Domain(new byte[] { 0x05, 0x00, 0x00, 0x00 });
-        public static readonly Domain Randao = new Domain(new byte[] { 0x02, 0x00, 0x00, 0x00 });
-        public static readonly Domain VoluntaryExit = new Domain(new byte[] { 0x04, 0x00, 0x00, 0x00 });
         private readonly ulong _value;
 
         public Domain(ReadOnlySpan<byte> span)

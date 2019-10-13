@@ -12,25 +12,26 @@ namespace Cortex.BeaconNode
 {
     public class BeaconChain
     {
-        private const int DEPOSIT_CONTRACT_LIMIT = 2 ^ DEPOSIT_CONTRACT_TREE_DEPTH;
-        private const int DEPOSIT_CONTRACT_TREE_DEPTH = 2 ^ 5; // 32
-        private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
-        private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = (2 ^ 0) * (10 ^ 9);
-        private static readonly Epoch FAR_FUTURE_EPOCH = 2 ^ 64 - 1;
+        private const ulong DEPOSIT_CONTRACT_LIMIT = (ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH;
+        private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 2 ** 5
+        private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = 1000 * 1000 * 1000; // (2 ** 0) * (10 ** 9)
+        private static readonly Epoch FAR_FUTURE_EPOCH = (ulong)1 << 64 - 1;
+        private static readonly Gwei MAX_EFFECTIVE_BALANCE = ((ulong)1 << 5) * 1000 * 1000 * 1000; // (2 ** 5) * (10 ** 9)
 
-        private static readonly Gwei MAX_EFFECTIVE_BALANCE = (2 ^ 5) * (10 ^ 9); // 32,000,000,000
         private readonly BeaconChainParameters _beaconChainParameters;
 
         private readonly InitialValues _initialValues;
 
         // 1,000,000,000
         private readonly ILogger _logger;
-        private readonly BlsSignatureService _blsSignatureService;
+        private readonly ICryptographyService _blsSignatureService;
+        private readonly BeaconChainUtility _beaconChainUtility;
         private readonly MaxOperationsPerBlock _maxOperationsPerBlock;
         private readonly TimeParameters _timeParameters;
 
         public BeaconChain(ILogger<BeaconChain> logger,
-            BlsSignatureService blsSignatureService,
+            ICryptographyService blsSignatureService,
+            BeaconChainUtility beaconChainUtility,
             BeaconChainParameters beaconChainParameters,
             InitialValues initialValues,
             TimeParameters timeParameters,
@@ -38,6 +39,7 @@ namespace Cortex.BeaconNode
         {
             _logger = logger;
             _blsSignatureService = blsSignatureService;
+            _beaconChainUtility = beaconChainUtility;
             _beaconChainParameters = beaconChainParameters;
             _initialValues = initialValues;
             _timeParameters = timeParameters;
@@ -46,17 +48,6 @@ namespace Cortex.BeaconNode
 
         public BeaconBlock? GenesisBlock { get; private set; }
         public BeaconState? State { get; private set; }
-
-        /// <summary>
-        /// Returns the domain for the 'domain_type' and 'fork_version'
-        /// </summary>
-        public Domain ComputeDomain(Domain domainType, ForkVersion forkVersion)
-        {
-            var combined = new Span<byte>(new byte[Domain.Length]);
-            domainType.AsSpan().CopyTo(combined);
-            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
-            return combined;
-        }
 
         public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IEnumerable<Deposit> deposits)
         {
@@ -96,34 +87,10 @@ namespace Cortex.BeaconNode
             return true;
         }
 
-        /// <summary>
-        /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
-        /// </summary>
-        public bool IsValidMerkleBranch(Hash32 leaf, IReadOnlyList<Hash32> branch, int depth, ulong index, Hash32 root)
-        {
-            var value = leaf;
-            for (var testDepth = 0; testDepth < depth; testDepth++)
-            {
-                var branchValue = branch[testDepth];
-                var indexAtDepth = index / (2 ^ (ulong)testDepth);
-                if (indexAtDepth % 2 == 0)
-                {
-                    // Branch on right
-                    value = Hash(value, branchValue);
-                }
-                else
-                {
-                    // Branch on left
-                    value = Hash(branchValue, value);
-                }
-            }
-            return value.Equals(root);
-        }
-
         public void ProcessDeposit(BeaconState state, Deposit deposit)
         {
             // Verify the Merkle branch
-            var isValid = IsValidMerkleBranch(
+            var isValid = _beaconChainUtility.IsValidMerkleBranch(
                 deposit.Data.HashTreeRoot(),
                 deposit.Proof,
                 DEPOSIT_CONTRACT_TREE_DEPTH + 1, // Add 1 for the 'List' length mix-in
@@ -143,7 +110,7 @@ namespace Cortex.BeaconNode
                 // Note: The deposit contract does not check signatures.
                 // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
 
-                Domain domain = ComputeDomain(Domain.Deposit, new ForkVersion());
+                Domain domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
                 if (!_blsSignatureService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
                 {
                     return;
@@ -182,20 +149,6 @@ namespace Cortex.BeaconNode
                 }
                 return false;
             });
-        }
-
-        private Hash32 Hash(Hash32 a, Hash32 b)
-        {
-            var input = new Span<byte>(new byte[64]);
-            a.AsSpan().CopyTo(input);
-            b.AsSpan().CopyTo(input.Slice(32));
-            var result = new Span<byte>(new byte[32]);
-            var success = _hashAlgorithm.TryComputeHash(input, result, out var bytesWritten);
-            if (!success || bytesWritten != 32)
-            {
-                throw new InvalidOperationException("Error generating hash value.");
-            }
-            return result;
         }
 
         // Update store via... (store processor ?)

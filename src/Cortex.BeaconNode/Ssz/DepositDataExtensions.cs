@@ -8,7 +8,7 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class DepositDataExtensions
     {
-        public static ReadOnlySpan<byte> HashTreeRoot(this IEnumerable<DepositData> list, int limit)
+        public static ReadOnlySpan<byte> HashTreeRoot(this IEnumerable<DepositData> list, ulong limit)
         {
             var tree = new SszTree(list.ToSszList(limit));
             return tree.HashTreeRoot();
@@ -31,7 +31,7 @@ namespace Cortex.BeaconNode.Ssz
             return new SszContainer(GetValues(item, false));
         }
 
-        public static SszList ToSszList(this IEnumerable<DepositData> list, int limit)
+        public static SszList ToSszList(this IEnumerable<DepositData> list, ulong limit)
         {
             return new SszList(list.Select(x => x.ToSszContainer()), limit);
         }

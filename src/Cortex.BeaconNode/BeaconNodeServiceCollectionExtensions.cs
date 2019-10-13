@@ -22,13 +22,14 @@ namespace Cortex.BeaconNode
             });
             services.Configure<MaxOperationsPerBlock>(x =>
             {
-                x.MaxDeposits = configuration.GetValue<int>("MAX_DEPOSITS");
+                x.MaxDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
             });
 
             services.AddSingleton<BeaconChain>();
+            services.AddSingleton<BeaconChainUtility>();
             services.AddSingleton<BeaconNodeConfiguration>();
             services.AddSingleton<Store>();
-            services.AddSingleton<BlsSignatureService>();
+            services.AddSingleton<ICryptographyService, CryptographyService>();
 
             services.AddScoped<BlockProducer>();
         }

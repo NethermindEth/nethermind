@@ -18,18 +18,18 @@ namespace Cortex.SimpleSerialize
         static SszTree()
         {
             _zeroHashes = new byte[BytesPerChunk * MaxDepth];
-            var buffer = new byte[BytesPerChunk << 1];
+            var buffer = new byte[(long)BytesPerChunk << 1];
             // Span accessors
             var hashes = _zeroHashes.AsSpan();
             var buffer1 = buffer.AsSpan(0, BytesPerChunk);
             var buffer2 = buffer.AsSpan(BytesPerChunk, BytesPerChunk);
             // Fill
             var hash = hashes.Slice(0, BytesPerChunk);
-            for (var index = 1; index < MaxDepth; index++)
+            for (var height = 1; height < MaxDepth; height++)
             {
                 hash.CopyTo(buffer1);
                 hash.CopyTo(buffer2);
-                hash = hashes.Slice(index * BytesPerChunk, BytesPerChunk);
+                hash = hashes.Slice(height * BytesPerChunk, BytesPerChunk);
                 var success = _hashAlgorithm.TryComputeHash(buffer, hash, out var bytesWritten);
                 if (!success || bytesWritten != BytesPerChunk)
                 {
@@ -67,14 +67,14 @@ namespace Cortex.SimpleSerialize
                     {
                         var bytes = basic.GetBytes();
                         var packed = Pack(bytes);
-                        var paddedLength = packed.Length;
+                        var paddedLength = (ulong)packed.Length;
                         return Merkleize(packed, paddedLength);
                     }
                 case SszBasicVector vector:
                     {
                         var bytes = vector.GetBytes();
                         var packed = Pack(bytes);
-                        var paddedLength = packed.Length;
+                        var paddedLength = (ulong)packed.Length;
                         return Merkleize(packed, paddedLength);
                     }
                 case SszBasicList list:
@@ -100,7 +100,7 @@ namespace Cortex.SimpleSerialize
                             }
                             bytes = memory.ToArray();
                         }
-                        return Merkleize(bytes, bytes.Length);
+                        return Merkleize(bytes, (ulong)bytes.Length);
                     }
                 case SszList list:
                     {
@@ -125,18 +125,23 @@ namespace Cortex.SimpleSerialize
             }
         }
 
-        private ReadOnlySpan<byte> Merkleize(ReadOnlySpan<byte> chunks, int paddedLength)
+        private ReadOnlySpan<byte> Merkleize(ReadOnlySpan<byte> chunks, ulong paddedLength)
         {
             if (paddedLength % BytesPerChunk != 0)
             {
-                throw new ArgumentOutOfRangeException("chunks.Length", chunks.Length, $"Chunks must by a multiple of {BytesPerChunk} bytes");
+                throw new ArgumentOutOfRangeException("chunks.Length", chunks.Length, $"Chunks must by a multiple of {BytesPerChunk} bytes.");
             }
+            if ((ulong)chunks.Length > paddedLength)
+            {
+                throw new ArgumentOutOfRangeException("chunks.Length", chunks.Length, $"Chunks length exceeded padded length limit {paddedLength} bytes.");
+            }
+
             if (paddedLength <= BytesPerChunk)
             {
                 return chunks;
             }
             var depth = 0;
-            var width = BytesPerChunk;
+            var width = (ulong)BytesPerChunk;
             while (width < paddedLength)
             {
                 depth++;
@@ -146,22 +151,19 @@ namespace Cortex.SimpleSerialize
                     throw new ArgumentOutOfRangeException(nameof(depth), depth, "System data length limit exceeded");
                 }
             }
-            if (chunks.Length > paddedLength)
-            {
-                throw new Exception("Input exceeds limit");
-            }
 
-            return MerkleizeRecursive(depth, chunks);
+            var startingHeight = depth;
+            return MerkleizeRecursive(startingHeight, chunks);
         }
 
-        private ReadOnlySpan<byte> MerkleizeRecursive(int depth, ReadOnlySpan<byte> chunks)
+        private ReadOnlySpan<byte> MerkleizeRecursive(int height, ReadOnlySpan<byte> chunks)
         {
-            if (depth == 0)
+            if (height == 0)
             {
                 return chunks;
             }
 
-            var data = MerkleizeRecursive(depth - 1, chunks);
+            var data = MerkleizeRecursive(height - 1, chunks);
             var hashWidth = ((data.Length / BytesPerChunk + 1) >> 1) * BytesPerChunk;
             var hashes = new Span<byte>(new byte[hashWidth]);
             for (var index = 0; index < hashWidth; index += BytesPerChunk)
@@ -172,7 +174,7 @@ namespace Cortex.SimpleSerialize
                 {
                     var padded = new Span<byte>(new byte[BytesPerChunk << 1]);
                     data.Slice(dataIndex, BytesPerChunk).CopyTo(padded);
-                    _zeroHashes.AsSpan((depth - 1) * BytesPerChunk, BytesPerChunk).CopyTo(padded.Slice(BytesPerChunk));
+                    _zeroHashes.AsSpan((height - 1) * BytesPerChunk, BytesPerChunk).CopyTo(padded.Slice(BytesPerChunk));
                     input = padded;
                 }
                 else

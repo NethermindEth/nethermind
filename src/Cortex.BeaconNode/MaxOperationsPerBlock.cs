@@ -6,6 +6,6 @@ namespace Cortex.BeaconNode
 {
     public class MaxOperationsPerBlock
     {
-        public int MaxDeposits { get; set; }
+        public ulong MaxDeposits { get; set; }
     }
 }

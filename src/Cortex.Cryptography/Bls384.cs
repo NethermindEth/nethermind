@@ -137,7 +137,6 @@ namespace Cortex.Cryptography
         /*
 	        x = d[0] + d[1] i where i^2 = -1
         */
-
         //typedef struct {
         //    mclBnFp d[2];
         //}
@@ -151,7 +150,6 @@ namespace Cortex.Cryptography
         /*
             G1 and G2 are isomorphism to Fr
         */
-
         //typedef struct {
         //    uint64_t d[MCLBN_FR_UNIT_SIZE];
         //    }

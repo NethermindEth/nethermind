@@ -27,7 +27,8 @@ namespace Cortex.BeaconNode.Tests
         public async Task GenesisWithEmptyParametersTimeShouldReject()
         {
             // Arrange
-            var blsSignatureService = new BlsSignatureService();
+            var cryptographyService = new CryptographyService();
+            var beaconChainUtility = new BeaconChainUtility(cryptographyService);
             var beaconChainParameters = new BeaconChainParameters()
             {
                 MinGenesisActiveValidatorCount = 2,
@@ -43,7 +44,7 @@ namespace Cortex.BeaconNode.Tests
                 MaxDeposits = 16
             };
 
-            var beaconChain = new BeaconChain(null, blsSignatureService, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
+            var beaconChain = new BeaconChain(null, cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
 
             // Act
             var eth1BlockHash = new Hash32();

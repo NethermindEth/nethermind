@@ -71,7 +71,7 @@ namespace Cortex.SimpleSerialize.Tests
                 return new SszContainer(GetChildren(item));
             }
 
-            public static SszElement ToSszList(this IEnumerable<SingleFieldTestContainer> list, int limit)
+            public static SszElement ToSszList(this IEnumerable<SingleFieldTestContainer> list, ulong limit)
             {
                 return new SszList(list.Select(x => x.ToSszContainer()), limit);
             }

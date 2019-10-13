@@ -13,9 +13,9 @@ namespace Cortex.SimpleSerialize.Tests
         {
             _zeroHashes = new byte[32][];
             _zeroHashes[0] = new byte[32];
-            for (var index = 1; index < 32; index++)
+            for (var height = 1; height < 32; height++)
             {
-                _zeroHashes[index] = Hash(_zeroHashes[index - 1], _zeroHashes[index - 1]);
+                _zeroHashes[height] = Hash(_zeroHashes[height - 1], _zeroHashes[height - 1]);
             }
         }
 

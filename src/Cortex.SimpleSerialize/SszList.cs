@@ -7,14 +7,15 @@ namespace Cortex.SimpleSerialize
     {
         private readonly IEnumerable<SszComposite> _values;
 
-        public SszList(IEnumerable<SszComposite> values, int limit)
+        public SszList(IEnumerable<SszComposite> values, ulong limit)
         {
             // Chunk count for list of composite is N (we merkleize the hash root of each)
             ByteLimit = limit * SszTree.BytesPerChunk;
             _values = values;
         }
 
-        public int ByteLimit { get; }
+        public ulong ByteLimit { get; }
+
         public override SszElementType ElementType => SszElementType.List;
 
         public int Length

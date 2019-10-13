@@ -16,6 +16,10 @@ namespace Cortex.Cryptography
             return new BLSHerumi(parameters);
         }
 
+        public abstract bool TryExportBLSPrivateKey(Span<byte> desination, out int bytesWritten);
+
+        public abstract bool TryExportBLSPublicKey(Span<byte> desination, out int bytesWritten);
+
         public abstract bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten);
 
         public abstract bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature);

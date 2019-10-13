@@ -57,17 +57,13 @@ namespace Cortex.Containers
         /// </summary>
         public void IncreaseBalance(ValidatorIndex index, Gwei amount)
         {
-            Gwei balance;
-            var arrayIndex = (int)(ulong)index;
             // TODO: Would a dictionary be better, to handle ulong index?
-            if (arrayIndex < _balances.Count)
+            var arrayIndex = (int)(ulong)index;
+            if (_balances.Count <= arrayIndex)
             {
-                balance = _balances[arrayIndex];
+                _balances.AddRange(Enumerable.Repeat(new Gwei(), arrayIndex - _balances.Count + 1));
             }
-            else
-            {
-                balance = new Gwei();
-            }
+            var balance = _balances[arrayIndex];
             balance += amount;
             _balances[arrayIndex] = balance;
         }

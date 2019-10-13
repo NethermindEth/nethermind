@@ -6,38 +6,38 @@ namespace Cortex.SimpleSerialize
     {
         private readonly byte[] _bytes;
 
-        public SszBasicList(ReadOnlySpan<byte> value, int limit)
+        public SszBasicList(ReadOnlySpan<byte> value, ulong limit)
         {
             Length = value.Length;
             ByteLimit = limit;
             _bytes = value.ToArray();
         }
 
-        public SszBasicList(ReadOnlySpan<ushort> value, int limit)
+        public SszBasicList(ReadOnlySpan<ushort> value, ulong limit)
         {
             var basicSize = sizeof(ushort);
             Length = value.Length;
-            ByteLimit = limit * basicSize;
+            ByteLimit = limit * (ulong)basicSize;
             _bytes = ToLittleEndianBytes(value, basicSize);
         }
 
-        public SszBasicList(ReadOnlySpan<uint> value, int limit)
+        public SszBasicList(ReadOnlySpan<uint> value, ulong limit)
         {
             var basicSize = sizeof(uint);
             Length = value.Length;
-            ByteLimit = limit * basicSize;
+            ByteLimit = limit * (ulong)basicSize;
             _bytes = ToLittleEndianBytes(value, basicSize);
         }
 
-        public SszBasicList(ReadOnlySpan<ulong> value, int limit)
+        public SszBasicList(ReadOnlySpan<ulong> value, ulong limit)
         {
             var basicSize = sizeof(ulong);
             Length = value.Length;
-            ByteLimit = limit * basicSize;
+            ByteLimit = limit * (ulong)basicSize;
             _bytes = ToLittleEndianBytes(value, basicSize);
         }
 
-        public int ByteLimit { get; }
+        public ulong ByteLimit { get; }
 
         public override SszElementType ElementType => SszElementType.BasicList;
 

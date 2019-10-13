@@ -10,7 +10,7 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class BeaconStateExtensions
     {
-        const int VALIDATOR_REGISTRY_LIMIT = 2 ^ 40; // 1,099,511,627,776
+        const int VALIDATOR_REGISTRY_LIMIT = 1 << 40; // 1,099,511,627,776
 
         public static ReadOnlySpan<byte> HashTreeRoot(this BeaconState item)
         {
