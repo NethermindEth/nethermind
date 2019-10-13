@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;

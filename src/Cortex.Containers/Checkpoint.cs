@@ -1,26 +1,28 @@
 ﻿using System;
-using System.Collections.Generic;
-using Epoch = System.UInt64;
-using Hash = System.Byte; // Byte32
 
 namespace Cortex.Containers
 {
     public class Checkpoint : IEquatable<Checkpoint>
     {
+        public Checkpoint()
+        {
+            Root = new Hash32();
+        }
+
         public Epoch Epoch { get; }
-        public Hash[] Root { get; }
+
+        public Hash32 Root { get; }
 
         public override bool Equals(object obj)
         {
             return Equals(obj as Checkpoint);
         }
 
-        public bool Equals(Checkpoint other)
+        public bool Equals(Checkpoint? other)
         {
             return other != null &&
                    Epoch == other.Epoch &&
-                   ByteArrayEqualityComparer.Default.Equals(Root, other.Root);
-                   //EqualityComparer<byte[]>.Default.Equals(Root, other.Root);
+                   Root.Equals(other.Root);
         }
 
         public override int GetHashCode()

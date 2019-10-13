@@ -10,7 +10,7 @@
             ParentRoot = new Hash32();
             Signature = new BlsSignature();
             Slot = 0;
-        }
+        } 
 
         public BeaconBlock(Slot slot, BlsSignature randaoReveal)
         {

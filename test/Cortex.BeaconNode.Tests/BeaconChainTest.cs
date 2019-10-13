@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;

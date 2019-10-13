@@ -3,13 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Options;
-using Epoch = System.UInt64;
-using Gwei = System.UInt64;
-using ValidatorIndex = System.UInt64;
-using Hash = System.Byte; // Byte32
-using Slot = System.UInt64;
 
 namespace Cortex.BeaconNode
 {
@@ -21,8 +17,8 @@ namespace Cortex.BeaconNode
         public ulong Time { get; }
         public Checkpoint JustifiedCheckpoint { get; } = new Checkpoint();
         //public Checkpoint FinalizedCheckpoint { get; }
-        public IDictionary<Hash[], BeaconBlock> Blocks { get; } = new Dictionary<Hash[], BeaconBlock>(new ByteArrayEqualityComparer());
-        public IDictionary<Hash[], BeaconState> BlockStates { get; } = new Dictionary<Hash[], BeaconState>(new ByteArrayEqualityComparer());
+        public IDictionary<Hash32, BeaconBlock> Blocks { get; } = new Dictionary<Hash32, BeaconBlock>();
+        public IDictionary<Hash32, BeaconState> BlockStates { get; } = new Dictionary<Hash32, BeaconState>();
         public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; } = new Dictionary<Checkpoint, BeaconState>();
         public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
 
@@ -31,7 +27,7 @@ namespace Cortex.BeaconNode
             _timeParameterOptions = timeParameterOptions;
         }
 
-        public async Task<Hash[]> GetHeadAsync()
+        public async Task<Hash32> GetHeadAsync()
         {
             return await Task.Run(() =>
             {
@@ -64,7 +60,7 @@ namespace Cortex.BeaconNode
             return epoch * _timeParameterOptions.CurrentValue.SlotsPerEpoch;
         }
 
-        private Gwei GetLatestAttestingBalance(Hash[] root)
+        private Gwei GetLatestAttestingBalance(Hash32 root)
         {
             var state = CheckpointStates[JustifiedCheckpoint];
             //var currentEpoch = GetCurrentEpoch(state);

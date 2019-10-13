@@ -26,6 +26,16 @@ namespace Cortex.Containers
 
         public static implicit operator ReadOnlySpan<byte>(ForkVersion hash) => hash.AsSpan();
 
+        public static bool operator !=(ForkVersion left, ForkVersion right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator ==(ForkVersion left, ForkVersion right)
+        {
+            return left.Equals(right);
+        }
+
         public ReadOnlySpan<byte> AsSpan()
         {
             return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
@@ -49,16 +59,6 @@ namespace Cortex.Containers
         public override string ToString()
         {
             return BitConverter.ToString(AsSpan().ToArray()).Replace("-", "");
-        }
-
-        public static bool operator ==(ForkVersion left, ForkVersion right)
-        {
-            return left.Equals(right);
-        }
-
-        public static bool operator !=(ForkVersion left, ForkVersion right)
-        {
-            return !(left == right);
         }
     }
 }

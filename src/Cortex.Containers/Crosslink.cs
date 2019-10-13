@@ -1,8 +1,4 @@
-using System;
-
-using Epoch = System.UInt64;
-using Hash = System.Byte; // Byte32
-using Shard = System.UInt64;
+﻿using System;
 
 namespace Cortex.Containers
 {

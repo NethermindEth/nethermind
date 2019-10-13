@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 
 namespace Cortex.Containers
@@ -30,6 +29,11 @@ namespace Cortex.Containers
 
         public IReadOnlyList<Validator> Validators { get { return _validators; } }
 
+        public void AddValidator(Validator validator)
+        {
+            _validators.Add(validator);
+        }
+
         /// <summary>
         /// Return the sequence of active validator indices at ``epoch``.
         /// </summary>
@@ -40,16 +44,6 @@ namespace Cortex.Containers
                 .Where(x => x.validator.IsActiveValidator(epoch))
                 .Select(x => (ValidatorIndex)(ulong)x.index)
                 .ToList();
-        }
-
-        public void IncreaseEth1DepositIndex()
-        {
-            Eth1DepositIndex++;
-        }
-
-        public void AddValidator(Validator validator)
-        {
-            _validators.Add(validator);
         }
 
         /// <summary>
@@ -66,6 +60,11 @@ namespace Cortex.Containers
             var balance = _balances[arrayIndex];
             balance += amount;
             _balances[arrayIndex] = balance;
+        }
+
+        public void IncreaseEth1DepositIndex()
+        {
+            Eth1DepositIndex++;
         }
     }
 }

@@ -15,6 +15,16 @@ namespace Cortex.Containers
 
         public static implicit operator ulong(Gwei slot) => slot._value;
 
+        public static bool operator !=(Gwei left, Gwei right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator ==(Gwei left, Gwei right)
+        {
+            return left.Equals(right);
+        }
+
         public override bool Equals(object obj)
         {
             return obj is Gwei slot && Equals(slot);

@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using System.Threading.Tasks;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
-using Cortex.Cryptography;
 using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode
@@ -20,12 +19,13 @@ namespace Cortex.BeaconNode
 
         private readonly BeaconChainParameters _beaconChainParameters;
 
+        private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly ICryptographyService _blsSignatureService;
         private readonly InitialValues _initialValues;
 
         // 1,000,000,000
         private readonly ILogger _logger;
-        private readonly ICryptographyService _blsSignatureService;
-        private readonly BeaconChainUtility _beaconChainUtility;
+
         private readonly MaxOperationsPerBlock _maxOperationsPerBlock;
         private readonly TimeParameters _timeParameters;
 

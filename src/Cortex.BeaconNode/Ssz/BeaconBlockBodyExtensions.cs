@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Cortex.SimpleSerialize;
 

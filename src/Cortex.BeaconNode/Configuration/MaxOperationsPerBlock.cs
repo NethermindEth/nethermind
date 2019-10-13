@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Cortex.BeaconNode
+﻿namespace Cortex.BeaconNode.Configuration
 {
     public class MaxOperationsPerBlock
     {

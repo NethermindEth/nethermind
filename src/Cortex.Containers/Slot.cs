@@ -15,6 +15,16 @@ namespace Cortex.Containers
 
         public static implicit operator ulong(Slot slot) => slot._value;
 
+        public static bool operator !=(Slot left, Slot right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator ==(Slot left, Slot right)
+        {
+            return left.Equals(right);
+        }
+
         public override bool Equals(object obj)
         {
             return obj is Slot slot && Equals(slot);
@@ -33,16 +43,6 @@ namespace Cortex.Containers
         public override string ToString()
         {
             return _value.ToString();
-        }
-
-        public static bool operator ==(Slot left, Slot right)
-        {
-            return left.Equals(right);
-        }
-
-        public static bool operator !=(Slot left, Slot right)
-        {
-            return !(left == right);
         }
     }
 }

@@ -27,12 +27,6 @@ namespace Cortex.BeaconNode
             return signatureAlgorithm.VerifyHash(hash.ToArray(), signature);
         }
 
-        public ReadOnlySpan<byte> HashToG2(Hash32 signingRoot, Domain domain)
-        {
-
-            throw new NotImplementedException();
-        }
-
         public Hash32 Hash(Hash32 a, Hash32 b)
         {
             var input = new Span<byte>(new byte[64]);
@@ -45,6 +39,11 @@ namespace Cortex.BeaconNode
                 throw new InvalidOperationException("Error generating hash value.");
             }
             return result;
+        }
+
+        public ReadOnlySpan<byte> HashToG2(Hash32 signingRoot, Domain domain)
+        {
+            throw new NotImplementedException();
         }
     }
 }

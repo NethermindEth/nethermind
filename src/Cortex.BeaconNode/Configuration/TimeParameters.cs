@@ -1,10 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using Cortex.Containers;
 
-using Slot = System.UInt64;
-
-namespace Cortex.BeaconNode
+namespace Cortex.BeaconNode.Configuration
 {
     public class TimeParameters
     {
