@@ -1,5 +1,4 @@
-﻿using System;
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace Cortex.Cryptography
 {
@@ -59,6 +58,26 @@ namespace Cortex.Cryptography
 	        return 0 if success else -1
         */
 
+        //BLS_DLL_API mclSize blsPublicKeyDeserialize(blsPublicKey* pub, const void* buf, mclSize bufSize);
+        [DllImport(@"bls384_256.dll")]
+        public static extern int blsPublicKeyDeserialize(out BlsPublicKey pub, byte[] buf, int bufSize);
+
+        //BLS_DLL_API mclSize blsPublicKeySerialize(void *buf, mclSize maxBufSize, const blsPublicKey *pub);
+        [DllImport(@"bls384_256.dll")]
+        public static extern int blsPublicKeySerialize(byte[] buf, int maxBufSize, BlsPublicKey pub);
+
+        // return read byte size if success else 0
+        //BLS_DLL_API mclSize blsIdDeserialize(blsId* id, const void* buf, mclSize bufSize);
+        //BLS_DLL_API mclSize blsSecretKeyDeserialize(blsSecretKey* sec, const void* buf, mclSize bufSize);
+        [DllImport(@"bls384_256.dll")]
+        public static extern int blsSecretKeyDeserialize(out BlsSecretKey sec, byte[] buf, int bufSize);
+
+        // return written byte size if success else 0
+        //BLS_DLL_API mclSize blsIdSerialize(void *buf, mclSize maxBufSize, const blsId *id);
+        //BLS_DLL_API mclSize blsSecretKeySerialize(void *buf, mclSize maxBufSize, const blsSecretKey *sec);
+        [DllImport(@"bls384_256.dll")]
+        public static extern int blsSecretKeySerialize(byte[] buf, int maxBufSize, BlsSecretKey sec);
+
         // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSecretKeySetByCSPRNG(out BlsSecretKey sec);
@@ -74,6 +93,14 @@ namespace Cortex.Cryptography
 	        return 0 if success else -1
 	        NOTE : return false if h is zero or c1 or -c1 value for BN254. see hashTest() in test/bls_test.hpp
         */
+
+        //BLS_DLL_API mclSize blsSignatureDeserialize(blsSignature* sig, const void* buf, mclSize bufSize);
+        [DllImport(@"bls384_256.dll")]
+        public static extern int blsSignatureDeserialize(out BlsSignature sig, byte[] buf, int bufSize);
+
+        //BLS_DLL_API mclSize blsSignatureSerialize(void *buf, mclSize maxBufSize, const blsSignature *sig);
+        [DllImport(@"bls384_256.dll")]
+        public static extern int blsSignatureSerialize(byte[] buf, int maxBufSize, BlsSignature sig);
 
         //BLS_DLL_API int blsSignHash(blsSignature* sig, const blsSecretKey* sec, const void* h, mclSize size);
         [DllImport(@"bls384_256.dll")]

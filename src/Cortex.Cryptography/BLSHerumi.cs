@@ -185,12 +185,19 @@ namespace Cortex.Cryptography
 
                     // Generated keys have last two as zero, so implying LE ?
 
-                    var blsSecretKey = ToBlsSecretKey(_privateKey);
-
-                    // NOTE: Is this going to leak, or does the GC take care of cleaning blsPublicKey?
+                    var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey, _privateKey.Length);
+                    if (bytesRead != _privateKey.Length)
+                    {
+                        throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
+                    }
                     Bls384Interop.blsGetPublicKey(out var blsPublicKey, blsSecretKey);
 
-                    var buffer = ToBytes(blsPublicKey);
+                    var buffer = new byte[PublicKeyLength];
+                    var bytesWritten = Bls384Interop.blsPublicKeySerialize(buffer, buffer.Length, blsPublicKey);
+                    if (bytesWritten != buffer.Length)
+                    {
+                        throw new Exception($"Error serializing BLS public key, length: {bytesWritten}");
+                    }
                     _publicKey = buffer;
                 }
             }
