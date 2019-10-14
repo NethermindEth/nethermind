@@ -3,7 +3,7 @@
     public class Validator
     {
         public Validator(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Epoch activationEligibilityEpoch, Epoch activationEpoch,
-            Epoch exitEpoch, Epoch withdrawableEpoch, ulong effectiveBalance)
+            Epoch exitEpoch, Epoch withdrawableEpoch, Gwei effectiveBalance)
         {
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;

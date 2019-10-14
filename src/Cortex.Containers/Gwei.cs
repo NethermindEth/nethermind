@@ -11,13 +11,33 @@ namespace Cortex.Containers
             _value = value;
         }
 
-        public static implicit operator Gwei(ulong value) => new Gwei(value);
+        public static explicit operator Gwei(ulong value) => new Gwei(value);
 
-        public static implicit operator ulong(Gwei slot) => slot._value;
+        public static explicit operator ulong(Gwei slot) => slot._value;
+
+        public static Gwei Min(Gwei val1, Gwei val2)
+        {
+            return new Gwei(Math.Min(val1._value, val2._value));
+        }
+
+        public static Gwei operator -(Gwei left, Gwei right)
+        {
+            return new Gwei(left._value - right._value);
+        }
 
         public static bool operator !=(Gwei left, Gwei right)
         {
             return !(left == right);
+        }
+
+        public static Gwei operator %(Gwei left, Gwei right)
+        {
+            return new Gwei(left._value % right._value);
+        }
+
+        public static Gwei operator +(Gwei left, Gwei right)
+        {
+            return new Gwei(left._value + right._value);
         }
 
         public static bool operator ==(Gwei left, Gwei right)

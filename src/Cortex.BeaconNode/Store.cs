@@ -66,7 +66,7 @@ namespace Cortex.BeaconNode
             //var currentEpoch = GetCurrentEpoch(state);
             //var activeIndexes = GetActiveValidatorIndices(state, currentEpoch);
             var rootSlot = Blocks[root].Slot;
-            var balance = (ulong)0;
+            var balance = new Gwei(0);
             /*
             foreach (var index in activeIndexes)
             {

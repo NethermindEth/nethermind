@@ -13,10 +13,10 @@ namespace Cortex.BeaconNode
     {
         private const ulong DEPOSIT_CONTRACT_LIMIT = (ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH;
         private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 2 ** 5
-        private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = 1000 * 1000 * 1000; // (2 ** 0) * (10 ** 9)
+        private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = new Gwei(1000 * 1000 * 1000); // (2 ** 0) * (10 ** 9)
         private static readonly Epoch FAR_FUTURE_EPOCH = (ulong)1 << 64 - 1;
         private static readonly Epoch GENESIS_EPOCH = new Epoch(0);
-        private static readonly Gwei MAX_EFFECTIVE_BALANCE = ((ulong)1 << 5) * 1000 * 1000 * 1000; // (2 ** 5) * (10 ** 9)
+        private static readonly Gwei MAX_EFFECTIVE_BALANCE = new Gwei(((ulong)1 << 5) * 1000 * 1000 * 1000); // (2 ** 5) * (10 ** 9)
         private readonly BeaconChainParameters _beaconChainParameters;
 
         private readonly BeaconChainUtility _beaconChainUtility;
@@ -72,7 +72,7 @@ namespace Cortex.BeaconNode
             {
                 var validator = state.Validators[validatorIndex];
                 var balance = state.Balances[validatorIndex];
-                var effectiveBalance = Math.Min(balance - balance % EFFECTIVE_BALANCE_INCREMENT, MAX_EFFECTIVE_BALANCE);
+                var effectiveBalance = Gwei.Min(balance - (balance % EFFECTIVE_BALANCE_INCREMENT), MAX_EFFECTIVE_BALANCE);
                 validator.SetEffectiveBalance(effectiveBalance);
                 if (validator.EffectiveBalance == MAX_EFFECTIVE_BALANCE)
                 {
@@ -131,7 +131,7 @@ namespace Cortex.BeaconNode
                     return;
                 }
 
-                var effectiveBalance = Math.Min(amount - amount % EFFECTIVE_BALANCE_INCREMENT, MAX_EFFECTIVE_BALANCE);
+                var effectiveBalance = Gwei.Min(amount - (amount % EFFECTIVE_BALANCE_INCREMENT), MAX_EFFECTIVE_BALANCE);
                 var newValidator = new Validator(
                     publicKey,
                     deposit.Data.WithdrawalCredentials,

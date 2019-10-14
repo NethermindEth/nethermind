@@ -18,7 +18,7 @@ namespace Cortex.BeaconNode.Ssz
             //withdrawal_credentials: Hash  # Commitment to pubkey for withdrawals and transfers
             yield return new SszBasicVector(item.WithdrawalCredentials);
             //effective_balance: Gwei  # Balance at stake
-            yield return new SszBasicElement(item.EffectiveBalance);
+            yield return new SszBasicElement((ulong)item.EffectiveBalance);
             //slashed: boolean
             //yield return new SszBasicElement(item.IsSlashed);
 

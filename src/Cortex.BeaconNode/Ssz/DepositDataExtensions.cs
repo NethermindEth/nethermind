@@ -40,7 +40,7 @@ namespace Cortex.BeaconNode.Ssz
         {
             yield return new SszBasicVector(item.PublicKey);
             yield return new SszBasicVector(item.WithdrawalCredentials);
-            yield return new SszBasicElement(item.Amount);
+            yield return new SszBasicElement((ulong)item.Amount);
             if (!forSigning)
             {
                 yield return new SszBasicVector(item.Signature);
