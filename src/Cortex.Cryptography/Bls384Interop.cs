@@ -117,7 +117,7 @@ namespace Cortex.Cryptography
 
             public override string ToString()
             {
-                return BitConverter.ToString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1)).ToArray());
+                return v.ToString();
             }
         }
 
@@ -131,7 +131,7 @@ namespace Cortex.Cryptography
 
             public override string ToString()
             {
-                return BitConverter.ToString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1)).ToArray());
+                return v.ToString();
             }
         }
 
@@ -148,7 +148,7 @@ namespace Cortex.Cryptography
 
             public override string ToString()
             {
-                return BitConverter.ToString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1)).ToArray());
+                return v.ToString();
             }
         }
 
