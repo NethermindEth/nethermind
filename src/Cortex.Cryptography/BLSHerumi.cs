@@ -81,37 +81,25 @@ namespace Cortex.Cryptography
             // TODO: Generate random key if null
             // EnsurePrivateKey();
 
-            var blsSecretKey = ToBlsSecretKey(_privateKey);
+            var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey!, _privateKey!.Length);
+            if (bytesRead != _privateKey.Length)
+            {
+                throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
+            }
 
             var result = Bls384Interop.blsSignHash(out var blsSignature, blsSecretKey, hash.ToArray(), hash.Length);
-
             if (result != 0)
             {
                 throw new Exception($"Error generating BLS signature for hash. Error: {result}");
             }
 
-            if (BitConverter.IsLittleEndian)
+            var buffer = new byte[SignatureLength];
+            bytesWritten = Bls384Interop.blsSignatureSerialize(buffer, buffer.Length, blsSignature);
+            if (bytesWritten != buffer.Length)
             {
-                // NOTE: Just returning X; need to check compressed and serialized functions
-
-                BitConverter.TryWriteBytes(destination, blsSignature.v.x.d_0.d_0);
-                BitConverter.TryWriteBytes(destination.Slice(8), blsSignature.v.x.d_0.d_1);
-                BitConverter.TryWriteBytes(destination.Slice(16), blsSignature.v.x.d_0.d_2);
-                BitConverter.TryWriteBytes(destination.Slice(24), blsSignature.v.x.d_0.d_3);
-                BitConverter.TryWriteBytes(destination.Slice(32), blsSignature.v.x.d_0.d_4);
-                BitConverter.TryWriteBytes(destination.Slice(40), blsSignature.v.x.d_0.d_5);
-                BitConverter.TryWriteBytes(destination.Slice(48), blsSignature.v.x.d_1.d_0);
-                BitConverter.TryWriteBytes(destination.Slice(56), blsSignature.v.x.d_1.d_1);
-                BitConverter.TryWriteBytes(destination.Slice(64), blsSignature.v.x.d_1.d_2);
-                BitConverter.TryWriteBytes(destination.Slice(72), blsSignature.v.x.d_1.d_3);
-                BitConverter.TryWriteBytes(destination.Slice(80), blsSignature.v.x.d_1.d_4);
-                BitConverter.TryWriteBytes(destination.Slice(88), blsSignature.v.x.d_1.d_5);
+                throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
             }
-            else
-            {
-                throw new NotImplementedException();
-            }
-            bytesWritten = SignatureLength;
+            buffer.CopyTo(destination);
             return true;
         }
 
@@ -130,8 +118,17 @@ namespace Cortex.Cryptography
             EnsureInitialised();
             EnsurePublicKey();
 
-            var blsPublicKey = ToBlsPublicKey(_publicKey!);
-            var blsSignature = ToBlsSignature(signature.ToArray());
+            var publicKeyBytesRead = Bls384Interop.blsPublicKeyDeserialize(out var blsPublicKey, _publicKey!, _publicKey!.Length);
+            if (publicKeyBytesRead != _publicKey.Length)
+            {
+                throw new Exception($"Error deserializing BLS public key, length: {publicKeyBytesRead}");
+            }
+
+            var signatureBytesRead = Bls384Interop.blsSignatureDeserialize(out var blsSignature, signature.ToArray(), signature.Length);
+            if (signatureBytesRead != signature.Length)
+            {
+                throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
+            }
 
             var result = Bls384Interop.blsVerifyHash(blsSignature, blsPublicKey, hash.ToArray(), hash.Length);
 
@@ -150,26 +147,6 @@ namespace Cortex.Cryptography
                 Bls384Interop.blsSetETHserialization(1);
                 _initialised = true;
             }
-        }
-
-        private static byte[] ToBytes(Bls384Interop.BlsPublicKey blsPublicKey)
-        {
-            var buffer = new byte[48];
-            var span = new Span<byte>(buffer);
-            if (BitConverter.IsLittleEndian)
-            {
-                BitConverter.TryWriteBytes(span, blsPublicKey.v.x.d_0);
-                BitConverter.TryWriteBytes(span.Slice(8), blsPublicKey.v.x.d_1);
-                BitConverter.TryWriteBytes(span.Slice(16), blsPublicKey.v.x.d_2);
-                BitConverter.TryWriteBytes(span.Slice(24), blsPublicKey.v.x.d_3);
-                BitConverter.TryWriteBytes(span.Slice(32), blsPublicKey.v.x.d_4);
-                BitConverter.TryWriteBytes(span.Slice(40), blsPublicKey.v.x.d_5);
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
-            return buffer;
         }
 
         private void EnsurePublicKey()
@@ -191,6 +168,7 @@ namespace Cortex.Cryptography
                     {
                         throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
                     }
+
                     Bls384Interop.blsGetPublicKey(out var blsPublicKey, blsSecretKey);
 
                     var buffer = new byte[PublicKeyLength];
@@ -202,67 +180,6 @@ namespace Cortex.Cryptography
                     _publicKey = buffer;
                 }
             }
-        }
-
-        private Bls384Interop.BlsPublicKey ToBlsPublicKey(byte[] bytes)
-        {
-            var blsPublicKey = new Bls384Interop.BlsPublicKey();
-            if (BitConverter.IsLittleEndian)
-            {
-                blsPublicKey.v.x.d_0 = BitConverter.ToUInt64(bytes);
-                blsPublicKey.v.x.d_1 = BitConverter.ToUInt64(bytes, 8);
-                blsPublicKey.v.x.d_2 = BitConverter.ToUInt64(bytes, 16);
-                blsPublicKey.v.x.d_3 = BitConverter.ToUInt64(bytes, 24);
-                blsPublicKey.v.x.d_4 = BitConverter.ToUInt64(bytes, 32);
-                blsPublicKey.v.x.d_5 = BitConverter.ToUInt64(bytes, 40);
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
-            return blsPublicKey;
-        }
-
-        private Bls384Interop.BlsSecretKey ToBlsSecretKey(byte[] bytes)
-        {
-            var blsSecretKey = new Bls384Interop.BlsSecretKey();
-            if (BitConverter.IsLittleEndian)
-            {
-                blsSecretKey.v.d_0 = BitConverter.ToUInt64(bytes);
-                blsSecretKey.v.d_1 = BitConverter.ToUInt64(bytes, 8);
-                blsSecretKey.v.d_2 = BitConverter.ToUInt64(bytes, 16);
-                blsSecretKey.v.d_3 = BitConverter.ToUInt64(bytes, 24);
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
-            return blsSecretKey;
-        }
-
-        private Bls384Interop.BlsSignature ToBlsSignature(byte[] bytes)
-        {
-            var blsSignature = new Bls384Interop.BlsSignature();
-            if (BitConverter.IsLittleEndian)
-            {
-                blsSignature.v.x.d_0.d_0 = BitConverter.ToUInt64(bytes);
-                blsSignature.v.x.d_0.d_1 = BitConverter.ToUInt64(bytes, 8);
-                blsSignature.v.x.d_0.d_2 = BitConverter.ToUInt64(bytes, 16);
-                blsSignature.v.x.d_0.d_3 = BitConverter.ToUInt64(bytes, 24);
-                blsSignature.v.x.d_0.d_4 = BitConverter.ToUInt64(bytes, 32);
-                blsSignature.v.x.d_0.d_5 = BitConverter.ToUInt64(bytes, 40);
-                blsSignature.v.x.d_1.d_0 = BitConverter.ToUInt64(bytes, 48);
-                blsSignature.v.x.d_1.d_1 = BitConverter.ToUInt64(bytes, 56);
-                blsSignature.v.x.d_1.d_2 = BitConverter.ToUInt64(bytes, 64);
-                blsSignature.v.x.d_1.d_3 = BitConverter.ToUInt64(bytes, 72);
-                blsSignature.v.x.d_1.d_4 = BitConverter.ToUInt64(bytes, 80);
-                blsSignature.v.x.d_1.d_5 = BitConverter.ToUInt64(bytes, 88);
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
-            return blsSignature;
         }
     }
 }
