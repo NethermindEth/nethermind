@@ -16,10 +16,9 @@ namespace Cortex.BeaconNode.Tests
 
         public static IEnumerable<byte[]> PrivateKeys()
         {
-            // Private key is 381 bits (fit in 48 bytes = 384 bits; is 6 ulongs)
-            // Number as little endian (1, 2, 3, ...)
+            // Private key is ~255 bits (32 bytes) long
             var privateKeys = Enumerable.Range(0, SLOTS_PER_EPOCH * 16).Select(x => {
-                var key = new byte[48];
+                var key = new byte[32];
                 var bytes = BitConverter.GetBytes((ulong)(x + 1));
                 bytes.CopyTo(key, 0);
                 return key;
@@ -126,6 +125,8 @@ namespace Cortex.BeaconNode.Tests
                 //        )
                 throw new NotImplementedException();
             }
+
+
 
             var signature = TestUtility.BlsSign(depositData.SigningRoot(), privateKey, domain);
             depositData.SetSignature(signature);

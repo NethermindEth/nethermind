@@ -63,13 +63,48 @@ namespace Cortex.Cryptography
             return true;
         }
 
+        public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten)
+        {
+            if (destination.Length < SignatureLength)
+            {
+                bytesWritten = 0;
+                return false;
+            }
+
+            EnsureInitialised();
+
+            // TODO: Generate random key if null
+            // EnsurePrivateKey();
+
+            var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey!, _privateKey!.Length);
+            if (bytesRead != _privateKey.Length)
+            {
+                throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
+            }
+
+            var result = Bls384Interop.blsSign(out var blsSignature, blsSecretKey, data.ToArray(), data.Length);
+            if (result != 0)
+            {
+                throw new Exception($"Error generating BLS signature for data. Error: {result}");
+            }
+
+            var buffer = new byte[SignatureLength];
+            bytesWritten = Bls384Interop.blsSignatureSerialize(buffer, buffer.Length, blsSignature);
+            if (bytesWritten != buffer.Length)
+            {
+                throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
+            }
+            buffer.CopyTo(destination);
+            return true;
+        }
+
         public override bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten)
         {
             // NOTE: Should be based on the hash algorithm
-            if (hash.Length != HashLength)
-            {
-                throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
-            }
+            //if (hash.Length != HashLength)
+            //{
+            //    throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
+            //}
             if (destination.Length < SignatureLength)
             {
                 bytesWritten = 0;
@@ -103,6 +138,38 @@ namespace Cortex.Cryptography
             return true;
         }
 
+        public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature)
+        {
+            if (signature.Length != SignatureLength)
+            {
+                throw new ArgumentOutOfRangeException(nameof(signature), signature.Length, $"Signature must be {SignatureLength} bytes long.");
+            }
+            // NOTE: Should be based on the hash algorithm
+            //if (hash.Length != HashLength)
+            //{
+            //    throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
+            //}
+
+            EnsureInitialised();
+            EnsurePublicKey();
+
+            var publicKeyBytesRead = Bls384Interop.blsPublicKeyDeserialize(out var blsPublicKey, _publicKey!, _publicKey!.Length);
+            if (publicKeyBytesRead != _publicKey.Length)
+            {
+                throw new Exception($"Error deserializing BLS public key, length: {publicKeyBytesRead}");
+            }
+
+            var signatureBytesRead = Bls384Interop.blsSignatureDeserialize(out var blsSignature, signature.ToArray(), signature.Length);
+            if (signatureBytesRead != signature.Length)
+            {
+                throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
+            }
+
+            var result = Bls384Interop.blsVerify(blsSignature, blsPublicKey, data.ToArray(), data.Length);
+
+            return (result == 1);
+        }
+
         public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature)
         {
             if (signature.Length != SignatureLength)
@@ -110,10 +177,10 @@ namespace Cortex.Cryptography
                 throw new ArgumentOutOfRangeException(nameof(signature), signature.Length, $"Signature must be {SignatureLength} bytes long.");
             }
             // NOTE: Should be based on the hash algorithm
-            if (hash.Length != HashLength)
-            {
-                throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
-            }
+            //if (hash.Length != HashLength)
+            //{
+            //    throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
+            //}
 
             EnsureInitialised();
             EnsurePublicKey();

@@ -20,7 +20,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void TestInitializeBeaconStateFromEth1()
         {
             // Arrange
-            var useBls = false;
+            var useBls = true;
             var beaconChainParameters = new BeaconChainParameters()
             {
                 MinGenesisActiveValidatorCount = 64,

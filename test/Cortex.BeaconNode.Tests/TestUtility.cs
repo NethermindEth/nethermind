@@ -2,12 +2,16 @@
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using Cortex.Containers;
+using Cortex.Cryptography;
 
 namespace Cortex.BeaconNode.Tests
 {
     public static class TestUtility
     {
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
+
+        public static Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
+
 
         private static readonly byte[][] _zeroHashes;
 
@@ -36,8 +40,15 @@ namespace Cortex.BeaconNode.Tests
 
         public static BlsSignature BlsSign(Hash32 messageHash, byte[] privateKey, Domain domain)
         {
-            // TODO: Implement this.
-            return new BlsSignature();
+            var parameters = new BLSParameters() { PrivateKey = privateKey };
+            using var signingAlgorithm = SignatureAlgorithmFactory(parameters);
+            var data = new Span<byte>(new byte[40]);
+            messageHash.AsSpan().CopyTo(data);
+            domain.AsSpan().CopyTo(data.Slice(32));
+            var destination = new Span<byte>(new byte[96]);
+            //var success = signingAlgorithm.TrySignData(data, destination, out var bytesWritten);
+            var success = signingAlgorithm.TrySignHash(data, destination, out var bytesWritten);
+            return new BlsSignature(destination);
         }
 
         public static IList<IList<Hash32>> CalculateMerkleTreeFromLeaves(IEnumerable<Hash32> values, int layerCount = 32)

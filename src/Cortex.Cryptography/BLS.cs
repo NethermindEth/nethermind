@@ -26,7 +26,11 @@ namespace Cortex.Cryptography
 
         public abstract bool TryExportBLSPublicKey(Span<byte> desination, out int bytesWritten);
 
+        public abstract bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten);
+
         public abstract bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten);
+
+        public abstract bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature);
 
         public abstract bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature);
     }

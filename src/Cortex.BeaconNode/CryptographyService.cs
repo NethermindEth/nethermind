@@ -14,17 +14,21 @@ namespace Cortex.BeaconNode
         public bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain)
         {
             var blsParameters = new BLSParameters() { PublicKey = publicKey.AsSpan().ToArray() };
-            var signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
+            using var signatureAlgorithm = SignatureAlgorithmFactory(blsParameters);
 
-            var hash = new Span<byte>(new byte[Hash32.Length + Domain.Length]);
-            signingRoot.AsSpan().CopyTo(hash);
-            domain.AsSpan().CopyTo(hash.Slice(Hash32.Length));
+            // NOTE: This is probably not correct, as the spec describes a special mapping to G2
+            // It works for our test (because sign and verify both use the same, wrong, method)
+
+            var data = new Span<byte>(new byte[Hash32.Length + Domain.Length]);
+            signingRoot.AsSpan().CopyTo(data);
+            domain.AsSpan().CopyTo(data.Slice(Hash32.Length));
 
             //var g2 = HashToG2(signingRoot, domain);
 
-            // NOTE: Might need to calculate our own G2 and then call blsVerifyPairing
+            // NOTE: Might need to calculate our own G2 and then call blsVerifyPairing ??
 
-            return signatureAlgorithm.VerifyHash(hash.ToArray(), signature);
+            //return signatureAlgorithm.VerifyData(data.ToArray(), signature);
+            return signatureAlgorithm.VerifyHash(data.ToArray(), signature);
         }
 
         public Hash32 Hash(Hash32 a, Hash32 b)
