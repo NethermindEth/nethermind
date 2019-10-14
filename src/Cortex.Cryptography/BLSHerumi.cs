@@ -147,6 +147,7 @@ namespace Cortex.Cryptography
                 {
                     throw new Exception($"Error initialising BLS algorithm. Error: {result}");
                 }
+                Bls384Interop.blsSetETHserialization(1);
                 _initialised = true;
             }
         }

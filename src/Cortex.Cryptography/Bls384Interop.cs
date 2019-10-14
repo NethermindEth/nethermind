@@ -36,27 +36,27 @@ namespace Cortex.Cryptography
 
         // BLS_DLL_API void blsGetPublicKey(blsPublicKey* pub, const blsSecretKey* sec);
         [DllImport(@"bls384_256.dll")]
-        public static extern int blsGetPublicKey(out BlsPublicKey pub, BlsSecretKey sec);
+        public static extern void blsGetPublicKey(out BlsPublicKey pub, BlsSecretKey sec);
 
-        /*
-	        initialize this library
-	        call this once before using the other functions
-	        @param curve [in] enum value defined in mcl/bn.h
-	        @param compiledTimeVar [in] specify MCLBN_COMPILED_TIME_VAR,
-	        which macro is used to make sure that the values
-	        are the same when the library is built and used
-	        @return 0 if success
-	        @note blsInit() is not thread safe
-        */
-
+	    //initialize this library
+	    //call this once before using the other functions
+	    //@param curve [in] enum value defined in mcl/bn.h
+	    //@param compiledTimeVar [in] specify MCLBN_COMPILED_TIME_VAR,
+	    //which macro is used to make sure that the values
+	    //are the same when the library is built and used
+	    //@return 0 if success
+	    //@note blsInit() is not thread safe
         // BLS_DLL_API int blsInit(int curve, int compiledTimeVar);
         [DllImport(@"bls384_256.dll")]
         public static extern int blsInit(int curve, int compiledTimeVar);
 
-        /*
-	        set secretKey if system has /dev/urandom or CryptGenRandom
-	        return 0 if success else -1
-        */
+
+        //set ETH serialization mode for BLS12-381
+        //@param ETHserialization [in] 1:enable,  0:disable
+        //@note ignore the flag if curve is not BLS12-381
+        //BLS_DLL_API void blsSetETHserialization(int ETHserialization);
+        [DllImport(@"bls384_256.dll")]
+        public static extern void blsSetETHserialization(int ETHserialization);
 
         //BLS_DLL_API mclSize blsPublicKeyDeserialize(blsPublicKey* pub, const void* buf, mclSize bufSize);
         [DllImport(@"bls384_256.dll")]
@@ -78,6 +78,8 @@ namespace Cortex.Cryptography
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSecretKeySerialize(byte[] buf, int maxBufSize, BlsSecretKey sec);
 
+        // set secretKey if system has /dev/urandom or CryptGenRandom
+	    // return 0 if success else -1
         // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSecretKeySetByCSPRNG(out BlsSecretKey sec);
@@ -87,12 +89,6 @@ namespace Cortex.Cryptography
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSign(out BlsSignature sig, BlsSecretKey sec, byte[] m, int size);
 
-        /*
-	        sign the hash
-	        use the low (bitSize of r) - 1 bit of h
-	        return 0 if success else -1
-	        NOTE : return false if h is zero or c1 or -c1 value for BN254. see hashTest() in test/bls_test.hpp
-        */
 
         //BLS_DLL_API mclSize blsSignatureDeserialize(blsSignature* sig, const void* buf, mclSize bufSize);
         [DllImport(@"bls384_256.dll")]
@@ -102,6 +98,10 @@ namespace Cortex.Cryptography
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSignatureSerialize(byte[] buf, int maxBufSize, BlsSignature sig);
 
+        //sign the hash
+        //use the low (bitSize of r) - 1 bit of h
+        //return 0 if success else -1
+        //NOTE : return false if h is zero or c1 or -c1 value for BN254. see hashTest() in test/bls_test.hpp
         //BLS_DLL_API int blsSignHash(blsSignature* sig, const blsSecretKey* sec, const void* h, mclSize size);
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSignHash(out BlsSignature sig, BlsSecretKey sec, byte[] h, int size);
@@ -116,14 +116,11 @@ namespace Cortex.Cryptography
         [DllImport(@"bls384_256.dll")]
         public static extern int blsVerifyHash(BlsSignature sig, BlsPublicKey pub, byte[] h, int size);
 
-        /*
-	        verify X == sY by checking e(X, sQ) = e(Y, Q)
-	        @param X [in]
-	        @param Y [in]
-	        @param pub [in] pub = sQ
-	        @return 1 if e(X, pub) = e(Y, Q) else 0
-        */
-
+	    //verify X == sY by checking e(X, sQ) = e(Y, Q)
+	    //@param X [in]
+	    //@param Y [in]
+	    //@param pub [in] pub = sQ
+	    //@return 1 if e(X, pub) = e(Y, Q) else 0
         //BLS_DLL_API int blsVerifyPairing(const blsSignature* X, const blsSignature* Y, const blsPublicKey* pub);
         // Note: bls_verify in Eth 2.0 has "Verify that e(pubkey, hash_to_G2(message_hash, domain)) == e(g, signature)"
         // i.e. if X = G2 of hash, then Y = signature ??
