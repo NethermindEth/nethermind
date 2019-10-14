@@ -66,7 +66,6 @@ namespace Test.Bls
             {
                 return $"FP2({d_0},{d_1})";
             }
-
         }
 
         /*

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Shouldly;
@@ -35,6 +36,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 MaxDeposits = 16
             };
 
+            var testLogger = Substitute.For<ILogger<BeaconChain>>();
+
             ICryptographyService cryptographyService;
             if (useBls)
             {
@@ -60,7 +63,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = beaconChainParameters.MinGenesisTime;
 
-            var beaconChain = new BeaconChain(null, cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
+            var beaconChain = new BeaconChain(testLogger, cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
 
             // Act
             //# initialize beacon_state

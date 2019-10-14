@@ -12,7 +12,7 @@ namespace Cortex.Cryptography
         // Private key is < r, which is ~256 bits (32 bytes)
 
         public override KeySizes[] LegalKeySizes
-            => new[] { new KeySizes(48 * 8, 96 * 8, 48 * 8) };
+            => new[] { new KeySizes(32 * 8, 32 * 8, 0) };
 
         //public override string SignatureAlgorithm => "BLS_SIG_BLS12381G2-SHA256-_NUL_";
         public override string SignatureAlgorithm => "BLS-12-381";
