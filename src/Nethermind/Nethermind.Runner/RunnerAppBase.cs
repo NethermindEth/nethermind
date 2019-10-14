@@ -36,7 +36,6 @@ using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Initializers;
 using Nethermind.DataMarketplace.WebSockets;
 using Nethermind.Grpc;
-using Nethermind.Grpc.Clients;
 using Nethermind.Grpc.Servers;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -49,6 +48,9 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
 using Nethermind.WebSockets;
+using NLog;
+using NLog.Config;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Runner
 {
@@ -87,7 +89,7 @@ namespace Nethermind.Runner
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-
+                LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
                 Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 LogMemoryConfiguration();
 

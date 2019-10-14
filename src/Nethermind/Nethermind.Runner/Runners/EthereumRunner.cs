@@ -62,11 +62,9 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
-using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -101,7 +99,6 @@ using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
-using Nethermind.Store.Rpc;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
 using Block = Nethermind.Core.Block;
@@ -950,7 +947,7 @@ namespace Nethermind.Runner.Runners
             _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
             await _staticNodesManager.InitAsync();
 
-            var peersDb = new SimpleFilePublicKeyDb("PeersDB", Path.Combine(_initConfig.BaseDbPath, PeersDbPath), _logManager);
+            var peersDb = new SimpleFilePublicKeyDb("PeersDB", PeersDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath), _logManager);
             var peerStorage = new NetworkStorage(peersDb, _logManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
@@ -1025,7 +1022,7 @@ namespace Nethermind.Runner.Runners
                 discoveryConfig,
                 _logManager);
 
-            var discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", Path.Combine(_initConfig.BaseDbPath, DiscoveryNodesDbPath), _logManager);
+            var discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath), _logManager);
             var discoveryStorage = new NetworkStorage(
                 discoveryDb,
                 _logManager);

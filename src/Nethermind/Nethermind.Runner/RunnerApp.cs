@@ -23,34 +23,17 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 using Microsoft.Extensions.CommandLineUtils;
-using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Core;
-using Nethermind.DataMarketplace.Core.Configs;
-using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
-using Nethermind.Db.Config;
-using Nethermind.EthStats;
-using Nethermind.EthStats.Configs;
-using Nethermind.Grpc;
-using Nethermind.Grpc.Clients;
-using Nethermind.JsonRpc;
-using Nethermind.KeyStore.Config;
-using Nethermind.Network.Config;
-using Nethermind.Runner.Config;
-using Nethermind.Stats;
+using Nethermind.Logging;
 using NLog;
 using ILogger = Nethermind.Logging.ILogger;
-using LogLevel = Nethermind.Logging.LogLevel;
-using Nethermind.Monitoring;
-using Nethermind.Monitoring.Config;
-using Nethermind.PubSub.Kafka;
-using Nethermind.Wallet;
 
 namespace Nethermind.Runner
 {
     public class RunnerApp : RunnerAppBase, IRunnerApp
     {
-        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet.cfg");
+        private const string DefaultConfigsDirectory = "configs";
+        private readonly string _defaultConfigFile = Path.Combine(DefaultConfigsDirectory, "mainnet.cfg");
 
         public RunnerApp(ILogger logger) : base(logger)
         {
@@ -89,7 +72,7 @@ namespace Nethermind.Runner
             var configFile = app.Option("-c|--config <configFile>", "config file path", CommandOptionType.SingleValue);
             var dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "base db path", CommandOptionType.SingleValue);
             var logLevelOverride = app.Option("-l|--log <logLevel>", "log level", CommandOptionType.SingleValue);
-
+            
             foreach (Type configType in configs)
             {
                 foreach (PropertyInfo propertyInfo in configType.GetProperties(BindingFlags.Public | BindingFlags.Instance))
@@ -160,11 +143,36 @@ namespace Nethermind.Runner
                     configFilePath = configPathVariable;
                 }
 
+                configFilePath = configFilePath.GetApplicationResourcePath();
+
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
                 {
-                    string redirectedConfigPath = Path.Combine("configs", string.Concat(configFilePath, ".cfg"));
+                    string redirectedConfigPath = Path.Combine(DefaultConfigsDirectory, string.Concat(configFilePath, ".cfg"));
                     Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
+                    if (!File.Exists(configFilePath))
+                    {
+                        throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
+                    }
+                }
+
+                if (!Path.HasExtension(configFilePath))
+                {
+                    configFilePath = string.Concat(configFilePath, ".cfg");
+                }
+                
+                // Fallback to "{executingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
+                if (!File.Exists(configFilePath))
+                {
+                    var configName = Path.GetFileName(configFilePath);
+                    var configDirectory = Path.GetDirectoryName(configFilePath);
+                    string redirectedConfigPath = Path.Combine(configDirectory, DefaultConfigsDirectory, configName);
+                    Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
+                    configFilePath = redirectedConfigPath;
+                    if (!File.Exists(configFilePath))
+                    {
+                        throw new InvalidOperationException($"Configuration: {configFilePath} was not found.");
+                    }
                 }
 
                 Console.WriteLine($"Reading config file from {configFilePath}");
