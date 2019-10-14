@@ -21,9 +21,6 @@ using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Crypto;
-using Org.BouncyCastle.Crypto;
-using Org.BouncyCastle.Crypto.Digests;
-using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nethermind.Network.Benchmarks
 {

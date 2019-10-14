@@ -19,7 +19,6 @@
 using System;
 using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 

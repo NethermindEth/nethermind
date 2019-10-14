@@ -127,7 +127,7 @@ namespace Nethermind.Core.Extensions
         {
             if (bytes.Length == 32)
             {
-                return bytes[0] == 0 && bytes.AsSpan().SequenceEqual(Bytes.Zero32);
+                return bytes[31] == 0 && bytes.AsSpan().SequenceEqual(Bytes.Zero32);
             }
 
             for (int i = 0; i < bytes.Length / 2; i++)
