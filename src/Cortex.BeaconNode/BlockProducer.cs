@@ -12,7 +12,7 @@ namespace Cortex.BeaconNode
             _store = store;
         }
 
-        public async Task<BeaconBlock> NewBlockAsync(ulong slot, byte[] randaoReveal)
+        public async Task<BeaconBlock> NewBlockAsync(ulong slot, BlsSignature randaoReveal)
         {
 
             var head = await _store.GetHeadAsync();

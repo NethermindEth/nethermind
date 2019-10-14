@@ -23,13 +23,13 @@ namespace Cortex.Containers
             _bytes = span.ToArray();
         }
 
-        public static implicit operator BlsSignature(byte[] bytes) => new BlsSignature(bytes);
+        public static explicit operator BlsSignature(byte[] bytes) => new BlsSignature(bytes);
 
-        public static implicit operator BlsSignature(Span<byte> span) => new BlsSignature(span);
+        public static explicit operator BlsSignature(Span<byte> span) => new BlsSignature(span);
 
-        public static implicit operator BlsSignature(ReadOnlySpan<byte> span) => new BlsSignature(span);
+        public static explicit operator BlsSignature(ReadOnlySpan<byte> span) => new BlsSignature(span);
 
-        public static implicit operator ReadOnlySpan<byte>(BlsSignature blsSignature) => blsSignature.AsSpan();
+        public static explicit operator ReadOnlySpan<byte>(BlsSignature blsSignature) => blsSignature.AsSpan();
 
         public ReadOnlySpan<byte> AsSpan()
         {

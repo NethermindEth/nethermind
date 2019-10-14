@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode.Api
@@ -56,7 +57,7 @@ namespace Cortex.BeaconNode.Api
         /// <returns>Success response</returns>
         public async Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal)
         {
-            var data = await _blockProducer.NewBlockAsync(slot, randao_reveal);
+            var data = await _blockProducer.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal));
 
             var result = new BeaconBlock()
             {

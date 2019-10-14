@@ -43,7 +43,7 @@ namespace Cortex.BeaconNode.Ssz
             yield return new SszBasicElement((ulong)item.Amount);
             if (!forSigning)
             {
-                yield return new SszBasicVector(item.Signature);
+                yield return new SszBasicVector(item.Signature.AsSpan());
             }
         }
     }

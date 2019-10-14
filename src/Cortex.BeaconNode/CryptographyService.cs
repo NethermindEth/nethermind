@@ -28,7 +28,7 @@ namespace Cortex.BeaconNode
             // NOTE: Might need to calculate our own G2 and then call blsVerifyPairing ??
 
             //return signatureAlgorithm.VerifyData(data.ToArray(), signature);
-            return signatureAlgorithm.VerifyHash(data.ToArray(), signature);
+            return signatureAlgorithm.VerifyHash(data, signature.AsSpan());
         }
 
         public Hash32 Hash(Hash32 a, Hash32 b)
