@@ -8,10 +8,10 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class BeaconBlockBodyExtensions
     {
-        public static ReadOnlySpan<byte> HashTreeRoot(this BeaconBlockBody item, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static Hash32 HashTreeRoot(this BeaconBlockBody item, MaxOperationsPerBlock maxOperationsPerBlock)
         {
             var tree = new SszTree(item.ToSszContainer(maxOperationsPerBlock));
-            return tree.HashTreeRoot();
+            return new Hash32(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this BeaconBlockBody item, MaxOperationsPerBlock maxOperationsPerBlock)

@@ -8,22 +8,22 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class DepositDataExtensions
     {
-        public static ReadOnlySpan<byte> HashTreeRoot(this IEnumerable<DepositData> list, ulong limit)
+        public static Hash32 HashTreeRoot(this IEnumerable<DepositData> list, ulong limit)
         {
             var tree = new SszTree(list.ToSszList(limit));
-            return tree.HashTreeRoot();
+            return new Hash32(tree.HashTreeRoot());
         }
 
-        public static ReadOnlySpan<byte> HashTreeRoot(this DepositData item)
+        public static Hash32 HashTreeRoot(this DepositData item)
         {
             var tree = new SszTree(item.ToSszContainer());
-            return tree.HashTreeRoot();
+            return new Hash32(tree.HashTreeRoot());
         }
 
-        public static ReadOnlySpan<byte> SigningRoot(this DepositData item)
+        public static Hash32 SigningRoot(this DepositData item)
         {
             var tree = new SszTree(new SszContainer(GetValues(item, true)));
-            return tree.HashTreeRoot();
+            return new Hash32(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this DepositData item)
@@ -38,8 +38,8 @@ namespace Cortex.BeaconNode.Ssz
 
         private static IEnumerable<SszElement> GetValues(DepositData item, bool forSigning)
         {
-            yield return new SszBasicVector(item.PublicKey);
-            yield return new SszBasicVector(item.WithdrawalCredentials);
+            yield return new SszBasicVector(item.PublicKey.AsSpan());
+            yield return new SszBasicVector(item.WithdrawalCredentials.AsSpan());
             yield return new SszBasicElement((ulong)item.Amount);
             if (!forSigning)
             {

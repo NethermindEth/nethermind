@@ -12,10 +12,10 @@ namespace Cortex.BeaconNode.Ssz
     {
         const int VALIDATOR_REGISTRY_LIMIT = 1 << 40; // 1,099,511,627,776
 
-        public static ReadOnlySpan<byte> HashTreeRoot(this BeaconState item)
+        public static Hash32 HashTreeRoot(this BeaconState item)
         {
             var tree = new SszTree(item.ToSszContainer());
-            return tree.HashTreeRoot();
+            return new Hash32(tree.HashTreeRoot());
         }
 
         public static SszContainer ToSszContainer(this BeaconState item)

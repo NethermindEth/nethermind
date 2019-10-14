@@ -16,7 +16,7 @@ namespace Cortex.Containers
         {
             Deposits = new List<Deposit>();
             Eth1Data = new Eth1Data(new Hash32(), 0);
-            Graffiti = new byte[32];
+            Graffiti = new Bytes32();
             RandaoReveal = randaoReveal;
         }
 

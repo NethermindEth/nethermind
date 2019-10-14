@@ -27,11 +27,7 @@ namespace Cortex.Containers
 
         public override int GetHashCode()
         {
-            var hashCode = 2147294683;
-            hashCode = hashCode * -1521134295 + Epoch.GetHashCode();
-            hashCode = hashCode * -1521134295 + ByteArrayEqualityComparer.Default.GetHashCode(Root);
-            //hashCode = hashCode * -1521134295 + EqualityComparer<byte[]>.Default.GetHashCode(Root);
-            return hashCode;
+            return HashCode.Combine(Epoch, Root);
         }
     }
 }

@@ -2,7 +2,7 @@
 
 namespace Cortex.Containers
 {
-    public struct Epoch : IEquatable<Epoch>
+    public struct Epoch : IEquatable<Epoch>, IComparable<Epoch>
     {
         private readonly ulong _value;
 
@@ -11,18 +11,43 @@ namespace Cortex.Containers
             _value = value;
         }
 
-        public static implicit operator Epoch(ulong value) => new Epoch(value);
+        public static explicit operator Epoch(ulong value) => new Epoch(value);
 
-        public static implicit operator ulong(Epoch slot) => slot._value;
+        public static explicit operator ulong(Epoch slot) => slot._value;
 
         public static bool operator !=(Epoch left, Epoch right)
         {
             return !(left == right);
         }
 
+        public static bool operator <(Epoch left, Epoch right)
+        {
+            return left.CompareTo(right) < 0;
+        }
+
+        public static bool operator <=(Epoch left, Epoch right)
+        {
+            return left.CompareTo(right) <= 0;
+        }
+
         public static bool operator ==(Epoch left, Epoch right)
         {
             return left.Equals(right);
+        }
+
+        public static bool operator >(Epoch left, Epoch right)
+        {
+            return left.CompareTo(right) > 0;
+        }
+
+        public static bool operator >=(Epoch left, Epoch right)
+        {
+            return left.CompareTo(right) >= 0;
+        }
+
+        public int CompareTo(Epoch other)
+        {
+            return _value.CompareTo(other._value);
         }
 
         public override bool Equals(object obj)

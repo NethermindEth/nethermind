@@ -42,7 +42,7 @@ namespace Cortex.BeaconNode
             {
                 throw new InvalidOperationException("Error generating hash value.");
             }
-            return result;
+            return new Hash32(result);
         }
 
         public ReadOnlySpan<byte> HashToG2(Hash32 signingRoot, Domain domain)

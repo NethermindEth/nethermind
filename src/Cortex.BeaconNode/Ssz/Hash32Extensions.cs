@@ -7,7 +7,7 @@ namespace Cortex.BeaconNode.Ssz
     {
         public static SszElement ToSszBasicVector(this Hash32 item)
         {
-            return new SszBasicVector(item);
+            return new SszBasicVector(item.AsSpan());
         }
     }
 }

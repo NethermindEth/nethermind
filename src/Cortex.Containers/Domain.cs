@@ -18,13 +18,13 @@ namespace Cortex.Containers
             _value = BitConverter.ToUInt32(span);
         }
 
-        public static implicit operator Domain(byte[] bytes) => new Domain(bytes);
+        public static explicit operator Domain(byte[] bytes) => new Domain(bytes);
 
-        public static implicit operator Domain(Span<byte> span) => new Domain(span);
+        public static explicit operator Domain(Span<byte> span) => new Domain(span);
 
-        public static implicit operator Domain(ReadOnlySpan<byte> span) => new Domain(span);
+        public static explicit operator Domain(ReadOnlySpan<byte> span) => new Domain(span);
 
-        public static implicit operator ReadOnlySpan<byte>(Domain hash) => hash.AsSpan();
+        public static explicit operator ReadOnlySpan<byte>(Domain item) => item.AsSpan();
 
         public static bool operator !=(Domain left, Domain right)
         {

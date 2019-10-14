@@ -14,7 +14,7 @@ namespace Cortex.BeaconNode.Ssz
         private static IEnumerable<SszElement> GetValues(BeaconBlockHeader item)
         {
             //slot: Slot
-            yield return new SszBasicElement(item.Slot);
+            yield return new SszBasicElement((ulong)item.Slot);
             //parent_root: Hash
             yield return item.ParentRoot.ToSszBasicVector();
             //state_root: Hash

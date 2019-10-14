@@ -11,9 +11,9 @@ namespace Cortex.Containers
             _value = value;
         }
 
-        public static implicit operator ulong(ValidatorIndex slot) => slot._value;
+        public static explicit operator ulong(ValidatorIndex slot) => slot._value;
 
-        public static implicit operator ValidatorIndex(ulong value) => new ValidatorIndex(value);
+        public static explicit operator ValidatorIndex(ulong value) => new ValidatorIndex(value);
 
         public static bool operator !=(ValidatorIndex left, ValidatorIndex right)
         {

@@ -61,7 +61,7 @@ namespace Cortex.BeaconNode.Tests
                 var publicKey = publicKeys[validatorIndex];
                 var privateKey = privateKeys[validatorIndex];
                 // insecurely use pubkey as withdrawal key if no credentials provided
-                var withdrawalCredentialBytes = TestUtility.Hash(publicKey);
+                var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = BLS_WITHDRAWAL_PREFIX;
                 var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
                 (var deposit, var depositRoot) = BuildDeposit(beaconChainUtility, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
@@ -80,17 +80,17 @@ namespace Cortex.BeaconNode.Tests
             var index = depositDataList.Count;
             depositDataList.Add(depositData);
             Hash32 root = depositDataList.HashTreeRoot((ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH);
-            var allLeaves = depositDataList.Select(x => new Hash32(x.HashTreeRoot()));
+            var allLeaves = depositDataList.Select(x => x.HashTreeRoot());
             var tree = TestUtility.CalculateMerkleTreeFromLeaves(allLeaves);
             var merkleProof = TestUtility.GetMerkleProof(tree, index, 32);
             var proof = new List<Hash32>(merkleProof);
-            var indexBytes = BitConverter.GetBytes((ulong)index + 1);
+            var indexBytes = new Span<byte>(new byte[32]);
+            BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
             if (!BitConverter.IsLittleEndian)
             {
-                indexBytes = indexBytes.Reverse().ToArray();
+                indexBytes.Slice(0, 8).Reverse();
             }
-            var indexHash = new byte[32];
-            indexBytes.CopyTo(indexHash, 0);
+            var indexHash = new Hash32(indexBytes);
             proof.Add(indexHash);
             var leaf = depositData.HashTreeRoot();
             beaconChainUtility.IsValidMerkleBranch(leaf, proof, DEPOSIT_CONTRACT_TREE_DEPTH + 1, (ulong)index, root);

@@ -1,4 +1,5 @@
 ﻿using Cortex.BeaconNode.Configuration;
+using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,7 +16,7 @@ namespace Cortex.BeaconNode
             });
             services.Configure<InitialValues>(x =>
             {
-                x.GenesisEpoch = configuration.GetValue<ulong>("GENESIS_EPOCH");
+                x.GenesisEpoch = new Epoch(configuration.GetValue<ulong>("GENESIS_EPOCH"));
             });
             services.Configure<TimeParameters>(x =>
             {

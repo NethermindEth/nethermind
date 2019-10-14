@@ -21,7 +21,7 @@ namespace Cortex.BeaconNode
             var combined = new Span<byte>(new byte[Domain.Length]);
             domainType.AsSpan().CopyTo(combined);
             forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
-            return combined;
+            return new Domain(combined);
         }
 
         /// <summary>

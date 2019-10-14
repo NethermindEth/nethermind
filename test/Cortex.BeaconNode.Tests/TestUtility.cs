@@ -59,13 +59,13 @@ namespace Cortex.BeaconNode.Tests
             {
                 if (workingValues.Count % 2 == 1)
                 {
-                    workingValues.Add(_zeroHashes[height]);
+                    workingValues.Add(new Hash32(_zeroHashes[height]));
                 }
                 var hashes = new List<Hash32>();
                 for (var index = 0; index < workingValues.Count; index += 2)
                 {
-                    var hash = Hash(workingValues[index], workingValues[index + 1]);
-                    hashes.Add(hash);
+                    var hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
+                    hashes.Add(new Hash32(hash));
                 }
                 tree.Add(hashes.ToArray());
                 workingValues = hashes;
@@ -81,7 +81,7 @@ namespace Cortex.BeaconNode.Tests
                 var subindex = (itemIndex / (1 << height)) ^ 1;
                 var value = subindex < tree[height].Count
                     ? tree[height][subindex]
-                    : _zeroHashes[height];
+                    : new Hash32(_zeroHashes[height]);
                 proof.Add(value);
             }
             return proof;

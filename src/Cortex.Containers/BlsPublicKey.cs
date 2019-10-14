@@ -23,13 +23,13 @@ namespace Cortex.Containers
             _bytes = span.ToArray();
         }
 
-        public static implicit operator BlsPublicKey(byte[] bytes) => new BlsPublicKey(bytes);
+        public static explicit operator BlsPublicKey(byte[] bytes) => new BlsPublicKey(bytes);
 
-        public static implicit operator BlsPublicKey(Span<byte> span) => new BlsPublicKey(span);
+        public static explicit operator BlsPublicKey(Span<byte> span) => new BlsPublicKey(span);
 
-        public static implicit operator BlsPublicKey(ReadOnlySpan<byte> span) => new BlsPublicKey(span);
+        public static explicit operator BlsPublicKey(ReadOnlySpan<byte> span) => new BlsPublicKey(span);
 
-        public static implicit operator ReadOnlySpan<byte>(BlsPublicKey blsPublicKey) => blsPublicKey.AsSpan();
+        public static explicit operator ReadOnlySpan<byte>(BlsPublicKey blsPublicKey) => blsPublicKey.AsSpan();
 
         public ReadOnlySpan<byte> AsSpan()
         {

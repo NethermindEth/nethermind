@@ -23,13 +23,13 @@ namespace Cortex.Containers
             _bytes = span.ToArray();
         }
 
-        public static implicit operator Hash32(byte[] bytes) => new Hash32(bytes);
+        public static explicit operator Hash32(byte[] bytes) => new Hash32(bytes);
 
-        public static implicit operator Hash32(Span<byte> span) => new Hash32(span);
+        public static explicit operator Hash32(Span<byte> span) => new Hash32(span);
 
-        public static implicit operator Hash32(ReadOnlySpan<byte> span) => new Hash32(span);
+        public static explicit operator Hash32(ReadOnlySpan<byte> span) => new Hash32(span);
 
-        public static implicit operator ReadOnlySpan<byte>(Hash32 hash) => hash.AsSpan();
+        public static explicit operator ReadOnlySpan<byte>(Hash32 hash) => hash.AsSpan();
 
         public ReadOnlySpan<byte> AsSpan()
         {

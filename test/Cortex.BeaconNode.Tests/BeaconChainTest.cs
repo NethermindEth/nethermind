@@ -39,7 +39,7 @@ namespace Cortex.BeaconNode.Tests
             };
             var initalValues = new InitialValues()
             {
-                GenesisEpoch = 0
+                GenesisEpoch = new Epoch(0)
             };
             var timeParameters = new TimeParameters();
             var maxOperationsPerBlock = new MaxOperationsPerBlock()

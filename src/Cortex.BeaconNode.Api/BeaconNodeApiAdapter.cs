@@ -61,7 +61,7 @@ namespace Cortex.BeaconNode.Api
 
             var result = new BeaconBlock()
             {
-                Slot = data.Slot,
+                Slot = (ulong)data.Slot,
                 Body = new BeaconBlockBody()
                 {
                     Randao_reveal = data.Body!.RandaoReveal.AsSpan().ToArray()

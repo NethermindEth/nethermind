@@ -6,6 +6,6 @@ namespace Cortex.BeaconNode.Configuration
     {
         public readonly ulong SecondsPerDay = 86400;
 
-        public Slot SlotsPerEpoch { get; set; }
+        public ulong SlotsPerEpoch { get; set; }
     }
 }

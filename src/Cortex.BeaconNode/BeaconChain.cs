@@ -14,7 +14,7 @@ namespace Cortex.BeaconNode
         private const ulong DEPOSIT_CONTRACT_LIMIT = (ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH;
         private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 2 ** 5
         private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = new Gwei(1000 * 1000 * 1000); // (2 ** 0) * (10 ** 9)
-        private static readonly Epoch FAR_FUTURE_EPOCH = (ulong)1 << 64 - 1;
+        private static readonly Epoch FAR_FUTURE_EPOCH = new Epoch((ulong)1 << 64 - 1);
         private static readonly Epoch GENESIS_EPOCH = new Epoch(0);
         private static readonly Gwei MAX_EFFECTIVE_BALANCE = new Gwei(((ulong)1 << 5) * 1000 * 1000 * 1000); // (2 ** 5) * (10 ** 9)
         private readonly BeaconChainParameters _beaconChainParameters;

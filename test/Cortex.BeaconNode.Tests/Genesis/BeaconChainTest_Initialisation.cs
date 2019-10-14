@@ -25,7 +25,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             };
             var initalValues = new InitialValues()
             {
-                GenesisEpoch = 0
+                GenesisEpoch = new Epoch(0)
             };
             var timeParameters = new TimeParameters();
             var maxOperationsPerBlock = new MaxOperationsPerBlock()
@@ -50,7 +50,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
                     .Hash(Arg.Any<Hash32>(), Arg.Any<Hash32>())
                     .Returns(callInfo =>
                     {
-                        return TestUtility.Hash(callInfo.ArgAt<Hash32>(0), callInfo.ArgAt<Hash32>(1));
+                        return new Hash32(TestUtility.Hash(callInfo.ArgAt<Hash32>(0).AsSpan(), callInfo.ArgAt<Hash32>(1).AsSpan()));
                     });
             }
             var beaconChainUtility = new BeaconChainUtility(cryptographyService);

@@ -18,13 +18,13 @@ namespace Cortex.Containers
             _value = BitConverter.ToUInt32(span);
         }
 
-        public static implicit operator ForkVersion(byte[] bytes) => new ForkVersion(bytes);
+        public static explicit operator ForkVersion(byte[] bytes) => new ForkVersion(bytes);
 
-        public static implicit operator ForkVersion(Span<byte> span) => new ForkVersion(span);
+        public static explicit operator ForkVersion(Span<byte> span) => new ForkVersion(span);
 
-        public static implicit operator ForkVersion(ReadOnlySpan<byte> span) => new ForkVersion(span);
+        public static explicit operator ForkVersion(ReadOnlySpan<byte> span) => new ForkVersion(span);
 
-        public static implicit operator ReadOnlySpan<byte>(ForkVersion hash) => hash.AsSpan();
+        public static explicit operator ReadOnlySpan<byte>(ForkVersion hash) => hash.AsSpan();
 
         public static bool operator !=(ForkVersion left, ForkVersion right)
         {

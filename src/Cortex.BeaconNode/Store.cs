@@ -37,7 +37,7 @@ namespace Cortex.BeaconNode
                 {
                     var children = Blocks
                         .Where(kvp => 
-                            ByteArrayEqualityComparer.Default.Equals(kvp.Value.ParentRoot, head) 
+                            kvp.Value.ParentRoot.Equals(head) 
                             && kvp.Value.Slot > justifiedSlot)
                         .Select(kvp => kvp.Key);
                     if (children.Count() == 0)
@@ -57,7 +57,7 @@ namespace Cortex.BeaconNode
         /// </summary>
         private Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
-            return epoch * _timeParameterOptions.CurrentValue.SlotsPerEpoch;
+            return new Slot((ulong)epoch * _timeParameterOptions.CurrentValue.SlotsPerEpoch);
         }
 
         private Gwei GetLatestAttestingBalance(Hash32 root)
