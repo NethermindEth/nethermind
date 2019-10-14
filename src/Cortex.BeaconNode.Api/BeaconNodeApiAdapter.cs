@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode.Api
@@ -64,7 +63,7 @@ namespace Cortex.BeaconNode.Api
                 Slot = data.Slot,
                 Body = new BeaconBlockBody()
                 {
-                    Randao_reveal = data.Body.RandaoReveal.AsSpan().ToArray()
+                    Randao_reveal = data.Body!.RandaoReveal.AsSpan().ToArray()
                 }
             };
             return result;
@@ -96,7 +95,14 @@ namespace Cortex.BeaconNode.Api
         /// <returns>Request successful</returns>
         public async Task<ulong> TimeAsync()
         {
-            return await Task.Run(() => _beaconChain.State.GenesisTime);
+            return await Task.Run<ulong>(() =>
+            {
+                if (_beaconChain.State != null)
+                {
+                    return _beaconChain.State.GenesisTime;
+                }
+                return 0;
+            });
         }
 
         /// <summary>Get version string of the running beacon node.</summary>

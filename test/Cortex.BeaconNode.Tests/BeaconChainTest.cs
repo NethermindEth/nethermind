@@ -1,7 +1,9 @@
 ﻿using System.Threading.Tasks;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
+using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using NSubstitute;
 using Shouldly;
 
 namespace Cortex.BeaconNode.Tests
@@ -45,7 +47,7 @@ namespace Cortex.BeaconNode.Tests
                 MaxDeposits = 16
             };
 
-            var beaconChain = new BeaconChain(null, cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
+            var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
 
             // Act
             var eth1BlockHash = new Hash32();

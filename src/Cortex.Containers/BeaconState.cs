@@ -29,9 +29,10 @@ namespace Cortex.Containers
 
         public IReadOnlyList<Validator> Validators { get { return _validators; } }
 
-        public void AddValidator(Validator validator)
+        public void AddValidatorWithBalance(Validator validator, Gwei amount)
         {
             _validators.Add(validator);
+            _balances.Add(amount);
         }
 
         /// <summary>
@@ -49,14 +50,10 @@ namespace Cortex.Containers
         /// <summary>
         /// Increase the validator balance at index 'index' by 'delta'.
         /// </summary>
-        public void IncreaseBalance(ValidatorIndex index, Gwei amount)
+        public void IncreaseBalanceForValidator(ValidatorIndex index, Gwei amount)
         {
             // TODO: Would a dictionary be better, to handle ulong index?
             var arrayIndex = (int)(ulong)index;
-            if (_balances.Count <= arrayIndex)
-            {
-                _balances.AddRange(Enumerable.Repeat(new Gwei(), arrayIndex - _balances.Count + 1));
-            }
             var balance = _balances[arrayIndex];
             balance += amount;
             _balances[arrayIndex] = balance;

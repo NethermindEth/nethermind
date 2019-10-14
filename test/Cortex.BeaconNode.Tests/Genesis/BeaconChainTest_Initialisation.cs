@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
@@ -74,6 +71,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             state.Validators.Count.ShouldBe(depositCount);
             state.Eth1Data.DepositRoot.ShouldBe(depositRoot);
             state.Eth1Data.DepositCount.ShouldBe((ulong)depositCount);
+            state.Eth1Data.BlockHash.ShouldBe(eth1BlockHash);
         }
     }
 }

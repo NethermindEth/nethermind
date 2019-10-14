@@ -15,13 +15,13 @@
         }
 
         /// <summary>Gets when criteria for activation were met</summary>
-        public Epoch ActivationEligibilityEpoch { get; }
+        public Epoch ActivationEligibilityEpoch { get; private set; }
 
         //public bool Slashed { get; }
-        public Epoch ActivationEpoch { get; }
+        public Epoch ActivationEpoch { get; private set; }
 
         /// <summary>Gets the balance at stake</summary>
-        public Gwei EffectiveBalance { get; }
+        public Gwei EffectiveBalance { get; private set; }
 
         public Epoch ExitEpoch { get; }
 
@@ -32,6 +32,21 @@
 
         /// <summary>Gets the public key commitment for withdrawals and transfers</summary>
         public Hash32 WithdrawalCredentials { get; }
+
+        public void SetActive(Epoch activationEpoch)
+        {
+            ActivationEpoch = activationEpoch;
+        }
+
+        public void SetEffectiveBalance(Gwei effectiveBalance)
+        {
+            EffectiveBalance = effectiveBalance;
+        }
+
+        public void SetEligible(Epoch activationEligibilityEpoch)
+        {
+            ActivationEligibilityEpoch = activationEligibilityEpoch;
+        }
 
         /// <summary>
         /// Check if ``validator`` is active.

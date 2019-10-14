@@ -15,8 +15,8 @@ namespace Cortex.BeaconNode
         private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 2 ** 5
         private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = 1000 * 1000 * 1000; // (2 ** 0) * (10 ** 9)
         private static readonly Epoch FAR_FUTURE_EPOCH = (ulong)1 << 64 - 1;
+        private static readonly Epoch GENESIS_EPOCH = new Epoch(0);
         private static readonly Gwei MAX_EFFECTIVE_BALANCE = ((ulong)1 << 5) * 1000 * 1000 * 1000; // (2 ** 5) * (10 ** 9)
-
         private readonly BeaconChainParameters _beaconChainParameters;
 
         private readonly BeaconChainUtility _beaconChainUtility;
@@ -68,7 +68,18 @@ namespace Cortex.BeaconNode
             }
 
             // Process activations
-            // TODO:
+            for (var validatorIndex = 0; validatorIndex < state.Validators.Count; validatorIndex++)
+            {
+                var validator = state.Validators[validatorIndex];
+                var balance = state.Balances[validatorIndex];
+                var effectiveBalance = Math.Min(balance - balance % EFFECTIVE_BALANCE_INCREMENT, MAX_EFFECTIVE_BALANCE);
+                validator.SetEffectiveBalance(effectiveBalance);
+                if (validator.EffectiveBalance == MAX_EFFECTIVE_BALANCE)
+                {
+                    validator.SetEligible(GENESIS_EPOCH);
+                    validator.SetActive(GENESIS_EPOCH);
+                }
+            }
 
             return state;
         }
@@ -96,6 +107,10 @@ namespace Cortex.BeaconNode
                 DEPOSIT_CONTRACT_TREE_DEPTH + 1, // Add 1 for the 'List' length mix-in
                 state.Eth1DepositIndex,
                 state.Eth1Data.DepositRoot);
+            if (!isValid)
+            {
+                throw new Exception($"Invalid Merle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
+            }
 
             // Deposits must be processed in order
             state.IncreaseEth1DepositIndex();
@@ -110,7 +125,7 @@ namespace Cortex.BeaconNode
                 // Note: The deposit contract does not check signatures.
                 // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
 
-                Domain domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
+                var domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
                 if (!_blsSignatureService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
                 {
                     return;
@@ -126,12 +141,12 @@ namespace Cortex.BeaconNode
                     FAR_FUTURE_EPOCH,
                     effectiveBalance
                     );
-                state.AddValidator(newValidator);
+                state.AddValidatorWithBalance(newValidator, amount);
             }
             else
             {
                 var index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
-                state.IncreaseBalance(index, amount);
+                state.IncreaseBalanceForValidator(index, amount);
             }
         }
 
