@@ -745,10 +745,8 @@ namespace Nethermind.Evm
                     throw new EvmStackOverflowException();
                 }
             }
-
-            byte[] wordBufferArray = new byte[32];
-            Span<byte> wordBuffer = wordBufferArray.AsSpan();
-
+            
+            Span<byte> wordBuffer = stackalloc byte[32];
             void Swap(int depth, Span<byte> stack, Span<byte> buffer)
             {
                 if (stackHead < depth)
@@ -773,6 +771,7 @@ namespace Nethermind.Evm
                 }
             }
 
+            // ReSharper disable once ImplicitlyCapturedClosure
             Span<byte> PopBytes(Span<byte> stack)
             {
                 if (stackHead == 0)
@@ -1282,7 +1281,7 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
+                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBuffer);
                         }
                         else
                         {
@@ -1292,7 +1291,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.OR:
@@ -1311,7 +1310,7 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
+                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBuffer);
                         }
                         else
                         {
@@ -1321,7 +1320,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.XOR:
@@ -1340,7 +1339,7 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
+                            Vector.Xor(aVec, bVec).CopyTo(wordBuffer);
                         }
                         else
                         {
@@ -1350,7 +1349,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.NOT:
@@ -1368,17 +1367,17 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
-                            negVec.CopyTo(wordBufferArray);
+                            negVec.CopyTo(wordBuffer);
                         }
                         else
                         {
                             for (int i = 0; i < 32; ++i)
                             {
-                                wordBufferArray[i] = (byte)~a[i];
+                                wordBuffer[i] = (byte)~a[i];
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.BYTE:

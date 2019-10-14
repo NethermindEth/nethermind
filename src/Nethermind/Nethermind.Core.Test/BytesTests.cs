@@ -88,5 +88,22 @@ namespace Nethermind.Core.Test
                 sr?.Dispose();
             }
         }
+        
+        [Test]
+        public void Reversal()
+        {
+            byte[] bytes = Bytes.FromHexString("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+            byte[] before = bytes.Clone() as byte[];
+            Assert.AreEqual(32, bytes.Length);
+
+            Bytes.Avx2Reverse256InPlace(bytes);
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.AreEqual(before[i], bytes[32 - 1 - i]);
+            }
+            
+            TestContext.WriteLine(before.ToHexString());
+            TestContext.WriteLine(bytes.ToHexString());
+        }
     }
 }
