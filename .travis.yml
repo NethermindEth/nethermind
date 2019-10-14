@@ -69,7 +69,7 @@ jobs:
     - script: 
       - git -c submodule."src/tests".update=none submodule update --init
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
-          dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Core.Test;
+          travis_wait 15 dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Core.Test;
         else 
           dotnet test -c Release src/Nethermind/Nethermind.Core.Test;
         fi
