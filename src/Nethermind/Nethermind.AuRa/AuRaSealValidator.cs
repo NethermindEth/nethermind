@@ -75,7 +75,7 @@ namespace Nethermind.AuRa
         private Address GetSealer(BlockHeader header)
         {
             Signature signature = new Signature(header.AuRaSignature);
-            signature.V += 27;
+            signature.V += Signature.VOffset;
             Keccak message = BlockHeader.CalculateHash(header, RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, message);
         }

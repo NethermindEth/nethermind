@@ -77,7 +77,7 @@ namespace Nethermind.AuRa
 
             var headerHash = BlockHeader.CalculateHash(block.Header, RlpBehaviors.ForSealing);
             var signature = _wallet.Sign(headerHash, _nodeAddress);
-            block.Header.AuRaSignature = signature.Bytes;
+            block.Header.AuRaSignature = signature.BytesWithRecovery;
             
             return block;
         }
