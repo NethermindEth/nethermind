@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
 using Cortex.Cryptography;
@@ -10,14 +11,51 @@ namespace Cortex.BeaconNode.Tests
 {
     public static class TestData
     {
-        private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 32
-        private const int SLOTS_PER_EPOCH = 8;
         private const byte BLS_WITHDRAWAL_PREFIX = 0x00;
 
-        public static IEnumerable<byte[]> PrivateKeys()
+        public static void GetMinimalConfiguration(
+            out ChainConstants chainConstants,
+            out MiscellaneousParameters miscellaneousParameters,
+            out GweiValues gweiValues,
+            out InitialValues initalValues,
+            out TimeParameters timeParameters,
+            out StateListLengths stateListLengths,
+            out MaxOperationsPerBlock maxOperationsPerBlock)
+        {
+            chainConstants = new ChainConstants();
+            miscellaneousParameters = new MiscellaneousParameters()
+            {
+                MinimumGenesisActiveValidatorCount = 64,
+                MinimumGenesisTime = 1578009600 // Jan 3, 2020
+            };
+            gweiValues = new GweiValues()
+            {
+                MaximumEffectiveBalance = new Gwei(((ulong)1 << 5) * 1000 * 1000 * 1000),
+                EffectiveBalanceIncrement = new Gwei(1000 * 1000 * 1000)
+            };
+            initalValues = new InitialValues()
+            {
+                GenesisEpoch = new Epoch(0),
+                BlsWithdrawalPrefix = 0x00
+            };
+            timeParameters = new TimeParameters()
+            {
+                SlotsPerEpoch = 8
+            };
+            stateListLengths = new StateListLengths()
+            {
+                ValidatorRegistryLimit = (ulong)1 << 40
+            };
+            maxOperationsPerBlock = new MaxOperationsPerBlock()
+            {
+                MaximumDeposits = 16
+            };
+        }
+
+        public static IEnumerable<byte[]> PrivateKeys(TimeParameters timeParameters)
         {
             // Private key is ~255 bits (32 bytes) long
-            var privateKeys = Enumerable.Range(0, SLOTS_PER_EPOCH * 16).Select(x => {
+            var privateKeys = Enumerable.Range(0, (int)timeParameters.SlotsPerEpoch * 16).Select(x => {
                 var key = new byte[32];
                 var bytes = BitConverter.GetBytes((ulong)(x + 1));
                 bytes.CopyTo(key, 0);
@@ -41,9 +79,11 @@ namespace Cortex.BeaconNode.Tests
             });
         }
 
-        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(BeaconChainUtility beaconChainUtility, int genesisValidatorCount, Gwei amount, bool signed)
+        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(ChainConstants chainConstants,
+            TimeParameters timeParameters, BeaconChainUtility beaconChainUtility, int genesisValidatorCount, Gwei amount,
+            bool signed)
         {
-            var privateKeys = PrivateKeys().ToArray();
+            var privateKeys = PrivateKeys(timeParameters).ToArray();
             BlsPublicKey[] publicKeys;
             if (signed)
             {
@@ -64,22 +104,22 @@ namespace Cortex.BeaconNode.Tests
                 var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = BLS_WITHDRAWAL_PREFIX;
                 var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
-                (var deposit, var depositRoot) = BuildDeposit(beaconChainUtility, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
+                (var deposit, var depositRoot) = BuildDeposit(chainConstants, beaconChainUtility, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
                 root = depositRoot;
                 genesisDeposits.Add(deposit);
             }
             return (genesisDeposits, root);
         }
 
-        public static (Deposit, Hash32) BuildDeposit(BeaconChainUtility beaconChainUtility, BeaconState? state, 
-            IList<DepositData> depositDataList,
-            BlsPublicKey publicKey,
-            byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, bool signed)
+        public static (Deposit, Hash32) BuildDeposit(
+            ChainConstants chainConstants, BeaconChainUtility beaconChainUtility, BeaconState? state,
+            IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount,
+            Hash32 withdrawalCredentials, bool signed)
         {
             var depositData = BuildDepositData(beaconChainUtility, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
             var index = depositDataList.Count;
             depositDataList.Add(depositData);
-            Hash32 root = depositDataList.HashTreeRoot((ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH);
+            Hash32 root = depositDataList.HashTreeRoot((ulong)1 << chainConstants.DepositContractTreeDepth);
             var allLeaves = depositDataList.Select(x => x.HashTreeRoot());
             var tree = TestUtility.CalculateMerkleTreeFromLeaves(allLeaves);
             var merkleProof = TestUtility.GetMerkleProof(tree, index, 32);
@@ -93,7 +133,7 @@ namespace Cortex.BeaconNode.Tests
             var indexHash = new Hash32(indexBytes);
             proof.Add(indexHash);
             var leaf = depositData.HashTreeRoot();
-            beaconChainUtility.IsValidMerkleBranch(leaf, proof, DEPOSIT_CONTRACT_TREE_DEPTH + 1, (ulong)index, root);
+            beaconChainUtility.IsValidMerkleBranch(leaf, proof, chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
             var deposit = new Deposit(proof, depositData);
             return (deposit, root);
         }

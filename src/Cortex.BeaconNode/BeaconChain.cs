@@ -11,15 +11,18 @@ namespace Cortex.BeaconNode
 {
     public class BeaconChain
     {
-        private const ulong DEPOSIT_CONTRACT_LIMIT = (ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH;
-        private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 2 ** 5
-        private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = new Gwei(1000 * 1000 * 1000); // (2 ** 0) * (10 ** 9)
-        private static readonly Epoch FAR_FUTURE_EPOCH = new Epoch((ulong)1 << 64 - 1);
-        private static readonly Epoch GENESIS_EPOCH = new Epoch(0);
-        private static readonly Gwei MAX_EFFECTIVE_BALANCE = new Gwei(((ulong)1 << 5) * 1000 * 1000 * 1000); // (2 ** 5) * (10 ** 9)
-        private readonly BeaconChainParameters _beaconChainParameters;
+        // Constants
+        //private const ulong DEPOSIT_CONTRACT_LIMIT = (ulong)1 << DEPOSIT_CONTRACT_TREE_DEPTH;
+        //private const int DEPOSIT_CONTRACT_TREE_DEPTH = 1 << 5; // 2 ** 5
+        //private static readonly Epoch FAR_FUTURE_EPOCH = new Epoch((ulong)1 << 64 - 1);
 
+        //private static readonly Gwei EFFECTIVE_BALANCE_INCREMENT = new Gwei(1000 * 1000 * 1000); // (2 ** 0) * (10 ** 9)
+        //private static readonly Gwei MAX_EFFECTIVE_BALANCE = new Gwei(((ulong)1 << 5) * 1000 * 1000 * 1000); // (2 ** 5) * (10 ** 9)
+
+        private readonly MiscellaneousParameters _miscellaneousParameters;
+        private readonly GweiValues _gweiValues;
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _blsSignatureService;
         private readonly InitialValues _initialValues;
 
@@ -28,21 +31,28 @@ namespace Cortex.BeaconNode
 
         private readonly MaxOperationsPerBlock _maxOperationsPerBlock;
         private readonly TimeParameters _timeParameters;
+        private readonly StateListLengths _stateListLengths;
 
         public BeaconChain(ILogger<BeaconChain> logger,
             ICryptographyService blsSignatureService,
             BeaconChainUtility beaconChainUtility,
-            BeaconChainParameters beaconChainParameters,
+            ChainConstants chainConstants,
+            MiscellaneousParameters miscellaneousParameters,
+            GweiValues gweiValues,
             InitialValues initialValues,
             TimeParameters timeParameters,
+            StateListLengths stateListLengths,
             MaxOperationsPerBlock maxOperationsPerBlock)
         {
             _logger = logger;
             _blsSignatureService = blsSignatureService;
             _beaconChainUtility = beaconChainUtility;
-            _beaconChainParameters = beaconChainParameters;
+            _chainConstants = chainConstants;
+            _miscellaneousParameters = miscellaneousParameters;
+            _gweiValues = gweiValues;
             _initialValues = initialValues;
             _timeParameters = timeParameters;
+            _stateListLengths = stateListLengths;
             _maxOperationsPerBlock = maxOperationsPerBlock;
         }
 
@@ -51,7 +61,7 @@ namespace Cortex.BeaconNode
 
         public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IEnumerable<Deposit> deposits)
         {
-            var genesisTime = eth1Timestamp - (eth1Timestamp % _timeParameters.SecondsPerDay) + (2 * _timeParameters.SecondsPerDay);
+            var genesisTime = eth1Timestamp - (eth1Timestamp % _chainConstants.SecondsPerDay) + (2 * _chainConstants.SecondsPerDay);
             var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count());
             var emptyBlockBody = new BeaconBlockBody();
             var latestBlockHeader = new BeaconBlockHeader(emptyBlockBody.HashTreeRoot(_maxOperationsPerBlock));
@@ -62,7 +72,7 @@ namespace Cortex.BeaconNode
             foreach (var deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
-                var depositRoot = depositDataList.HashTreeRoot(DEPOSIT_CONTRACT_LIMIT);
+                var depositRoot = depositDataList.HashTreeRoot(_chainConstants.MaximumDepositContracts);
                 state.Eth1Data.SetDepositRoot(depositRoot);
                 ProcessDeposit(state, deposit);
             }
@@ -72,12 +82,12 @@ namespace Cortex.BeaconNode
             {
                 var validator = state.Validators[validatorIndex];
                 var balance = state.Balances[validatorIndex];
-                var effectiveBalance = Gwei.Min(balance - (balance % EFFECTIVE_BALANCE_INCREMENT), MAX_EFFECTIVE_BALANCE);
+                var effectiveBalance = Gwei.Min(balance - (balance % _gweiValues.EffectiveBalanceIncrement), _gweiValues.MaximumEffectiveBalance);
                 validator.SetEffectiveBalance(effectiveBalance);
-                if (validator.EffectiveBalance == MAX_EFFECTIVE_BALANCE)
+                if (validator.EffectiveBalance == _gweiValues.MaximumEffectiveBalance)
                 {
-                    validator.SetEligible(GENESIS_EPOCH);
-                    validator.SetActive(GENESIS_EPOCH);
+                    validator.SetEligible(_initialValues.GenesisEpoch);
+                    validator.SetActive(_initialValues.GenesisEpoch);
                 }
             }
 
@@ -86,12 +96,12 @@ namespace Cortex.BeaconNode
 
         public bool IsValidGenesisState(BeaconState state)
         {
-            if (state.GenesisTime < _beaconChainParameters.MinGenesisTime)
+            if (state.GenesisTime < _miscellaneousParameters.MinimumGenesisTime)
             {
                 return false;
             }
             var activeValidatorIndices = state.GetActiveValidatorIndices(_initialValues.GenesisEpoch);
-            if (activeValidatorIndices.Count < _beaconChainParameters.MinGenesisActiveValidatorCount)
+            if (activeValidatorIndices.Count < _miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;
             }
@@ -104,7 +114,7 @@ namespace Cortex.BeaconNode
             var isValid = _beaconChainUtility.IsValidMerkleBranch(
                 deposit.Data.HashTreeRoot(),
                 deposit.Proof,
-                DEPOSIT_CONTRACT_TREE_DEPTH + 1, // Add 1 for the 'List' length mix-in
+                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
                 state.Eth1DepositIndex,
                 state.Eth1Data.DepositRoot);
             if (!isValid)
@@ -131,14 +141,14 @@ namespace Cortex.BeaconNode
                     return;
                 }
 
-                var effectiveBalance = Gwei.Min(amount - (amount % EFFECTIVE_BALANCE_INCREMENT), MAX_EFFECTIVE_BALANCE);
+                var effectiveBalance = Gwei.Min(amount - (amount % _gweiValues.EffectiveBalanceIncrement), _gweiValues.MaximumEffectiveBalance);
                 var newValidator = new Validator(
                     publicKey,
                     deposit.Data.WithdrawalCredentials,
-                    FAR_FUTURE_EPOCH,
-                    FAR_FUTURE_EPOCH,
-                    FAR_FUTURE_EPOCH,
-                    FAR_FUTURE_EPOCH,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
                     effectiveBalance
                     );
                 state.AddValidatorWithBalance(newValidator, amount);
@@ -158,7 +168,7 @@ namespace Cortex.BeaconNode
                 if (IsValidGenesisState(candidateState))
                 {
                     var genesisState = candidateState;
-                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot());
+                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot(_stateListLengths));
                     State = genesisState;
                     return true;
                 }

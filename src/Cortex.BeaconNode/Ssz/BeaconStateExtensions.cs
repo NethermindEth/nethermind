@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Cortex.SimpleSerialize;
 
@@ -10,20 +11,18 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class BeaconStateExtensions
     {
-        const int VALIDATOR_REGISTRY_LIMIT = 1 << 40; // 1,099,511,627,776
-
-        public static Hash32 HashTreeRoot(this BeaconState item)
+        public static Hash32 HashTreeRoot(this BeaconState item, StateListLengths stateListLengths)
         {
-            var tree = new SszTree(item.ToSszContainer());
+            var tree = new SszTree(item.ToSszContainer(stateListLengths));
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszContainer ToSszContainer(this BeaconState item)
+        public static SszContainer ToSszContainer(this BeaconState item, StateListLengths stateListLengths)
         {
-            return new SszContainer(GetValues(item));
+            return new SszContainer(GetValues(item, stateListLengths));
         }
 
-        private static IEnumerable<SszElement> GetValues(BeaconState item)
+        private static IEnumerable<SszElement> GetValues(BeaconState item, StateListLengths stateListLengths)
         {
             //# Versioning
             //genesis_time: uint64
@@ -47,9 +46,9 @@ namespace Cortex.BeaconNode.Ssz
 
             //# Registry
             //validators: List[Validator, VALIDATOR_REGISTRY_LIMIT]
-            yield return new SszList(item.Validators.Select(x => x.ToSszContainer()), VALIDATOR_REGISTRY_LIMIT);
+            yield return new SszList(item.Validators.Select(x => x.ToSszContainer()), stateListLengths.ValidatorRegistryLimit);
             //balances: List[Gwei, VALIDATOR_REGISTRY_LIMIT]
-            yield return new SszBasicList(item.Balances.Cast<ulong>().ToArray(), VALIDATOR_REGISTRY_LIMIT);
+            yield return new SszBasicList(item.Balances.Cast<ulong>().ToArray(), stateListLengths.ValidatorRegistryLimit);
 
             //# Shuffling
             //start_shard: Shard

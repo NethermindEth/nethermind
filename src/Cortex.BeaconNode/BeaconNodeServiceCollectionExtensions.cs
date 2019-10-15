@@ -9,23 +9,7 @@ namespace Cortex.BeaconNode
     {
         public static void AddBeaconNode(this IServiceCollection services, IConfiguration configuration)
         {
-            services.Configure<BeaconChainParameters>(x =>
-            {
-                x.MinGenesisActiveValidatorCount = configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT");
-                x.MinGenesisTime = configuration.GetValue<ulong>("MIN_GENESIS_TIME");
-            });
-            services.Configure<InitialValues>(x =>
-            {
-                x.GenesisEpoch = new Epoch(configuration.GetValue<ulong>("GENESIS_EPOCH"));
-            });
-            services.Configure<TimeParameters>(x =>
-            {
-                x.SlotsPerEpoch = configuration.GetValue<ulong>("SLOTS_PER_EPOCH");
-            });
-            services.Configure<MaxOperationsPerBlock>(x =>
-            {
-                x.MaxDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
-            });
+            AddConfiguration(services, configuration);
 
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<BeaconChainUtility>();
@@ -34,6 +18,40 @@ namespace Cortex.BeaconNode
             services.AddSingleton<ICryptographyService, CryptographyService>();
 
             services.AddScoped<BlockProducer>();
+        }
+
+        private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
+        {
+            services.Configure<ChainConstants>(x => 
+            { 
+            });
+            services.Configure<MiscellaneousParameters>(x =>
+            {
+                x.MinimumGenesisActiveValidatorCount = configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT");
+                x.MinimumGenesisTime = configuration.GetValue<ulong>("MIN_GENESIS_TIME");
+            });
+            services.Configure<GweiValues>(x =>
+            {
+                x.MaximumEffectiveBalance = new Gwei(configuration.GetValue<ulong>("MAX_EFFECTIVE_BALANCE"));
+                x.EffectiveBalanceIncrement = new Gwei(configuration.GetValue<ulong>("EFFECTIVE_BALANCE_INCREMENT"));
+            });
+            services.Configure<InitialValues>(x =>
+            {
+                x.GenesisEpoch = new Epoch(configuration.GetValue<ulong>("GENESIS_EPOCH"));
+                x.BlsWithdrawalPrefix = configuration.GetValue<byte>("BLS_WITHDRAWAL_PREFIX");
+            });
+            services.Configure<TimeParameters>(x =>
+            {
+                x.SlotsPerEpoch = configuration.GetValue<ulong>("SLOTS_PER_EPOCH");
+            });
+            services.Configure<StateListLengths>(x =>
+            {
+                x.ValidatorRegistryLimit = configuration.GetValue<ulong>("VALIDATOR_REGISTRY_LIMIT");
+            });
+            services.Configure<MaxOperationsPerBlock>(x =>
+            {
+                x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
+            });
         }
     }
 }

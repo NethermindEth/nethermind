@@ -2,6 +2,6 @@
 {
     public class MaxOperationsPerBlock
     {
-        public ulong MaxDeposits { get; set; }
+        public ulong MaximumDeposits { get; set; }
     }
 }

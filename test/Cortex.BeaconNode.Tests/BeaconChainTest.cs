@@ -30,24 +30,21 @@ namespace Cortex.BeaconNode.Tests
         public async Task GenesisWithEmptyParametersTimeShouldReject()
         {
             // Arrange
+            TestData.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameters,
+                out var gweiValues,
+                out var initalValues,
+                out var timeParameters,
+                out var stateListLengths,
+                out var maxOperationsPerBlock);
+            miscellaneousParameters.MinimumGenesisActiveValidatorCount = 2;
+
             var cryptographyService = new CryptographyService();
             var beaconChainUtility = new BeaconChainUtility(cryptographyService);
-            var beaconChainParameters = new BeaconChainParameters()
-            {
-                MinGenesisActiveValidatorCount = 2,
-                MinGenesisTime = 1578009600 // Jan 3, 2020
-            };
-            var initalValues = new InitialValues()
-            {
-                GenesisEpoch = new Epoch(0)
-            };
-            var timeParameters = new TimeParameters();
-            var maxOperationsPerBlock = new MaxOperationsPerBlock()
-            { 
-                MaxDeposits = 16
-            };
 
-            var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
+            var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), cryptographyService, beaconChainUtility,
+                chainConstants, miscellaneousParameters, gweiValues, initalValues, timeParameters, stateListLengths, maxOperationsPerBlock);
 
             // Act
             var eth1BlockHash = new Hash32();

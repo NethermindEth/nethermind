@@ -11,27 +11,20 @@ namespace Cortex.BeaconNode.Tests.Genesis
     [TestClass]
     public class BeaconChainTest_Initialisation
     {
-        private static readonly Gwei MAX_EFFECTIVE_BALANCE = new Gwei(32000000000);
-
         [TestMethod]
         public void TestInitializeBeaconStateFromEth1()
         {
-            // Arrange
             var useBls = true;
-            var beaconChainParameters = new BeaconChainParameters()
-            {
-                MinGenesisActiveValidatorCount = 64,
-                MinGenesisTime = 1578009600 // Jan 3, 2020
-            };
-            var initalValues = new InitialValues()
-            {
-                GenesisEpoch = new Epoch(0)
-            };
-            var timeParameters = new TimeParameters();
-            var maxOperationsPerBlock = new MaxOperationsPerBlock()
-            {
-                MaxDeposits = 16
-            };
+
+            // Arrange
+            TestData.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameters,
+                out var gweiValues,
+                out var initalValues,
+                out var timeParameters,
+                out var stateListLengths,
+                out var maxOperationsPerBlock);
 
             var testLogger = Substitute.For<ILogger<BeaconChain>>();
 
@@ -55,19 +48,21 @@ namespace Cortex.BeaconNode.Tests.Genesis
             }
             var beaconChainUtility = new BeaconChainUtility(cryptographyService);
 
-            var depositCount = beaconChainParameters.MinGenesisActiveValidatorCount;
-            (var deposits, var depositRoot) = TestData.PrepareGenesisDeposits(beaconChainUtility, depositCount, MAX_EFFECTIVE_BALANCE, signed: useBls);
+            var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
+            (var deposits, var depositRoot) = TestData.PrepareGenesisDeposits(chainConstants, timeParameters, beaconChainUtility, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
-            var eth1Timestamp = beaconChainParameters.MinGenesisTime;
+            var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
-            var beaconChain = new BeaconChain(testLogger, cryptographyService, beaconChainUtility, beaconChainParameters, initalValues, timeParameters, maxOperationsPerBlock);
+            var beaconChain = new BeaconChain(testLogger, cryptographyService, beaconChainUtility, 
+                chainConstants, miscellaneousParameters, gweiValues, initalValues, timeParameters, 
+                stateListLengths, maxOperationsPerBlock);
 
             // Act
             //# initialize beacon_state
             var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
-            state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % timeParameters.SecondsPerDay + 2 * timeParameters.SecondsPerDay);
+            state.GenesisTime.ShouldBe(eth1Timestamp - eth1Timestamp % chainConstants.SecondsPerDay + 2 * chainConstants.SecondsPerDay);
             state.Validators.Count.ShouldBe(depositCount);
             state.Eth1Data.DepositRoot.ShouldBe(depositRoot);
             state.Eth1Data.DepositCount.ShouldBe((ulong)depositCount);
