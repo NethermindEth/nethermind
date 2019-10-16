@@ -52,6 +52,9 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg", true)]
         [TestCase("sokol.cfg", false)]
         [TestCase("poacore.cfg", true)]
+        [TestCase("poacore_archive.cfg", false)]
+        [TestCase("xdai.cfg", true)]
+        [TestCase("xdai_archive.cfg", false)]
         [TestCase("spaceneth.cfg", false)]
         public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled)
         {
