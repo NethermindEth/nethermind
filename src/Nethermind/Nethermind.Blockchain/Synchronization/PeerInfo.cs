@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -38,9 +39,10 @@ namespace Nethermind.Blockchain.Synchronization
         public long HeadNumber { get; set; }
         public Keccak HeadHash { get; set; }
 
-        public override string ToString()
-        {
-            return $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
-        }
+        public override string ToString() => $"[Peer|{SyncPeer?.Node:s}|{HeadNumber}|{SyncPeer?.ClientId}]";
+
+        public string ToString(string format) => ToString(format, null);
+
+        public string ToString(string format, IFormatProvider formatProvider) => $"[Peer|{SyncPeer?.Node.ToString(format)}|{HeadNumber}|{SyncPeer?.ClientId}]";
     }
 }
