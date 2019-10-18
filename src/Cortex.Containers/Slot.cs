@@ -15,9 +15,34 @@ namespace Cortex.Containers
 
         public static explicit operator ulong(Slot slot) => slot._value;
 
+        public static Slot operator -(Slot left, Slot right)
+        {
+            return new Slot(left._value - right._value);
+        }
+
         public static bool operator !=(Slot left, Slot right)
         {
             return !(left == right);
+        }
+
+        public static Slot operator %(Slot left, Slot right)
+        {
+            return new Slot(left._value % right._value);
+        }
+
+        public static Slot operator *(Slot left, ulong right)
+        {
+            return new Slot(left._value * right);
+        }
+
+        public static ulong operator /(Slot left, Slot right)
+        {
+            return left._value / right._value;
+        }
+
+        public static Slot operator +(Slot left, Slot right)
+        {
+            return new Slot(left._value + right._value);
         }
 
         public static bool operator <(Slot left, Slot right)

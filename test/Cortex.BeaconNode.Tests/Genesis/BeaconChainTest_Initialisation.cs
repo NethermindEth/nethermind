@@ -1,7 +1,7 @@
 ﻿using System.Linq;
-using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Shouldly;
@@ -19,14 +19,16 @@ namespace Cortex.BeaconNode.Tests.Genesis
             // Arrange
             TestData.GetMinimalConfiguration(
                 out var chainConstants,
-                out var miscellaneousParameters,
-                out var gweiValues,
-                out var initalValues,
-                out var timeParameters,
-                out var stateListLengths,
-                out var maxOperationsPerBlock);
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var maxOperationsPerBlockOptions);
 
-            var testLogger = Substitute.For<ILogger<BeaconChain>>();
+            var loggerFactory = new LoggerFactory(new[] {
+                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
+            });
 
             ICryptographyService cryptographyService;
             if (useBls)
@@ -46,16 +48,16 @@ namespace Cortex.BeaconNode.Tests.Genesis
                         return new Hash32(TestUtility.Hash(callInfo.ArgAt<Hash32>(0).AsSpan(), callInfo.ArgAt<Hash32>(1).AsSpan()));
                     });
             }
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService);
+            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
 
-            var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
-            (var deposits, var depositRoot) = TestData.PrepareGenesisDeposits(chainConstants, timeParameters, beaconChainUtility, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
+            var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount;
+            (var deposits, var depositRoot) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: useBls);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
-            var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
+            var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
 
-            var beaconChain = new BeaconChain(testLogger, cryptographyService, beaconChainUtility, 
-                chainConstants, miscellaneousParameters, gweiValues, initalValues, timeParameters, 
-                stateListLengths, maxOperationsPerBlock);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
+                stateListLengthOptions, maxOperationsPerBlockOptions);
 
             // Act
             //# initialize beacon_state

@@ -2,7 +2,7 @@
 
 namespace Cortex.Containers
 {
-    public struct Gwei : IEquatable<Gwei>
+    public struct Gwei : IEquatable<Gwei>, IComparable<Gwei>
     {
         private readonly ulong _value;
 
@@ -10,6 +10,8 @@ namespace Cortex.Containers
         {
             _value = value;
         }
+
+        public static Gwei Zero { get; } = new Gwei(0);
 
         public static explicit operator Gwei(ulong value) => new Gwei(value);
 
@@ -35,14 +37,49 @@ namespace Cortex.Containers
             return new Gwei(left._value % right._value);
         }
 
+        public static Gwei operator *(Gwei left, ulong right)
+        {
+            return new Gwei(left._value * right);
+        }
+
+        public static Gwei operator /(Gwei left, ulong right)
+        {
+            return new Gwei(left._value / right);
+        }
+
         public static Gwei operator +(Gwei left, Gwei right)
         {
             return new Gwei(left._value + right._value);
         }
 
+        public static bool operator <(Gwei left, Gwei right)
+        {
+            return left.CompareTo(right) < 0;
+        }
+
+        public static bool operator <=(Gwei left, Gwei right)
+        {
+            return left.CompareTo(right) <= 0;
+        }
+
         public static bool operator ==(Gwei left, Gwei right)
         {
             return left.Equals(right);
+        }
+
+        public static bool operator >(Gwei left, Gwei right)
+        {
+            return left.CompareTo(right) > 0;
+        }
+
+        public static bool operator >=(Gwei left, Gwei right)
+        {
+            return left.CompareTo(right) >= 0;
+        }
+
+        public int CompareTo(Gwei other)
+        {
+            return _value.CompareTo(other._value);
         }
 
         public override bool Equals(object obj)

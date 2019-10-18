@@ -1,18 +1,24 @@
-using System;
-
-using Slot = System.UInt64;
-using ValidatorIndex = System.UInt64;
+﻿using System;
+using System.Collections;
 
 namespace Cortex.Containers
 {
-    // public class PendingAttestation
-    // {
-    //     public bool[] AggregationBits { get; }
+    public class PendingAttestation
+    {
+        public PendingAttestation(BitArray aggregationBits, AttestationData data, Slot inclusionDelay)
+        {
+            AggregationBits = aggregationBits;
+            Data = data;
+            InclusionDelay = inclusionDelay;
+        }
 
-    //     public AttestationData Data { get; }
+        public BitArray AggregationBits { get; }
 
-    //     /// <summary>Gets a challengable bit (SSZ-bool, 1 byte) for the custody of crosslink data</summary>
-    //     public Slot InclusionDelay { get; }
-    //     public ValidatorIndex ProposerIndex { get; }
-    // }
+        public AttestationData Data { get; }
+
+        /// <summary>Gets a challengable bit (SSZ-bool, 1 byte) for the custody of crosslink data</summary>
+        public Slot InclusionDelay { get; }
+
+        public ValidatorIndex ProposerIndex { get; }
+    }
 }

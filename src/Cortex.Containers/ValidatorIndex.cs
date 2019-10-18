@@ -15,6 +15,11 @@ namespace Cortex.Containers
 
         public static explicit operator ValidatorIndex(ulong value) => new ValidatorIndex(value);
 
+        public static ValidatorIndex Max(ValidatorIndex val1, ValidatorIndex val2)
+        {
+            return new ValidatorIndex(Math.Max(val1._value, val2._value));
+        }
+
         public static bool operator !=(ValidatorIndex left, ValidatorIndex right)
         {
             return !(left == right);

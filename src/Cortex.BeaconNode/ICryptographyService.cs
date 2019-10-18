@@ -1,4 +1,5 @@
-﻿using Cortex.Containers;
+﻿using System;
+using Cortex.Containers;
 
 namespace Cortex.BeaconNode
 {
@@ -7,5 +8,7 @@ namespace Cortex.BeaconNode
         bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain);
 
         Hash32 Hash(Hash32 a, Hash32 b);
+
+        Hash32 Hash(ReadOnlySpan<byte> bytes);
     }
 }

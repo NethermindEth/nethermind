@@ -12,7 +12,6 @@ namespace Cortex.BeaconNode.Tests
 
         public static Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
 
-
         private static readonly byte[][] _zeroHashes;
 
         static TestUtility()
@@ -72,7 +71,7 @@ namespace Cortex.BeaconNode.Tests
             }
             return tree;
         }
-        
+
         public static IList<Hash32> GetMerkleProof(IList<IList<Hash32>> tree, int itemIndex, int? treeLength = null)
         {
             var proof = new List<Hash32>();

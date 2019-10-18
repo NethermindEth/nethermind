@@ -4,9 +4,10 @@ namespace Cortex.Containers
 {
     public class Checkpoint : IEquatable<Checkpoint>
     {
-        public Checkpoint()
+        public Checkpoint(Epoch epoch, Hash32 root)
         {
-            Root = new Hash32();
+            Epoch = epoch;
+            Root = root;
         }
 
         public Epoch Epoch { get; }
@@ -28,6 +29,11 @@ namespace Cortex.Containers
         public override int GetHashCode()
         {
             return HashCode.Combine(Epoch, Root);
+        }
+
+        public override string ToString()
+        {
+            return $"{Epoch}:{Root.ToString().Substring(0, 16)}";
         }
     }
 }

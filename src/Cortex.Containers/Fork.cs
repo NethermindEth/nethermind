@@ -1,16 +1,17 @@
-using System;
-
-using Epoch = System.UInt64;
-using Version = System.Byte; // Byte4
-
-namespace Cortex.Containers
+﻿namespace Cortex.Containers
 {
-    // public class Fork
-    // {
-    //     public Version PreviousVersion { get; }
-    //     public Version CurrentVersion { get; }
+    public class Fork
+    {
+        public ForkVersion CurrentVersion { get; }
 
-    //     /// <summary>Gets the epoch of the latest fork</summary>
-    //     public Epoch Epoch { get; }
-    // }
+        /// <summary>Gets the epoch of the latest fork</summary>
+        public Epoch Epoch { get; }
+
+        public ForkVersion PreviousVersion { get; }
+
+        public override string ToString()
+        {
+            return $"E:{Epoch} C:{CurrentVersion} P:{PreviousVersion}";
+        }
+    }
 }

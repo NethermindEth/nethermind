@@ -15,5 +15,10 @@ namespace Cortex.Containers
         public DepositData Data { get; }
 
         public IReadOnlyList<Hash32> Proof { get { return _proof.AsReadOnly(); } }
+
+        public override string ToString()
+        {           
+            return $"I:{Proof[Proof.Count - 1].ToString().Substring(0, 8)} P:{Data.PublicKey.ToString().Substring(0, 16)} A:{Data.Amount}";
+        }
     }
 }

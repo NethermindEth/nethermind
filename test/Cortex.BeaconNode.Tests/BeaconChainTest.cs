@@ -2,6 +2,7 @@
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Shouldly;
@@ -32,19 +33,19 @@ namespace Cortex.BeaconNode.Tests
             // Arrange
             TestData.GetMinimalConfiguration(
                 out var chainConstants,
-                out var miscellaneousParameters,
-                out var gweiValues,
-                out var initalValues,
-                out var timeParameters,
-                out var stateListLengths,
-                out var maxOperationsPerBlock);
-            miscellaneousParameters.MinimumGenesisActiveValidatorCount = 2;
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var maxOperationsPerBlockOptions);
+            miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService);
+            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
 
             var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameters, gweiValues, initalValues, timeParameters, stateListLengths, maxOperationsPerBlock);
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
 
             // Act
             var eth1BlockHash = new Hash32();
@@ -56,6 +57,5 @@ namespace Cortex.BeaconNode.Tests
             success.ShouldBeFalse();
             beaconChain.State.ShouldBeNull();
         }
-
     }
 }

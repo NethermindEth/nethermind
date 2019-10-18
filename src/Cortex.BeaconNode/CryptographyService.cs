@@ -36,8 +36,13 @@ namespace Cortex.BeaconNode
             var input = new Span<byte>(new byte[64]);
             a.AsSpan().CopyTo(input);
             b.AsSpan().CopyTo(input.Slice(32));
+            return Hash(input);
+        }
+
+        public Hash32 Hash(ReadOnlySpan<byte> bytes)
+        {
             var result = new Span<byte>(new byte[32]);
-            var success = _hashAlgorithm.TryComputeHash(input, result, out var bytesWritten);
+            var success = _hashAlgorithm.TryComputeHash(bytes, result, out var bytesWritten);
             if (!success || bytesWritten != 32)
             {
                 throw new InvalidOperationException("Error generating hash value.");

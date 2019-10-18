@@ -27,6 +27,9 @@ namespace Cortex.BeaconNode
             });
             services.Configure<MiscellaneousParameters>(x =>
             {
+                x.ShardCount = new Shard(configuration.GetValue<ulong>("SHARD_COUNT"));
+                x.TargetCommitteeSize = configuration.GetValue<ulong>("TARGET_COMMITTEE_SIZE");
+                x.ShuffleRoundCount = configuration.GetValue<int>("SHUFFLE_ROUND_COUNT");
                 x.MinimumGenesisActiveValidatorCount = configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT");
                 x.MinimumGenesisTime = configuration.GetValue<ulong>("MIN_GENESIS_TIME");
             });
@@ -42,10 +45,13 @@ namespace Cortex.BeaconNode
             });
             services.Configure<TimeParameters>(x =>
             {
-                x.SlotsPerEpoch = configuration.GetValue<ulong>("SLOTS_PER_EPOCH");
+                x.SlotsPerEpoch = new Slot(configuration.GetValue<ulong>("SLOTS_PER_EPOCH"));
+                x.MinimumSeedLookahead = new Epoch(configuration.GetValue<ulong>("MIN_SEED_LOOKAHEAD"));
+                x.SlotsPerHistoricalRoot = new Slot(configuration.GetValue<ulong>("SLOTS_PER_HISTORICAL_ROOT"));
             });
             services.Configure<StateListLengths>(x =>
             {
+                x.EpochsPerHistoricalVector = new Epoch(configuration.GetValue<ulong>("EPOCHS_PER_HISTORICAL_VECTOR"));
                 x.ValidatorRegistryLimit = configuration.GetValue<ulong>("VALIDATOR_REGISTRY_LIMIT");
             });
             services.Configure<MaxOperationsPerBlock>(x =>

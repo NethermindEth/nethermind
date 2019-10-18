@@ -13,18 +13,20 @@ namespace Cortex.BeaconNode
     public class Store
     {
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private readonly BeaconChainUtility _beaconChainUtility;
 
         public ulong Time { get; }
-        public Checkpoint JustifiedCheckpoint { get; } = new Checkpoint();
+        public Checkpoint JustifiedCheckpoint { get; } = new Checkpoint(new Epoch(0), new Hash32());
         //public Checkpoint FinalizedCheckpoint { get; }
         public IDictionary<Hash32, BeaconBlock> Blocks { get; } = new Dictionary<Hash32, BeaconBlock>();
         public IDictionary<Hash32, BeaconState> BlockStates { get; } = new Dictionary<Hash32, BeaconState>();
         public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; } = new Dictionary<Checkpoint, BeaconState>();
         public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
 
-        public Store (IOptionsMonitor<TimeParameters> timeParameterOptions)
+        public Store (IOptionsMonitor<TimeParameters> timeParameterOptions, BeaconChainUtility beaconChainUtility)
         {
             _timeParameterOptions = timeParameterOptions;
+            _beaconChainUtility = beaconChainUtility;
         }
 
         public async Task<Hash32> GetHeadAsync()
@@ -32,7 +34,7 @@ namespace Cortex.BeaconNode
             return await Task.Run(() =>
             {
                 var head = JustifiedCheckpoint.Root;
-                var justifiedSlot = ComputeStartSlotOfEpoch(JustifiedCheckpoint.Epoch);
+                var justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(JustifiedCheckpoint.Epoch);
                 while (true)
                 {
                     var children = Blocks
@@ -50,14 +52,6 @@ namespace Cortex.BeaconNode
                         .First();
                 }
             });
-        }
-
-        /// <summary>
-        /// Return the start slot of ``epoch``.
-        /// </summary>
-        private Slot ComputeStartSlotOfEpoch(Epoch epoch)
-        {
-            return new Slot((ulong)epoch * _timeParameterOptions.CurrentValue.SlotsPerEpoch);
         }
 
         private Gwei GetLatestAttestingBalance(Hash32 root)

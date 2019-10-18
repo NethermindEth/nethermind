@@ -1,22 +1,18 @@
-using System;
-
-using Hash = System.Byte; // Byte32
-
-namespace Cortex.Containers
+﻿namespace Cortex.Containers
 {
-    // public class AttestationData
-    // {
-    //     // LMD GHOST vote
+    public class AttestationData
+    {
+        public AttestationData(Hash32 beaconBlockRoot, Checkpoint source, Checkpoint target, Crosslink crosslink)
+        {
+            BeaconBlockRoot = beaconBlockRoot;
+            Source = source;
+            Target = target;
+            Crosslink = crosslink;
+        }
 
-    //     public Hash BeaconBlockRoot { get; }
-
-    //     // FFG vote
-
-    //     public Checkpoint Source { get; }
-    //     public Checkpoint Target { get; }
-
-    //     // Crosslink vote
-
-    //     public Crosslink Crosslink { get; }
-    // }
+        public Hash32 BeaconBlockRoot { get; }
+        public Crosslink Crosslink { get; }
+        public Checkpoint Source { get; }
+        public Checkpoint Target { get; }
+    }
 }

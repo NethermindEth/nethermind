@@ -15,9 +15,24 @@ namespace Cortex.Containers
 
         public static explicit operator ulong(Epoch slot) => slot._value;
 
+        public static Epoch operator -(Epoch left, Epoch right)
+        {
+            return new Epoch(left._value - right._value);
+        }
+
         public static bool operator !=(Epoch left, Epoch right)
         {
             return !(left == right);
+        }
+
+        public static Epoch operator %(Epoch left, Epoch right)
+        {
+            return new Epoch(left._value % right._value);
+        }
+
+        public static Epoch operator +(Epoch left, Epoch right)
+        {
+            return new Epoch(left._value + right._value);
         }
 
         public static bool operator <(Epoch left, Epoch right)

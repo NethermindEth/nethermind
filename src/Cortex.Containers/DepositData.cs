@@ -29,5 +29,10 @@
         {
             Signature = signature;
         }
+
+        public override string ToString()
+        {
+            return $"P:{PublicKey.ToString().Substring(0, 16)} A:{Amount}";
+        }
     }
 }
