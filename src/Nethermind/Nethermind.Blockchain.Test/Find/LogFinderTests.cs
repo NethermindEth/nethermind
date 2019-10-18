@@ -175,6 +175,10 @@ namespace Nethermind.Blockchain.Test.Find
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                     .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC).Build(), 1);
+                    
+                yield return new TestCaseData(FilterBuilder.New().FromFutureBlock().ToLatestBlock()
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
+                    .WithAddresses(TestItem.AddressC).Build(), 0);
             }
         }
         
