@@ -1867,7 +1867,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
                         
-                        if (spec.IsEip2200Enabled && gasAvailable < GasCostOf.CallStipend)
+                        if (spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
                         {
                             Metrics.EvmExceptions++;
                             EndInstructionTraceError(OutOfGasErrorText);
