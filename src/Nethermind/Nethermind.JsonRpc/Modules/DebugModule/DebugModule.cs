@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -26,6 +27,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {
@@ -80,6 +82,29 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
 
             if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: trace");
             return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+        }
+
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Keccak transactionHash, GethTraceOptions options = null)
+        {
+            var transactionTrace = _debugBridge.GetTransactionTrace(new Rlp(blockRlp), transactionHash, options);
+            if (transactionTrace == null)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transactionTrace hash {transactionHash}", ErrorType.NotFound);
+            }
+
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
+        }
+        
+        public ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null)
+        {
+            var blockTrace = _debugBridge.GetBlockTrace(new Rlp(blockRlp), options);
+            var transactionTrace = blockTrace?.ElementAtOrDefault(txIndex);
+            if (transactionTrace == null)
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail($"Trace is null for RLP {blockRlp.ToHexString()} and transaction index {txIndex}", ErrorType.NotFound);
+            }
+
+            return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);            
         }
 
         public ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null)

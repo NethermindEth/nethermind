@@ -74,5 +74,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         
         [JsonRpcMethod(Description = "Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled")]
         ResultWrapper<string> debug_getConfigValue(string category, string name);
+
+        [JsonRpcMethod(Description = "")]
+        ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByHash(byte[] blockRlp, Keccak transactionHash, GethTraceOptions options = null);
+        
+        [JsonRpcMethod(Description = "")]
+        ResultWrapper<GethLikeTxTrace> debug_traceTransactionInBlockByIndex(byte[] blockRlp, int txIndex, GethTraceOptions options = null);
     }
 }
