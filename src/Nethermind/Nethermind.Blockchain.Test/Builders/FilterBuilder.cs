@@ -83,6 +83,13 @@ namespace Nethermind.Blockchain.Test.Builders
 
             return this;
         }
+        
+        public FilterBuilder FromFutureBlock()
+        {
+            _fromBlock = new FilterBlock(1000000);
+
+            return this;
+        }
 
         public FilterBuilder FromPendingBlock()
         {
