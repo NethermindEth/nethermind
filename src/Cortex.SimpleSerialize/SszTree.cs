@@ -11,7 +11,7 @@ namespace Cortex.SimpleSerialize
         public const int BytesPerChunk = 32;
         //private const int BITS_PER_BYTE = 8;
         private const int BytesPerLengthOffset = 4;
-        private const int MaxDepth = 32;
+        private const int MaxDepth = 63;
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
         private static readonly byte[] _zeroHashes;
 

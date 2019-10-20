@@ -31,7 +31,7 @@ namespace Cortex.BeaconNode.Tests
         public async Task GenesisWithEmptyParametersTimeShouldReject()
         {
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -42,13 +42,13 @@ namespace Cortex.BeaconNode.Tests
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
-            var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, cryptographyService, beaconChainUtility);
 
             // Act
-            var eth1BlockHash = new Hash32();
+            var eth1BlockHash = Hash32.Zero;
             var eth1Timestamp = (ulong)106185600; // 1973-05-14
             var deposits = new Deposit[] { };
             var success = await beaconChain.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);

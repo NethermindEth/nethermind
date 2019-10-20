@@ -13,7 +13,9 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public BeaconChainUtility(ICryptographyService cryptographyService, IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions, IOptionsMonitor<TimeParameters> timeParameterOptions)
+        public BeaconChainUtility(IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+            IOptionsMonitor<TimeParameters> timeParameterOptions,
+            ICryptographyService cryptographyService)
         {
             _cryptographyService = cryptographyService;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;

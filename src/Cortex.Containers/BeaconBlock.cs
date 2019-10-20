@@ -7,7 +7,7 @@
             StateRoot = genesisStateRoot;
 
             Body = null;
-            ParentRoot = new Hash32();
+            ParentRoot = Hash32.Zero;
             Signature = new BlsSignature();
             Slot = new Slot(0);
         } 
@@ -17,9 +17,9 @@
             Body = new BeaconBlockBody(randaoReveal);
             Slot = slot;
 
-            ParentRoot = new Hash32();
+            ParentRoot = Hash32.Zero;
             Signature = new BlsSignature();
-            StateRoot = new Hash32();
+            StateRoot = Hash32.Zero;
         }
 
         public BeaconBlockBody? Body { get; }

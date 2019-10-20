@@ -2,13 +2,6 @@
 {
     public class DepositData
     {
-        public DepositData()
-        {
-            PublicKey = new BlsPublicKey();
-            Signature = new BlsSignature();
-            WithdrawalCredentials = new Hash32();
-        }
-
         public DepositData(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Gwei amount)
         {
             PublicKey = publicKey;

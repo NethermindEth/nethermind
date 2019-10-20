@@ -48,7 +48,7 @@ namespace Cortex.BeaconNode.Ssz
             //validators: List[Validator, VALIDATOR_REGISTRY_LIMIT]
             yield return new SszList(item.Validators.Select(x => x.ToSszContainer()), stateListLengths.ValidatorRegistryLimit);
             //balances: List[Gwei, VALIDATOR_REGISTRY_LIMIT]
-            yield return new SszBasicList(item.Balances.Cast<ulong>().ToArray(), stateListLengths.ValidatorRegistryLimit);
+            yield return new SszBasicList(item.Balances.Select(x => (ulong)x).ToArray(), stateListLengths.ValidatorRegistryLimit);
 
             //# Shuffling
             //start_shard: Shard

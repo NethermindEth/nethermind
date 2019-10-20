@@ -16,6 +16,7 @@ namespace Cortex.BeaconNode
         public static readonly EventId ProcessSlots = new EventId(2001, nameof(ProcessSlots));
         public static readonly EventId ProcessSlot = new EventId(2002, nameof(ProcessSlot));
         public static readonly EventId ProcessJustificationAndFinalization = new EventId(2003, nameof(ProcessJustificationAndFinalization));
+        public static readonly EventId ProcessEpoch = new EventId(2004, nameof(ProcessEpoch));
 
         // 4bxx warning
 

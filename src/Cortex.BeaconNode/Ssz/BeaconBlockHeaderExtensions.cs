@@ -6,12 +6,18 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class BeaconBlockHeaderExtensions
     {
-        public static SszContainer ToSszContainer(this BeaconBlockHeader item)
+        public static Hash32 SigningRoot(this BeaconBlockHeader item)
         {
-            return new SszContainer(GetValues(item));
+            var tree = new SszTree(new SszContainer(GetValues(item, true)));
+            return new Hash32(tree.HashTreeRoot());
         }
 
-        private static IEnumerable<SszElement> GetValues(BeaconBlockHeader item)
+        public static SszContainer ToSszContainer(this BeaconBlockHeader item)
+        {
+            return new SszContainer(GetValues(item, false));
+        }
+
+        private static IEnumerable<SszElement> GetValues(BeaconBlockHeader item, bool forSigning)
         {
             //slot: Slot
             yield return new SszBasicElement((ulong)item.Slot);
@@ -21,8 +27,11 @@ namespace Cortex.BeaconNode.Ssz
             yield return item.StateRoot.ToSszBasicVector();
             //body_root: Hash
             yield return item.BodyRoot.ToSszBasicVector();
-            //signature: BLSSignature
-            yield return item.Signature.ToSszBasicVector();
+            if (!forSigning)
+            {
+                //signature: BLSSignature
+                yield return item.Signature.ToSszBasicVector();
+            }
         }
     }
 }

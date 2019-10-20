@@ -5,7 +5,7 @@ namespace Cortex.Containers
     public class Eth1Data
     {
         public Eth1Data(Hash32 eth1BlockHash, ulong depositCount)
-            : this(eth1BlockHash, depositCount, new Hash32())
+            : this(eth1BlockHash, depositCount, Hash32.Zero)
         {
         }
 

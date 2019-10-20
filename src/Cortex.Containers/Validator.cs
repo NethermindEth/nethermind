@@ -17,7 +17,8 @@
         /// <summary>Gets when criteria for activation were met</summary>
         public Epoch ActivationEligibilityEpoch { get; private set; }
 
-        //public bool Slashed { get; }
+        public bool Slashed { get; }
+
         public Epoch ActivationEpoch { get; private set; }
 
         /// <summary>Gets the balance at stake</summary>

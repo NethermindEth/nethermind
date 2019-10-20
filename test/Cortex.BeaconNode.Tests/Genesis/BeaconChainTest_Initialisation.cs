@@ -17,7 +17,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var useBls = true;
 
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -48,16 +48,16 @@ namespace Cortex.BeaconNode.Tests.Genesis
                         return new Hash32(TestUtility.Hash(callInfo.ArgAt<Hash32>(0).AsSpan(), callInfo.ArgAt<Hash32>(1).AsSpan()));
                     });
             }
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount;
             (var deposits, var depositRoot) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: useBls);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
-                stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility);
 
             // Act
             //# initialize beacon_state

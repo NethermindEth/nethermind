@@ -24,15 +24,15 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconChain(ILogger<BeaconChain> logger,
-            ICryptographyService blsSignatureService,
-            BeaconChainUtility beaconChainUtility,
             ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
+            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
+            ICryptographyService blsSignatureService,
+            BeaconChainUtility beaconChainUtility)
         {
             _logger = logger;
             _blsSignatureService = blsSignatureService;

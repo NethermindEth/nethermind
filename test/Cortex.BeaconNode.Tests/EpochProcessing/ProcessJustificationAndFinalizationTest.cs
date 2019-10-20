@@ -27,7 +27,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
             });
             var epoch = new Epoch(epochValue);
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -36,9 +36,9 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 out var stateListLengthOptions,
                 out var maxOperationsPerBlockOptions);
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
-            var beaconStateAccessor = new BeaconStateAccessor(cryptographyService, beaconChainUtility, miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions);
-            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>());
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
+            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, cryptographyService, beaconChainUtility);
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), initialValueOptions, timeParameterOptions, stateListLengthOptions, beaconChainUtility, beaconStateAccessor);
 
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
             var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
@@ -57,7 +57,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..3]);
 
             var oldFinalized = state.FinalizedCheckpoint;
-            state.SetCurrentJustifiedCheckpoint(checkpoints[3]);
+            state.SetPreviousJustifiedCheckpoint(checkpoints[3]);
             state.SetCurrentJustifiedCheckpoint(checkpoints[2]);
             // mock 3rd and 4th latest epochs as justified (indices are pre-shift)
             var justificationBits = new BitArray(chainConstants.JustificationBitsLength);

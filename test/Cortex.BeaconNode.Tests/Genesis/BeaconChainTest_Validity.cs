@@ -34,7 +34,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void IsValidGenesisStateTrue()
         {
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -48,11 +48,11 @@ namespace Cortex.BeaconNode.Tests.Genesis
             });
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
-                stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility);
 
             // Act
             var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
@@ -65,7 +65,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void IsValidGenesisStateFalseInvalidTimestamp()
         {
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -79,11 +79,11 @@ namespace Cortex.BeaconNode.Tests.Genesis
             });
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
-                stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility);
 
             // Act
             var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
@@ -97,7 +97,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void IsValidGenesisStateTrueMoreBalance()
         {
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -111,11 +111,11 @@ namespace Cortex.BeaconNode.Tests.Genesis
             });
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
-                stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility);
 
             // Act
             var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
@@ -130,7 +130,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void IsValidGenesisStateTrueOneMoreValidator()
         {
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -144,11 +144,11 @@ namespace Cortex.BeaconNode.Tests.Genesis
             });
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
-                stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount + 1;
             (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true);
@@ -166,7 +166,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void IsValidGenesisStateFalseNotEnoughValidators()
         {
             // Arrange
-            TestData.GetMinimalConfiguration(
+            TestConfiguration.GetMinimalConfiguration(
                 out var chainConstants,
                 out var miscellaneousParameterOptions,
                 out var gweiValueOptions,
@@ -180,11 +180,11 @@ namespace Cortex.BeaconNode.Tests.Genesis
             });
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(cryptographyService, miscellaneousParameterOptions, timeParameterOptions);
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), cryptographyService, beaconChainUtility,
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions,
-                stateListLengthOptions, maxOperationsPerBlockOptions);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount - 1;
             (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true);

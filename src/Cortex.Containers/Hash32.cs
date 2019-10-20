@@ -9,11 +9,6 @@ namespace Cortex.Containers
 
         private readonly byte[] _bytes;
 
-        public Hash32()
-        {
-            _bytes = new byte[Length];
-        }
-
         public Hash32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)
@@ -23,6 +18,13 @@ namespace Cortex.Containers
             _bytes = span.ToArray();
         }
 
+        private Hash32()
+        {
+            _bytes = new byte[Length];
+        }
+
+        public static Hash32 Zero { get; } = new Hash32();
+
         public static explicit operator Hash32(byte[] bytes) => new Hash32(bytes);
 
         public static explicit operator Hash32(Span<byte> span) => new Hash32(span);
@@ -30,6 +32,20 @@ namespace Cortex.Containers
         public static explicit operator Hash32(ReadOnlySpan<byte> span) => new Hash32(span);
 
         public static explicit operator ReadOnlySpan<byte>(Hash32 hash) => hash.AsSpan();
+
+        public static bool operator !=(Hash32? left, Hash32? right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator ==(Hash32? left, Hash32? right)
+        {
+            if (left is null)
+            {
+                return right is null;
+            }
+            return left.Equals(right);
+        }
 
         public ReadOnlySpan<byte> AsSpan()
         {
