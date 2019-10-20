@@ -5,6 +5,8 @@
         public Crosslink(Shard shard)
         {
             Shard = shard;
+            DataRoot = Hash32.Zero;
+            ParentRoot = Hash32.Zero;
         }
 
         public Hash32 DataRoot { get; }

@@ -63,7 +63,7 @@ namespace Cortex.BeaconNode
             var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count());
             var emptyBlockBody = new BeaconBlockBody();
             var latestBlockHeader = new BeaconBlockHeader(emptyBlockBody.HashTreeRoot(_maxOperationsPerBlockOptions.CurrentValue));
-            var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector);
+            var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
             var depositDataList = new List<DepositData>();
@@ -175,7 +175,8 @@ namespace Cortex.BeaconNode
                 if (IsValidGenesisState(candidateState))
                 {
                     var genesisState = candidateState;
-                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot(_stateListLengthOptions.CurrentValue));
+                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, 
+                        _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue));
                     State = genesisState;
                     return true;
                 }

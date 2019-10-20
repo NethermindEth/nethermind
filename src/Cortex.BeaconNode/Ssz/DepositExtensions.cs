@@ -19,8 +19,9 @@ namespace Cortex.BeaconNode.Ssz
 
         private static IEnumerable<SszElement> GetValues(Deposit item)
         {
-            // TODO: fill in
-            yield return new SszBasicElement((byte)0);
+            // TODO: vector of byte arrays
+            //yield return new SszVector(item.Proof.AsSpan());
+            yield return item.Data.ToSszContainer();
         }
     }
 }

@@ -17,14 +17,14 @@
         /// <summary>Gets when criteria for activation were met</summary>
         public Epoch ActivationEligibilityEpoch { get; private set; }
 
-        public bool Slashed { get; }
-
         public Epoch ActivationEpoch { get; private set; }
 
         /// <summary>Gets the balance at stake</summary>
         public Gwei EffectiveBalance { get; private set; }
 
         public Epoch ExitEpoch { get; }
+
+        public bool IsSlashed { get; }
 
         public BlsPublicKey PublicKey { get; }
 

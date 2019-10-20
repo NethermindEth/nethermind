@@ -8,6 +8,8 @@ namespace Cortex.SimpleSerialize
 {
     public class SszTree
     {
+        // TODO: Split into serialization methods and merleize methods
+
         public const int BytesPerChunk = 32;
         //private const int BITS_PER_BYTE = 8;
         private const int BytesPerLengthOffset = 4;
@@ -47,7 +49,16 @@ namespace Cortex.SimpleSerialize
 
         public ReadOnlySpan<byte> HashTreeRoot()
         {
-            return HashTreeRootRecursive(RootElement);
+            var context = new Stack<int>(new[] { 0 });
+            try
+            {
+                return HashTreeRootRecursive(RootElement, context);
+            }
+            catch (Exception ex)
+            {
+                var stack = string.Join(',', context);
+                throw new Exception($"Error generating hash for tree at element [{stack}].", ex);
+            }
         }
 
         public ReadOnlySpan<byte> Serialize()
@@ -55,7 +66,7 @@ namespace Cortex.SimpleSerialize
             return SerializeRecursive(RootElement).Bytes;
         }
 
-        private ReadOnlySpan<byte> HashTreeRootRecursive(SszElement element)
+        private ReadOnlySpan<byte> HashTreeRootRecursive(SszElement? element, Stack<int> context)
         {
             switch (element)
             {
@@ -77,6 +88,14 @@ namespace Cortex.SimpleSerialize
                         var paddedLength = (ulong)packed.Length;
                         return Merkleize(packed, paddedLength);
                     }
+                case SszBitvector vector:
+                    {
+                        var bytes = vector.BitfieldBytes();
+                        var packed = Pack(bytes);
+                        var paddedLength =
+                            (((ulong)bytes.Length + BytesPerChunk - 1) / BytesPerChunk) * BytesPerChunk;
+                        return Merkleize(packed, paddedLength);
+                    }
                 case SszBasicList list:
                     {
                         var bytes = list.GetBytes();
@@ -86,17 +105,46 @@ namespace Cortex.SimpleSerialize
                         var merkle = Merkleize(packed, paddedLength);
                         return MixInLength(merkle, (uint)list.Length);
                     }
-                case SszContainer container:
+                case SszBitlist list:
                     {
-                        //return Merkleize(composite.GetChildren()
-                        //    .SelectMany(x => HashTreeRootRecursive(x).ToArray())
-                        //    .ToArray());
+                        var bytes = list.BitfieldBytes();
+                        var packed = Pack(bytes);
+                        var paddedLength =
+                            ((list.ByteLimit + BytesPerChunk - 1) / BytesPerChunk) * BytesPerChunk;
+                        var merkle = Merkleize(packed, paddedLength);
+                        return MixInLength(merkle, (uint)list.Length);
+                    }
+                case SszVector vector:
+                    {
                         byte[] bytes;
                         using (var memory = new MemoryStream())
                         {
+                            var index = 0;
+                            foreach (var value in vector.GetValues())
+                            {
+                                context.Push(index++);
+                                memory.Write(HashTreeRootRecursive(value, context));
+                                context.Pop();
+                            }
+                            bytes = memory.ToArray();
+                        }
+                        return Merkleize(bytes, (ulong)bytes.Length);
+                    }
+                case SszContainer container:
+                    {
+                        byte[] bytes;
+                        using (var memory = new MemoryStream())
+                        {
+                            var index = 0;
                             foreach (var value in container.GetValues())
                             {
-                                memory.Write(HashTreeRootRecursive(value));
+                                context.Push(index++);
+                                memory.Write(HashTreeRootRecursive(value, context));
+                                if (memory.Length % BytesPerChunk != 0)
+                                {
+                                    throw new Exception($"Chunks must by a multiple of {BytesPerChunk} bytes when adding to container.");
+                                }
+                                context.Pop();
                             }
                             bytes = memory.ToArray();
                         }
@@ -107,9 +155,12 @@ namespace Cortex.SimpleSerialize
                         byte[] bytes;
                         using (var memory = new MemoryStream())
                         {
+                            var index = 0;
                             foreach (var value in list.GetValues())
                             {
-                                memory.Write(HashTreeRootRecursive(value));
+                                context.Push(index++);
+                                memory.Write(HashTreeRootRecursive(value, context));
+                                context.Pop();
                             }
                             bytes = memory.ToArray();
                         }
@@ -190,7 +241,7 @@ namespace Cortex.SimpleSerialize
             return hashes;
         }
 
-        private ReadOnlySpan<byte> MixInLength(ReadOnlySpan<byte> root, uint length)
+        private ReadOnlySpan<byte> MixInLength(ReadOnlySpan<byte> root, ulong length)
         {
             var serializedLength = BitConverter.GetBytes(length);
             if (!BitConverter.IsLittleEndian)
@@ -223,11 +274,19 @@ namespace Cortex.SimpleSerialize
             {
                 case null:
                     {
-                        return new SerializeResult(new byte[0], isVariableSize: false);
+                        return new SerializeResult(Array.Empty<byte>(), isVariableSize: false);
                     }
                 case SszBasicElement basic:
                     {
                         return new SerializeResult(basic.GetBytes(), isVariableSize: false);
+                    }
+                case SszBitvector vector:
+                    {
+                        return new SerializeResult(vector.GetBytes(), isVariableSize: false);
+                    }
+                case SszBitlist list:
+                    {
+                        return new SerializeResult(list.GetBytes(), isVariableSize: true);
                     }
                 case SszBasicVector vector:
                     {
@@ -237,13 +296,17 @@ namespace Cortex.SimpleSerialize
                     {
                         return new SerializeResult(list.GetBytes(), isVariableSize: true);
                     }
-                case SszContainer container:
+                case SszVector vector:
                     {
-                        return SerializeCombineValues(container.GetValues());
+                        return SerializeCombineValues(vector.GetValues());
                     }
                 case SszList list:
                     {
                         return SerializeCombineValues(list.GetValues());
+                    }
+                case SszContainer container:
+                    {
+                        return SerializeCombineValues(container.GetValues());
                     }
                 default:
                     {

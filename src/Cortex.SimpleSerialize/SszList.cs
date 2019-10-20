@@ -18,13 +18,7 @@ namespace Cortex.SimpleSerialize
 
         public override SszElementType ElementType => SszElementType.List;
 
-        public int Length
-        {
-            get
-            {
-                return _values.Count();
-            }
-        }
+        public int Length => _values.Count();
 
         public IEnumerable<SszComposite> GetValues() => _values;
     }

@@ -14,7 +14,7 @@ namespace Cortex.Containers
         private readonly Hash32[] _stateRoots;
         private readonly List<Validator> _validators;
 
-        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector)
+        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength)
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;
@@ -27,6 +27,8 @@ namespace Cortex.Containers
             _randaoMixes = Enumerable.Repeat(Hash32.Zero, (int)(ulong)epochsPerHistoricalVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
+            JustificationBits = new BitArray(justificationBitsLength);
+            Fork = new Fork();
         }
 
         public IReadOnlyList<Gwei> Balances { get { return _balances; } }
@@ -35,13 +37,13 @@ namespace Cortex.Containers
 
         public IReadOnlyList<PendingAttestation> CurrentEpochAttestations { get { return _currentEpochAttestations; } }
 
-        public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
+        public Checkpoint? CurrentJustifiedCheckpoint { get; private set; }
 
         public Eth1Data Eth1Data { get; }
 
         public ulong Eth1DepositIndex { get; private set; }
 
-        public Checkpoint FinalizedCheckpoint { get; private set; }
+        public Checkpoint? FinalizedCheckpoint { get; private set; }
 
         public Fork Fork { get; }
 
@@ -53,7 +55,7 @@ namespace Cortex.Containers
 
         public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
 
-        public Checkpoint PreviousJustifiedCheckpoint { get; private set; }
+        public Checkpoint? PreviousJustifiedCheckpoint { get; private set; }
 
         public IReadOnlyList<Hash32> RandaoMixes { get { return _randaoMixes; } }
 
@@ -137,7 +139,8 @@ namespace Cortex.Containers
 
         public void SetJustificationBits(BitArray justificationBits)
         {
-            JustificationBits = justificationBits;
+            JustificationBits.SetAll(false);
+            JustificationBits.Or(justificationBits);
         }
 
         public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint)

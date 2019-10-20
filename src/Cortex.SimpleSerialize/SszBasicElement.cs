@@ -17,6 +17,11 @@ namespace Cortex.SimpleSerialize
             //_bytes = bytes;
         }
 
+        public SszBasicElement(bool value)
+        {
+            _bytes = new byte[] { value ? (byte)0x01 : (byte)0x00 };
+        }
+
         public SszBasicElement(byte value)
         {
             _bytes = new byte[] { value };

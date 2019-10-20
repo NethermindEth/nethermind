@@ -4,6 +4,8 @@ namespace Cortex.BeaconNode.Configuration
 {
     public class MiscellaneousParameters
     {
+        public ulong MaximumValidatorsPerCommittee { get; set; }
+
         public int MinimumGenesisActiveValidatorCount { get; set; }
 
         public ulong MinimumGenesisTime { get; set; }

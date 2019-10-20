@@ -20,6 +20,7 @@ namespace Cortex.BeaconNode.Tests
             {
                 ShardCount = new Shard(8),
                 TargetCommitteeSize = 4,
+                MaximumValidatorsPerCommittee = 4096,
                 ShuffleRoundCount = 10,
                 MinimumGenesisActiveValidatorCount = 64,
                 MinimumGenesisTime = 1578009600 // Jan 3, 2020
@@ -47,6 +48,7 @@ namespace Cortex.BeaconNode.Tests
             });
             maxOperationsPerBlockOptions = TestOptionsMonitor.Create(new MaxOperationsPerBlock()
             {
+                MaximumAttestations = 128,
                 MaximumDeposits = 16
             });
         }

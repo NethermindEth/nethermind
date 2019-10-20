@@ -8,6 +8,8 @@
         BasicList = 3,
         Vector = 4,
         List = 5,
-        Container = 6
+        Container = 6,
+        Bitlist = 7,
+        Bitvector = 8
     }
 }

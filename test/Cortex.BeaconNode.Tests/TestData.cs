@@ -80,7 +80,8 @@ namespace Cortex.BeaconNode.Tests
                 new Eth1Data(depositRoot, numberOfValidators),
                 new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(maxOperationsPerBlock)),
                 timeParameters.SlotsPerHistoricalRoot,
-                stateListLengths.EpochsPerHistoricalVector
+                stateListLengths.EpochsPerHistoricalVector,
+                chainConstants.JustificationBitsLength
                 );
 
             // We directly insert in the initial validators,

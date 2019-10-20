@@ -15,20 +15,26 @@ namespace Cortex.BeaconNode
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
+        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
+        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconStateTransition(ILogger<BeaconStateTransition> logger,
+            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
+            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlock,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor)
         {
             _logger = logger;
+            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
+            _maxOperationsPerBlock = maxOperationsPerBlock;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
         }
@@ -113,7 +119,8 @@ namespace Cortex.BeaconNode
         {
             _logger.LogDebug(Event.ProcessSlot, "Process current slot for state {BeaconState}", state);
             // Cache state root
-            var previousStateRoot = state.HashTreeRoot(_stateListLengthOptions.CurrentValue);
+            var previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, 
+                _stateListLengthOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
             var previousRootIndex = state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot;
             state.SetStateRoot(previousRootIndex, previousStateRoot);
             // Cache latest block header state root
@@ -183,7 +190,7 @@ namespace Cortex.BeaconNode
                 var attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
                 output = output.Union(attestingIndices);
             }
-            return output.Where(x => !state.Validators[(int)(ulong)x].Slashed);
+            return output.Where(x => !state.Validators[(int)(ulong)x].IsSlashed);
         }
     }
 }

@@ -13,21 +13,19 @@ namespace Cortex.BeaconNode.Ssz
 
         private static IEnumerable<SszElement> GetValues(Validator item)
         {
-            yield return new SszBasicVector(item.PublicKey.AsSpan());
+            yield return item.PublicKey.ToSszBasicVector();
             // Commitment to pubkey for withdrawals and transfers
-            yield return new SszBasicVector(item.WithdrawalCredentials.AsSpan());
+            yield return item.WithdrawalCredentials.ToSszBasicVector();
             // Balance at stake
-            yield return new SszBasicElement((ulong)item.EffectiveBalance);
-            //slashed: boolean
-            //yield return new SszBasicElement(item.IsSlashed);
-
+            yield return item.EffectiveBalance.ToSszBasicElement();
+            yield return item.IsSlashed.ToSszBasicElement();
             // Status epochs
             // When criteria for activation were met
-            yield return new SszBasicElement((ulong)item.ActivationEligibilityEpoch);
-            yield return new SszBasicElement((ulong)item.ActivationEpoch);
-            yield return new SszBasicElement((ulong)item.ExitEpoch);
+            yield return item.ActivationEligibilityEpoch.ToSszBasicElement();
+            yield return item.ActivationEpoch.ToSszBasicElement();
+            yield return item.ExitEpoch.ToSszBasicElement();
             // When validator can withdraw or transfer funds
-            yield return new SszBasicElement((ulong)item.WithdrawableEpoch);
+            yield return item.WithdrawableEpoch.ToSszBasicElement();
         }
     }
 }

@@ -29,6 +29,7 @@ namespace Cortex.BeaconNode
             {
                 x.ShardCount = new Shard(configuration.GetValue<ulong>("SHARD_COUNT"));
                 x.TargetCommitteeSize = configuration.GetValue<ulong>("TARGET_COMMITTEE_SIZE");
+                x.MaximumValidatorsPerCommittee = configuration.GetValue<ulong>("MAX_VALIDATORS_PER_COMMITTEE");
                 x.ShuffleRoundCount = configuration.GetValue<int>("SHUFFLE_ROUND_COUNT");
                 x.MinimumGenesisActiveValidatorCount = configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT");
                 x.MinimumGenesisTime = configuration.GetValue<ulong>("MIN_GENESIS_TIME");
@@ -56,6 +57,7 @@ namespace Cortex.BeaconNode
             });
             services.Configure<MaxOperationsPerBlock>(x =>
             {
+                x.MaximumDeposits = configuration.GetValue<ulong>("MAX_ATTESTATIONS");
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
             });
         }
