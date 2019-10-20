@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Cortex.Containers
+﻿namespace Cortex.Containers
 {
     public class BeaconBlockHeader
     {

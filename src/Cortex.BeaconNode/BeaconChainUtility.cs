@@ -23,11 +23,21 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
-        /// Return the epoch number of ``slot``.
+        /// Return the committee corresponding to ``indices``, ``seed``, ``index``, and committee ``count``.
         /// </summary>
-        public Epoch ComputeEpochOfSlot(Slot slot)
+        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Hash32 seed, Shard index, ulong committeeCount)
         {
-            return new Epoch(slot / _timeParameterOptions.CurrentValue.SlotsPerEpoch);
+            var start = ((ulong)indices.Count * (ulong)index) / committeeCount;
+            var end = ((ulong)indices.Count * ((ulong)index + 1)) / committeeCount;
+            //var count = indices.Count;
+            var shuffled = new List<ValidatorIndex>();
+            for (var i = start; i < end; i++)
+            {
+                var shuffledLookup = ComputeShuffledIndex(new ValidatorIndex(i), (ulong)indices.Count, seed);
+                var shuffledIndex = indices[(int)(ulong)shuffledLookup];
+                shuffled.Add(shuffledIndex);
+            }
+            return shuffled;
         }
 
         /// <summary>
@@ -42,53 +52,11 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
-        /// Return the start slot of 'epoch'
+        /// Return the epoch number of ``slot``.
         /// </summary>
-        public Slot ComputeStartSlotOfEpoch(Epoch epoch)
+        public Epoch ComputeEpochOfSlot(Slot slot)
         {
-            return _timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch;
-        }
-
-        /// <summary>
-        /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
-        /// </summary>
-        public bool IsValidMerkleBranch(Hash32 leaf, IReadOnlyList<Hash32> branch, int depth, ulong index, Hash32 root)
-        {
-            var value = leaf;
-            for (var testDepth = 0; testDepth < depth; testDepth++)
-            {
-                var branchValue = branch[testDepth];
-                var indexAtDepth = index / ((ulong)1 << testDepth);
-                if (indexAtDepth % 2 == 0)
-                {
-                    // Branch on right
-                    value = _cryptographyService.Hash(value, branchValue);
-                }
-                else
-                {
-                    // Branch on left
-                    value = _cryptographyService.Hash(branchValue, value);
-                }
-            }
-            return value.Equals(root);
-        }
-
-        /// <summary>
-        /// Return the committee corresponding to ``indices``, ``seed``, ``index``, and committee ``count``.
-        /// </summary>
-        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Hash32 seed, Shard index, ulong committeeCount)
-        {
-            var start = ((ulong)indices.Count * (ulong)index) / committeeCount;
-            var end = ((ulong)indices.Count * ((ulong)index + 1)) / committeeCount;
-            //var count = indices.Count;
-            var shuffled = new List<ValidatorIndex>();
-            for (var i = start; i < end; i++)
-            {
-                var shuffledLookup = ComputeShuffledIndex(new ValidatorIndex(i), (ulong)indices.Count, seed);
-                var shuffledIndex =  indices[(int)(ulong)shuffledLookup];
-                shuffled.Add(shuffledIndex);
-            }
-            return shuffled;
+            return new Epoch(slot / _timeParameterOptions.CurrentValue.SlotsPerEpoch);
         }
 
         /// <summary>
@@ -144,6 +112,38 @@ namespace Cortex.BeaconNode
             }
 
             return index;
+        }
+
+        /// <summary>
+        /// Return the start slot of 'epoch'
+        /// </summary>
+        public Slot ComputeStartSlotOfEpoch(Epoch epoch)
+        {
+            return _timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch;
+        }
+
+        /// <summary>
+        /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
+        /// </summary>
+        public bool IsValidMerkleBranch(Hash32 leaf, IReadOnlyList<Hash32> branch, int depth, ulong index, Hash32 root)
+        {
+            var value = leaf;
+            for (var testDepth = 0; testDepth < depth; testDepth++)
+            {
+                var branchValue = branch[testDepth];
+                var indexAtDepth = index / ((ulong)1 << testDepth);
+                if (indexAtDepth % 2 == 0)
+                {
+                    // Branch on right
+                    value = _cryptographyService.Hash(value, branchValue);
+                }
+                else
+                {
+                    // Branch on left
+                    value = _cryptographyService.Hash(branchValue, value);
+                }
+            }
+            return value.Equals(root);
         }
     }
 }

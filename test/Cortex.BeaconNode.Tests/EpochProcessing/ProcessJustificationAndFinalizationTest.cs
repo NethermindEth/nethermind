@@ -73,7 +73,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 state, 
                 new Epoch((ulong)epoch - 2), 
                 checkpoints[3], 
-                checkpoints[2], 
+                checkpoints[1], 
                 sufficientSupport);
 
             // process

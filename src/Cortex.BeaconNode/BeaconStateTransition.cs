@@ -55,7 +55,7 @@ namespace Cortex.BeaconNode
 
             // Process justifications
             state.SetPreviousJustifiedCheckpoint(state.CurrentJustifiedCheckpoint);
-            state.JustificationBitsRightShift();
+            state.JustificationBitsShift();
 
             // Previous Epoch
             var matchingTargetAttestationsPreviousEpoch = GetMatchingTargetAttestations(state, previousEpoch);
@@ -83,7 +83,7 @@ namespace Cortex.BeaconNode
             // Process finalizations
             var bits = state.JustificationBits;
             // The 2nd/3rd/4th most recent epochs are justified, the 2nd using the 4th as source
-            if ((oldPreviousJustifiedCheckpoint.Epoch + new Epoch(3) == currentEpoch) 
+            if ((oldPreviousJustifiedCheckpoint.Epoch + new Epoch(3) == currentEpoch)
                 && bits.Cast<bool>().Skip(1).Take(3).All(x => x))
             {
                 state.SetFinalizedCheckpoint(oldPreviousJustifiedCheckpoint);
@@ -170,7 +170,7 @@ namespace Cortex.BeaconNode
 
         private IEnumerable<PendingAttestation> GetMatchingTargetAttestations(BeaconState state, Epoch epoch)
         {
-            Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
+            var blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
             var sourceAttestations = GetMatchingSourceAttestations(state, epoch);
             return sourceAttestations.Where(x => x.Data.Target.Root == blockRoot);
         }

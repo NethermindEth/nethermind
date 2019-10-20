@@ -22,8 +22,8 @@ namespace Cortex.BeaconNode
 
         private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
         {
-            services.Configure<ChainConstants>(x => 
-            { 
+            services.Configure<ChainConstants>(x =>
+            {
             });
             services.Configure<MiscellaneousParameters>(x =>
             {

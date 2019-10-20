@@ -58,7 +58,7 @@ namespace Cortex.BeaconNode
             var timeParameters = _timeParameterOptions.CurrentValue;
             var stateListLengths = _stateListLengthOptions.CurrentValue;
 
-            var genesisTime = eth1Timestamp - (eth1Timestamp % _chainConstants.SecondsPerDay) 
+            var genesisTime = eth1Timestamp - (eth1Timestamp % _chainConstants.SecondsPerDay)
                 + (2 * _chainConstants.SecondsPerDay);
             var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count());
             var emptyBlockBody = new BeaconBlockBody();

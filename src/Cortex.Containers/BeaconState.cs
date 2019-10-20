@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -42,7 +41,7 @@ namespace Cortex.Containers
 
         public ulong Eth1DepositIndex { get; private set; }
 
-        public Checkpoint FinalizedCheckpoint { get; private set;  }
+        public Checkpoint FinalizedCheckpoint { get; private set; }
 
         public Fork Fork { get; }
 
@@ -109,19 +108,16 @@ namespace Cortex.Containers
             Eth1DepositIndex++;
         }
 
-        public void JustificationBitsRightShift()
-        {
-            JustificationBits.RightShift(1);
-        }
-
         public void IncreaseSlot()
         {
             Slot = new Slot((ulong)Slot + 1);
         }
 
-        public void SetFinalizedCheckpoint(Checkpoint checkpoint)
+        public void JustificationBitsShift()
         {
-            FinalizedCheckpoint = checkpoint;
+            // state.justification_bits[1:] = state.justification_bits[:-1]
+            // Treated as little endian, so left shift sets new bit 1,to old bit 0, new bit 2 to old bit 1, etc
+            JustificationBits.LeftShift(1);
         }
 
         public void SetBlockRoot(Slot index, Hash32 blockRoot)
@@ -134,14 +130,19 @@ namespace Cortex.Containers
             CurrentJustifiedCheckpoint = checkpoint;
         }
 
-        public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint)
+        public void SetFinalizedCheckpoint(Checkpoint checkpoint)
         {
-            PreviousJustifiedCheckpoint = checkpoint;
+            FinalizedCheckpoint = checkpoint;
         }
 
         public void SetJustificationBits(BitArray justificationBits)
         {
             JustificationBits = justificationBits;
+        }
+
+        public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint)
+        {
+            PreviousJustifiedCheckpoint = checkpoint;
         }
 
         public void SetSlot(Slot slot)
