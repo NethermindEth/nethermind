@@ -19,6 +19,7 @@
 using System;
 using System.Numerics;
 using System.Reflection.Metadata.Ecma335;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
@@ -94,7 +95,7 @@ namespace Nethermind.Core.Crypto
         public byte[] Bytes { get; } = new byte[64];
         public int V { get; set; }
 
-        public int? GetChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
+        public int? ChainId => V < 35 ? null : (int?) (V + (V % 2) - 36) / 2;
 
         public byte RecoveryId => V <= VOffset + 1 ? (byte) (V - VOffset) : (byte) (1 - V % 2);
 
@@ -137,7 +138,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return Bytes.GetXxHashCode() ^ V.GetHashCode();
+            return MemoryMarshal.Read<int>(Bytes);
         }
     }
 }

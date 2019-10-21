@@ -62,7 +62,7 @@ namespace Ethereum.Test.Base
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
 
-            ISpecProvider specProvider = new CustomSpecProvider(
+            ISpecProvider specProvider = new CustomSpecProvider(1, 
                 (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
                 (1, test.Fork));
 

@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain.Find
             var fromBlock = _blockFinder.GetBlock(filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
 
-            while (toBlock.Number >= fromBlock.Number)
+            while (toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
             {
                 if (filter.Matches(toBlock.Bloom))
                 {

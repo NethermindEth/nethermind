@@ -1,8 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>netcoreapp2.2</TargetFramework>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <LangVersion>7.2</LangVersion>
+    <LangVersion>8.0</LangVersion>
     <OutputType>Library</OutputType>
   </PropertyGroup>
   <ItemGroup>

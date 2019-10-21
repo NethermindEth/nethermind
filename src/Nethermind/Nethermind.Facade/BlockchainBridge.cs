@@ -138,7 +138,11 @@ namespace Nethermind.Facade
         public TxReceipt GetReceipt(Keccak txHash)
         {
             var txReceipt = _receiptStorage.Find(txHash);
-            txReceipt.TxHash = txHash;
+            if (txReceipt != null)
+            {
+                txReceipt.TxHash = txHash;
+            }
+
             return txReceipt;
         }
 
@@ -200,6 +204,11 @@ namespace Nethermind.Facade
             _stateProvider.Reset();
             _storageProvider.Reset();
             return callOutputTracer.GasSpent;
+        }
+
+        public long GetChainId()
+        {
+            return _blockTree.ChainId;
         }
 
         public byte[] GetCode(Address address)

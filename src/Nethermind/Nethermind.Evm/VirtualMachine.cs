@@ -745,10 +745,8 @@ namespace Nethermind.Evm
                     throw new EvmStackOverflowException();
                 }
             }
-
-            byte[] wordBufferArray = new byte[32];
-            Span<byte> wordBuffer = wordBufferArray.AsSpan();
-
+            
+            Span<byte> wordBuffer = stackalloc byte[32];
             void Swap(int depth, Span<byte> stack, Span<byte> buffer)
             {
                 if (stackHead < depth)
@@ -773,6 +771,7 @@ namespace Nethermind.Evm
                 }
             }
 
+            // ReSharper disable once ImplicitlyCapturedClosure
             Span<byte> PopBytes(Span<byte> stack)
             {
                 if (stackHead == 0)
@@ -1282,7 +1281,7 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBufferArray);
+                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBuffer);
                         }
                         else
                         {
@@ -1292,7 +1291,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.OR:
@@ -1311,7 +1310,7 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBufferArray);
+                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBuffer);
                         }
                         else
                         {
@@ -1321,7 +1320,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.XOR:
@@ -1340,7 +1339,7 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.Xor(aVec, bVec).CopyTo(wordBufferArray);
+                            Vector.Xor(aVec, bVec).CopyTo(wordBuffer);
                         }
                         else
                         {
@@ -1350,7 +1349,7 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.NOT:
@@ -1368,17 +1367,17 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
-                            negVec.CopyTo(wordBufferArray);
+                            negVec.CopyTo(wordBuffer);
                         }
                         else
                         {
                             for (int i = 0; i < 32; ++i)
                             {
-                                wordBufferArray[i] = (byte)~a[i];
+                                wordBuffer[i] = (byte)~a[i];
                             }
                         }
 
-                        PushBytes(wordBufferArray, bytesOnStack);
+                        PushBytes(wordBuffer, bytesOnStack);
                         break;
                     }
                     case Instruction.BYTE:
@@ -1904,11 +1903,12 @@ namespace Nethermind.Evm
                                 }
                             }
                         }
-                        else // eip1283enabled
+                        else // net metered
                         {
                             if (newSameAsCurrent)
                             {
-                                if(!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
+                                long netMeteredStoreCost = spec.IsEip2200Enabled ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SStoreNetMeteredEip1283;  
+                                if(!UpdateGas(netMeteredStoreCost, ref gasAvailable))
                                 {
                                     EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;
@@ -1930,7 +1930,7 @@ namespace Nethermind.Evm
                                             return CallResult.OutOfGasException;
                                         }
                                     }
-                                    else // eip1283enabled, C == O != N, !currentIsZero
+                                    else // eip1283enabled, current == original != new, !currentIsZero
                                     {
                                         if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
                                         {
@@ -1945,15 +1945,16 @@ namespace Nethermind.Evm
                                         }
                                     }
                                 }
-                                else // eip1283enabled, N != C != O
+                                else // net metered, new != current != original
                                 {
-                                    if (!UpdateGas(GasCostOf.SStoreNetMetered, ref gasAvailable))
+                                    long netMeteredStoreCost = spec.IsEip2200Enabled ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SStoreNetMeteredEip1283;
+                                    if (!UpdateGas(netMeteredStoreCost, ref gasAvailable))
                                     {
                                         EndInstructionTraceError(OutOfGasErrorText);
                                         return CallResult.OutOfGasException;
                                     }
 
-                                    if (!originalIsZero) // eip1283enabled, N != C != O != 0
+                                    if (!originalIsZero) // net metered, new != current != original != 0
                                     {
                                         if (currentIsZero)
                                         {
@@ -1971,16 +1972,18 @@ namespace Nethermind.Evm
                                     bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
                                     if(newSameAsOriginal)
                                     {
+                                        long refundFromReversal;
                                         if (originalIsZero)
                                         {
-                                            evmState.Refund += RefundOf.SSetReversed;
-                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SSetReversed);
+                                            refundFromReversal = spec.IsEip2200Enabled ? RefundOf.SSetReversedEip2200 : RefundOf.SSetReversedEip1283;
                                         }
                                         else
                                         {
-                                            evmState.Refund += RefundOf.SClearReversed;
-                                            if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(RefundOf.SClearReversed);
+                                            refundFromReversal = spec.IsEip2200Enabled ? RefundOf.SClearReversedEip2200 : RefundOf.SClearReversedEip1283;
                                         }
+                                        
+                                        evmState.Refund += refundFromReversal;
+                                        if(_txTracer.IsTracingInstructions) _txTracer.ReportRefund(refundFromReversal);
                                     }
                                 }  
                             }

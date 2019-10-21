@@ -39,8 +39,8 @@ namespace Nethermind.Stats
         {
             _logger = logManager.GetClassLogger();
             _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
-            
-            var path = outputDir ?? PathUtils.GetExecutingDirectory();
+
+            var path = outputDir.GetApplicationResourcePath();
             _eventLogsDirectoryPath = Path.Combine(path, "networkLogs");
             if (!Directory.Exists(_eventLogsDirectoryPath))
             {

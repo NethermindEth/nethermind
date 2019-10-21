@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Console.WriteLine("Performance test should not run in the DEBUG mode");
 #else
                     stopwatch.Start();
-                    await RunAllStateTests(testWildcard, s => new PerfTest(s));
+                    RunAllStateTests(testWildcard, s => new PerfStateTest(s));
 #endif
                 }
                 else if(command == "b")

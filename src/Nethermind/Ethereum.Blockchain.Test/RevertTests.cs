@@ -32,9 +32,12 @@ namespace Ethereum.Blockchain.Test
             "RevertPrecompiledTouch_d0g0v0",
             "RevertPrecompiledTouch_d3g0v0",
             "RevertPrecompiledTouchExactOOG_d7g1v0",
+            "RevertPrecompiledTouchExactOOG_d7g2v0",
             "RevertPrecompiledTouchExactOOG_d31g1v0",
+            "RevertPrecompiledTouchExactOOG_d31g2v0",
             "RevertPrecompiledTouch_storage_d0g0v0",
-            "RevertPrecompiledTouch_storage_d3g0v0"
+            "RevertPrecompiledTouch_storage_d3g0v0",
+            "TouchToEmptyAccountRevert3_d0g0v0"
         };
         
         [Todo(Improve.TestCoverage, "Investigate if the skipped tests only affected by retesteth - they worked before the test format changes")]

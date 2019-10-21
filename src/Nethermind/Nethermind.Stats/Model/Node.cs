@@ -126,6 +126,7 @@ namespace Nethermind.Stats.Model
             switch (format)
             {
                 default:
+                case "e":
                     return $"enode://{Id.ToString(false)}@{formattedHost}:{Port}";
                 case "s":
                     return $"{formattedHost}:{Port}";

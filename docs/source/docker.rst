@@ -14,9 +14,9 @@ In order to start Nethermind.Runner, simply run::
 
     docker run -it nethermind/nethermind
 
-To enable JSON RPC, publish port 8345 and set NETHERMIND_INITCONFIG_JSONRPCENABLED=true::
+To enable JSON RPC, publish port 8545 and set NETHERMIND_INITCONFIG_JSONRPCENABLED=true::
     
-    docker run -it -p 8345:8345 -p 30312:30312 -e NETHERMIND_INITCONFIG_JSONRPCENABLED=true nethermind/nethermind
+    docker run -it -p 8545:8545 -p 30312:30312 -e NETHERMIND_INITCONFIG_JSONRPCENABLED=true nethermind/nethermind
 
 To switch the network, set NETHERMIND_CONFIG variable (default value is mainnet).
 

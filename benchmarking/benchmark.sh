@@ -18,7 +18,7 @@ else
 fi
 
 srcdir="../src/Nethermind/Nethermind.PerfTest"
-bindir="$srcdir/bin/Release/netcoreapp2.2" 
+bindir="$srcdir/bin/Release/netcoreapp3.0" 
 echo "Source   $srcdir"
 echo "Binaries $bindir"
 pushd $srcdir

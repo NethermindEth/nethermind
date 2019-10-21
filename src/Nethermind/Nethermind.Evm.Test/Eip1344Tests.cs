@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
             var result = Execute(code);
-            var setCost = chainId == 0 ? GasCostOf.SStoreNetMetered : GasCostOf.SSet;
+            var setCost = chainId == 0 ? GasCostOf.SStoreNetMeteredEip2200 : GasCostOf.SSet;
             Assert.AreEqual(StatusCode.Success, result.StatusCode);
             AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.Base + setCost);
             AssertStorage(0, chainId.ToBigEndianByteArray());

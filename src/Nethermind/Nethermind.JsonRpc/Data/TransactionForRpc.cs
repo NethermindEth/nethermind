@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,7 +25,7 @@ namespace Nethermind.JsonRpc.Data
 {
     public class TransactionForRpc
     {
-        public TransactionForRpc(Keccak blockHash, BigInteger? blockNumber, int? txIndex, Transaction transaction)
+        public TransactionForRpc(Keccak blockHash, long? blockNumber, int? txIndex, Transaction transaction)
         {
             Hash = transaction.Hash;
             Nonce = transaction.Nonce;
@@ -50,15 +49,15 @@ namespace Nethermind.JsonRpc.Data
         }
 
         public Keccak Hash { get; set; }
-        public BigInteger? Nonce { get; set; }
+        public UInt256? Nonce { get; set; }
         public Keccak BlockHash { get; set; }
-        public BigInteger? BlockNumber { get; set; }
-        public BigInteger? TransactionIndex { get; set; }
+        public long? BlockNumber { get; set; }
+        public int? TransactionIndex { get; set; }
         public Address From { get; set; }
         public Address To { get; set; }
-        public BigInteger? Value { get; set; }
-        public BigInteger? GasPrice { get; set; }
-        public BigInteger? Gas { get; set; }
+        public UInt256? Value { get; set; }
+        public UInt256? GasPrice { get; set; }
+        public long? Gas { get; set; }
         public byte[] Data { get; set; }
         public byte[] Input { get; set; }
         public UInt256? V { get; set; }
@@ -71,11 +70,11 @@ namespace Nethermind.JsonRpc.Data
         {
             Transaction tx = new Transaction();
             tx.GasLimit = (long)(Gas ?? 90000);
-            tx.GasPrice = (UInt256)(GasPrice ?? 20.GWei());
+            tx.GasPrice = (GasPrice ?? 20.GWei());
             tx.Nonce = (ulong)(Nonce ?? 0); // here pick the last nonce?
             tx.To = To;
             tx.SenderAddress = From;
-            tx.Value = (UInt256)(Value ?? 0);
+            tx.Value = Value ?? 0;
             if (tx.To == null)
             {
                 tx.Init = Data ?? Input;

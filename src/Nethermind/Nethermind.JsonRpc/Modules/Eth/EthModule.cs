@@ -116,15 +116,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        public Task<ResultWrapper<UInt256?>> eth_blockNumber()
+        public Task<ResultWrapper<long?>> eth_blockNumber()
         {
             if (_blockchainBridge.Head == null)
             {
-                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"Incorrect head block", ErrorType.InternalError, null));
+                return Task.FromResult(ResultWrapper<long?>.Fail($"Incorrect head block", ErrorType.InternalError, null));
             }
 
             var number = _blockchainBridge.Head.Number;
-            return Task.FromResult(ResultWrapper<UInt256?>.Success((UInt256) number));
+            return Task.FromResult(ResultWrapper<long?>.Success(number));
         }
 
         public Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter)
@@ -280,7 +280,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             Transaction tx = transactionForRpc.ToTransaction();
             if (tx.Signature == null)
             {
-                tx.Nonce = (UInt256) _blockchainBridge.GetNonce(tx.SenderAddress);
+                tx.Nonce = _blockchainBridge.GetNonce(tx.SenderAddress);
                 _blockchainBridge.Sign(tx);
             }
 
@@ -654,6 +654,19 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             return ResultWrapper<UInt256?>.Success((UInt256)block.Transactions.Length);
+        }
+
+        public ResultWrapper<long> eth_chainId()
+        {
+            try
+            {
+                long chainId = _blockchainBridge.GetChainId();
+                return ResultWrapper<long>.Success(chainId);
+            }
+            catch (JsonRpcException ex)
+            {
+                return ResultWrapper<long>.Fail(ex.Message, ex.ErrorType, 0L);
+            }
         }
 
         private ResultWrapper<byte[]> GetAccountCode(Address address, BlockParameter blockParameter)

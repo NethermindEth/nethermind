@@ -56,7 +56,7 @@ namespace Nethermind.Facade.Test.Proxy
         public async Task eth_blockNumber_should_invoke_client_method()
         {
             await _proxy.eth_blockNumber();
-            await _client.Received().SendAsync<UInt256?>(nameof(_proxy.eth_blockNumber));
+            await _client.Received().SendAsync<long?>(nameof(_proxy.eth_blockNumber));
         }
 
         [Test]

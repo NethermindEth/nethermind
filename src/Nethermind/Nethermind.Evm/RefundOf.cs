@@ -20,8 +20,10 @@ namespace Nethermind.Evm
 {
     public static class RefundOf
     {
-        public static long SSetReversed = 19800;
-        public static long SClearReversed = 4800;
+        public static long SSetReversedEip1283 = 19800;
+        public static long SClearReversedEip1283 = 4800;
+        public static long SSetReversedEip2200 = 19200;
+        public static long SClearReversedEip2200 = 4200;
         public static long SClear = 15000;
         public static long Destroy = 24000;
     }

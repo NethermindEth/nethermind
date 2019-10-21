@@ -62,8 +62,9 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, false);
             }
             
-            var blake = new Blake2();
-            var result = blake.Compress(inputData);
+            var blake = new Blake2Optimized();
+            var result = new byte[64];
+            blake.Compress(inputData, result);
 
             return (result, true);
         }

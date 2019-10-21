@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Numerics;
 using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.Cli.Modules
@@ -45,6 +43,12 @@ namespace Nethermind.Cli.Modules
 
             Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
             return keccak.Bytes.ToHexString();
+        }
+
+        [CliFunction("eth", "call")]
+        public string Call(object tx, string blockParameter = null)
+        {
+            return NodeManager.Post<string>("eth_call", tx, blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getBlockByHash")]
@@ -81,6 +85,12 @@ namespace Nethermind.Cli.Modules
         public string SendWei(string from, string to, BigInteger amountInWei)
         {
             return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) amountInWei);
+        }
+
+        [CliFunction("eth", "sendRawTransaction")]
+        public string SendWei(string txRlp)
+        {
+            return NodeManager.Post<string>("eth_sendRawTransaction", txRlp).Result;
         }
 
         [CliProperty("eth", "blockNumber")]
@@ -131,12 +141,18 @@ namespace Nethermind.Cli.Modules
             return NodeManager.Post<BigInteger>("eth_getBalance", CliParseAddress(address), blockParameter).Result;
         }
 
+        [CliProperty("eth", "chainId")]
+        public string ChainId()
+        {
+            return NodeManager.Post<string>("eth_chainId").Result;
+        }
+
         [CliProperty("eth", "protocolVersion")]
         public JsValue ProtocolVersion()
         {
             return NodeManager.PostJint("eth_protocolVersion").Result;
         }
-        
+
         [CliFunction("eth", "getLogs")]
         public JsValue GetLogs(object json)
         {

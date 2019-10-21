@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
 
@@ -93,7 +94,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return Bytes.GetSimplifiedHashCode();
+            return MemoryMarshal.Read<int>(Bytes);
         }
 
         public override string ToString()

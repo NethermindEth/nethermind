@@ -208,14 +208,14 @@ namespace Nethermind.Blockchain.TxPools
 
             Metrics.PendingTransactionsReceived++;
 
-            if (tx.Signature.GetChainId == null)
-            {
-                // Note that we are discarding here any transactions that follow the old signature scheme (no ChainId).
-                Metrics.PendingTransactionsDiscarded++;
-                return AddTxResult.OldScheme;
-            }
-            
-            if (tx.Signature.GetChainId != _specProvider.ChainId)
+//            if (tx.Signature.ChainId == null)
+//            {
+//                // Note that we are discarding here any transactions that follow the old signature scheme (no ChainId).
+//                Metrics.PendingTransactionsDiscarded++;
+//                return AddTxResult.OldScheme;
+//            }
+
+            if (tx.Signature.ChainId != null && tx.Signature.ChainId != _specProvider.ChainId)
             {
                 // It may happen that other nodes send us transactions that were signed for another chain.
                 Metrics.PendingTransactionsDiscarded++;

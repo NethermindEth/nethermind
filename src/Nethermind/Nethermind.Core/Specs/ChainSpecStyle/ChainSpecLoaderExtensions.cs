@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Text;
+using Nethermind.Logging;
 
 namespace Nethermind.Core.Specs.ChainSpecStyle
 {
@@ -26,11 +27,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
     {
         public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
         {
-            if (!Path.IsPathRooted(filePath))
-            {
-                filePath = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filePath));
-            }
-
+            filePath = filePath.GetApplicationResourcePath();
             if (!File.Exists(filePath))
             {
                 StringBuilder missingChainspecFileMessage = new StringBuilder($"Chainspec file does not exist {filePath}");

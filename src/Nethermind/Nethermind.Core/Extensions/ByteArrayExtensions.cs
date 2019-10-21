@@ -20,6 +20,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Threading;
 using Extensions.Data;
@@ -261,8 +262,7 @@ namespace Nethermind.Core.Extensions
         public static int GetXxHashCode(this byte[] bytes)
         {
             LazyInitializer.EnsureInitialized(ref _xxHash, XXHash32.Create);
-            byte[] hash = _xxHash.ComputeHash(bytes);
-            return (hash[0] >> 24) | (hash[1] >> 16) | (hash[2] >> 8) | hash[3];
+            return MemoryMarshal.Read<int>(_xxHash.ComputeHash(bytes));
         }
         
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]

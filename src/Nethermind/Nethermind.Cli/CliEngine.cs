@@ -22,9 +22,13 @@ using System.Linq.Expressions;
 using System.Reflection;
 using Jint;
 using Jint.Native;
+using Jint.Native.Object;
 using Jint.Parser;
+using Jint.Runtime;
 using Jint.Runtime.Interop;
+using Nethermind.Cli.Converters;
 using Nethermind.Cli.Modules;
+using Nethermind.Core.Converters;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Cli
@@ -43,6 +47,18 @@ namespace Nethermind.Cli
 //                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
                 Console.WriteLine(v.ToString());
             }));
+            
+            JintEngine.Global.FastAddProperty("window", JintEngine.Global, false, false, false);
+            
+            ObjectInstance console = JintEngine.Object.Construct(Arguments.Empty);
+            JintEngine.SetValue("console", console);
+            console.Put("log", (JsValue) ((ObjectInstance) new DelegateWrapper(JintEngine, new Action<JsValue>(v =>
+            {
+//                File.AppendAllText("C:\\temp\\cli.txt", v.ToString());
+                Console.WriteLine(v.ToString());
+            }))), false);
+            
+            JintEngine.ClrTypeConverter = new FallbackTypeConverter(JintEngine.ClrTypeConverter, new BigIntegerTypeConverter());
         }
 
         private void LoadFile(string filePath)

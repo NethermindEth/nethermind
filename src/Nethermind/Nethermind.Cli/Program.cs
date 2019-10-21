@@ -291,6 +291,7 @@ namespace Nethermind.Cli
         private static void LoadModules()
         {
             ModuleLoader = new CliModuleLoader(_engine, _nodeManager);
+            ModuleLoader.LoadModule(typeof(AdminCliModule));
             ModuleLoader.LoadModule(typeof(CliqueCliModule));
             ModuleLoader.LoadModule(typeof(DebugCliModule));
             ModuleLoader.LoadModule(typeof(EthCliModule));

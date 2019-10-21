@@ -42,6 +42,11 @@ namespace Ethereum.Blockchain.Test
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
                 if(type == null && directory != "stEWASMTests")
                 {
+                    if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
+                    {
+                        continue;
+                    }
+                    
                     missingCategories.Add(directory);
                 }
             }
