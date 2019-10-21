@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain
 
         public GethLikeTxTrace Trace(Rlp block, Keccak txHash, GethTraceOptions options)
         {
-            return TraceBlock(GetBlock(block), options, txHash).FirstOrDefault();
+            return TraceBlock(GetBlockToTrace(block), options, txHash).FirstOrDefault();
         }
 
         public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions)
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain
         
         public GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options)
         {
-            return TraceBlock(GetBlock(blockRlp), options);
+            return TraceBlock(GetBlockToTrace(blockRlp), options);
         }
         
         public ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes)
@@ -217,7 +217,7 @@ namespace Nethermind.Blockchain
             return listener.BuildResult().ToArray();
         }
         
-        private static Block GetBlock(Rlp blockRlp)
+        private static Block GetBlockToTrace(Rlp blockRlp)
         {
             Block block = Rlp.Decode<Block>(blockRlp);
             if (block.TotalDifficulty == null)
