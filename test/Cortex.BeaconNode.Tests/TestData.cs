@@ -71,7 +71,14 @@ namespace Cortex.BeaconNode.Tests
             return validator;
         }
 
-        public static BeaconState CreateGenesisState(ChainConstants chainConstants, InitialValues initialValues, GweiValues gweiValues, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock, ulong numberOfValidators)
+        public static BeaconState CreateGenesisState(ChainConstants chainConstants,
+            MiscellaneousParameters miscellaneousParameters,
+            InitialValues initialValues,
+            GweiValues gweiValues,
+            TimeParameters timeParameters,
+            StateListLengths stateListLengths,
+            MaxOperationsPerBlock maxOperationsPerBlock,
+            ulong numberOfValidators)
         {
             var depositRoot = new Hash32(Enumerable.Repeat((byte)0x42, 32).ToArray());
             var state = new BeaconState(
@@ -81,7 +88,8 @@ namespace Cortex.BeaconNode.Tests
                 new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(maxOperationsPerBlock)),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
-                chainConstants.JustificationBitsLength
+                chainConstants.JustificationBitsLength,
+                miscellaneousParameters.ShardCount
                 );
 
             // We directly insert in the initial validators,

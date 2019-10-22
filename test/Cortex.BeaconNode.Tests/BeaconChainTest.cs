@@ -1,8 +1,6 @@
 ﻿using System.Threading.Tasks;
-using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Shouldly;

@@ -1,20 +1,16 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using NSubstitute;
 using Shouldly;
 
 namespace Cortex.BeaconNode.Tests.EpochProcessing
 {
     [TestClass]
-
     public class ProcessJustificationAndFinalizationTest
     {
         [DataTestMethod]
@@ -41,7 +37,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
 
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
-            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+            var state = TestData.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
             epoch.ShouldBeGreaterThan(new Epoch(4));
 
@@ -66,14 +62,14 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             state.SetJustificationBits(justificationBits);
 
             // mock the 2nd latest epoch as justifiable, with 4th as source
-            AddMockAttestations(beaconChainUtility, 
-                beaconStateAccessor, 
-                miscellaneousParameterOptions.CurrentValue, 
-                timeParameterOptions.CurrentValue, 
-                state, 
-                new Epoch((ulong)epoch - 2), 
-                checkpoints[3], 
-                checkpoints[1], 
+            AddMockAttestations(beaconChainUtility,
+                beaconStateAccessor,
+                miscellaneousParameterOptions.CurrentValue,
+                timeParameterOptions.CurrentValue,
+                state,
+                new Epoch((ulong)epoch - 2),
+                checkpoints[3],
+                checkpoints[1],
                 sufficientSupport);
 
             // process
@@ -117,7 +113,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
 
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
-            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+            var state = TestData.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
             epoch.ShouldBeGreaterThan(new Epoch(3));
 
@@ -193,7 +189,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
 
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
-            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+            var state = TestData.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
             epoch.ShouldBeGreaterThan(new Epoch(5));
 
@@ -280,7 +276,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
 
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
-            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+            var state = TestData.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
             epoch.ShouldBeGreaterThan(new Epoch(2));
 
@@ -334,54 +330,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
 
         private void RunProcessJustAndFin(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
         {
-            RunEpochProcessingWith(beaconStateTransition, timeParameters, state, "process_justification_and_finalization");
-        }
-
-        /// <summary>
-        /// Processes to the next epoch transition, up to and including the sub-transition named ``process_name``
-        /// - pre-state('pre'), state before calling ``process_name``
-        /// - post-state('post'), state after calling ``process_name``
-        /// </summary>
-        private void RunEpochProcessingWith(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, string processName)
-        {
-            RunEpochProcessingTo(beaconStateTransition, timeParameters, state, processName);
-
-            if (processName == "process_justification_and_finalization")
-            {
-                beaconStateTransition.ProcessJustificationAndFinalization(state);
-                return;
-            }
-
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
-        /// Processes to the next epoch transition, up to, but not including, the sub-transition named ``process_name``
-        /// </summary>
-        private void RunEpochProcessingTo(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, string processName)
-        {
-            var slot = state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
-
-            // transition state to slot before epoch state transition
-            beaconStateTransition.ProcessSlots(state, slot - new Slot(1));
-
-            // start transitioning, do one slot update before the epoch itself.
-            beaconStateTransition.ProcessSlot(state);
-
-            // process components of epoch transition before final-updates
-            if (processName == "process_justification_and_finalization")
-            {
-                return;
-            }
-            // Note: only run when present. Later phases introduce more to the epoch-processing.
-            beaconStateTransition.ProcessJustificationAndFinalization(state);
-
-            if (processName == "process_crosslinks")
-            {
-                return;
-            }
-
-            throw new NotImplementedException();
+            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, "process_justification_and_finalization");
         }
 
         private void AddMockAttestations(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Epoch epoch, Checkpoint source, Checkpoint target, bool sufficientSupport)
@@ -455,7 +404,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                     {
                         state.AddCurrentAttestation(attestation);
                     }
-                    else 
+                    else
                     {
                         state.AddPreviousAttestation(attestation);
                     }

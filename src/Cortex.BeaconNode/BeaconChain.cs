@@ -63,7 +63,7 @@ namespace Cortex.BeaconNode
             var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count());
             var emptyBlockBody = new BeaconBlockBody();
             var latestBlockHeader = new BeaconBlockHeader(emptyBlockBody.HashTreeRoot(_maxOperationsPerBlockOptions.CurrentValue));
-            var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, _chainConstants.JustificationBitsLength);
+            var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, _chainConstants.JustificationBitsLength, _miscellaneousParameterOptions.CurrentValue.ShardCount);
 
             // Process deposits
             var depositDataList = new List<DepositData>();

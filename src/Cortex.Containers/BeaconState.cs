@@ -8,13 +8,15 @@ namespace Cortex.Containers
     {
         private readonly List<Gwei> _balances;
         private readonly Hash32[] _blockRoots;
+        private readonly Crosslink[] _currentCrosslinks;
         private readonly List<PendingAttestation> _currentEpochAttestations;
+        private readonly Crosslink[] _previousCrosslinks;
         private readonly List<PendingAttestation> _previousEpochAttestations;
         private readonly Hash32[] _randaoMixes;
         private readonly Hash32[] _stateRoots;
         private readonly List<Validator> _validators;
 
-        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength)
+        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength, Shard shardCount)
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;
@@ -29,11 +31,16 @@ namespace Cortex.Containers
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
             Fork = new Fork();
+            _previousCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
+            _currentCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
+            //_currentCrosslinks = Enumerable.Range(0, (int)(ulong)shardCount).Select(x => new Crosslink(new Shard((ulong)x))).ToArray();
         }
 
         public IReadOnlyList<Gwei> Balances { get { return _balances; } }
 
         public IReadOnlyList<Hash32> BlockRoots { get { return _blockRoots; } }
+
+        public IReadOnlyList<Crosslink> CurrentCrosslinks { get { return _currentCrosslinks; } }
 
         public IReadOnlyList<PendingAttestation> CurrentEpochAttestations { get { return _currentEpochAttestations; } }
 
@@ -53,6 +60,8 @@ namespace Cortex.Containers
 
         public BeaconBlockHeader LatestBlockHeader { get; }
 
+        public IReadOnlyList<Crosslink> PreviousCrosslinks { get { return _previousCrosslinks; } }
+
         public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
 
         public Checkpoint? PreviousJustifiedCheckpoint { get; private set; }
@@ -60,7 +69,9 @@ namespace Cortex.Containers
         public IReadOnlyList<Hash32> RandaoMixes { get { return _randaoMixes; } }
 
         public Slot Slot { get; private set; }
+
         public Shard StartShard { get; }
+
         public IReadOnlyList<Hash32> StateRoots { get { return _stateRoots; } }
 
         public IReadOnlyList<Validator> Validators { get { return _validators; } }

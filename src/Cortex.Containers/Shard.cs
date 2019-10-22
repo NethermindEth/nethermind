@@ -2,7 +2,7 @@
 
 namespace Cortex.Containers
 {
-    public struct Shard
+    public struct Shard : IEquatable<Shard>
     {
         private readonly ulong _value;
 
@@ -10,6 +10,8 @@ namespace Cortex.Containers
         {
             _value = value;
         }
+
+        public static Shard Zero { get; } = new Shard(0);
 
         public static explicit operator ulong(Shard shard) => shard._value;
 
@@ -23,14 +25,14 @@ namespace Cortex.Containers
             return new Shard(left._value - right._value);
         }
 
+        public static bool operator !=(Shard left, Shard right)
+        {
+            return !(left == right);
+        }
+
         public static Shard operator %(Shard left, Shard right)
         {
             return new Shard(left._value % right._value);
-        }
-
-        public static Shard operator /(Shard left, ulong right)
-        {
-            return new Shard(left._value / right);
         }
 
         public static Shard operator *(Shard left, ulong right)
@@ -38,9 +40,34 @@ namespace Cortex.Containers
             return new Shard(left._value * right);
         }
 
+        public static Shard operator /(Shard left, ulong right)
+        {
+            return new Shard(left._value / right);
+        }
+
         public static Shard operator +(Shard left, Shard right)
         {
             return new Shard(left._value + right._value);
+        }
+
+        public static bool operator ==(Shard left, Shard right)
+        {
+            return left.Equals(right);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is Shard shard && Equals(shard);
+        }
+
+        public bool Equals(Shard other)
+        {
+            return _value == other._value;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(_value);
         }
     }
 }

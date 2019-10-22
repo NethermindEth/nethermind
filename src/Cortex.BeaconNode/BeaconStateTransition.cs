@@ -39,6 +39,11 @@ namespace Cortex.BeaconNode
             _beaconStateAccessor = beaconStateAccessor;
         }
 
+        public void ProcessCrosslinks(BeaconState state)
+        {
+            //throw new NotImplementedException();
+        }
+
         public void ProcessEpoch(BeaconState state)
         {
             _logger.LogDebug(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);

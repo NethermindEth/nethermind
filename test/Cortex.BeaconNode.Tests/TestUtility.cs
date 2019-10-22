@@ -10,8 +10,6 @@ namespace Cortex.BeaconNode.Tests
     {
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
 
-        public static Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
-
         private static readonly byte[][] _zeroHashes;
 
         static TestUtility()
@@ -24,18 +22,7 @@ namespace Cortex.BeaconNode.Tests
             }
         }
 
-        public static byte[] Hash(ReadOnlySpan<byte> bytes)
-        {
-            return _hashAlgorithm.ComputeHash(bytes.ToArray());
-        }
-
-        public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-        {
-            var combined = new Span<byte>(new byte[64]);
-            a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
-            return _hashAlgorithm.ComputeHash(combined.ToArray());
-        }
+        public static Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
 
         public static BlsSignature BlsSign(Hash32 messageHash, byte[] privateKey, Domain domain)
         {
@@ -84,6 +71,19 @@ namespace Cortex.BeaconNode.Tests
                 proof.Add(value);
             }
             return proof;
+        }
+
+        public static byte[] Hash(ReadOnlySpan<byte> bytes)
+        {
+            return _hashAlgorithm.ComputeHash(bytes.ToArray());
+        }
+
+        public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            var combined = new Span<byte>(new byte[64]);
+            a.CopyTo(combined);
+            b.CopyTo(combined.Slice(32));
+            return _hashAlgorithm.ComputeHash(combined.ToArray());
         }
     }
 }
