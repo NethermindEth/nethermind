@@ -14,6 +14,11 @@ namespace Cortex.SimpleSerialize
             _value = bitArray;
         }
 
+        public SszBitlist(bool[] values, ulong limit)
+            : this(new BitArray(values), limit)
+        {
+        }
+
         public ulong ByteLimit { get; }
 
         public override SszElementType ElementType => SszElementType.Bitlist;

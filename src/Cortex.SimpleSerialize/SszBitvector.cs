@@ -12,6 +12,11 @@ namespace Cortex.SimpleSerialize
             _value = bitArray;
         }
 
+        public SszBitvector(bool[] values)
+            : this(new BitArray(values))
+        {
+        }
+
         public override SszElementType ElementType => SszElementType.Bitvector;
 
         public ReadOnlySpan<byte> BitfieldBytes() => GetBytes();

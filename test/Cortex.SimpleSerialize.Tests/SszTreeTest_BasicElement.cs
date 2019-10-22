@@ -8,6 +8,27 @@ namespace Cortex.SimpleSerialize.Tests
     public class SszTreeTest_BasicElement
     {
         [DataTestMethod]
+        [DataRow(false, "00", 
+"0000000000000000000000000000000000000000000000000000000000000000")]
+        [DataRow(true, "01",
+"0100000000000000000000000000000000000000000000000000000000000000")]
+        public void BooleanSerialize(bool value, string expectedByteString, string expectedHashTreeRoot)
+        {
+            // Arrange
+            var tree = new SszTree(new SszBasicElement(value));
+
+            // Act
+            var bytes = tree.Serialize();
+            var hashTreeRoot = tree.HashTreeRoot();
+
+            // Assert
+            var byteString = BitConverter.ToString(bytes.ToArray()).Replace("-", "").ToLowerInvariant();
+            byteString.ShouldBe(expectedByteString);
+            var hashTreeRootString = BitConverter.ToString(hashTreeRoot.ToArray()).Replace("-", "").ToLowerInvariant();
+            hashTreeRootString.ShouldBe(expectedHashTreeRoot);
+        }
+
+        [DataTestMethod]
         [DataRow((byte)0, "00",
 "0000000000000000000000000000000000000000000000000000000000000000")]
         [DataRow((byte)0x01, "01",
