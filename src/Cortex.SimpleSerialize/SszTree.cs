@@ -56,7 +56,7 @@ namespace Cortex.SimpleSerialize
             }
             catch (Exception ex)
             {
-                var stack = string.Join(',', context);
+                var stack = string.Join(',', context.Reverse());
                 throw new Exception($"Error generating hash for tree at element [{stack}].", ex);
             }
         }
@@ -66,14 +66,14 @@ namespace Cortex.SimpleSerialize
             return SerializeRecursive(RootElement).Bytes;
         }
 
-        private ReadOnlySpan<byte> HashTreeRootRecursive(SszElement? element, Stack<int> context)
+        private ReadOnlySpan<byte> HashTreeRootRecursive(SszElement element, Stack<int> context)
         {
             switch (element)
             {
-                case null:
-                    {
-                        return new byte[BytesPerChunk];
-                    }
+                //case null:
+                //    {
+                //        return new byte[BytesPerChunk];
+                //    }
                 case SszBasicElement basic:
                     {
                         var bytes = basic.GetBytes();
@@ -272,10 +272,10 @@ namespace Cortex.SimpleSerialize
         {
             switch (element)
             {
-                case null:
-                    {
-                        return new SerializeResult(Array.Empty<byte>(), isVariableSize: false);
-                    }
+                //case null:
+                //    {
+                //        return new SerializeResult(Array.Empty<byte>(), isVariableSize: false);
+                //    }
                 case SszBasicElement basic:
                     {
                         return new SerializeResult(basic.GetBytes(), isVariableSize: false);

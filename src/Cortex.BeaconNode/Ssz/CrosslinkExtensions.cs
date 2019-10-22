@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Cortex.Containers;
 using Cortex.SimpleSerialize;
 
@@ -9,6 +10,11 @@ namespace Cortex.BeaconNode.Ssz
         public static SszContainer ToSszContainer(this Crosslink item)
         {
             return new SszContainer(GetValues(item));
+        }
+
+        public static SszVector ToSszVector(this IEnumerable<Crosslink> vector)
+        {
+            return new SszVector(vector.Select(x => x.ToSszContainer()));
         }
 
         private static IEnumerable<SszElement> GetValues(Crosslink item)

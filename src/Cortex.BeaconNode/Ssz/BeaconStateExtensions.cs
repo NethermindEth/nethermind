@@ -19,7 +19,7 @@ namespace Cortex.BeaconNode.Ssz
             return new SszContainer(GetValues(item, miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock));
         }
 
-        private static IEnumerable<SszElement?> GetValues(BeaconState item, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock)
+        private static IEnumerable<SszElement> GetValues(BeaconState item, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock)
         {
             //# Versioning
             yield return item.GenesisTime.ToSszBasicElement();
@@ -54,15 +54,16 @@ namespace Cortex.BeaconNode.Ssz
             yield return item.CurrentEpochAttestations.ToSszList(maxOperationsPerBlock.MaximumAttestations * (ulong)timeParameters.SlotsPerEpoch, miscellaneousParameters);
 
             //# Crosslinks
-            //previous_crosslinks: Vector[Crosslink, SHARD_COUNT]  # Previous epoch snapshot
-            //current_crosslinks: Vector[Crosslink, SHARD_COUNT]
+            //# Previous epoch snapshot
+            yield return item.PreviousCrosslinks.ToSszVector();
+            yield return item.CurrentCrosslinks.ToSszVector();
 
             //# Finality
             // Bit set for every recent justified epoch
             yield return item.JustificationBits.ToSszBitvector();
-            yield return item.PreviousJustifiedCheckpoint?.ToSszContainer();
-            yield return item.CurrentJustifiedCheckpoint?.ToSszContainer();
-            yield return item.FinalizedCheckpoint?.ToSszContainer();
+            yield return item.PreviousJustifiedCheckpoint.ToSszContainer();
+            yield return item.CurrentJustifiedCheckpoint.ToSszContainer();
+            yield return item.FinalizedCheckpoint.ToSszContainer();
         }
     }
 }

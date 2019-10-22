@@ -34,8 +34,13 @@ namespace Cortex.BeaconNode.Tests
 
         public class TestChangeDisposable : IDisposable
         {
+            protected virtual void Dispose(bool disposing)
+            {
+            }
+
             public void Dispose()
             {
+                Dispose(true);
             }
         }
     }

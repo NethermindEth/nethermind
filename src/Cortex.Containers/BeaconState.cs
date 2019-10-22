@@ -31,6 +31,9 @@ namespace Cortex.Containers
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
             Fork = new Fork();
+            CurrentJustifiedCheckpoint = new Checkpoint(new Epoch(0), Hash32.Zero);
+            PreviousJustifiedCheckpoint = new Checkpoint(new Epoch(0), Hash32.Zero);
+            FinalizedCheckpoint = new Checkpoint(new Epoch(0), Hash32.Zero);
             _previousCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
             _currentCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
             //_currentCrosslinks = Enumerable.Range(0, (int)(ulong)shardCount).Select(x => new Crosslink(new Shard((ulong)x))).ToArray();
@@ -44,13 +47,13 @@ namespace Cortex.Containers
 
         public IReadOnlyList<PendingAttestation> CurrentEpochAttestations { get { return _currentEpochAttestations; } }
 
-        public Checkpoint? CurrentJustifiedCheckpoint { get; private set; }
+        public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
 
         public Eth1Data Eth1Data { get; }
 
         public ulong Eth1DepositIndex { get; private set; }
 
-        public Checkpoint? FinalizedCheckpoint { get; private set; }
+        public Checkpoint FinalizedCheckpoint { get; private set; }
 
         public Fork Fork { get; }
 
@@ -64,7 +67,7 @@ namespace Cortex.Containers
 
         public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
 
-        public Checkpoint? PreviousJustifiedCheckpoint { get; private set; }
+        public Checkpoint PreviousJustifiedCheckpoint { get; private set; }
 
         public IReadOnlyList<Hash32> RandaoMixes { get { return _randaoMixes; } }
 
