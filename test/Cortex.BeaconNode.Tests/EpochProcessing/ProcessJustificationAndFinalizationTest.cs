@@ -93,6 +93,245 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
         }
 
+        [DataTestMethod]
+        [DataRow((ulong)4, true)]
+        [DataRow((ulong)4, false)]
+        public void FinalizeOn23(ulong epochValue, bool sufficientSupport)
+        {
+            // Arrange
+            var loggerFactory = new LoggerFactory(new[] {
+                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
+            });
+            var epoch = new Epoch(epochValue);
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var maxOperationsPerBlockOptions);
+            var cryptographyService = new CryptographyService();
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
+            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, cryptographyService, beaconChainUtility);
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
+
+            var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
+            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+
+            epoch.ShouldBeGreaterThan(new Epoch(3));
+
+            // Skip ahead to just before epoch
+            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            state.SetSlot(slot);
+
+            //# 43210 -- epochs ago
+            //# 210xx  -- justification bitfield indices (pre shift)
+            //# 3210x -- justification bitfield indices (post shift)
+            //# 01*0. -- justification bitfield contents, . = this epoch, * is being justified now
+            //# checkpoints for the epochs ago:
+            var checkpoints = TestData.GetCheckpoints(epoch).ToArray();
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..2]);
+
+            var oldFinalized = state.FinalizedCheckpoint;
+            state.SetPreviousJustifiedCheckpoint(checkpoints[2]);
+            state.SetCurrentJustifiedCheckpoint(checkpoints[2]);
+            // # mock 3rd latest epoch as justified (index is pre-shift)
+            var justificationBits = new BitArray(chainConstants.JustificationBitsLength);
+            justificationBits[1] = true;
+            state.SetJustificationBits(justificationBits);
+
+            // # mock the 2nd latest epoch as justifiable, with 3rd as source
+            AddMockAttestations(beaconChainUtility,
+                beaconStateAccessor,
+                miscellaneousParameterOptions.CurrentValue,
+                timeParameterOptions.CurrentValue,
+                state,
+                new Epoch((ulong)epoch - 2),
+                checkpoints[2],
+                checkpoints[1],
+                sufficientSupport);
+
+            // process
+            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+            state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
+            if (sufficientSupport)
+            {
+                state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[1]); // changed to 2nd latest
+                state.FinalizedCheckpoint.ShouldBe(checkpoints[2]); // finalized old previous justified epoch
+            }
+            else
+            {
+                state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[2]); // still old current
+                state.FinalizedCheckpoint.ShouldBe(oldFinalized); // no new finalized
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow((ulong)6, true)]
+        [DataRow((ulong)6, false)]
+        public void FinalizeOn123(ulong epochValue, bool sufficientSupport)
+        {
+            // Arrange
+            var loggerFactory = new LoggerFactory(new[] {
+                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
+            });
+            var epoch = new Epoch(epochValue);
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var maxOperationsPerBlockOptions);
+            var cryptographyService = new CryptographyService();
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
+            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, cryptographyService, beaconChainUtility);
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
+
+            var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
+            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+
+            epoch.ShouldBeGreaterThan(new Epoch(5));
+
+            // Skip ahead to just before epoch
+            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            state.SetSlot(slot);
+
+            //# 43210 -- epochs ago
+            //# 210xx  -- justification bitfield indices (pre shift)
+            //# 3210x -- justification bitfield indices (post shift)
+            //# 011*. -- justification bitfield contents, . = this epoch, * is being justified now
+            //# checkpoints for the epochs ago:
+            var checkpoints = TestData.GetCheckpoints(epoch).ToArray();
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..4]);
+
+            var oldFinalized = state.FinalizedCheckpoint;
+            state.SetPreviousJustifiedCheckpoint(checkpoints[4]);
+            state.SetCurrentJustifiedCheckpoint(checkpoints[2]);
+            //# mock 3rd latest epochs as justified (index is pre-shift)
+            var justificationBits = new BitArray(chainConstants.JustificationBitsLength);
+            justificationBits[1] = true;
+            state.SetJustificationBits(justificationBits);
+
+            //# mock the 2nd latest epoch as justifiable, with 5th as source
+            AddMockAttestations(beaconChainUtility,
+                beaconStateAccessor,
+                miscellaneousParameterOptions.CurrentValue,
+                timeParameterOptions.CurrentValue,
+                state,
+                new Epoch((ulong)epoch - 2),
+                checkpoints[4],
+                checkpoints[1],
+                sufficientSupport);
+
+            //# mock the 1st latest epoch as justifiable, with 3rd as source
+            AddMockAttestations(beaconChainUtility,
+                beaconStateAccessor,
+                miscellaneousParameterOptions.CurrentValue,
+                timeParameterOptions.CurrentValue,
+                state,
+                new Epoch((ulong)epoch - 1),
+                checkpoints[2],
+                checkpoints[0],
+                sufficientSupport);
+
+            // process
+            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+            state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
+            if (sufficientSupport)
+            {
+                state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[0]); //# changed to 1st latest
+                state.FinalizedCheckpoint.ShouldBe(checkpoints[2]); // finalized old current
+            }
+            else
+            {
+                state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[2]); // still old current
+                state.FinalizedCheckpoint.ShouldBe(oldFinalized); // no new finalized
+            }
+        }
+
+        [DataTestMethod]
+        [DataRow((ulong)3, true)]
+        [DataRow((ulong)3, false)]
+        public void FinalizeOn12(ulong epochValue, bool sufficientSupport)
+        {
+            // Arrange
+            var loggerFactory = new LoggerFactory(new[] {
+                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
+            });
+            var epoch = new Epoch(epochValue);
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var maxOperationsPerBlockOptions);
+            var cryptographyService = new CryptographyService();
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
+            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, cryptographyService, beaconChainUtility);
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, beaconChainUtility, beaconStateAccessor);
+
+            var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
+            var state = TestData.CreateGenesisState(chainConstants, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+
+            epoch.ShouldBeGreaterThan(new Epoch(2));
+
+            // Skip ahead to just before epoch
+            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            state.SetSlot(slot);
+
+            //# 43210 -- epochs ago
+            //# 210xx  -- justification bitfield indices (pre shift)
+            //# 3210x -- justification bitfield indices (post shift)
+            //# 001*. -- justification bitfield contents, . = this epoch, * is being justified now
+            //# checkpoints for the epochs ago:
+            var checkpoints = TestData.GetCheckpoints(epoch).ToArray();
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..1]);
+
+            var oldFinalized = state.FinalizedCheckpoint;
+            state.SetPreviousJustifiedCheckpoint(checkpoints[1]);
+            state.SetCurrentJustifiedCheckpoint(checkpoints[1]);
+            // # mock 2nd latest epoch as justified (this is pre-shift)
+            var justificationBits = new BitArray(chainConstants.JustificationBitsLength);
+            justificationBits[0] = true;
+            state.SetJustificationBits(justificationBits);
+
+            // # mock the 1st latest epoch as justifiable, with 2nd as source
+            AddMockAttestations(beaconChainUtility,
+                beaconStateAccessor,
+                miscellaneousParameterOptions.CurrentValue,
+                timeParameterOptions.CurrentValue,
+                state,
+                new Epoch((ulong)epoch - 1),
+                checkpoints[1],
+                checkpoints[0],
+                sufficientSupport);
+
+            // process
+            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+            state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[1]); // changed to old current
+            if (sufficientSupport)
+            {
+                state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[0]); // changed to 1st latest
+                state.FinalizedCheckpoint.ShouldBe(checkpoints[1]); // finalized previous justified epoch
+            }
+            else
+            {
+                state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[1]); // still old current
+                state.FinalizedCheckpoint.ShouldBe(oldFinalized); // no new finalized
+            }
+        }
+
         private void RunProcessJustAndFin(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
         {
             RunEpochProcessingWith(beaconStateTransition, timeParameters, state, "process_justification_and_finalization");
