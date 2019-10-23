@@ -73,7 +73,7 @@ To re-generate (not usually needed):
 
 ## Contributions
 
-Donations can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
+Donations (ETH) can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
 
 Help me try and reach the 32 Eth needed to be a validator.
 

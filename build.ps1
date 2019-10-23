@@ -1,5 +1,5 @@
-@('test/Cortex.SimpleSerialize.Tests', 'test/Cortex.BeaconNode.Tests') | % { 
-    dotnet test $_ --verbosity normal
+@('test/Cortex.Cryptography.Tests', 'test/Cortex.BeaconNode.Tests') | % { 
+    dotnet test $_
     if (!$?) { throw 'Tests failed' }
 }
 $v = (dotnet ./tools/gitversion/GitVersion.dll | ConvertFrom-Json)
