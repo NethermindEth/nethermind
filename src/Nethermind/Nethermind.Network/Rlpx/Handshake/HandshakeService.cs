@@ -129,8 +129,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
             byte[] ackData;
-            preEip8Format = false;
-            if (preEip8Format) // what was the difference? shall I really include ephemeral public key in v4?
+            if (preEip8Format)
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
                 AckMessage ackMessage = new AckMessage();
