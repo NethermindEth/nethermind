@@ -151,13 +151,10 @@ namespace Nethermind.Store
             var isZero = balanceChange.IsZero;
             if (isZero)
             {
-                if (releaseSpec.IsEip158Enabled)
+                if (releaseSpec.IsEip158Enabled && account != null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    if (account != null)
-                    {
-                        PushTouch(address, account, releaseSpec, isZero);
-                    }
+                    PushTouch(address, account, releaseSpec, isZero);
                 }
 
                 return;
