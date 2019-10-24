@@ -56,15 +56,6 @@ namespace Nethermind.Store.Test
             provider.Commit(SpuriousDragon.Instance);
             Assert.False(provider.AccountExists(_address1));
         }
-        
-        [Test]
-        public void Eip_158_account_dont_exists_after_zero_value_transfer()
-        {
-            ISnapshotableDb stateDb = new StateDb(new MemDb());
-            StateProvider provider = new StateProvider(stateDb, Substitute.For<IDb>(), Logger);
-            provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
-            provider.AccountExists(_address1).Should().BeFalse();
-        }
 
         [Test]
         public void Eip_158_touch_zero_value_system_account_is_not_deleted()

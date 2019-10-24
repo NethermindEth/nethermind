@@ -21,5 +21,6 @@ namespace Nethermind.Core.Test.Builders
     public partial class Build
     {
         public TransactionBuilder Transaction => new TransactionBuilder();
+        public TransactionBuilder SystemTransaction => new TransactionBuilder(true);
     }
 }
