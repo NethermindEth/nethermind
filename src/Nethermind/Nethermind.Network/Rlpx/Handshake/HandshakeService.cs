@@ -91,28 +91,28 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.AuthPacket = auth;
 
             AuthMessageBase authMessage;
-            bool isOld = false;
+            bool preEip8Format = false;
             byte[] plainText = null;
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
-                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
+                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
             }
             catch (Exception ex)
             {
                 if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
             }
 
-            if (!isOld)
+            if (preEip8Format)
+            {
+                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
+            }
+            else
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
                 byte[] sizeData = auth.Data.Slice(0, 2);
                 (_, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
-            }
-            else
-            {
-                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
             }
 
             var nodeId = authMessage.PublicKey;
@@ -129,7 +129,8 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
             byte[] ackData;
-            if (isOld) // what was the difference? shall I really include ephemeral public key in v4?
+            preEip8Format = false;
+            if (preEip8Format) // what was the difference? shall I really include ephemeral public key in v4?
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
                 AckMessage ackMessage = new AckMessage();
@@ -149,7 +150,8 @@ namespace Nethermind.Network.Rlpx.Handshake
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes);
-            handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+            var data = preEip8Format ? packetData : Bytes.Concat(sizeBytes, packetData);
+            handshake.AckPacket = new Packet(data);
             SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;
         }

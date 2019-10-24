@@ -192,8 +192,6 @@ namespace Nethermind.Network.Rlpx
 
             if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
             context.Channel.Pipeline.Remove(this);
-            if (_logger.IsTrace) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
-            context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
         }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
