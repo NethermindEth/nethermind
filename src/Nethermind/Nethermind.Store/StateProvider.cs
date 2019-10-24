@@ -147,25 +147,20 @@ namespace Nethermind.Store
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
-            Account account = GetThroughCache(address);
-            
-            if (account == null)
-            {
-                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                throw new InvalidOperationException("Updating balance of a non-existing account");
-            }
-            
             var isZero = balanceChange.IsZero;
             if (isZero)
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
+                    Account touched = GetThroughCacheCheckExists(address);
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    PushTouch(address, account, releaseSpec, isZero);
+                    PushTouch(address, touched, releaseSpec, isZero);
                 }
 
                 return;
             }
+
+            Account account = GetThroughCacheCheckExists(address);
 
             if (isSubtracting && account.Balance < balanceChange)
             {
@@ -177,6 +172,18 @@ namespace Nethermind.Store
             Account changedAccount = account.WithChangedBalance(newBalance);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} B {account.Balance} -> {newBalance} ({(isSubtracting ? "-" : "+")}{balanceChange})");
             PushUpdate(address, changedAccount);
+        }
+
+        private Account GetThroughCacheCheckExists(Address address)
+        {
+            Account account = GetThroughCache(address);
+            if (account == null)
+            {
+                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                throw new InvalidOperationException("Updating balance of a non-existing account");
+            }
+
+            return account;
         }
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
