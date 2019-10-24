@@ -148,22 +148,23 @@ namespace Nethermind.Store
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
             Account account = GetThroughCache(address);
+            
+            if (account == null)
+            {
+                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                throw new InvalidOperationException("Updating balance of a non-existing account");
+            }
+            
             var isZero = balanceChange.IsZero;
             if (isZero)
             {
-                if (releaseSpec.IsEip158Enabled && account != null)
+                if (releaseSpec.IsEip158Enabled)
                 {
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
                     PushTouch(address, account, releaseSpec, isZero);
                 }
 
                 return;
-            }
-
-            if (account == null)
-            {
-                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                throw new InvalidOperationException("Updating balance of a non-existing account");
             }
 
             if (isSubtracting && account.Balance < balanceChange)
