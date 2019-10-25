@@ -49,14 +49,21 @@ namespace Nethermind.EthStats.Clients
             if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_webSocketsUrl}]...");
             if (!_webSocketsUrl.StartsWith("wss"))
             {
-                using var httpClient = new HttpClient();
-                var host = _webSocketsUrl.Split("://").Last();
-                var response = await httpClient.GetAsync($"http://{host}");
-                var requestedUrl = response.RequestMessage.RequestUri;
-                if (requestedUrl.Scheme.Equals("https"))
+                try
                 {
-                    _webSocketsUrl = $"wss://{host}";
-                    if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {_webSocketsUrl}");
+                    using var httpClient = new HttpClient();
+                    var host = _webSocketsUrl.Split("://").Last();
+                    var response = await httpClient.GetAsync($"http://{host}");
+                    var requestedUrl = response.RequestMessage.RequestUri;
+                    if (requestedUrl.Scheme.Equals("https"))
+                    {
+                        _webSocketsUrl = $"wss://{host}";
+                        if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {_webSocketsUrl}");
+                    }
+                }
+                catch
+                {
+                    // ignored
                 }
             }
 
