@@ -200,7 +200,10 @@ namespace Nethermind.Network.Rlpx
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
-            pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+            if (session.Direction == ConnectionDirection.Out)
+            {
+                pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+            }
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
             channel.CloseCompletion.ContinueWith(x =>

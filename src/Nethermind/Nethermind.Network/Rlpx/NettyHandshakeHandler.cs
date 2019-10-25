@@ -169,6 +169,11 @@ namespace Nethermind.Network.Rlpx
             FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
             FrameMacProcessor macProcessor = new FrameMacProcessor(_session.RemoteNodeId, _handshake.Secrets);
 
+            if (_role == HandshakeRole.Recipient)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(LengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+            }
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");
