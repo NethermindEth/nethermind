@@ -128,14 +128,16 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
-            byte[] ackData;
+            byte[] data;
             if (preEip8Format)
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
                 AckMessage ackMessage = new AckMessage();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                ackData = _messageSerializationService.Serialize(ackMessage);
+                var ackData = _messageSerializationService.Serialize(ackMessage);
+                
+                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, Array.Empty<byte>());
             }
             else
             {
@@ -143,13 +145,13 @@ namespace Nethermind.Network.Rlpx.Handshake
                 AckEip8Message ackMessage = new AckEip8Message();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                ackData = _messageSerializationService.Serialize(ackMessage);
+                var ackData = _messageSerializationService.Serialize(ackMessage);
+                
+                int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes));
             }
-
-            int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
-            byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-            byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes);
-            var data = preEip8Format ? packetData : Bytes.Concat(sizeBytes, packetData);
+            
             handshake.AckPacket = new Packet(data);
             SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;
