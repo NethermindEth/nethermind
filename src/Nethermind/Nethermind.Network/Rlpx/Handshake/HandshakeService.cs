@@ -60,7 +60,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
-        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake)
+        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake, bool preEip8Format = false)
         {
             handshake.RemoteNodeId = remoteNodeId;
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
@@ -69,21 +69,36 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = Proxy.EcdhSerialized(remoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            AuthEip8Message authMessage = new AuthEip8Message();
-            authMessage.Nonce = handshake.InitiatorNonce;
-            authMessage.PublicKey = _privateKey.PublicKey;
-            authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
+            if (preEip8Format)
+            {
+                AuthMessage authMessage = new AuthMessage();
+                authMessage.Nonce = handshake.InitiatorNonce;
+                authMessage.PublicKey = _privateKey.PublicKey;
+                authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
+                authMessage.IsTokenUsed = false;
+                authMessage.EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes);
+                
+                byte[] authData = _messageSerializationService.Serialize(authMessage);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData, Array.Empty<byte>());
 
-            byte[] authData = _messageSerializationService.Serialize(authMessage);
-            int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
-            byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-            byte[] packetData = _eciesCipher.Encrypt(
-                remoteNodeId,
-                authData,
-                sizeBytes);
+                handshake.AuthPacket = new Packet(packetData);
+                return handshake.AuthPacket;
+            }
+            else
+            {
+                AuthEip8Message authMessage = new AuthEip8Message();
+                authMessage.Nonce = handshake.InitiatorNonce;
+                authMessage.PublicKey = _privateKey.PublicKey;
+                authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
 
-            handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-            return handshake.AuthPacket;
+                byte[] authData = _messageSerializationService.Serialize(authMessage);
+                int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData,sizeBytes);
+
+                handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+                return handshake.AuthPacket;
+            }
         }
 
         public Packet Ack(EncryptionHandshake handshake, Packet auth)
@@ -161,18 +176,18 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             handshake.AckPacket = ack;
 
-            bool isOld = false;
+            bool preEip8Format = false;
             byte[] plainText = null;
             try
             {
-                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
+                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
             }
             catch (Exception ex)
             {
                 if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
             }
 
-            if (isOld)
+            if (preEip8Format)
             {
                 AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plainText);
                 if (_logger.IsTrace) _logger.Trace("Received ACK old");
