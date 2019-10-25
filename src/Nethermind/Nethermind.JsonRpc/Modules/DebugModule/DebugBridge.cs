@@ -87,6 +87,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default);
         }
 
+        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
+        {
+            return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
+        }
+
         public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.TraceBlock(blockHash, gethTraceOptions ?? GethTraceOptions.Default);
