@@ -232,7 +232,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             ephemeralSharedSecret.CopyTo(tempConcat.Slice(0, 32));
             nonceHash.CopyTo(tempConcat.Slice(32, 32));
             Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
-            byte[] token = Keccak.Compute(sharedSecret).Bytes;
+//            byte[] token = Keccak.Compute(sharedSecret).Bytes;
             sharedSecret.CopyTo(tempConcat.Slice(32, 32));
             byte[] aesSecret = Keccak.Compute(tempConcat).Bytes;
             
@@ -242,7 +242,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             
             ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();
-            handshake.Secrets.Token = token;
+//            handshake.Secrets.Token = token;
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
 
