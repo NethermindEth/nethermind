@@ -271,8 +271,6 @@ namespace Nethermind.Secp256k1
         public static byte[] GetPublicKey(byte[] privateKey, bool compressed)
         {
             byte[] publicKey = new byte[64];
-            byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
-
             if (Platform == OsPlatform.Windows
                 ? !Win64Lib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)
                 : !(Platform == OsPlatform.Linux
@@ -282,9 +280,9 @@ namespace Nethermind.Secp256k1
                 return null;
             }
 
+            byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
             uint outputSize = (uint) serializedPublicKey.Length;
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-
             if (Platform == OsPlatform.Windows
                 ? !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
                 : !(Platform == OsPlatform.Linux
@@ -300,7 +298,6 @@ namespace Nethermind.Secp256k1
         public static byte[] SignCompact(byte[] messageHash, byte[] privateKey, out int recoveryId)
         {
             byte[] recoverableSignature = new byte[65];
-            byte[] compactSignature = new byte[64];
             recoveryId = 0;
 
             if (Platform == OsPlatform.Windows
@@ -312,6 +309,7 @@ namespace Nethermind.Secp256k1
                 return null;
             }
 
+            byte[] compactSignature = new byte[64];
             if (Platform == OsPlatform.Windows
                 ? !Win64Lib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
                 : !(Platform == OsPlatform.Linux
@@ -326,10 +324,6 @@ namespace Nethermind.Secp256k1
 
         public static byte[] RecoverKeyFromCompact(byte[] messageHash, byte[] compactSignature, int recoveryId, bool compressed)
         {
-            byte[] publicKey = new byte[64];
-            byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
-            uint outputSize = (uint) serializedPublicKey.Length;
-            uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
             byte[] recoverableSignature = new byte[65];
 
             if (Platform == OsPlatform.Windows
@@ -341,6 +335,7 @@ namespace Nethermind.Secp256k1
                 return null;
             }
 
+            byte[] publicKey = new byte[64];
             if (Platform == OsPlatform.Windows
                 ? !Win64Lib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)
                 : !(Platform == OsPlatform.Linux
@@ -350,6 +345,9 @@ namespace Nethermind.Secp256k1
                 return null;
             }
 
+            uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
+            byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
+            uint outputSize = (uint) serializedPublicKey.Length;
             if (Platform == OsPlatform.Windows
                 ? !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
                 : !(Platform == OsPlatform.Linux
@@ -401,9 +399,10 @@ namespace Nethermind.Secp256k1
 
         public static byte[] EcdhSerialized(byte[] publicKey, byte[] privateKey)
         {
-            byte[] array = ToPublicKeyArray(publicKey, false, false);
+            Span<byte> serializedKey = stackalloc byte[65];
+            ToPublicKeyArray(serializedKey, publicKey);
             byte[] key = new byte[64];
-            PublicKeyParse(key, array);
+            PublicKeyParse(key, serializedKey);
             byte[] result = new byte[32];
             Ecdh(result, key, privateKey);
             return result;
@@ -477,22 +476,15 @@ namespace Nethermind.Secp256k1
             }
         }
 
-        public static byte[] ToPublicKeyArray(byte[] unmanaged, bool compressed = false, bool slicedPrefix = true)
+        private static void ToPublicKeyArray(Span<byte> serializedKey, byte[] unmanaged)
         {
-            // Throw an error if trying to slice prefix off of compressed public key
-            if (compressed && slicedPrefix)
-            {
-                throw new ArgumentException("Should not be slicing the prefix off of a compressed public key, as compressed keys solely include X and Y is derived using the prefix.");
-            }
-
             // Define the public key array
-            Span<byte> publicKey = new byte[64];
-
+            Span<byte> publicKey = stackalloc byte[64];
 
             // Add our uncompressed prefix to our key.
-            byte[] uncompressedPrefixedPublicKey = new byte[65];
+            Span<byte> uncompressedPrefixedPublicKey = stackalloc byte[65];
             uncompressedPrefixedPublicKey[0] = 4;
-            unmanaged.AsSpan().CopyTo(uncompressedPrefixedPublicKey.AsSpan().Slice(1));
+            unmanaged.AsSpan().CopyTo(uncompressedPrefixedPublicKey.Slice(1));
 
             // Parse our public key from the serialized data.
             if (!PublicKeyParse(publicKey, uncompressedPrefixedPublicKey))
@@ -502,23 +494,12 @@ namespace Nethermind.Secp256k1
             }
 
             // Serialize the public key
-            int serializedKeyLength = compressed ? 33 : 65;
-            uint serializedKeyFlags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-            Span<byte> serializedKey = new byte[serializedKeyLength];
+            uint serializedKeyFlags = Secp256K1EcUncompressed;
             if (!PublicKeySerialize(serializedKey, publicKey, serializedKeyFlags))
             {
                 var errMsg = "Unmanaged EC library failed to serialize public key. ";
                 throw new Exception(errMsg);
             }
-
-            // Slice off any prefix.
-            if (slicedPrefix)
-            {
-                serializedKey = serializedKey.Slice(1);
-            }
-
-            // Return it
-            return serializedKey.ToArray();
         }
     }
 }

@@ -172,6 +172,11 @@ namespace Nethermind.Core.Extensions
             return bytes.Length;
         }
 
+        public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
+        {
+            return bytes.AsSpan().WithoutLeadingZeros();
+        }
+        
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             for (int i = 0; i < bytes.Length; i++)

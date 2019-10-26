@@ -42,7 +42,7 @@ namespace Nethermind.Network.Discovery.Serializers
             INodeIdResolver nodeIdResolver)
         {
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _privateKey = privateKeyGenerator.Generate() ?? throw new ArgumentNullException(nameof(_privateKey));
+            _privateKey = privateKeyGenerator.Generate();
             _messageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
             _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
         }
