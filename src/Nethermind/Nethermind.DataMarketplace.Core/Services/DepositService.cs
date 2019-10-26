@@ -115,7 +115,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction);
 
-            return data.AsSpan().ReadEthUInt32LittleEndian();
+            byte[] intBytes = data.Length < 4 ? data : data.Slice(data.Length - 4, 4);
+            return intBytes.AsSpan().ReadEthUInt32LittleEndian();
             
         }
         
