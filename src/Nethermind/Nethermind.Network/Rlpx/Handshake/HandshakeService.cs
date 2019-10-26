@@ -226,14 +226,21 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public static void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)
         {
-            byte[] ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
-            byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
-            byte[] sharedSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, nonceHash)).Bytes;
+            Span<byte> tempConcat = stackalloc byte[64];
+            Span<byte> ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
+            Span<byte> nonceHash = ValueKeccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).BytesAsSpan;
+            ephemeralSharedSecret.CopyTo(tempConcat.Slice(0, 32));
+            nonceHash.CopyTo(tempConcat.Slice(32, 32));
+            Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
             byte[] token = Keccak.Compute(sharedSecret).Bytes;
-            byte[] aesSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, sharedSecret)).Bytes;
-            Array.Clear(sharedSecret, 0, sharedSecret.Length); // TODO: it was passed in the concat for Keccak so not good enough
-            byte[] macSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, aesSecret)).Bytes;
-            Array.Clear(ephemeralSharedSecret, 0, ephemeralSharedSecret.Length); // TODO: it was passed in the concat for Keccak so not good enough
+            sharedSecret.CopyTo(tempConcat.Slice(32, 32));
+            byte[] aesSecret = Keccak.Compute(tempConcat).Bytes;
+            
+            sharedSecret.Clear();
+            aesSecret.CopyTo(tempConcat.Slice(32, 32));
+            byte[] macSecret = Keccak.Compute(tempConcat).Bytes;
+            
+            ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();
             handshake.Secrets.Token = token;
             handshake.Secrets.AesSecret = aesSecret;
