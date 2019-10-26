@@ -27,31 +27,32 @@ namespace Nethermind.Benchmarks.Evm
     [CoreJob(baseline: true)]
     public class Blake2Benchmark
     {
-        private Blake2 _blake2 = new Blake2();
-        private Blake2Optimized _blake2Optimized = new Blake2Optimized();
+        private Blake2Compression _blake2Compression = new Blake2Compression();
 
         private byte[] input = Bytes.FromHexString("0000000148c9bdf267e6096a3ba7ca8485ae67bb2bf894fe72f36e3cf1361d5f3af54fa5d182e6ad7f520e511f6c3e2b8c68059b6bbd41fbabd9831f79217e1319cde05b61626300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000300000000000000000000000000000001");
 
         [GlobalSetup]
         public void Setup()
         {
-            if (!Bytes.AreEqual(Blake2FirstVersion(), Blake2OptimizedVersion()))
+            if (!Bytes.AreEqual(Current(), Improved()))
             {
                 throw new InvalidBenchmarkDeclarationException("blakes");
             }
         }
 
         [Benchmark(Baseline = true)]
-        public byte[] Blake2FirstVersion()
-        {
-            return _blake2.Compress(input);
-        }
-
-        [Benchmark]
-        public Span<byte> Blake2OptimizedVersion()
+        public Span<byte> Current()
         {
             Span<byte> result = new byte[64];
-            _blake2Optimized.Compress(input, result);
+            _blake2Compression.Compress(input, result);
+            return result;
+        }
+        
+        [Benchmark]
+        public Span<byte> Improved()
+        {
+            Span<byte> result = new byte[64];
+            _blake2Compression.Compress(input, result);
             return result;
         }
     }

@@ -1340,52 +1340,6 @@ namespace Nethermind.Core.Encoding
                 return result;
             }
 
-            public uint DecodeUInt()
-            {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0 : bytes.ToUInt32();
-            }
-
-            public long DecodeLong()
-            {
-                int prefix = ReadByte();
-                if (prefix < 128)
-                {
-                    return prefix;
-                }
-
-                if (prefix == 128)
-                {
-                    return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 8)
-                {
-                    throw new RlpException($"Unexpected length of long value: {length}");
-                }
-
-                long result = 0;
-                for (int i = 8; i > 0; i--)
-                {
-                    result = result << 8;
-                    if (i <= length)
-                    {
-                        result = result | Data[Position + length - i];
-                    }
-                }
-
-                Position += length;
-
-                return result;
-            }
-
-            public ulong DecodeUlong()
-            {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0L : bytes.ToUInt64();
-            }
-            
             public byte[] DecodeByteArray()
             {
                 return DecodeByteArraySpan().ToArray();

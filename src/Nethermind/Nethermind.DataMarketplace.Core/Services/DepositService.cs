@@ -115,7 +115,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction);
 
-            return data.ToUInt32();
+            return data.AsSpan().ReadEthUInt32LittleEndian();
             
         }
         
@@ -124,7 +124,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction, blockNumber);
 
-            return data.ToUInt32();
+            return data.AsSpan().ReadEthUInt32LittleEndian();
         }
 
         private async Task<Transaction> GetTransactionAsync(Address onBehalfOf, Keccak depositId)

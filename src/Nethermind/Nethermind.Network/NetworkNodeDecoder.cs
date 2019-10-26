@@ -37,7 +37,7 @@ namespace Nethermind.Network
 
             PublicKey publicKey = new PublicKey(rlpStream.DecodeByteArray());
             string ip = rlpStream.DecodeString();
-            int port = rlpStream.DecodeByteArraySpan().ToInt32();
+            int port = rlpStream.DecodeByteArraySpan().ReadEthInt32();
             rlpStream.SkipItem();
             long reputation = 0L;
             try

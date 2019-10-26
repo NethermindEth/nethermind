@@ -29,7 +29,7 @@ namespace Nethermind.Core
     /// <summary>
     ///     Code adapted from pantheon (https://github.com/PegaSysEng/pantheon)
     /// </summary>
-    public class Blake2Optimized
+    public class Blake2Compression
     {
         private static readonly byte[][] Precomputed =
         {
