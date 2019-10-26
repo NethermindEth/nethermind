@@ -16,12 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Diagnostics;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    // TODO: better representation (just byte array)
     public class HexPrefix
     {
         [DebuggerStepThrough]
@@ -31,8 +31,8 @@ namespace Nethermind.Store
             Path = path;
         }
 
-        public byte[] Path { get; set; }
-        public bool IsLeaf { get; set; }
+        public byte[] Path { get; private set; }
+        public bool IsLeaf { get; }
         public bool IsExtension => !IsLeaf;
 
         public byte[] ToBytes()
@@ -55,7 +55,7 @@ namespace Nethermind.Store
             return output;
         }
 
-        public static HexPrefix FromBytes(byte[] bytes)
+        public static HexPrefix FromBytes(Span<byte> bytes)
         {
             HexPrefix hexPrefix = new HexPrefix(bytes[0] >= 32);
             bool isEven = (bytes[0] & 16) == 0;

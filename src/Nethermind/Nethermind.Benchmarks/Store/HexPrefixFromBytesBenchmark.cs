@@ -51,7 +51,7 @@ namespace Nethermind.Benchmarks.Store
             return HexPrefix.FromBytes(_a);
         }
 
-        [Benchmark]
+        [Benchmark(Baseline = true)]
         public HexPrefix Current()
         {
             return HexPrefix.FromBytes(_a);

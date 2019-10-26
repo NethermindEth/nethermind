@@ -191,7 +191,7 @@ namespace Nethermind.Store
                 }
                 else if (numberOfItems == 2)
                 {
-                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArray());
+                    HexPrefix key = HexPrefix.FromBytes(_rlpStream.DecodeByteArraySpan());
                     bool isExtension = key.IsExtension;
                     if (isExtension)
                     {

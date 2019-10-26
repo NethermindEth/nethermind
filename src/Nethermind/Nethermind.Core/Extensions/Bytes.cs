@@ -172,19 +172,6 @@ namespace Nethermind.Core.Extensions
             return bytes.Length;
         }
 
-        public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
-        {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return bytes.AsSpan().Slice(i, bytes.Length - i);
-                }
-            }
-
-            return new byte[] {0};
-        }
-
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
@@ -204,15 +191,6 @@ namespace Nethermind.Core.Extensions
             result[0] = prefix;
             Buffer.BlockCopy(bytes, 0, result, 1, bytes.Length);
             return result;
-        }
-
-        public static byte[] Concat(byte prefix, byte[] part1, byte[] part2)
-        {
-            byte[] output = new byte[1 + part1.Length + part2.Length];
-            output[0] = prefix;
-            Buffer.BlockCopy(part1, 0, output, 1, part1.Length);
-            Buffer.BlockCopy(part2, 0, output, 1 + part1.Length, part2.Length);
-            return output;
         }
 
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
@@ -285,7 +263,7 @@ namespace Nethermind.Core.Extensions
         public static byte[] Concat(byte[] bytes, byte suffix)
         {
             byte[] result = new byte[bytes.Length + 1];
-            result[result.Length - 1] = suffix;
+            result[^1] = suffix;
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;
         }
@@ -466,7 +444,6 @@ namespace Nethermind.Core.Extensions
 
         private static byte Reverse(byte b)
         {
-//            return BinaryPrimitives.ReverseEndianness(b);
             b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);
             b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);	
             b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);	
@@ -507,18 +484,6 @@ namespace Nethermind.Core.Extensions
         {
             byte[] inverted = new byte[32];
             int startIndex = 32 - bytes.Length;
-            for (int i = startIndex; i < inverted.Length; i++)
-            {
-                inverted[i] = Reverse(bytes[i - startIndex]);
-            }
-
-            return new BitArray(inverted);
-        }
-
-        public static BitArray ToBigEndianBitArray2048(this byte[] bytes)
-        {
-            byte[] inverted = new byte[256];
-            int startIndex = 256 - bytes.Length;
             for (int i = startIndex; i < inverted.Length; i++)
             {
                 inverted[i] = Reverse(bytes[i - startIndex]);
