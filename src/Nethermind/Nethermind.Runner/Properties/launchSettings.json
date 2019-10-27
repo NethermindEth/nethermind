@@ -36,6 +36,10 @@
     "xDai": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\xDai.cfg --baseDbPath C:\\nethermind_db"
+    },
+    "Volta": {
+      "commandName": "Project",
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\Volta.cfg --baseDbPath C:\\nethermind_db"  
     }
   }
 }
