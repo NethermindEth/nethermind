@@ -96,18 +96,6 @@ namespace Cortex.Containers
         }
 
         /// <summary>
-        /// Return the sequence of active validator indices at ``epoch``.
-        /// </summary>
-        public IList<ValidatorIndex> GetActiveValidatorIndices(Epoch epoch)
-        {
-            return Validators
-                .Select((validator, index) => new { validator, index })
-                .Where(x => x.validator.IsActiveValidator(epoch))
-                .Select(x => (ValidatorIndex)(ulong)x.index)
-                .ToList();
-        }
-
-        /// <summary>
         /// Increase the validator balance at index 'index' by 'delta'.
         /// </summary>
         public void IncreaseBalanceForValidator(ValidatorIndex index, Gwei amount)

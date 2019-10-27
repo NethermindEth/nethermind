@@ -1,29 +1,47 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace Cortex.Containers
 {
     public class BeaconBlockBody
     {
-        public BeaconBlockBody()
+        private readonly List<Deposit> _deposits;
+
+        public BeaconBlockBody(
+            BlsSignature randaoReveal,
+            Eth1Data eth1Data,
+            Bytes32 graffiti,
+            IEnumerable<Deposit> deposits)
         {
-            Deposits = new List<Deposit>();
-            Eth1Data = new Eth1Data(Hash32.Zero, 0);
-            Graffiti = new Bytes32();
-            RandaoReveal = new BlsSignature();
+            RandaoReveal = randaoReveal;
+            Eth1Data = eth1Data;
+            Graffiti = graffiti;
+            _deposits = new List<Deposit>(deposits);
         }
 
-        public BeaconBlockBody(BlsSignature randaoReveal)
+        public BeaconBlockBody()
         {
-            Deposits = new List<Deposit>();
+            RandaoReveal = new BlsSignature();
             Eth1Data = new Eth1Data(Hash32.Zero, 0);
             Graffiti = new Bytes32();
+            _deposits = new List<Deposit>();
+        }
+
+        public IReadOnlyList<Deposit> Deposits { get { return _deposits; } }
+        public Eth1Data Eth1Data { get; }
+        public Bytes32 Graffiti { get; }
+        public BlsSignature RandaoReveal { get; private set; }
+
+        public void AddAttestations(Attestation attestation)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SetRandaoReveal(BlsSignature randaoReveal)
+        {
             RandaoReveal = randaoReveal;
         }
 
-        public IList<Deposit> Deposits { get; }
-        public Eth1Data Eth1Data { get; }
-        public Bytes32 Graffiti { get; }
-        public BlsSignature RandaoReveal { get; }
         // Operations
 
         /*

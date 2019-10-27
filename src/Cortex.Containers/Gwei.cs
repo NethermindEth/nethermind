@@ -11,7 +11,7 @@ namespace Cortex.Containers
             _value = value;
         }
 
-        public static Gwei Zero { get; } = new Gwei(0);
+        public static Gwei Zero => new Gwei(0);
 
         public static explicit operator Gwei(ulong value) => new Gwei(value);
 

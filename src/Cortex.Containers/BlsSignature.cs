@@ -23,6 +23,14 @@ namespace Cortex.Containers
             _bytes = span.ToArray();
         }
 
+        /// <summary>
+        /// Creates a deep copy of the object.
+        /// </summary>
+        public static BlsSignature Clone(BlsSignature other)
+        {
+            return new BlsSignature(other.AsSpan());
+        }
+
         public static explicit operator BlsSignature(byte[] bytes) => new BlsSignature(bytes);
 
         public static explicit operator BlsSignature(Span<byte> span) => new BlsSignature(span);

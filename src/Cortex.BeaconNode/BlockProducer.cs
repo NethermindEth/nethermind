@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using Cortex.Containers;
 
 namespace Cortex.BeaconNode
@@ -22,7 +23,11 @@ namespace Cortex.BeaconNode
             // process outstanding slots for state
             // get parent header (state root, signature, slot, parent root, body root)
 
-            var block = new BeaconBlock(slot, randaoReveal);
+            var body = new BeaconBlockBody(randaoReveal,
+                new Eth1Data(Hash32.Zero, 0), 
+                new Bytes32(), 
+                Array.Empty<Deposit>());
+            var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, new BlsSignature());
 
             // new block = slot, parent root,
             //  signature = null

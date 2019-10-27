@@ -5,10 +5,21 @@ namespace Cortex.Containers
     public class Crosslink : IEquatable<Crosslink>
     {
         public Crosslink(Shard shard)
+            : this(shard, Hash32.Zero, Epoch.Zero, Epoch.Zero, Hash32.Zero)
+        {
+        }
+
+        public Crosslink(Shard shard,
+            Hash32 parentRoot,
+            Epoch startEpoch,
+            Epoch endEpoch,
+            Hash32 dataRoot)
         {
             Shard = shard;
-            DataRoot = Hash32.Zero;
-            ParentRoot = Hash32.Zero;
+            ParentRoot = parentRoot;
+            StartEpoch = startEpoch;
+            EndEpoch = endEpoch;
+            DataRoot = dataRoot;
         }
 
         public Hash32 DataRoot { get; }
@@ -35,6 +46,21 @@ namespace Cortex.Containers
         public override int GetHashCode()
         {
             return HashCode.Combine(DataRoot, EndEpoch, ParentRoot, Shard, StartEpoch);
+        }
+
+        /// <summary>
+        /// Creates a deep copy of the object.
+        /// </summary>
+        public static Crosslink Clone(Crosslink other)
+        {
+            var clone = new Crosslink(
+                other.Shard,
+                Hash32.Clone(other.ParentRoot),
+                other.StartEpoch,
+                other.EndEpoch,
+                Hash32.Clone(other.DataRoot)
+                );
+            return clone;
         }
     }
 }

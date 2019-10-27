@@ -13,6 +13,7 @@ namespace Cortex.BeaconNode
     public class BeaconChain
     {
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly ICryptographyService _blsSignatureService;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
@@ -32,11 +33,13 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             ICryptographyService blsSignatureService,
-            BeaconChainUtility beaconChainUtility)
+            BeaconChainUtility beaconChainUtility,
+            BeaconStateAccessor beaconStateAccessor)
         {
             _logger = logger;
             _blsSignatureService = blsSignatureService;
             _beaconChainUtility = beaconChainUtility;
+            _beaconStateAccessor = beaconStateAccessor;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
@@ -101,7 +104,7 @@ namespace Cortex.BeaconNode
             {
                 return false;
             }
-            var activeValidatorIndices = state.GetActiveValidatorIndices(initialValues.GenesisEpoch);
+            var activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
             if (activeValidatorIndices.Count < miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;

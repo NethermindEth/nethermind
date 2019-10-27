@@ -11,7 +11,7 @@ namespace Cortex.Containers
             _value = value;
         }
 
-        public static Slot Zero { get; } = new Slot(0);
+        public static Slot Zero => new Slot(0);
 
         public static explicit operator Slot(ulong value) => new Slot(value);
 

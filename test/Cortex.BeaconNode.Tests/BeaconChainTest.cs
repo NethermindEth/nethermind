@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -40,10 +41,13 @@ namespace Cortex.BeaconNode.Tests
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, timeParameterOptions, cryptographyService);
-
+            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions, 
+                cryptographyService);
+            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
+                cryptographyService, beaconChainUtility);
             var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), chainConstants, miscellaneousParameterOptions,
-                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, cryptographyService, beaconChainUtility);
+                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, 
+                cryptographyService, beaconChainUtility, beaconStateAccessor);
 
             // Act
             var eth1BlockHash = Hash32.Zero;

@@ -47,7 +47,16 @@ namespace Cortex.BeaconNode
         public void ProcessEpoch(BeaconState state)
         {
             _logger.LogDebug(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
-            throw new NotImplementedException();
+            ProcessJustificationAndFinalization(state);
+            ProcessCrosslinks(state);
+
+            // TODO:
+            // ProcessRewardsAndPenalties(state);
+            // ProcessRegistryUpdates(state);
+            // ProcessSlashings(state);
+            // ProcessFinalUpdates(state);
+
+            // throw new NotImplementedException();
         }
 
         public void ProcessJustificationAndFinalization(BeaconState state)
@@ -138,12 +147,17 @@ namespace Cortex.BeaconNode
             state.SetBlockRoot(previousRootIndex, previousBlockRoot);
         }
 
+        public void StateTransition(BeaconState state, BeaconBlock block)
+        {
+            throw new NotImplementedException();
+        }
+
         public void ProcessSlots(BeaconState state, Slot slot)
         {
             _logger.LogDebug(Event.ProcessSlots, "Process slots to {Slot} for state {BeaconState}", slot, state);
-            if (slot > state.Slot)
+            if (state.Slot > slot)
             {
-                throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process up to should not exceed state slot of {state.Slot}");
+                throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");
             }
 
             while (state.Slot < slot)

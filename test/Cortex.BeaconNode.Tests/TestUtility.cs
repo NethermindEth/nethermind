@@ -85,5 +85,10 @@ namespace Cortex.BeaconNode.Tests
             b.CopyTo(combined.Slice(32));
             return _hashAlgorithm.ComputeHash(combined.ToArray());
         }
+
+        internal static BlsSignature BlsAggregateSignatures(List<BlsSignature> signatures)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

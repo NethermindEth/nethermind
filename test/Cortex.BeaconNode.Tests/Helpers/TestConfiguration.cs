@@ -2,7 +2,7 @@
 using Cortex.Containers;
 using Microsoft.Extensions.Options;
 
-namespace Cortex.BeaconNode.Tests
+namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestConfiguration
     {
@@ -37,9 +37,11 @@ namespace Cortex.BeaconNode.Tests
             });
             timeParameterOptions = TestOptionsMonitor.Create(new TimeParameters()
             {
+                MinimumAttestationInclusionDelay = new Slot(1),
                 SlotsPerEpoch = new Slot(8),
                 MinimumSeedLookahead = new Epoch(1),
-                SlotsPerHistoricalRoot = new Slot(64)
+                SlotsPerHistoricalRoot = new Slot(64),
+                MaximumEpochsPerCrosslink = new Epoch(4)
             });
             stateListLengthOptions = TestOptionsMonitor.Create(new StateListLengths()
             {

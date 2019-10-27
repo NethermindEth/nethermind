@@ -25,6 +25,14 @@ namespace Cortex.Containers
 
         public static Hash32 Zero { get; } = new Hash32();
 
+        /// <summary>
+        /// Creates a deep copy of the object.
+        /// </summary>
+        public static Hash32 Clone(Hash32 other)
+        {
+            return new Hash32(other.AsSpan());
+        }
+
         public static explicit operator Hash32(byte[] bytes) => new Hash32(bytes);
 
         public static explicit operator Hash32(Span<byte> span) => new Hash32(span);

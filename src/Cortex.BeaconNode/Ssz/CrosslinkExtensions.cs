@@ -7,6 +7,12 @@ namespace Cortex.BeaconNode.Ssz
 {
     public static class CrosslinkExtensions
     {
+        public static Hash32 HashTreeRoot(this Crosslink item)
+        {
+            var tree = new SszTree(item.ToSszContainer());
+            return new Hash32(tree.HashTreeRoot());
+        }
+
         public static SszContainer ToSszContainer(this Crosslink item)
         {
             return new SszContainer(GetValues(item));

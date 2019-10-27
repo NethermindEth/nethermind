@@ -11,6 +11,8 @@ namespace Cortex.Containers
             _value = value;
         }
 
+        public static ValidatorIndex None => new ValidatorIndex(ulong.MaxValue);
+
         public static explicit operator ulong(ValidatorIndex slot) => slot._value;
 
         public static explicit operator ValidatorIndex(ulong value) => new ValidatorIndex(value);

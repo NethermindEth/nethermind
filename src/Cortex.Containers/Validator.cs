@@ -48,14 +48,5 @@
         {
             ActivationEligibilityEpoch = activationEligibilityEpoch;
         }
-
-        /// <summary>
-        /// Check if ``validator`` is active.
-        /// </summary>
-        internal bool IsActiveValidator(Epoch epoch)
-        {
-            return ActivationEpoch <= epoch
-                && epoch < ExitEpoch;
-        }
     }
 }

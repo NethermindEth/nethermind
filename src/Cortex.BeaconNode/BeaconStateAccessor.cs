@@ -33,12 +33,46 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Return the sequence of active validator indices at ``epoch``.
+        /// </summary>
+        public IList<ValidatorIndex> GetActiveValidatorIndices(BeaconState state, Epoch epoch)
+        {
+            return state.Validators
+                .Select((validator, index) => new { validator, index })
+                .Where(x => _beaconChainUtility.IsActiveValidator(x.validator, epoch))
+                .Select(x => (ValidatorIndex)(ulong)x.index)
+                .ToList();
+        }
+
+        /// <summary>
         /// Return the set of attesting indices corresponding to ``data`` and ``bits``.
         /// </summary>
         public IEnumerable<ValidatorIndex> GetAttestingIndices(BeaconState state, AttestationData data, BitArray bits)
         {
             var committee = GetCrosslinkCommittee(state, data.Target.Epoch, data.Crosslink.Shard);
             return committee.Where((x, index) => bits[index]);
+        }
+
+        /// <summary>
+        /// Return the beacon proposer index at the current slot.
+        /// </summary>
+        public ValidatorIndex GetBeaconProposerIndex(BeaconState state)
+        {
+            var epoch = GetCurrentEpoch(state);
+
+            var seedBytes = new Span<byte>(new byte[40]);
+            var initialSeed = GetSeed(state, epoch, DomainType.BeaconProposer);
+            initialSeed.AsSpan().CopyTo(seedBytes);
+            BitConverter.TryWriteBytes(seedBytes.Slice(32), (ulong)state.Slot);
+            if (!BitConverter.IsLittleEndian)
+            {
+                seedBytes.Slice(32).Reverse();
+            }
+            var seed = _cryptographyService.Hash(seedBytes);
+
+            var indices = GetActiveValidatorIndices(state, epoch);
+            var proposerIndex = _beaconChainUtility.ComputeProposerIndex(state, indices, seed);
+            return proposerIndex;
         }
 
         /// <summary>
@@ -69,7 +103,7 @@ namespace Cortex.BeaconNode
             var timeParameters = _timeParameterOptions.CurrentValue;
 
             var shardsPerEpoch = (ulong)miscellaneousParameters.ShardCount / (ulong)timeParameters.SlotsPerEpoch;
-            var activeValidators = (ulong)state.GetActiveValidatorIndices(epoch).Count;
+            var activeValidators = (ulong)GetActiveValidatorIndices(state, epoch).Count;
             var availableValidatorCommittees = (activeValidators / (ulong)timeParameters.SlotsPerEpoch) / miscellaneousParameters.TargetCommitteeSize;
 
             var committeesPerSlot = Math.Max(1, Math.Min(shardsPerEpoch, availableValidatorCommittees));
@@ -83,7 +117,7 @@ namespace Cortex.BeaconNode
         {
             var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
 
-            var indices = state.GetActiveValidatorIndices(epoch);
+            var indices = GetActiveValidatorIndices(state, epoch);
             var seed = GetSeed(state, epoch, DomainType.BeaconAttester);
             var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
             var committeeCount = GetCommitteeCount(state, epoch);
@@ -97,6 +131,34 @@ namespace Cortex.BeaconNode
         public Epoch GetCurrentEpoch(BeaconState state)
         {
             return _beaconChainUtility.ComputeEpochOfSlot(state.Slot);
+        }
+
+        /// <summary>
+        /// Return the signature domain (fork version concatenated with domain type) of a message.
+        /// </summary>
+        public Domain GetDomain(BeaconState state, DomainType domainType, Epoch messageEpoch)
+        {
+            Epoch epoch;
+            if (messageEpoch == Epoch.None)
+            {
+                epoch = GetCurrentEpoch(state);
+            }
+            else
+            {
+                epoch = messageEpoch;
+            }
+
+            ForkVersion forkVersion;
+            if (epoch < state.Fork.Epoch)
+            {
+                forkVersion = state.Fork.PreviousVersion;
+            }
+            else
+            {
+                forkVersion = state.Fork.CurrentVersion;
+            }
+
+            return _beaconChainUtility.ComputeDomain(domainType, forkVersion);
         }
 
         /// <summary>
@@ -188,7 +250,7 @@ namespace Cortex.BeaconNode
         public Gwei GetTotalActiveBalance(BeaconState state)
         {
             var epoch = GetPreviousEpoch(state);
-            var validatorIndices = state.GetActiveValidatorIndices(epoch);
+            var validatorIndices = GetActiveValidatorIndices(state, epoch);
             return GetTotalBalance(state, validatorIndices);
         }
 

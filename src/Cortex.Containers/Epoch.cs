@@ -11,9 +11,18 @@ namespace Cortex.Containers
             _value = value;
         }
 
+        public static Epoch None => new Epoch(ulong.MaxValue);
+
+        public static Epoch Zero => new Epoch(0);
+
         public static explicit operator Epoch(ulong value) => new Epoch(value);
 
         public static explicit operator ulong(Epoch slot) => slot._value;
+
+        public static Epoch Min(Epoch val1, Epoch val2)
+        {
+            return new Epoch(Math.Min(val1._value, val2._value));
+        }
 
         public static Epoch operator -(Epoch left, Epoch right)
         {
