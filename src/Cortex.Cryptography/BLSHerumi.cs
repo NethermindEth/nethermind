@@ -15,6 +15,26 @@ namespace Cortex.Cryptography
 
         public BLSHerumi(BLSParameters parameters)
         {
+            KeySizeValue = PrivateKeyLength * 8;
+            ImportParameters(parameters);
+        }
+
+        /// <inheritdoc />
+        public override string CurveName => "BLS12381";
+
+        // Not sure if this is correct, ETH2.0 uses a custom function for hash to G2.
+        /// <inheritdoc />
+        public override string HashToPointName => "SSWU-RO-";
+
+        /// <inheritdoc />
+        public override BlsScheme Scheme => BlsScheme.Basic;
+
+        /// <inheritdoc />
+        public override BlsVariant Variant => BlsVariant.MinimalPublicKeySize;
+
+        /// <inheritdoc />
+        public override void ImportParameters(BLSParameters parameters)
+        {
             if (parameters.PrivateKey != null && parameters.PrivateKey.Length != PrivateKeyLength)
             {
                 throw new ArgumentOutOfRangeException(nameof(parameters.PrivateKey), parameters.PrivateKey.Length, $"Private key must be {PrivateKeyLength} bytes long.");
@@ -24,12 +44,74 @@ namespace Cortex.Cryptography
                 throw new ArgumentOutOfRangeException(nameof(parameters.PublicKey), parameters.PublicKey.Length, $"Public key must be {PublicKeyLength} bytes long.");
             }
 
+            if (parameters.InputKeyMaterial != null)
+            {
+                throw new NotSupportedException("BLS input key material not supported.");
+            }
+
+            if (parameters.Variant != BlsVariant.Unknown
+                && parameters.Variant != BlsVariant.MinimalPublicKeySize)
+            {
+                throw new NotSupportedException($"BLS variant {parameters.Variant} not supported.");
+            }
+
+            if (parameters.Scheme != BlsScheme.Unknown
+               && parameters.Scheme != BlsScheme.Basic)
+            {
+                throw new NotSupportedException($"BLS scheme {parameters.Scheme} not supported.");
+            }
+
             // TODO: If both are null, generate random key??
 
             _privateKey = parameters.PrivateKey?.AsSpan().ToArray();
             _publicKey = parameters.PublicKey?.AsSpan().ToArray();
         }
 
+        /// <inheritdoc />
+        public override bool TryAggregate(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten)
+        {
+            // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
+            if (signatures.Length % SignatureLength != 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(signatures), signatures.Length, $"Signature data must be a multiple of the signature length {SignatureLength}.");
+            }
+            if (destination.Length < SignatureLength)
+            {
+                bytesWritten = 0;
+                return false;
+            }
+
+            EnsureInitialised();
+
+            Bls384Interop.BlsSignature aggregateBlsSignature = default;
+            for (var index = 0; index < signatures.Length; index += SignatureLength)
+            {
+                var signatureBytesRead = Bls384Interop.blsSignatureDeserialize(out var blsSignature, signatures.Slice(index, SignatureLength).ToArray(), SignatureLength);
+                if (signatureBytesRead != SignatureLength)
+                {
+                    throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
+                }
+                if (index == 0)
+                {
+                    aggregateBlsSignature = blsSignature;
+                }
+                else
+                {
+                    Bls384Interop.blsSignatureAdd(ref aggregateBlsSignature, blsSignature);
+                }
+            }
+
+            var buffer = new byte[SignatureLength];
+            bytesWritten = Bls384Interop.blsSignatureSerialize(buffer, buffer.Length, aggregateBlsSignature);
+            if (bytesWritten != buffer.Length)
+            {
+                throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
+            }
+            buffer.CopyTo(destination);
+            return true;
+        }
+
+        /// <inheritdoc />
         public override bool TryExportBLSPrivateKey(Span<byte> desination, out int bytesWritten)
         {
             if (_privateKey == null)
@@ -46,6 +128,7 @@ namespace Cortex.Cryptography
             return true;
         }
 
+        /// <inheritdoc />
         public override bool TryExportBLSPublicKey(Span<byte> desination, out int bytesWritten)
         {
             EnsurePublicKey();
@@ -63,7 +146,8 @@ namespace Cortex.Cryptography
             return true;
         }
 
-        public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten)
+        /*
+        public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, byte[]? domain = null)
         {
             if (destination.Length < SignatureLength)
             {
@@ -97,8 +181,10 @@ namespace Cortex.Cryptography
             buffer.CopyTo(destination);
             return true;
         }
+        */
 
-        public override bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten)
+        /// <inheritdoc />
+        public override bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, byte[]? domain = null)
         {
             // NOTE: Should be based on the hash algorithm
             //if (hash.Length != HashLength)
@@ -138,7 +224,15 @@ namespace Cortex.Cryptography
             return true;
         }
 
-        public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature)
+        /// <inheritdoc />
+        public override bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> signature, byte[]? domain = null)
+        {
+            // This is going to ignore the public (if any) and verify the provided public keys.
+            throw new NotImplementedException();
+        }
+
+        /*
+        public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, byte[]? domain = null)
         {
             if (signature.Length != SignatureLength)
             {
@@ -169,8 +263,10 @@ namespace Cortex.Cryptography
 
             return (result == 1);
         }
+        */
 
-        public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature)
+        /// <inheritdoc />
+        public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, byte[]? domain = null)
         {
             if (signature.Length != SignatureLength)
             {

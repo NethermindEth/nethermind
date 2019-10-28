@@ -88,6 +88,10 @@ namespace Cortex.Cryptography
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSign(out BlsSignature sig, BlsSecretKey sec, byte[] m, int size);
 
+        //BLS_DLL_API void blsSignatureAdd(blsSignature* sig, const blsSignature* rhs);
+        [DllImport(@"bls384_256.dll")]
+        public static extern void blsSignatureAdd(ref BlsSignature sig, BlsSignature rhs);
+
         //BLS_DLL_API mclSize blsSignatureDeserialize(blsSignature* sig, const void* buf, mclSize bufSize);
         [DllImport(@"bls384_256.dll")]
         public static extern int blsSignatureDeserialize(out BlsSignature sig, byte[] buf, int bufSize);

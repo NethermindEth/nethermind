@@ -26,6 +26,7 @@ namespace Cortex.BeaconNode
             var body = new BeaconBlockBody(randaoReveal,
                 new Eth1Data(Hash32.Zero, 0), 
                 new Bytes32(), 
+                Array.Empty<Attestation>(),
                 Array.Empty<Deposit>());
             var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, new BlsSignature());
 

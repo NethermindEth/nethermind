@@ -24,7 +24,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 0,
                 numberOfValidators,
                 new Eth1Data(depositRoot, numberOfValidators),
-                new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(maxOperationsPerBlock)),
+                new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock)),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
                 chainConstants.JustificationBitsLength,

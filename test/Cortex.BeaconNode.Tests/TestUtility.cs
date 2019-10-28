@@ -24,6 +24,20 @@ namespace Cortex.BeaconNode.Tests
 
         public static Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
 
+        public static BlsSignature BlsAggregateSignatures(IList<BlsSignature> signatures)
+        {
+            var signaturesSpan = new Span<byte>(new byte[signatures.Count * 96]);
+            for (var index = 0; index < signatures.Count; index++)
+            {
+                signatures[index].AsSpan().CopyTo(signaturesSpan.Slice(index * 96));
+            }
+            var aggregateSignatureSpan = new Span<byte>(new byte[96]);
+            using var signingAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
+            var success = signingAlgorithm.TryAggregate(signaturesSpan, aggregateSignatureSpan, out var bytesWritten);
+            var aggregateSignature = new BlsSignature(aggregateSignatureSpan);
+            return aggregateSignature;
+        }
+
         public static BlsSignature BlsSign(Hash32 messageHash, byte[] privateKey, Domain domain)
         {
             var parameters = new BLSParameters() { PrivateKey = privateKey };
@@ -84,11 +98,6 @@ namespace Cortex.BeaconNode.Tests
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(32));
             return _hashAlgorithm.ComputeHash(combined.ToArray());
-        }
-
-        internal static BlsSignature BlsAggregateSignatures(List<BlsSignature> signatures)
-        {
-            throw new NotImplementedException();
         }
     }
 }

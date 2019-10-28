@@ -1,21 +1,23 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
 namespace Cortex.Containers
 {
     public class BeaconBlockBody
     {
+        private readonly List<Attestation> _attestations;
         private readonly List<Deposit> _deposits;
 
         public BeaconBlockBody(
             BlsSignature randaoReveal,
             Eth1Data eth1Data,
             Bytes32 graffiti,
+            IEnumerable<Attestation> attestations,
             IEnumerable<Deposit> deposits)
         {
             RandaoReveal = randaoReveal;
             Eth1Data = eth1Data;
             Graffiti = graffiti;
+            _attestations = new List<Attestation>(attestations);
             _deposits = new List<Deposit>(deposits);
         }
 
@@ -24,9 +26,11 @@ namespace Cortex.Containers
             RandaoReveal = new BlsSignature();
             Eth1Data = new Eth1Data(Hash32.Zero, 0);
             Graffiti = new Bytes32();
+            _attestations = new List<Attestation>();
             _deposits = new List<Deposit>();
         }
 
+        public IReadOnlyList<Attestation> Attestations { get { return _attestations; } }
         public IReadOnlyList<Deposit> Deposits { get { return _deposits; } }
         public Eth1Data Eth1Data { get; }
         public Bytes32 Graffiti { get; }
@@ -34,7 +38,7 @@ namespace Cortex.Containers
 
         public void AddAttestations(Attestation attestation)
         {
-            throw new NotImplementedException();
+            _attestations.Add(attestation);
         }
 
         public void SetRandaoReveal(BlsSignature randaoReveal)
@@ -49,7 +53,6 @@ namespace Cortex.Containers
 
         public IList<AttesterSlashing> AttestersSlashings { get; }
 
-        public IList<Attestation> Attestations { get; }
         */
         /*
         public IList<VoluntaryExit> VoluntaryExits { get; }

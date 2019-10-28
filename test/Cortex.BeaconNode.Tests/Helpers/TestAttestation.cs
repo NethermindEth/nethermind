@@ -23,7 +23,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             block.SetSlot(slot);
             block.Body.AddAttestations(attestation);
             beaconStateTransition.ProcessSlots(state, block.Slot);
-            TestBlock.SignBlock(state, block, ValidatorIndex.None, timeParameters, maxOperationsPerBlock, beaconChainUtility, beaconStateAccessor);
+            TestBlock.SignBlock(state, block, ValidatorIndex.None, miscellaneousParameters, timeParameters, maxOperationsPerBlock, beaconChainUtility, beaconStateAccessor);
             beaconStateTransition.StateTransition(state, block);
         }
 
@@ -87,7 +87,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
 
             return TestUtility.BlsAggregateSignatures(signatures);
-\        }
+        }
 
         public static void SignAttestation(BeaconState state, Attestation attestation,
                     TimeParameters timeParameters,

@@ -59,7 +59,7 @@ namespace Cortex.BeaconNode
             });
             services.Configure<MaxOperationsPerBlock>(x =>
             {
-                x.MaximumDeposits = configuration.GetValue<ulong>("MAX_ATTESTATIONS");
+                x.MaximumAttestations = configuration.GetValue<ulong>("MAX_ATTESTATIONS");
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
             });
         }

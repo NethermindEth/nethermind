@@ -29,7 +29,13 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var emptyBlock = new BeaconBlock(slot,
                 previousBlockSigningRoot,
                 Hash32.Zero,
-                new BeaconBlockBody(new BlsSignature(), eth1Data, new Bytes32(), Array.Empty<Deposit>()),
+                new BeaconBlockBody(
+                    new BlsSignature(), 
+                    eth1Data, 
+                    new Bytes32(),
+                    Array.Empty<Attestation>(),
+                    Array.Empty<Deposit>()
+                ),
                 new BlsSignature());
 
             if (signed)
@@ -52,7 +58,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
         }
 
         public static void SignBlock(BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex,
-            TimeParameters timeParameters, MaxOperationsPerBlock maxOperationsPerBlock,
+            MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, MaxOperationsPerBlock maxOperationsPerBlock,
             BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
         {
             if (state.Slot > block.Slot)
@@ -82,7 +88,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var randaoReveal = TestUtility.BlsSign(randaoRevealHash, privateKey, domain);
             block.Body.SetRandaoReveal(randaoReveal);
 
-            var signingRoot = block.SigningRoot(maxOperationsPerBlock);
+            var signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
             var signature = TestUtility.BlsSign(signingRoot, privateKey, domain);
             block.SetSignature(signature);
         }
