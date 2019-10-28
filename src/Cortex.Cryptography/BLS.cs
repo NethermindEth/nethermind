@@ -114,7 +114,7 @@ namespace Cortex.Cryptography
         /// <param name="destination">Span to write the combined signature to.</param>
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <returns>true if the signature aggregation was successful; false if the destination is not large enough to hold the result</returns>
-        public abstract bool TryAggregate(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten);
+        public abstract bool TryAggregateSignatures(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten);
 
         // Signature variant = MinimalPublicKeySize
 
@@ -156,7 +156,7 @@ namespace Cortex.Cryptography
 
         //public abstract bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, byte[]? domain = null);
 
-        public abstract bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> signature, byte[]? domain = null);
+        public abstract bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, byte[]? domain = null);
 
         /// <summary>
         /// Verifies if the provided signature matches the specified hash, using the current public key.

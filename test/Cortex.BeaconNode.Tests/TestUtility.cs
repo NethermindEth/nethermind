@@ -33,7 +33,7 @@ namespace Cortex.BeaconNode.Tests
             }
             var aggregateSignatureSpan = new Span<byte>(new byte[96]);
             using var signingAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            var success = signingAlgorithm.TryAggregate(signaturesSpan, aggregateSignatureSpan, out var bytesWritten);
+            var success = signingAlgorithm.TryAggregateSignatures(signaturesSpan, aggregateSignatureSpan, out var bytesWritten);
             var aggregateSignature = new BlsSignature(aggregateSignatureSpan);
             return aggregateSignature;
         }

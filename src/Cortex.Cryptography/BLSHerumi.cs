@@ -68,7 +68,7 @@ namespace Cortex.Cryptography
         }
 
         /// <inheritdoc />
-        public override bool TryAggregate(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten)
+        public override bool TryAggregateSignatures(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten)
         {
             // This is independent of the keys set, although other parameters (type of curve, variant, scheme, etc) are relevant.
             if (signatures.Length % SignatureLength != 0)
@@ -225,7 +225,7 @@ namespace Cortex.Cryptography
         }
 
         /// <inheritdoc />
-        public override bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> signature, byte[]? domain = null)
+        public override bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, byte[]? domain = null)
         {
             // This is going to ignore the public (if any) and verify the provided public keys.
             throw new NotImplementedException();

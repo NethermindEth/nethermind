@@ -27,7 +27,7 @@ namespace Cortex.Cryptography
                 signature.CopyTo(signaturesSpan.Slice(index * signatureLength));
             }
             var aggregate = new Span<byte>(new byte[signatureLength]);
-            var success = _bls.TryAggregate(signaturesSpan, aggregate, out var bytesWritten);
+            var success = _bls.TryAggregateSignatures(signaturesSpan, aggregate, out var bytesWritten);
             return aggregate.ToArray();
         }
 
