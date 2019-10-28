@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -41,6 +42,7 @@ namespace Nethermind.JsonRpc.Client
             _jsonSerializer = jsonSerializer;
 
             _client = new HttpClient {BaseAddress = uri};
+            _client.Timeout = TimeSpan.FromMinutes(5); // support long block traces better, default 100s might be too small
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }

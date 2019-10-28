@@ -48,6 +48,6 @@
     "AuRaTestDownloader": {
       "commandName": "Project",
       "commandLineArgs": "--JsonRpc.Enabled true --config configs\\AuRaTest.cfg --baseDbPath C:\\nethermind_db\\nethermind_db\\AuRaTest\\Downloader --KeyStore.TestNodeKey 0x57e4b69f7ba48336b5669d17f5141b24ebcbf998fe2bc86bed2c673487d4b4ac --Init.IsMining true --Network.DiscoveryPort 30304 --Network.P2PPort 30304 --JsonRpc.Port 8547 --Init.EnableUnsecuredDevWallet true --Init.LogFileName C:\\temp\\AuraDownloader.log.txt"
-    }    
+    }
   }
 }

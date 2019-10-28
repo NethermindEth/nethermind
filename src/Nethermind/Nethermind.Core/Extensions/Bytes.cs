@@ -324,11 +324,14 @@ namespace Nethermind.Core.Extensions
 
         static Bytes()
         {
-            unsafe
+            if (Avx2.IsSupported)
             {
-                fixed (byte* ptr_mask = _reverseMask)
+                unsafe
                 {
-                    _reverseMaskVec = Avx2.LoadVector256(ptr_mask);
+                    fixed (byte* ptr_mask = _reverseMask)
+                    {
+                        _reverseMaskVec = Avx2.LoadVector256(ptr_mask);
+                    }
                 }
             }
         }

@@ -56,6 +56,11 @@ namespace Nethermind.Blockchain
             return Trace(block, block.Transactions[txIndex].Hash, options);
         }
 
+        public GethLikeTxTrace Trace(Rlp block, Keccak txHash, GethTraceOptions options)
+        {
+            return TraceBlock(GetBlockToTrace(block), options, txHash).FirstOrDefault();
+        }
+
         public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions)
         {
             TxReceipt txReceipt = _receiptStorage.Find(txHash);
@@ -107,15 +112,9 @@ namespace Nethermind.Blockchain
         
         public GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options)
         {
-            Block block = Rlp.Decode<Block>(blockRlp);
-            if (block.TotalDifficulty == null)
-            {
-                block.TotalDifficulty = 1;
-            }
-            
-            return TraceBlock(block, options);
+            return TraceBlock(GetBlockToTrace(blockRlp), options);
         }
-
+        
         public ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes)
         {
             byte[] traceBytes = _traceDb.Get(txHash); 
@@ -188,7 +187,7 @@ namespace Nethermind.Blockchain
             return listener.BuildResult().SingleOrDefault();
         }
 
-        private GethLikeTxTrace[] TraceBlock(Block block, GethTraceOptions options)
+        private GethLikeTxTrace[] TraceBlock(Block block, GethTraceOptions options, Keccak txHash = null)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 
@@ -198,7 +197,7 @@ namespace Nethermind.Blockchain
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(options);
+            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
@@ -217,5 +216,17 @@ namespace Nethermind.Blockchain
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
+        
+        private static Block GetBlockToTrace(Rlp blockRlp)
+        {
+            Block block = Rlp.Decode<Block>(blockRlp);
+            if (block.TotalDifficulty == null)
+            {
+                block.TotalDifficulty = 1;
+            }
+
+            return block;
+        }
+
     }
 }

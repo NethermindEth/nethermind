@@ -17,6 +17,7 @@
  */
 
 using Jint.Native;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -26,9 +27,9 @@ namespace Nethermind.Cli.Modules
     public class DebugCliModule : CliModuleBase
     {
         [CliFunction("debug", "traceBlock")]
-        public JsValue TraceBlock(string hash, object options)
+        public JsValue TraceBlock(string rlp, object options)
         {
-            return NodeManager.PostJint("debug_traceBlock", hash, options).Result;
+            return NodeManager.PostJint("debug_traceBlock", rlp, options).Result;
         }
 
         [CliFunction("debug", "traceBlockByNumber")]
@@ -59,6 +60,18 @@ namespace Nethermind.Cli.Modules
         public JsValue TraceTransactionByBlockhashAndIndex(string hash, object options)
         {
             return NodeManager.PostJint("debug_traceTransactionByBlockhashAndIndex", hash, options).Result;
+        }
+        
+        [CliFunction("debug", "traceTransactionInBlockByHash")]
+        public JsValue TraceTransactionInBlockByHash(string rlp, string hash, object options)
+        {
+            return NodeManager.PostJint("debug_traceTransactionInBlockByHash", rlp, hash, options).Result;
+        }
+        
+        [CliFunction("debug", "traceTransactionInBlockByIndex")]
+        public JsValue TraceTransactionInBlockByIndex(string rlp, int index, object options)
+        {
+            return NodeManager.PostJint("debug_traceTransactionInBlockByIndex", rlp, index, options).Result;
         }
 
         [CliFunction("debug", "config")]

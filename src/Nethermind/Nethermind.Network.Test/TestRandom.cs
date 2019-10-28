@@ -66,9 +66,12 @@ namespace Nethermind.Network.Test
             return _nextIntFunc(max);
         }
 
-        public void EnqueueRandomBytes(byte[] randomBytes)
+        public void EnqueueRandomBytes(params byte[][] randomBytesInQueue)
         {
-            _nextRandomBytesQueue.Enqueue(randomBytes);
+            foreach (var randomBytes in randomBytesInQueue)
+            {
+                _nextRandomBytesQueue.Enqueue(randomBytes);
+            }
         }
     }
 }

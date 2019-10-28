@@ -147,25 +147,32 @@ namespace Nethermind.Store
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
+            Account GetThroughCacheCheckExists()
+            {
+                Account result = GetThroughCache(address);
+                if (result == null)
+                {
+                    if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                    throw new InvalidOperationException("Updating balance of a non-existing account");
+                }
+
+                return result;
+            }
+            
             var isZero = balanceChange.IsZero;
             if (isZero)
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
+                    Account touched = GetThroughCacheCheckExists();
                     if (_logger.IsTrace) _logger.Trace($"  Touch {address} (balance)");
-                    Account touched = GetThroughCache(address);
                     PushTouch(address, touched, releaseSpec, isZero);
                 }
 
                 return;
             }
 
-            Account account = GetThroughCache(address);
-            if (account == null)
-            {
-                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
-                throw new InvalidOperationException("Updating balance of a non-existing account");
-            }
+            Account account = GetThroughCacheCheckExists();
 
             if (isSubtracting && account.Balance < balanceChange)
             {
