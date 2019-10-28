@@ -18,20 +18,14 @@
 
 using BenchmarkDotNet.Running;
 
-namespace Nethermind.Network.Benchmarks
+namespace Nethermind.Ssz.Benchmarks
 {
-    public class Program
+    public static class Program
     {
         public static void Main(string[] args)
         {
-            BenchmarkRunner.Run<HandshakeBenchmarks>();
-//            BenchmarkRunner.Run<KdfDerivation>();
-//            BenchmarkRunner.Run<EcdhAgreement>();
-//            BenchmarkRunner.Run<OutFlowBenchmark>();
-//            BenchmarkRunner.Run<InFlowBenchmark>();
-//            BenchmarkRunner.Run<NettyFrameEncoder>();
-//            BenchmarkRunner.Run<NettyFrameMerger>();
-//            BenchmarkRunner.Run<NettyPacketSplitter>();
+            BenchmarkRunner.Run<SszUIntBenchmarks>();
+            BenchmarkRunner.Run<SszBoolBenchmarks>();
         }
     }
 }

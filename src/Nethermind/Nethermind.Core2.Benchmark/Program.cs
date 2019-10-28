@@ -16,22 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using BenchmarkDotNet.Running;
+using System;
 
-namespace Nethermind.Network.Benchmarks
+namespace Nethermind.Core2.Benchmarks
 {
-    public class Program
+    class Program
     {
-        public static void Main(string[] args)
+        static void Main(string[] args)
         {
-            BenchmarkRunner.Run<HandshakeBenchmarks>();
-//            BenchmarkRunner.Run<KdfDerivation>();
-//            BenchmarkRunner.Run<EcdhAgreement>();
-//            BenchmarkRunner.Run<OutFlowBenchmark>();
-//            BenchmarkRunner.Run<InFlowBenchmark>();
-//            BenchmarkRunner.Run<NettyFrameEncoder>();
-//            BenchmarkRunner.Run<NettyFrameMerger>();
-//            BenchmarkRunner.Run<NettyPacketSplitter>();
+            Console.WriteLine("Hello World!");
         }
     }
 }
