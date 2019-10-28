@@ -28,26 +28,26 @@ namespace Nethermind.Ssz.Benchmarks
         {
             Span<byte> output = stackalloc byte[32];
             
-            Ssz.EncodeInt8(output,0);
-            Ssz.EncodeInt16(output,0);
-            Ssz.EncodeInt32(output,0);
-            Ssz.EncodeInt64(output,0);
-            Ssz.EncodeInt128(output,UInt128.Zero);
-            Ssz.EncodeInt256(output,UInt256.Zero);
+            Ssz.Encode(output,0);
+            Ssz.Encode(output,0);
+            Ssz.Encode(output,0);
+            Ssz.Encode(output,0);
+            Ssz.Encode(output,UInt128.Zero);
+            Ssz.Encode(output,UInt256.Zero);
             
-            Ssz.EncodeInt8(output,1);
-            Ssz.EncodeInt16(output,1);
-            Ssz.EncodeInt32(output,1);
-            Ssz.EncodeInt64(output,1UL);
-            Ssz.EncodeInt128(output, UInt128.One);
-            Ssz.EncodeInt256(output, UInt256.One);
+            Ssz.Encode(output,1);
+            Ssz.Encode(output,1);
+            Ssz.Encode(output,1);
+            Ssz.Encode(output,1UL);
+            Ssz.Encode(output, UInt128.One);
+            Ssz.Encode(output, UInt256.One);
             
-            Ssz.EncodeInt8(output, byte.MaxValue);
-            Ssz.EncodeInt16(output, ushort.MaxValue);
-            Ssz.EncodeInt32(output, uint.MaxValue);
-            Ssz.EncodeInt64(output, ulong.MaxValue);
-            Ssz.EncodeInt128(output, UInt128.MaxValue);
-            Ssz.EncodeInt256(output, UInt256.MaxValue);
+            Ssz.Encode(output, byte.MaxValue);
+            Ssz.Encode(output, ushort.MaxValue);
+            Ssz.Encode(output, uint.MaxValue);
+            Ssz.Encode(output, ulong.MaxValue);
+            Ssz.Encode(output, UInt128.MaxValue);
+            Ssz.Encode(output, UInt256.MaxValue);
         }
     }
 }

@@ -32,38 +32,38 @@ namespace Nethermind.Ssz
             Position = 0;
         }
         
-        public static void EncodeInt8(byte uint8)
+        public static void Encode(byte value)
         {
             throw new NotImplementedException();
         }
         
-        public static void EncodeInt16(ushort uint16)
+        public static void Encode(ushort value)
         {
             throw new NotImplementedException();
         }
         
-        public static void EncodeInt32(uint uint32)
+        public static void Encode(uint value)
         {
             throw new NotImplementedException();
         }
         
-        public static void EncodeInt64(ulong uint64)
+        public static void Encode(ulong value)
         {
             throw new NotImplementedException();
         }
         
-        public static void EncodeInt128(UInt128 uint128)
+        public static void Encode(UInt128 value)
         {
             throw new NotImplementedException();
         }
         
-        public static void EncodeInt256(UInt256 uint256)
+        public static void Encode(UInt256 value)
         {
             throw new NotImplementedException();
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void WriteBoolean(bool value)
+        private void Encode(bool value)
         {
             WriteByte(value ? (byte) 0 : (byte) 1);
         }

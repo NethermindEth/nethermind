@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using BenchmarkDotNet.Attributes;
 
 namespace Nethermind.Ssz.Benchmarks
@@ -23,12 +22,9 @@ namespace Nethermind.Ssz.Benchmarks
     public class SszBoolBenchmarks
     {
         [Benchmark(Baseline = true)]
-        public void Current()
+        public byte Current()
         {
-            Span<byte> output = stackalloc byte[32];
-            
-            Ssz.EncodeBool(output,false);
-            Ssz.EncodeBool(output,true);
+            return Ssz.Encode(true) > Ssz.Encode(false) ? (byte)1 : (byte)0;
         }
     }
 }
