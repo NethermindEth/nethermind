@@ -28,6 +28,7 @@ namespace Nethermind.Dirichlet.Benchmark
     [CoreJob(baseline: true)]
     public class UInt256ToBigEndianBenchmarks
     {
+        private byte[] _address = new byte[20];
         private byte[] _stack = new byte[32];
         
         private UInt256[] _scenarios = new UInt256[3];
@@ -48,28 +49,37 @@ namespace Nethermind.Dirichlet.Benchmark
             
             Current();
             var current = _stack.Clone() as byte[];
-            Console.WriteLine($"Current: {current.ToHexString()}");
+            var currentAddress = _address.Clone() as byte[];
+            Console.WriteLine($"Current: {current.ToHexString()} | {currentAddress.ToHexString()}");
             
             Improved();
             var improved = _stack.Clone() as byte[];
-            Console.WriteLine($"Improved: {improved.ToHexString()}");
+            var improvedAddress = _address.Clone() as byte[];
+            Console.WriteLine($"Improved: {improved.ToHexString()} | {improvedAddress.ToHexString()}");
             
             if (!Bytes.AreEqual(current, improved))
             {
                 throw new InvalidBenchmarkDeclarationException($"{current.ToHexString()} != {improved.ToHexString()}");
+            }
+            
+            if (!Bytes.AreEqual(currentAddress, improvedAddress))
+            {
+                throw new InvalidBenchmarkDeclarationException($"{currentAddress.ToHexString()} != {improvedAddress.ToHexString()}");
             }
         }
 
         [Benchmark(Baseline = true)]
         public void Current()
         {
+            _scenarios[ScenarioIndex].ToBigEndian(_address);
             _scenarios[ScenarioIndex].ToBigEndian(_stack);
         }
 
         [Benchmark]
         public void Improved()
         {
-            _scenarios[ScenarioIndex].ToBigEndian2(_stack);
+            _scenarios[ScenarioIndex].ToBigEndian(_address);
+            _scenarios[ScenarioIndex].ToBigEndian(_stack);
         }
     }
 }
