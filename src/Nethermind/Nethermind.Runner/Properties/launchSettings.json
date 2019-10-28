@@ -39,7 +39,7 @@
     },
     "Volta": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\Volta.cfg --baseDbPath C:\\nethermind_db"  
+      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\volta.cfg --baseDbPath C:\\nethermind_db"  
     }
   }
 }
