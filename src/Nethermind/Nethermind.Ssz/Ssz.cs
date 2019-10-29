@@ -28,17 +28,8 @@ namespace Nethermind.Ssz
     /// <summary>
     /// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz
     /// </summary>
-    public class Ssz
+    public static class Ssz
     {
-        public const int BytesPerChunk = 32;
-        public const int BytesPerLengthOffset = 4;
-        public const int BitsPerByte = 8; // I guess I can remove this later...
-
-        public static void Encode(Span<byte> span, BitArray bitArray)
-        {
-            byte[] bytes = bitArray.ToBytes();
-        }
-
         public static void Encode(Span<byte> span, byte value)
         {
             span[0] = value;
@@ -164,6 +155,163 @@ namespace Nethermind.Ssz
             }
 
             value.AsSpan().CopyTo(span);
+        }
+
+        public static bool DecodeBool(Span<byte> span)
+        {
+            return span[0] != 0;
+        }
+
+        
+        public static byte DecodeByte(Span<byte> span)
+        {
+            const int expectedLength = 1;
+            if (span.Length != expectedLength)
+            {
+                throw new InvalidDataException($"{nameof(DecodeByte)} expects input of length {expectedLength} and received {span.Length}");
+            }
+            
+            return span[0];
+        }
+
+        public static ushort DecodeUShort(Span<byte> span)
+        {
+            const int expectedLength = 2;
+            if (span.Length != expectedLength)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUShort)} expects input of length {expectedLength} and received {span.Length}");
+            }
+            
+            return BinaryPrimitives.ReadUInt16LittleEndian(span);
+        }
+
+        public static uint DecodeUInt(Span<byte> span)
+        {
+            const int expectedLength = 4;
+            if (span.Length != expectedLength)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUInt)} expects input of length {expectedLength} and received {span.Length}");
+            }
+            
+            return BinaryPrimitives.ReadUInt32LittleEndian(span);
+        }
+        
+        public static ulong DecodeULong(Span<byte> span)
+        {
+            const int expectedLength = 8;
+            if (span.Length != expectedLength)
+            {
+                throw new InvalidDataException($"{nameof(DecodeULong)} expects input of length {expectedLength} and received {span.Length}");
+            }
+            
+            return BinaryPrimitives.ReadUInt64LittleEndian(span);
+        }
+        
+        public static UInt128 DecodeUInt128(Span<byte> span)
+        {
+            const int expectedLength = 16;
+            if (span.Length != expectedLength)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUInt128)} expects input of length {expectedLength} and received {span.Length}");
+            }
+            
+            ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
+            ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
+            UInt128.Create(out UInt128 result, s0, s1);
+            return result;
+        }
+
+        public static UInt256 DecodeUInt256(Span<byte> span)
+        {
+            const int expectedLength = 32;
+            if (span.Length != expectedLength)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUInt256)} expects input of length {expectedLength} and received {span.Length}");
+            }
+            
+            ulong s0 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(0, 8));
+            ulong s1 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(8, 8));
+            ulong s2 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(16, 8));
+            ulong s3 = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(24, 8));
+            UInt256.Create(out UInt256 result, s0, s1, s2, s3);
+            return result;
+        }
+
+        public static UInt256[] DecodeUInts256(Span<byte> span)
+        {
+            const int typeSize = 32;
+            if (span.Length % typeSize != 0)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUInts256)} expects input in multiples of {typeSize} and received {span.Length}");
+            }
+            
+            UInt256[] result = new UInt256[span.Length / typeSize];
+            for (int i = 0; i < span.Length / typeSize; i++)
+            {
+                result[i] = DecodeUInt256(span.Slice(i * typeSize, typeSize));
+            }
+
+            return result;
+        }
+
+        public static UInt128[] DecodeUInts128(Span<byte> span)
+        {
+            const int typeSize = 16;
+            if (span.Length % typeSize != 0)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUInts128)} expects input in multiples of {typeSize} and received {span.Length}");
+            }
+            
+            UInt128[] result = new UInt128[span.Length / typeSize];
+            for (int i = 0; i < span.Length / typeSize; i++)
+            {
+                result[i] = DecodeUInt128(span.Slice(i * typeSize, typeSize));
+            }
+
+            return result;
+        }
+
+        public static Span<ulong> DecodeULongs(Span<byte> span)
+        {
+            const int typeSize = 8;
+            if (span.Length % typeSize != 0)
+            {
+                throw new InvalidDataException($"{nameof(DecodeULongs)} expects input in multiples of {typeSize} and received {span.Length}");
+            }
+            
+            return MemoryMarshal.Cast<byte, ulong>(span);
+        }
+
+        public static Span<uint> DecodeUInts(Span<byte> span)
+        {
+            const int typeSize = 4;
+            if (span.Length % typeSize != 0)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUInts)} expects input in multiples of {typeSize} and received {span.Length}");
+            }
+            
+            return MemoryMarshal.Cast<byte, uint>(span);
+        }
+
+        public static Span<ushort> DecodeUShorts(Span<byte> span)
+        {
+            const int typeSize = 2;
+            if (span.Length % typeSize != 0)
+            {
+                throw new InvalidDataException($"{nameof(DecodeUShorts)} expects input in multiples of {typeSize} and received {span.Length}");
+            }
+            
+            return MemoryMarshal.Cast<byte, ushort>(span);
+        }
+        
+        public static Span<byte> DecodeBytes(Span<byte> span)
+        {
+            return span;
+        }
+        
+        public static Span<bool> DecodeBools(Span<byte> span)
+        {
+            return MemoryMarshal.Cast<byte, bool>(span);
         }
 
         private static void ThrowInvalidTargetLength(int targetLength, int expectedLength)
