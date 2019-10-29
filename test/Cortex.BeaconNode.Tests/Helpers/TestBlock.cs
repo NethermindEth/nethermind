@@ -12,11 +12,14 @@ namespace Cortex.BeaconNode.Tests.Helpers
             MiscellaneousParameters miscellaneousParameters,
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock)
+            MaxOperationsPerBlock maxOperationsPerBlock,
+            BeaconChainUtility beaconChainUtility, 
+            BeaconStateAccessor beaconStateAccessor,
+            BeaconStateTransition beaconStateTransition)
         {
             //if (slot) is none
 
-            var eth1Data = new Eth1Data(Hash32.Zero, state.Eth1DepositIndex);
+            var eth1Data = new Eth1Data(state.Eth1DepositIndex, Hash32.Zero);
 
             var previousBlockHeader = BeaconBlockHeader.Clone(state.LatestBlockHeader);
             if (previousBlockHeader.StateRoot == Hash32.Zero)
@@ -40,8 +43,9 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             if (signed)
             {
-                throw new NotImplementedException();
-                //SignBlock(state, emptyBlock);
+                SignBlock(state, emptyBlock, ValidatorIndex.None,
+                    miscellaneousParameters, timeParameters, maxOperationsPerBlock,
+                    beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             }
 
             return emptyBlock;
@@ -51,21 +55,26 @@ namespace Cortex.BeaconNode.Tests.Helpers
             MiscellaneousParameters miscellaneousParameters,
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock)
+            MaxOperationsPerBlock maxOperationsPerBlock,
+            BeaconChainUtility beaconChainUtility, 
+            BeaconStateAccessor beaconStateAccessor,
+            BeaconStateTransition beaconStateTransition)
         {
             return BuildEmptyBlock(state, state.Slot + new Slot(1), signed,
-                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock);
+                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
         }
 
         public static void SignBlock(BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex,
             MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
         {
             if (state.Slot > block.Slot)
             {
                 throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Slot of block must be equal or less that state slot {state.Slot}");
             }
 
+            var blockEpoch = beaconChainUtility.ComputeEpochAtSlot(block.Slot);
             if (proposerIndex == ValidatorIndex.None)
             {
                 if (block.Slot == state.Slot)
@@ -74,14 +83,22 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 }
                 else
                 {
-                    throw new NotImplementedException();
+                    var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+                    if (stateEpoch + new Epoch(1) > blockEpoch)
+                    {
+                        Console.WriteLine("WARNING: Block slot far away, and no proposer index manually given."
+                            + " Signing block is slow due to transition for proposer index calculation.");
+                    }
+                    // use stub state to get proposer index of future slot
+                    var stubState = BeaconState.Clone(state);
+                    beaconStateTransition.ProcessSlots(stubState, block.Slot);
+                    proposerIndex = beaconStateAccessor.GetBeaconProposerIndex(stubState);
                 }
             }
 
             var privateKeys = TestData.PrivateKeys(timeParameters).ToArray();
             var privateKey = privateKeys[(int)(ulong)proposerIndex];
 
-            var blockEpoch = beaconChainUtility.ComputeEpochOfSlot(block.Slot);
             var domain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, blockEpoch);
 
             var randaoRevealHash = blockEpoch.HashTreeRoot();

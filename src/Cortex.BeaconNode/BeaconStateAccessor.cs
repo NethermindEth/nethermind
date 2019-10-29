@@ -49,8 +49,9 @@ namespace Cortex.BeaconNode
         /// </summary>
         public IEnumerable<ValidatorIndex> GetAttestingIndices(BeaconState state, AttestationData data, BitArray bits)
         {
-            var committee = GetCrosslinkCommittee(state, data.Target.Epoch, data.Crosslink.Shard);
-            return committee.Where((x, index) => bits[index]);
+            throw new NotImplementedException();
+            //var committee = GetCrosslinkCommittee(state, data.Target.Epoch, data.Crosslink.Shard);
+            //return committee.Where((x, index) => bits[index]);
         }
 
         /// <summary>
@@ -130,7 +131,7 @@ namespace Cortex.BeaconNode
         /// </summary>
         public Epoch GetCurrentEpoch(BeaconState state)
         {
-            return _beaconChainUtility.ComputeEpochOfSlot(state.Slot);
+            return _beaconChainUtility.ComputeEpochAtSlot(state.Slot);
         }
 
         /// <summary>
@@ -232,16 +233,17 @@ namespace Cortex.BeaconNode
             }
 
             var initialShardDelta = GetShardDelta(state, currentEpoch);
-            var shard = (state.StartShard + initialShardDelta) % miscellaneousParameters.ShardCount;
+            throw new NotImplementedException();
+            //var shard = (state.StartShard + initialShardDelta) % miscellaneousParameters.ShardCount;
 
-            while (checkEpoch > epoch)
-            {
-                checkEpoch -= oneEpoch;
-                var shardDelta = GetShardDelta(state, checkEpoch);
-                shard = (shard + miscellaneousParameters.ShardCount + shardDelta) % miscellaneousParameters.ShardCount;
-            }
+            //while (checkEpoch > epoch)
+            //{
+            //    checkEpoch -= oneEpoch;
+            //    var shardDelta = GetShardDelta(state, checkEpoch);
+            //    shard = (shard + miscellaneousParameters.ShardCount + shardDelta) % miscellaneousParameters.ShardCount;
+            //}
 
-            return shard;
+            //return shard;
         }
 
         /// <summary>

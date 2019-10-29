@@ -24,7 +24,7 @@ namespace Cortex.Containers
         public BeaconBlockBody()
         {
             RandaoReveal = new BlsSignature();
-            Eth1Data = new Eth1Data(Hash32.Zero, 0);
+            Eth1Data = new Eth1Data(0, Hash32.Zero);
             Graffiti = new Bytes32();
             _attestations = new List<Attestation>();
             _deposits = new List<Deposit>();

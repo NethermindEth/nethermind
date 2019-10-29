@@ -23,7 +23,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var state = new BeaconState(
                 0,
                 numberOfValidators,
-                new Eth1Data(depositRoot, numberOfValidators),
+                new Eth1Data(numberOfValidators, depositRoot),
                 new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock)),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
@@ -65,12 +65,12 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var validator = new Validator(
                 publicKey,
                 withdrawalCredentials,
-                chainConstants.FarFutureEpoch,
-                chainConstants.FarFutureEpoch,
-                chainConstants.FarFutureEpoch,
-                chainConstants.FarFutureEpoch,
                 Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance)
-                );
+,
+                chainConstants.FarFutureEpoch,
+                chainConstants.FarFutureEpoch,
+                chainConstants.FarFutureEpoch,
+                chainConstants.FarFutureEpoch);
 
             return validator;
         }

@@ -14,6 +14,14 @@ namespace Cortex.Containers
 
         public Hash32 Root { get; }
 
+        public static Checkpoint Clone(Checkpoint other)
+        {
+            var clone = new Checkpoint(
+                other.Epoch,
+                Hash32.Clone(other.Root));
+            return clone;
+        }
+
         public override bool Equals(object obj)
         {
             return Equals(obj as Checkpoint);

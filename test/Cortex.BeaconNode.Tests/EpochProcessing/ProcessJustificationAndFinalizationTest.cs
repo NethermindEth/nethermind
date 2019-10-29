@@ -367,7 +367,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var beaconBlockRoot = new Hash32(Enumerable.Repeat((byte)0xff, 32).ToArray()); // irrelevant to testing
             for (var slot = startSlot; slot < startSlot + timeParameters.SlotsPerEpoch; slot += addOne)
             {
-                var slotEpoch = beaconChainUtility.ComputeEpochOfSlot(slot);
+                var slotEpoch = beaconChainUtility.ComputeEpochAtSlot(slot);
                 var shards = GetShardsForSlot(beaconChainUtility, beaconStateAccessor, miscellaneousParameters, timeParameters, state, slot);
                 foreach (var shard in shards)
                 {
@@ -399,7 +399,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                         aggregationBits[1] = false;
                     }
 
-                    var attestationData = new AttestationData(beaconBlockRoot, source, target, new Crosslink(shard));
+                    var attestationData = new AttestationData(new Crosslink(shard), beaconBlockRoot, source, target);
                     var attestation = new PendingAttestation(aggregationBits, attestationData, new Slot(1));
                     if (currentEpoch == epoch)
                     {
@@ -415,7 +415,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
 
         private Shard[] GetShardsForSlot(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Slot slot)
         {
-            var epoch = beaconChainUtility.ComputeEpochOfSlot(slot);
+            var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
             Shard epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
             var committeeCount = beaconStateAccessor.GetCommitteeCount(state, epoch);
             var committeesPerSlot = committeeCount / (ulong)timeParameters.SlotsPerEpoch;

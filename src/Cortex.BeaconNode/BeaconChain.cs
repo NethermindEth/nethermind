@@ -63,7 +63,7 @@ namespace Cortex.BeaconNode
 
             var genesisTime = eth1Timestamp - (eth1Timestamp % _chainConstants.SecondsPerDay)
                 + (2 * _chainConstants.SecondsPerDay);
-            var eth1Data = new Eth1Data(eth1BlockHash, (ulong)deposits.Count());
+            var eth1Data = new Eth1Data((ulong)deposits.Count(), eth1BlockHash);
             var emptyBlockBody = new BeaconBlockBody();
             var latestBlockHeader = new BeaconBlockHeader(emptyBlockBody.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue));
             var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, _chainConstants.JustificationBitsLength, _miscellaneousParameterOptions.CurrentValue.ShardCount);
@@ -153,12 +153,12 @@ namespace Cortex.BeaconNode
                 var newValidator = new Validator(
                     publicKey,
                     deposit.Data.WithdrawalCredentials,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
                     effectiveBalance
-                    );
+,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch);
                 state.AddValidatorWithBalance(newValidator, amount);
             }
             else

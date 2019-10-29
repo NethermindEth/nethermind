@@ -41,9 +41,8 @@ namespace Cortex.BeaconNode.Ssz
             yield return new SszList(item.Validators.Select(x => x.ToSszContainer()), stateListLengths.ValidatorRegistryLimit);
             yield return item.Balances.ToSszBasicList(stateListLengths.ValidatorRegistryLimit);
 
-            //# Shuffling
-            //start_shard: Shard
-            yield return item.StartShard.ToSszBasicElement();
+            //# Randomness
+            //yield return item.StartShard.ToSszBasicElement();
             yield return item.RandaoMixes.ToSszVector();
 
             //# Slashings
@@ -55,8 +54,8 @@ namespace Cortex.BeaconNode.Ssz
 
             //# Crosslinks
             //# Previous epoch snapshot
-            yield return item.PreviousCrosslinks.ToSszVector();
-            yield return item.CurrentCrosslinks.ToSszVector();
+            //yield return item.PreviousCrosslinks.ToSszVector();
+            //yield return item.CurrentCrosslinks.ToSszVector();
 
             //# Finality
             // Bit set for every recent justified epoch

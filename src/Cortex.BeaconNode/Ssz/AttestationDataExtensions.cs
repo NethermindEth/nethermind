@@ -13,13 +13,13 @@ namespace Cortex.BeaconNode.Ssz
 
         private static IEnumerable<SszElement> GetValues(AttestationData item)
         {
+            yield return item.Slot.ToSszBasicElement();
+            yield return item.Index.ToSszBasicElement();
             // LMD GHOST vote
             yield return item.BeaconBlockRoot.ToSszBasicVector();
             // FFG vote
             yield return item.Source.ToSszContainer();
             yield return item.Target.ToSszContainer();
-            // Crosslink vote
-            yield return item.Crosslink.ToSszContainer();
         }
     }
 }

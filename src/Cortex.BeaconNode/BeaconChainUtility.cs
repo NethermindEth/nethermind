@@ -57,7 +57,7 @@ namespace Cortex.BeaconNode
         /// <summary>
         /// Return the epoch number of ``slot``.
         /// </summary>
-        public Epoch ComputeEpochOfSlot(Slot slot)
+        public Epoch ComputeEpochAtSlot(Slot slot)
         {
             return new Epoch(slot / _timeParameterOptions.CurrentValue.SlotsPerEpoch);
         }

@@ -2,16 +2,23 @@
 {
     public class Validator
     {
-        public Validator(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Epoch activationEligibilityEpoch, Epoch activationEpoch,
-            Epoch exitEpoch, Epoch withdrawableEpoch, Gwei effectiveBalance)
+        public Validator(
+            BlsPublicKey publicKey,
+            Hash32 withdrawalCredentials,
+            Gwei effectiveBalance,
+            //bool slashed,
+            Epoch activationEligibilityEpoch,
+            Epoch activationEpoch,
+            Epoch exitEpoch,
+            Epoch withdrawableEpoch)
         {
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;
+            EffectiveBalance = effectiveBalance;
             ActivationEligibilityEpoch = activationEligibilityEpoch;
             ActivationEpoch = activationEpoch;
             ExitEpoch = exitEpoch;
             WithdrawableEpoch = withdrawableEpoch;
-            EffectiveBalance = effectiveBalance;
         }
 
         /// <summary>Gets when criteria for activation were met</summary>
@@ -33,6 +40,20 @@
 
         /// <summary>Gets the public key commitment for withdrawals and transfers</summary>
         public Hash32 WithdrawalCredentials { get; }
+
+        public static Validator Clone(Validator other)
+        {
+            var clone = new Validator(
+                 BlsPublicKey.Clone(other.PublicKey),
+                 Hash32.Clone(other.WithdrawalCredentials),
+                 other.EffectiveBalance,
+                 other.ActivationEligibilityEpoch,
+                 other.ActivationEpoch,
+                 other.ExitEpoch,
+                 other.WithdrawableEpoch
+                );
+            return clone;
+        }
 
         public void SetActive(Epoch activationEpoch)
         {

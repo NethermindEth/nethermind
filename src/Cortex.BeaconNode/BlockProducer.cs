@@ -24,7 +24,7 @@ namespace Cortex.BeaconNode
             // get parent header (state root, signature, slot, parent root, body root)
 
             var body = new BeaconBlockBody(randaoReveal,
-                new Eth1Data(Hash32.Zero, 0), 
+                new Eth1Data(0, Hash32.Zero), 
                 new Bytes32(), 
                 Array.Empty<Attestation>(),
                 Array.Empty<Deposit>());

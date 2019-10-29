@@ -19,11 +19,15 @@ namespace Cortex.BeaconNode.Tests.Helpers
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, false, miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock);
+            var block = TestBlock.BuildEmptyBlockForNextSlot(state, false, 
+                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             block.SetSlot(slot);
             block.Body.AddAttestations(attestation);
             beaconStateTransition.ProcessSlots(state, block.Slot);
-            TestBlock.SignBlock(state, block, ValidatorIndex.None, miscellaneousParameters, timeParameters, maxOperationsPerBlock, beaconChainUtility, beaconStateAccessor);
+            TestBlock.SignBlock(state, block, ValidatorIndex.None, 
+                miscellaneousParameters, timeParameters, maxOperationsPerBlock, 
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }
 
@@ -43,9 +47,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
             StateListLengths stateListLengths,
             MaxOperationsPerBlock maxOperationsPerBlock,
             BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor)
+            BeaconStateAccessor beaconStateAccessor,
+            BeaconStateTransition beaconStateTransition)
         {
-            var epoch = beaconChainUtility.ComputeEpochOfSlot(slot);
+            var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
             var epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
             var committeesPerSlot = beaconStateAccessor.GetCommitteeCount(state, epoch) / (ulong)timeParameters.SlotsPerEpoch;
             var shard = (epochStartShard + new Shard(committeesPerSlot * (ulong)(slot % timeParameters.SlotsPerEpoch)))
@@ -53,7 +58,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             var attestationData = BuildAttestationData(state, slot, shard,
                 miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor);
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
 
             var crosslinkCommittee = beaconStateAccessor.GetCrosslinkCommittee(state, attestationData.Target.Epoch, attestationData.Crosslink.Shard);
 
@@ -106,7 +111,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
             StateListLengths stateListLengths,
             MaxOperationsPerBlock maxOperationsPerBlock,
             BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor)
+            BeaconStateAccessor beaconStateAccessor,
+            BeaconStateTransition beaconStateTransition)
         {
             if (state.Slot > slot)
             {
@@ -117,7 +123,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
             if (slot == state.Slot)
             {
                 var nextBlock = TestBlock.BuildEmptyBlockForNextSlot(state, false,
-                    miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock);
+                    miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                    beaconChainUtility, beaconStateAccessor, beaconStateTransition);
                 blockRoot = nextBlock.ParentRoot;
             }
             else
@@ -154,7 +161,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
 
             Crosslink parentCrosslink;
-            var epochOfSlot = beaconChainUtility.ComputeEpochOfSlot(slot);
+            var epochOfSlot = beaconChainUtility.ComputeEpochAtSlot(slot);
             if (epochOfSlot == currentEpoch)
             {
                 parentCrosslink = state.CurrentCrosslinks[(int)(ulong)shard];
@@ -165,9 +172,6 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
 
             var attestationData = new AttestationData(
-                blockRoot,
-                new Checkpoint(sourceEpoch, sourceRoot),
-                new Checkpoint(epochOfSlot, epochBoundaryRoot),
                 new Crosslink(
                     shard,
                     parentCrosslink.HashTreeRoot(),
@@ -175,7 +179,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
                     Epoch.Min(epochOfSlot, parentCrosslink.EndEpoch + timeParameters.MaximumEpochsPerCrosslink),
                     Hash32.Zero
                 )
-            );
+,
+                blockRoot,
+                new Checkpoint(sourceEpoch, sourceRoot),
+                new Checkpoint(epochOfSlot, epochBoundaryRoot));
 
             return attestationData;
         }

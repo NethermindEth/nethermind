@@ -8,13 +8,54 @@ namespace Cortex.Containers
     {
         private readonly List<Gwei> _balances;
         private readonly Hash32[] _blockRoots;
-        private readonly Crosslink[] _currentCrosslinks;
+        //private readonly Crosslink[] _currentCrosslinks;
         private readonly List<PendingAttestation> _currentEpochAttestations;
-        private readonly Crosslink[] _previousCrosslinks;
+        //private readonly Crosslink[] _previousCrosslinks;
         private readonly List<PendingAttestation> _previousEpochAttestations;
         private readonly Hash32[] _randaoMixes;
         private readonly Hash32[] _stateRoots;
         private readonly List<Validator> _validators;
+
+        public BeaconState(
+            ulong genesisTime, 
+            Slot slot,
+            Fork fork,
+            BeaconBlockHeader latestBlockHeader,
+            Hash32[] blockRoots,
+            Hash32[] stateRoots,
+            //IList<Hash32> historicalRoots,
+            Eth1Data eth1Data,
+            //IList<Eth1Data> eth1DataVotes,
+            ulong eth1DepositIndex, 
+            IList<Validator> validators,
+            IList<Gwei> balances,
+            Hash32[] randaoMixes,
+            //Gwei[] slashings,
+            IList<PendingAttestation> previousEpochAttestations,
+            IList<PendingAttestation> currentEpochAttestations,
+            BitArray justificationBits,
+            Checkpoint previousJustifiedCheckpoint,
+            Checkpoint currentJustifiedCheckpoint,
+            Checkpoint finalizedCheckpoint)
+        {
+            GenesisTime = genesisTime;
+            Slot = slot;
+            Fork = fork;
+            LatestBlockHeader = latestBlockHeader;
+            _blockRoots =blockRoots;
+            _stateRoots = stateRoots;
+            Eth1Data = eth1Data;
+            Eth1DepositIndex = eth1DepositIndex;
+            _validators = validators.ToList();
+            _balances = balances.ToList();
+            _randaoMixes = randaoMixes;
+            _previousEpochAttestations = previousEpochAttestations.ToList();
+            _currentEpochAttestations = currentEpochAttestations.ToList();
+            JustificationBits = justificationBits;
+            PreviousJustifiedCheckpoint = previousJustifiedCheckpoint;
+            CurrentJustifiedCheckpoint = currentJustifiedCheckpoint;
+            FinalizedCheckpoint = finalizedCheckpoint;
+        }
 
         public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength, Shard shardCount)
         {
@@ -30,12 +71,12 @@ namespace Cortex.Containers
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
-            Fork = new Fork();
+            Fork = new Fork(new ForkVersion(), new ForkVersion(), Epoch.Zero);
             CurrentJustifiedCheckpoint = new Checkpoint(new Epoch(0), Hash32.Zero);
             PreviousJustifiedCheckpoint = new Checkpoint(new Epoch(0), Hash32.Zero);
             FinalizedCheckpoint = new Checkpoint(new Epoch(0), Hash32.Zero);
-            _previousCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
-            _currentCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
+            //_previousCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
+            //_currentCrosslinks = Enumerable.Repeat(new Crosslink(Shard.Zero), (int)(ulong)shardCount).ToArray();
             //_currentCrosslinks = Enumerable.Range(0, (int)(ulong)shardCount).Select(x => new Crosslink(new Shard((ulong)x))).ToArray();
         }
 
@@ -43,7 +84,7 @@ namespace Cortex.Containers
 
         public IReadOnlyList<Hash32> BlockRoots { get { return _blockRoots; } }
 
-        public IReadOnlyList<Crosslink> CurrentCrosslinks { get { return _currentCrosslinks; } }
+        //public IReadOnlyList<Crosslink> CurrentCrosslinks { get { return _currentCrosslinks; } }
 
         public IReadOnlyList<PendingAttestation> CurrentEpochAttestations { get { return _currentEpochAttestations; } }
 
@@ -63,7 +104,7 @@ namespace Cortex.Containers
 
         public BeaconBlockHeader LatestBlockHeader { get; }
 
-        public IReadOnlyList<Crosslink> PreviousCrosslinks { get { return _previousCrosslinks; } }
+        //public IReadOnlyList<Crosslink> PreviousCrosslinks { get { return _previousCrosslinks; } }
 
         public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
 
@@ -73,7 +114,7 @@ namespace Cortex.Containers
 
         public Slot Slot { get; private set; }
 
-        public Shard StartShard { get; }
+        //public Shard StartShard { get; }
 
         public IReadOnlyList<Hash32> StateRoots { get { return _stateRoots; } }
 
@@ -163,6 +204,33 @@ namespace Cortex.Containers
         public override string ToString()
         {
             return $"G:{GenesisTime} S:{Slot} F:({Fork})";
+        }
+
+        /// <summary>
+        /// Creates a deep copy of the object.
+        /// </summary>
+        public static BeaconState Clone(BeaconState other)
+        {
+            var clone = new BeaconState(
+                other.GenesisTime,
+                other.Slot,
+                Fork.Clone(other.Fork),
+                BeaconBlockHeader.Clone(other.LatestBlockHeader),
+                other.BlockRoots.Select(x => Hash32.Clone(x)).ToArray(),
+                other.StateRoots.Select(x => Hash32.Clone(x)).ToArray(),
+                Eth1Data.Clone(other.Eth1Data),
+                other.Eth1DepositIndex,
+                other.Validators.Select(x => Validator.Clone(x)).ToList(),
+                other.Balances.Select(x => x).ToList(),
+                other.RandaoMixes.Select(x => Hash32.Clone(x)).ToArray(),
+                other.PreviousEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
+                other.CurrentEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
+                new BitArray(other.JustificationBits),
+                Checkpoint.Clone(other.PreviousJustifiedCheckpoint),
+                Checkpoint.Clone(other.CurrentJustifiedCheckpoint),
+                Checkpoint.Clone(other.FinalizedCheckpoint)
+                );
+            return clone;
         }
     }
 }

@@ -23,6 +23,11 @@ namespace Cortex.Containers
             _bytes = span.ToArray();
         }
 
+        public static BlsPublicKey Clone(BlsPublicKey other)
+        {
+            return new BlsPublicKey(other.AsSpan());
+        }
+
         public static explicit operator BlsPublicKey(byte[] bytes) => new BlsPublicKey(bytes);
 
         public static explicit operator BlsPublicKey(Span<byte> span) => new BlsPublicKey(span);
