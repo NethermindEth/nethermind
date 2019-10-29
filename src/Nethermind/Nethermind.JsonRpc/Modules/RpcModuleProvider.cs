@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Modules
         
         private ILogger _logger;
         private IJsonRpcConfig _jsonRpcConfig;
-        private Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)> _methods = new Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)>();
+        private Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)> _methods = new Dictionary<string, (ModuleType ModuleType, MethodInfo MethodInfo)>(StringComparer.InvariantCultureIgnoreCase);
         private Dictionary<ModuleType, (Func<IModule> RentModule, Action<IModule> ReturnModule)> _pools = new Dictionary<ModuleType, (Func<IModule> RentModule, Action<IModule> ReturnModule)>();
 
         private List<ModuleType> _modules = new List<ModuleType>();
@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules
                 _methods[name] = (moduleType, info);
             }
 
-            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString()))
+            if (_jsonRpcConfig.EnabledModules.Contains(moduleType.ToString(), StringComparer.InvariantCultureIgnoreCase))
             {
                 _enabledModules.Add(moduleType);
             }
