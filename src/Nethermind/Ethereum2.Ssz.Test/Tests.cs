@@ -184,7 +184,7 @@ namespace Ethereum2.Ssz.Test
                 }
                 else if (valueType == YamlNodeType.Mapping)
                 {
-                    var mappingNode = (YamlMappingNode)valueNode;
+                    var mappingNode = (YamlMappingNode) valueNode;
                     if (validDir.Contains("BitsStruct"))
                     {
                         BitsStruct testStruct = ParseBitsStruct(mappingNode);
@@ -220,11 +220,11 @@ namespace Ethereum2.Ssz.Test
                     else if (validDir.Contains("ComplexTestStruct"))
                     {
                         ComplexTestStruct testStruct = ParseComplexTestStruct(mappingNode);
-                        output = new byte[16000];
-                        Encode(output, testStruct);
+                        output = new byte[8236];
+                        Encode(ref output, testStruct);
                     }
                 }
-
+                
                 if (expectedResult.ToHexString() != output.ToHexString())
                 {
                     TestContext.Out.WriteLine($"  expected {expectedResult.ToHexString()}");
@@ -246,6 +246,21 @@ namespace Ethereum2.Ssz.Test
 
             YamlMappingNode varNode = (YamlMappingNode) mappingNode.Children["E"];
             testStruct.E = ParseVarTestStruct(varNode);
+            testStruct.F = new List<FixedTestStruct>();
+            foreach (var yamlNode in ((YamlSequenceNode) mappingNode.Children["F"]).Children)
+            {
+                var child = (YamlMappingNode) yamlNode;
+                testStruct.F.Add(ParseFixedTestStruct(child));
+            }
+
+            testStruct.G = new List<VarTestStruct>();
+            foreach (var yamlNode in ((YamlSequenceNode) mappingNode.Children["G"]).Children)
+            {
+                var child = (YamlMappingNode) yamlNode;
+                testStruct.G.Add(ParseVarTestStruct(child));
+            }
+
+
             return testStruct;
         }
 
@@ -323,28 +338,68 @@ namespace Ethereum2.Ssz.Test
             Nethermind.Ssz.Ssz.Encode(span.Slice(9, 4), testStruct.C);
         }
 
-        private static void Encode(Span<byte> span, ComplexTestStruct testStruct)
+        private static void Encode(ref Span<byte> span, ComplexTestStruct testStruct)
         {
             int offset = 0;
+            int varOfset = 71;
+            
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 2), testStruct.A);
-            offset += 2;
-            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), testStruct.B.Length * 2);
-            offset += 4;
+            offset += 2; // 2
+            
+            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOfset); // B
+            varOfset += testStruct.B.Length * 2;
+            
+            offset += 4; // 6
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 1), testStruct.C);
-            offset += 1;
-            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, testStruct.D.Length), testStruct.D);
-            offset += testStruct.D.Length;
-            Nethermind.Ssz.Ssz.Encode(span.Slice(offset + testStruct.D.Length, 4), 7 + testStruct.E.B.Length * 2);
-            offset += 4;
-            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), testStruct.F.Count * 13);
-            offset += 4;
-            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), 100);
-            offset += 4;
+            
+            offset += 1; // 7
+            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOfset); // D
+            varOfset += testStruct.D.Length;
+
+            offset += 4; // 11
+            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOfset); // E
+            varOfset += 7 + testStruct.E.B.Length * 2;
+            
+            offset += 4; // 15
+            foreach (FixedTestStruct fixedTestStruct in testStruct.F)
+            {
+                Encode(span.Slice(offset, 13), fixedTestStruct);
+                offset += 13; // 28, 41, 54, 67
+            }
+
+            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOfset); // G
+            offset += 4; // 71
+
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, testStruct.B.Length * 2), testStruct.B);
-            offset += testStruct.B.Length * 2;
+            offset += testStruct.B.Length * 2; // 71 + 256
+
+            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, testStruct.D.Length), testStruct.D);
+            offset += testStruct.D.Length; // 71 + 256 + 256
+
             Encode(span.Slice(offset, 7 + testStruct.E.B.Length * 2), testStruct.E);
-            offset += 7 + testStruct.E.B.Length * 2;
+            offset += 7 + testStruct.E.B.Length * 2; // 2638
+
+            Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), 4 * testStruct.G.Count);
+            offset += 4;
+            
+            foreach (VarTestStruct varTestStruct in testStruct.G)
+            {
+                if (varTestStruct != testStruct.G.Last())
+                {
+                    Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), 4 * testStruct.G.Count + 7 + varTestStruct.B.Length * 2); // G
+                    offset += 4;
+                }
+            }
+            
+            foreach (VarTestStruct varTestStruct in testStruct.G)
+            {
+                Encode(span.Slice(offset, 7 + varTestStruct.B.Length * 2), varTestStruct);
+                offset += 7 + varTestStruct.B.Length * 2;
+            }
+
+            span = span.Slice(0, offset);
         }
+
 
         private static (YamlNode rootNode, YamlNodeType nodeType) LoadValue(string file)
         {
