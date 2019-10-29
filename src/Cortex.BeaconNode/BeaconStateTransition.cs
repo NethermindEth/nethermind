@@ -101,7 +101,9 @@ namespace Cortex.BeaconNode
         {
             _logger.LogDebug(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
             ProcessJustificationAndFinalization(state);
-            ProcessCrosslinks(state);
+            
+            // Did this change ???
+            //ProcessCrosslinks(state);
 
             // TODO:
             // ProcessRewardsAndPenalties(state);
