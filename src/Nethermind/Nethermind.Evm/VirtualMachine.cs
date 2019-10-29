@@ -1998,7 +1998,7 @@ namespace Nethermind.Evm
                         if (_txTracer.IsTracingInstructions)
                         {
                             byte[] valueToStore = newIsZero ? BytesZero : newValue;
-                            Span<byte> span = stackalloc byte[32];
+                            Span<byte> span = new byte[32]; // do not stackalloc here
                             storageAddress.Index.ToBigEndian(span);
                             _txTracer.ReportStorageChange(span, valueToStore);
                         }

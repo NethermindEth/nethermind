@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -71,7 +72,7 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object arg, bool packed)
         {
-            byte[] bytes = null;
+            Span<byte> bytes = null;
             if (arg is UInt256 uint256)
             {
                 bytes = ((BigInteger) uint256).ToBigEndianByteArray();
@@ -82,23 +83,28 @@ namespace Nethermind.Abi
             }
             else if (arg is int intInput)
             {
-                bytes = intInput.ToBigEndianByteArray();
+                bytes = new byte[4];
+                BinaryPrimitives.WriteInt32BigEndian(bytes, intInput);
             }
             else if (arg is uint uintInput)
             {
-                bytes = uintInput.ToBigEndianByteArray();
+                bytes = new byte[4];
+                BinaryPrimitives.WriteUInt32BigEndian(bytes, uintInput);
             }
             else if (arg is long longInput)
             {
-                bytes = longInput.ToBigEndianByteArray();
+                bytes = new byte[8];
+                BinaryPrimitives.WriteInt64BigEndian(bytes, longInput);
             }
             else if (arg is short shortInput)
             {
-                bytes = shortInput.ToBigEndianByteArray();
+                bytes = new byte[8];
+                BinaryPrimitives.WriteInt16BigEndian(bytes, shortInput);
             }
             else if (arg is ushort ushortInput)
             {
-                bytes = ushortInput.ToBigEndianByteArray();
+                bytes = new byte[2];
+                BinaryPrimitives.WriteUInt16BigEndian(bytes, ushortInput);
             }
             else
             {

@@ -23,7 +23,7 @@ namespace Nethermind.Core
                 throw new RlpException("R and S lengths expected to be less or equal 32");
             }
 
-            int v = vBytes.ToInt32();
+            int v = vBytes.ReadEthInt32();
 
             if (rBytes.SequenceEqual(Bytes.Zero32) && sBytes.SequenceEqual(Bytes.Zero32))
             {

@@ -174,17 +174,9 @@ namespace Nethermind.Core.Extensions
 
         public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if (bytes[i] != 0)
-                {
-                    return bytes.AsSpan().Slice(i, bytes.Length - i);
-                }
-            }
-
-            return new byte[] {0};
+            return bytes.AsSpan().WithoutLeadingZeros();
         }
-
+        
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
@@ -204,15 +196,6 @@ namespace Nethermind.Core.Extensions
             result[0] = prefix;
             Buffer.BlockCopy(bytes, 0, result, 1, bytes.Length);
             return result;
-        }
-
-        public static byte[] Concat(byte prefix, byte[] part1, byte[] part2)
-        {
-            byte[] output = new byte[1 + part1.Length + part2.Length];
-            output[0] = prefix;
-            Buffer.BlockCopy(part1, 0, output, 1, part1.Length);
-            Buffer.BlockCopy(part2, 0, output, 1 + part1.Length, part2.Length);
-            return output;
         }
 
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
@@ -285,7 +268,7 @@ namespace Nethermind.Core.Extensions
         public static byte[] Concat(byte[] bytes, byte suffix)
         {
             byte[] result = new byte[bytes.Length + 1];
-            result[result.Length - 1] = suffix;
+            result[^1] = suffix;
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;
         }
@@ -351,61 +334,53 @@ namespace Nethermind.Core.Extensions
             }
         }
         
-        /// <summary>
-        /// Fix, so no allocations are made
-        /// </summary>
-        /// <param name="bytes"></param>
-        /// <param name="endianness"></param>
-        /// <returns></returns>
-        public static int ToInt32(this Span<byte> bytes, Endianness endianness = Endianness.Big)
+        public static uint ReadEthUInt32(this Span<byte> bytes)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
-                !BitConverter.IsLittleEndian && endianness == Endianness.Little)
+            if (bytes.Length != 4)
             {
-                byte[] reverted = new byte[bytes.Length];
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    reverted[bytes.Length - i - 1] = bytes[i];
-                }
-
-                return BitConverter.ToInt32(reverted.PadRight(4), 0);
+                Span<byte> fourBytes = stackalloc byte[4];
+                bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+                return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);    
             }
-
-            return BitConverter.ToInt32(bytes.ToArray().PadLeft(4), 0);
-        }
-
-        /// <summary>
-        /// Not tested, possibly broken
-        /// </summary>
-        /// <param name="bytes"></param>
-        /// <param name="endianness"></param>
-        /// <returns></returns>
-        public static uint ToUInt32(this byte[] bytes, Endianness endianness = Endianness.Big)
-        {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
-                !BitConverter.IsLittleEndian && endianness == Endianness.Little)
-            {
-                byte[] reverted = new byte[bytes.Length];
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    reverted[bytes.Length - i - 1] = bytes[i];
-                }
-
-                return BitConverter.ToUInt32(reverted.PadRight(4), 0);
-            }
-
-            return BitConverter.ToUInt32(bytes.Length == 4 ? bytes : bytes.PadLeft(4), 0);
+            
+            return BinaryPrimitives.ReadUInt32BigEndian(bytes);
         }
         
-        /// <summary>
-        /// Not tested, possibly broken
-        /// </summary>
-        /// <param name="bytes"></param>
-        /// <param name="endianness"></param>
-        /// <returns></returns>
-        public static uint ToUInt32New(this byte[] bytes, Endianness endianness = Endianness.Big)
+        public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
         {
-            return endianness == Endianness.Big ? BinaryPrimitives.ReadUInt32BigEndian(bytes) : BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+            if (bytes.Length != 4)
+            {
+                Span<byte> fourBytes = stackalloc byte[4];
+                bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+                return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);    
+            }
+            
+            return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+        }
+        
+        
+        public static int ReadEthInt32(this Span<byte> bytes)
+        {
+            if (bytes.Length != 4)
+            {
+                Span<byte> fourBytes = stackalloc byte[4];
+                bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+                return BinaryPrimitives.ReadInt32BigEndian(fourBytes);    
+            }
+            
+            return BinaryPrimitives.ReadInt32BigEndian(bytes);
+        }
+        
+        public static ulong ReadEthUInt64(this Span<byte> bytes)
+        {
+            if (bytes.Length != 8)
+            {
+                Span<byte> eightBytes = stackalloc byte[8];
+                bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
+                return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);    
+            }
+            
+            return BinaryPrimitives.ReadUInt64BigEndian(bytes);
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength,
@@ -440,15 +415,13 @@ namespace Nethermind.Core.Extensions
             return new BigInteger(bytesToUse);
         }
 
-        public static BigInteger ToSignedBigInteger(this Span<byte> bytes, int byteLength,
-            Endianness endianness = Endianness.Big)
+        public static BigInteger ToSignedBigInteger(this Span<byte> bytes, int byteLength, Endianness endianness = Endianness.Big)
         {
             if (bytes.Length == byteLength)
             {
                 return new BigInteger(bytes, false, endianness == Endianness.Big);
             }
-
-            // Debug.Assert(bytes.Length <= byteLength, $"{nameof(Bytes.ToSignedBigInteger)} expects {nameof(byteLength)} parameter to be less than length of the {bytes}");
+            
             Span<byte> bytesToUse = new byte[byteLength].AsSpan();
             bytes.CopyTo(bytesToUse.Slice(bytesToUse.Length - bytes.Length, bytes.Length));
 
@@ -456,12 +429,6 @@ namespace Nethermind.Core.Extensions
                 !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 bytesToUse.Reverse();
-                //byte[] signedResult = new byte[byteLength];
-                //for (int i = 0; i < byteLength; i++)
-                //{
-                //    signedResult[byteLength - i - 1] = bytesToUse[i];
-                //}
-
                 return new BigInteger(bytesToUse);
             }
 
@@ -480,27 +447,8 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static ulong ToUInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
-        {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
-                !BitConverter.IsLittleEndian && endianness == Endianness.Little)
-            {
-                Array.Reverse(bytes);
-            }
-
-            bytes = PadRight(bytes, 8);
-            ulong result = BitConverter.ToUInt64(bytes, 0);
-            return result;
-        }
-        
-        public static ulong ToUInt64New(this byte[] bytes, Endianness endianness = Endianness.Big)
-        {
-            return endianness == Endianness.Big ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : BinaryPrimitives.ReadUInt64LittleEndian(bytes);
-        }
-
         private static byte Reverse(byte b)
         {
-//            return BinaryPrimitives.ReverseEndianness(b);
             b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);
             b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);	
             b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);	
@@ -541,18 +489,6 @@ namespace Nethermind.Core.Extensions
         {
             byte[] inverted = new byte[32];
             int startIndex = 32 - bytes.Length;
-            for (int i = startIndex; i < inverted.Length; i++)
-            {
-                inverted[i] = Reverse(bytes[i - startIndex]);
-            }
-
-            return new BitArray(inverted);
-        }
-
-        public static BitArray ToBigEndianBitArray2048(this byte[] bytes)
-        {
-            byte[] inverted = new byte[256];
-            int startIndex = 256 - bytes.Length;
             for (int i = startIndex; i < inverted.Length; i++)
             {
                 inverted[i] = Reverse(bytes[i - startIndex]);

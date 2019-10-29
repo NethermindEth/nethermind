@@ -27,7 +27,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Benchmarks")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
 namespace Nethermind.Store

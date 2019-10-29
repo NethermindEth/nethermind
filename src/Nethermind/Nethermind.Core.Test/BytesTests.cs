@@ -105,5 +105,73 @@ namespace Nethermind.Core.Test
             TestContext.WriteLine(before.ToHexString());
             TestContext.WriteLine(bytes.ToHexString());
         }
+        
+        [TestCase("0x00000000", 0U)]
+        [TestCase("0x00000001", 1U)]
+        [TestCase("0x00000100",  256U)]
+        [TestCase("0x00010000",  256U * 256U)]
+        [TestCase("0x01000000",  256U * 256U * 256U)]
+        [TestCase("0x01", 1U)]
+        [TestCase("0x0100",  256U)]
+        [TestCase("0x010000",  256U * 256U)]
+        [TestCase("0xffffffff",  4294967295U)]
+        public void ToUInt32(string hexString, uint expectedResult)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString);
+            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt32());
+        }
+        
+        [TestCase("0x00000000", 0)]
+        [TestCase("0x00000001", 1)]
+        [TestCase("0x00000100",  256)]
+        [TestCase("0x00010000",  256 * 256)]
+        [TestCase("0x01000000",  256 * 256 * 256)]
+        [TestCase("0x01", 1)]
+        [TestCase("0x0100",  256)]
+        [TestCase("0x010000",  256 * 256)]
+        [TestCase("0xffffffff",  -1)]
+        public void ToInt32(string hexString, int expectedResult)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString);
+            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthInt32());
+        }
+        
+        [TestCase("0x00000000", 0U)]
+        [TestCase("0x00000001", 1U)]
+        [TestCase("0x00000100",  256U)]
+        [TestCase("0x00010000",  256U * 256U)]
+        [TestCase("0x01000000",  256U * 256U * 256U)]
+        [TestCase("0x01", 1U)]
+        [TestCase("0x0100",  256U)]
+        [TestCase("0x010000",  256U * 256U)]
+        [TestCase("0xffffffff",  4294967295U)]
+        public void ToUInt64(string hexString, uint expectedResult)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString);
+            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt32());
+        }
+        
+        [TestCase("0x0000000000000000", 0UL)]
+        [TestCase("0x0000000000000001", 1UL)]
+        [TestCase("0x0000000000000100",  256UL)]
+        [TestCase("0x0000000000010000",  256UL * 256UL)]
+        [TestCase("0x0000000001000000",  256UL * 256UL * 256UL)]
+        [TestCase("0x0000000100000000",  256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0x0000010000000000",  256UL * 256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0x0001000000000000",  256UL * 256UL * 256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0x0100000000000000",  256UL * 256UL * 256UL * 256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0x01", 1UL)]
+        [TestCase("0x0100",  256UL)]
+        [TestCase("0x010000",  256UL * 256UL)]
+        [TestCase("0x01000000",  256UL * 256UL * 256UL)]
+        [TestCase("0x0100000000",  256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0x010000000000",  256UL * 256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0x01000000000000",  256UL * 256UL * 256UL * 256UL * 256UL * 256UL)]
+        [TestCase("0xffffffffffffffff",  18446744073709551615UL)]
+        public void ToInt64(string hexString, ulong expectedResult)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString);
+            Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt64());
+        }
     }
 }
