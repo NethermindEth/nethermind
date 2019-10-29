@@ -20,6 +20,7 @@ using System.Collections;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
@@ -72,7 +73,7 @@ namespace Nethermind.Ssz
             return value ? (byte) 1 : (byte) 0;
         }
 
-        public static void Encode(Span<byte> span, bool[] value)
+        public static void Encode(Span<byte> span, Span<bool> value)
         {
             if (span.Length != value.Length)
             {
@@ -113,7 +114,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static void Encode(Span<byte> span, ulong[] value)
+        public static void Encode(Span<byte> span, Span<ulong> value)
         {
             const int typeSize = 8;
             if (span.Length != value.Length * typeSize)
@@ -124,7 +125,7 @@ namespace Nethermind.Ssz
             MemoryMarshal.Cast<ulong, byte>(value).CopyTo(span);
         }
 
-        public static void Encode(Span<byte> span, uint[] value)
+        public static void Encode(Span<byte> span, Span<uint> value)
         {
             const int typeSize = 4;
             if (span.Length != value.Length * typeSize)
@@ -135,7 +136,7 @@ namespace Nethermind.Ssz
             MemoryMarshal.Cast<uint, byte>(value).CopyTo(span);
         }
 
-        public static void Encode(Span<byte> span, ushort[] value)
+        public static void Encode(Span<byte> span, Span<ushort> value)
         {
             const int typeSize = 2;
             if (span.Length != value.Length * typeSize)
@@ -146,7 +147,8 @@ namespace Nethermind.Ssz
             MemoryMarshal.Cast<ushort, byte>(value).CopyTo(span);
         }
 
-        public static void Encode(Span<byte> span, byte[] value)
+        [Todo(Improve.Refactor, "Not sure if this will be useful for readability")]
+        public static void Encode(Span<byte> span, Span<byte> value)
         {
             const int typeSize = 1;
             if (span.Length != value.Length * typeSize)
@@ -154,7 +156,7 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength(span.Length, value.Length);
             }
 
-            value.AsSpan().CopyTo(span);
+            value.CopyTo(span);
         }
 
         public static bool DecodeBool(Span<byte> span)
