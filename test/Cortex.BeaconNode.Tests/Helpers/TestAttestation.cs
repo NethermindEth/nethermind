@@ -24,7 +24,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             block.Body.AddAttestations(attestation);
             beaconStateTransition.ProcessSlots(state, block.Slot);
             TestBlock.SignBlock(state, block, ValidatorIndex.None, miscellaneousParameters, timeParameters, maxOperationsPerBlock, beaconChainUtility, beaconStateAccessor);
-            beaconStateTransition.StateTransition(state, block);
+            beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }
 
         public static BlsSignature GetAttestationSignature(BeaconState state, AttestationData attestationData, byte[] privateKey, bool custodyBit,

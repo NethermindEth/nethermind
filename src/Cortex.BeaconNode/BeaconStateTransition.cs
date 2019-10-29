@@ -15,9 +15,9 @@ namespace Cortex.BeaconNode
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
+        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconStateTransition(ILogger<BeaconStateTransition> logger,
@@ -39,6 +39,59 @@ namespace Cortex.BeaconNode
             _beaconStateAccessor = beaconStateAccessor;
         }
 
+        public Gwei GetAttestingBalance(BeaconState state, IEnumerable<PendingAttestation> attestations)
+        {
+            var unslashed = GetUnslashedAttestingIndices(state, attestations);
+            return _beaconStateAccessor.GetTotalBalance(state, unslashed);
+        }
+
+        public IEnumerable<PendingAttestation> GetMatchingSourceAttestations(BeaconState state, Epoch epoch)
+        {
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            if (epoch != currentEpoch && epoch != previousEpoch)
+            {
+                throw new ArgumentOutOfRangeException(nameof(epoch), epoch, $"The epoch for attestions must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
+            }
+
+            if (epoch == currentEpoch)
+            {
+                return state.CurrentEpochAttestations;
+            }
+            return state.PreviousEpochAttestations;
+        }
+
+        public IEnumerable<PendingAttestation> GetMatchingTargetAttestations(BeaconState state, Epoch epoch)
+        {
+            var blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
+            var sourceAttestations = GetMatchingSourceAttestations(state, epoch);
+            return sourceAttestations.Where(x => x.Data.Target.Root == blockRoot);
+        }
+
+        public IEnumerable<ValidatorIndex> GetUnslashedAttestingIndices(BeaconState state, IEnumerable<PendingAttestation> attestations)
+        {
+            IEnumerable<ValidatorIndex> output = new List<ValidatorIndex>();
+            foreach (var attestation in attestations)
+            {
+                var attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
+                output = output.Union(attestingIndices);
+            }
+            return output.Where(x => !state.Validators[(int)(ulong)x].IsSlashed);
+        }
+
+        public void ProcessBlock(BeaconState state, BeaconBlock block)
+        {
+            ProcessBlockHeader(state, block);
+            ProcessRandao(state, block.Body);
+            ProcessEth1Data(state, block.Body);
+            ProcessOperations(state, block.Body);
+        }
+
+        public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
+        {
+            //throw new NotImplementedException();
+        }
+
         public void ProcessCrosslinks(BeaconState state)
         {
             //throw new NotImplementedException();
@@ -57,6 +110,11 @@ namespace Cortex.BeaconNode
             // ProcessFinalUpdates(state);
 
             // throw new NotImplementedException();
+        }
+
+        public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
+        {
+            //throw new NotImplementedException();
         }
 
         public void ProcessJustificationAndFinalization(BeaconState state)
@@ -129,11 +187,21 @@ namespace Cortex.BeaconNode
             }
         }
 
+        public void ProcessOperations(BeaconState state, BeaconBlockBody body)
+        {
+            //throw new NotImplementedException();
+        }
+
+        public void ProcessRandao(BeaconState state, BeaconBlockBody body)
+        {
+            //throw new NotImplementedException();
+        }
+
         public void ProcessSlot(BeaconState state)
         {
             _logger.LogDebug(Event.ProcessSlot, "Process current slot for state {BeaconState}", state);
             // Cache state root
-            var previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, 
+            var previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
                 _stateListLengthOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
             var previousRootIndex = state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot;
             state.SetStateRoot(previousRootIndex, previousStateRoot);
@@ -145,11 +213,6 @@ namespace Cortex.BeaconNode
             // Cache block root
             var previousBlockRoot = state.LatestBlockHeader.SigningRoot();
             state.SetBlockRoot(previousRootIndex, previousBlockRoot);
-        }
-
-        public void StateTransition(BeaconState state, BeaconBlock block)
-        {
-            throw new NotImplementedException();
         }
 
         public void ProcessSlots(BeaconState state, Slot slot)
@@ -172,44 +235,22 @@ namespace Cortex.BeaconNode
             }
         }
 
-        private Gwei GetAttestingBalance(BeaconState state, IEnumerable<PendingAttestation> attestations)
+        public BeaconState StateTransition(BeaconState state, BeaconBlock block, bool validateStateRoot)
         {
-            var unslashed = GetUnslashedAttestingIndices(state, attestations);
-            return _beaconStateAccessor.GetTotalBalance(state, unslashed);
-        }
-
-        private IEnumerable<PendingAttestation> GetMatchingSourceAttestations(BeaconState state, Epoch epoch)
-        {
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
-            if (epoch != currentEpoch && epoch != previousEpoch)
+            // Process slots (including those with no blocks) since block
+            ProcessSlots(state, block.Slot);
+            // Process block
+            ProcessBlock(state, block);
+            // Validate state root (True in production)
+            if (validateStateRoot)
             {
-                throw new ArgumentOutOfRangeException(nameof(epoch), epoch, $"The epoch for attestions must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
+                var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+                if (block.StateRoot != checkStateRoot)
+                {
+                    throw new Exception("Mismatch between calculated state root and block state root.");
+                }
             }
-
-            if (epoch == currentEpoch)
-            {
-                return state.CurrentEpochAttestations;
-            }
-            return state.PreviousEpochAttestations;
-        }
-
-        private IEnumerable<PendingAttestation> GetMatchingTargetAttestations(BeaconState state, Epoch epoch)
-        {
-            var blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
-            var sourceAttestations = GetMatchingSourceAttestations(state, epoch);
-            return sourceAttestations.Where(x => x.Data.Target.Root == blockRoot);
-        }
-
-        private IEnumerable<ValidatorIndex> GetUnslashedAttestingIndices(BeaconState state, IEnumerable<PendingAttestation> attestations)
-        {
-            IEnumerable<ValidatorIndex> output = new List<ValidatorIndex>();
-            foreach (var attestation in attestations)
-            {
-                var attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
-                output = output.Union(attestingIndices);
-            }
-            return output.Where(x => !state.Validators[(int)(ulong)x].IsSlashed);
+            return state;
         }
     }
 }
