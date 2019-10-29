@@ -20,20 +20,6 @@ namespace Nethermind.Core.Extensions
 {
     public static class Int64Extensions
     {
-        public static byte[] ToBigEndianByteArray(this long value)
-        {
-            byte[] bytes = new byte[8];
-            bytes[7] = (byte)value;
-            bytes[6] = (byte)(value >> 8);
-            bytes[5] = (byte)(value >> 16);
-            bytes[4] = (byte)(value >> 24);
-            bytes[3] = (byte)(value >> 32);
-            bytes[2] = (byte)(value >> 40);
-            bytes[1] = (byte)(value >> 48);
-            bytes[0] = (byte)(value >> 56);
-            return bytes;
-        }
-        
         public static byte[] ToBigEndianByteArrayWithoutLeadingZeros(this long value)
         {
             byte byte6 = (byte)(value >> 8);

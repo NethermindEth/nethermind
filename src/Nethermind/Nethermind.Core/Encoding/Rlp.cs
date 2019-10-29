@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -420,7 +421,9 @@ namespace Nethermind.Core.Encoding
         /// <returns></returns>
         public static Rlp Encode(ulong value)
         {
-            return Encode(value.ToBigEndianByteArray());
+            Span<byte> bytes = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            return Encode(bytes);
         }
 
         public static Rlp Encode(long value)

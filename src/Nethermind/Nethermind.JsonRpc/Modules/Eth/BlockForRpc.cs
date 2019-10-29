@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -46,7 +47,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             if (!isAuRaBlock)
             {
                 MixHash = block.MixHash;
-                Nonce = block.Nonce.ToBigEndianByteArray().PadLeft(8);
+                Nonce = new byte[8];
+                BinaryPrimitives.WriteUInt64BigEndian(Nonce, block.Nonce);
             }
             else
             {

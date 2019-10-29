@@ -85,7 +85,7 @@ namespace Ethereum.Test.Base
                 Bytes.FromHexString(headerJson.ExtraData)
             );
 
-            header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom).ToBigEndianBitArray2048());
+            header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom).AsSpan().ToBigEndianBitArray2048());
             header.GasUsed = (long) Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
             header.Hash = new Keccak(headerJson.Hash);
             header.MixHash = new Keccak(headerJson.MixHash);
