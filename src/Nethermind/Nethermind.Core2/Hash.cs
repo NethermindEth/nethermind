@@ -22,12 +22,15 @@ using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.HashLib;
 
 namespace Nethermind.Core2
 {
     [DebuggerStepThrough]
     public class Sha256 : IEquatable<Sha256>
     {
+        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();  
+
         internal const int Size = 32;
 
         public Sha256(string hexString)
@@ -83,7 +86,7 @@ namespace Nethermind.Core2
         {
             if (Bytes == null)
             {
-                return "Keccak<uninitialized>";
+                return "Sha256<uninitialized>";
             }
 
             return Bytes.ToHexString(withZeroX);
@@ -103,7 +106,7 @@ namespace Nethermind.Core2
                 return OfAnEmptyString;
             }
 
-            return new Sha256(KeccakHash.ComputeHashBytes(input));
+            return Compute(input.AsSpan());
         }
 
         [DebuggerStepThrough]
@@ -114,12 +117,23 @@ namespace Nethermind.Core2
                 return OfAnEmptyString;
             }
 
-            return new Sha256(KeccakHash.ComputeHashBytes(input));
+            return InternalCompute(input.ToArray());
+        }
+        
+        public static void ComputeInPlace(Span<byte> input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                OfAnEmptyString.Bytes.AsSpan().CopyTo(input);
+            }
+
+            byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
+            bytes.AsSpan().CopyTo(input);
         }
 
         private static Sha256 InternalCompute(byte[] input)
         {
-            return new Sha256(KeccakHash.ComputeHashBytes(input.AsSpan()));
+            return new Sha256(Hash.ComputeBytes(input).GetBytes());
         }
 
         [DebuggerStepThrough]
