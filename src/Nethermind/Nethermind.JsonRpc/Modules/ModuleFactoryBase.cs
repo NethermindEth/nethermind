@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Nethermind.JsonRpc.Modules.Net;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
@@ -27,16 +28,12 @@ namespace Nethermind.JsonRpc.Modules
     {
         public ModuleFactoryBase()
         {
-            RpcModuleAttribute attribute;
-            if (typeof(T).IsInterface)
+            if (!typeof(T).IsInterface)
             {
-                attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
-            }
-            else
-            {
-                attribute = typeof(T).BaseType.GetCustomAttribute<RpcModuleAttribute>();
+                throw new InvalidOperationException($"Module factory type should be an interface and not {typeof(T).Name}");
             }
 
+            RpcModuleAttribute attribute = typeof(T).GetCustomAttribute<RpcModuleAttribute>();
             if (attribute == null)
             {
                 throw new InvalidOperationException($"RPC module {typeof(T).Name} is missing {nameof(RpcModuleAttribute)}");
