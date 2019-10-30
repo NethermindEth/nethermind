@@ -107,6 +107,7 @@ namespace Nethermind.JsonRpc.Benchmark
         public void Current()
         {
             _ethModule.eth_getBalance(Address.Zero, new BlockParameter(1));
+            _ethModule.eth_getBlockByNumber(new BlockParameter(1), false);
         }
     }
 }
