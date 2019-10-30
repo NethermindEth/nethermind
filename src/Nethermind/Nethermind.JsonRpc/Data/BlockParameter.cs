@@ -44,6 +44,12 @@ namespace Nethermind.JsonRpc.Data
             Type = type;
             BlockNumber = null;
         }
+        
+        public BlockParameter(long number)
+        {
+            Type = BlockParameterType.BlockNumber;
+            BlockNumber = number;
+        }
 
         public void FromJson(string jsonValue)
         {
