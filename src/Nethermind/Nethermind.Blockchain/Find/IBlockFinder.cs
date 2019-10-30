@@ -28,5 +28,12 @@ namespace Nethermind.Blockchain.Find
         Block FindEarliestBlock();
         Block FindLatestBlock();
         Block FindPendingBlock();
+        BlockHeader FindHeader(Keccak blockHash);
+        BlockHeader FindHeader(long blockNumber);
+        BlockHeader FindGenesisHeader();
+        BlockHeader FindHeadHeader();
+        BlockHeader FindEarliestHeader();
+        BlockHeader FindLatestHeader();
+        BlockHeader FindPendingHeader();
     }
 }
