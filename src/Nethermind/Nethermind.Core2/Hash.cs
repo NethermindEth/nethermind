@@ -22,24 +22,27 @@ using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.HashLib;
 
 namespace Nethermind.Core2
 {
     [DebuggerStepThrough]
-    public class Hash : IEquatable<Hash>
+    public class Sha256 : IEquatable<Sha256>
     {
+        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();  
+
         internal const int Size = 32;
 
-        public Hash(string hexString)
+        public Sha256(string hexString)
             : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
 
-        public Hash(byte[] bytes)
+        public Sha256(byte[] bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Hash)} must be {Size} bytes and was {bytes.Length} bytes",
+                throw new ArgumentException($"{nameof(Sha256)} must be {Size} bytes and was {bytes.Length} bytes",
                     nameof(bytes));
             }
 
@@ -49,22 +52,22 @@ namespace Nethermind.Core2
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static readonly Hash OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Sha256 OfAnEmptyString = InternalCompute(new byte[] { });
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Hash OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
+        public static readonly Sha256 OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Hash EmptyTreeHash = InternalCompute(new byte[] {128});
+        public static Sha256 EmptyTreeHash = InternalCompute(new byte[] {128});
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Hash Zero { get; } = new Hash(new byte[Size]);
+        public static Sha256 Zero { get; } = new Sha256(new byte[Size]);
 
         public byte[] Bytes { get; }
 
@@ -83,47 +86,58 @@ namespace Nethermind.Core2
         {
             if (Bytes == null)
             {
-                return "Keccak<uninitialized>";
+                return "Sha256<uninitialized>";
             }
 
             return Bytes.ToHexString(withZeroX);
         }
 
         [DebuggerStepThrough]
-        public static Hash Compute(Rlp rlp)
+        public static Sha256 Compute(Rlp rlp)
         {
             return InternalCompute(rlp.Bytes);
         }
 
         [DebuggerStepThrough]
-        public static Hash Compute(byte[] input)
+        public static Sha256 Compute(byte[] input)
         {
             if (input == null || input.Length == 0)
             {
                 return OfAnEmptyString;
             }
 
-            return new Hash(KeccakHash.ComputeHashBytes(input));
+            return Compute(input.AsSpan());
         }
 
         [DebuggerStepThrough]
-        public static Hash Compute(Span<byte> input)
+        public static Sha256 Compute(Span<byte> input)
         {
             if (input == null || input.Length == 0)
             {
                 return OfAnEmptyString;
             }
 
-            return new Hash(KeccakHash.ComputeHashBytes(input));
+            return InternalCompute(input.ToArray());
+        }
+        
+        public static void ComputeInPlace(Span<byte> input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                OfAnEmptyString.Bytes.AsSpan().CopyTo(input);
+            }
+
+            byte[] bytes = Hash.ComputeBytes(input.ToArray()).GetBytes();
+            bytes.AsSpan().CopyTo(input);
         }
 
-        private static Hash InternalCompute(byte[] input)
+        private static Sha256 InternalCompute(byte[] input)
         {
-            return new Hash(KeccakHash.ComputeHashBytes(input.AsSpan()));
+            return new Sha256(Hash.ComputeBytes(input).GetBytes());
         }
 
         [DebuggerStepThrough]
-        public static Hash Compute(string input)
+        public static Sha256 Compute(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -133,7 +147,7 @@ namespace Nethermind.Core2
             return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
         }
 
-        public bool Equals(Hash other)
+        public bool Equals(Sha256 other)
         {
             if (ReferenceEquals(other, null))
             {
@@ -145,7 +159,7 @@ namespace Nethermind.Core2
 
         public override bool Equals(object obj)
         {
-            return obj?.GetType() == typeof(Hash) && Equals((Hash) obj);
+            return obj?.GetType() == typeof(Sha256) && Equals((Sha256) obj);
         }
 
         public override int GetHashCode()
@@ -153,7 +167,7 @@ namespace Nethermind.Core2
             return MemoryMarshal.Read<int>(Bytes);
         }
 
-        public static bool operator ==(Hash a, Hash b)
+        public static bool operator ==(Sha256 a, Sha256 b)
         {
             if (ReferenceEquals(a, null))
             {
@@ -168,7 +182,7 @@ namespace Nethermind.Core2
             return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
-        public static bool operator !=(Hash a, Hash b)
+        public static bool operator !=(Sha256 a, Sha256 b)
         {
             return !(a == b);
         }

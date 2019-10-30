@@ -304,7 +304,7 @@ namespace Nethermind.Core.Extensions
                 return 0;
             }
 
-            return (fnvPrime * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[bytes.Length - 1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
+            return (fnvPrime * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
     }
 }

@@ -21,8 +21,10 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Ssz;
 using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
 
@@ -82,10 +84,12 @@ namespace Ethereum2.Ssz.Test
                 TestContext.Out.WriteLine(validDir);
                 string[] files = Directory.GetFiles(validDir);
                 (YamlNode valueNode, YamlNodeType valueType) = LoadValue(files[2]); // value.yaml
+                (YamlNode merkleRootYaml, _) = LoadValue(files[0]); // meta.yaml
+                string expectedMerkleRoot = ((YamlScalarNode) merkleRootYaml["root"]).Value;
 
                 Span<byte> output = null;
                 Span<byte> ssz = File.ReadAllBytes(files[1]);
-                
+
                 if (valueType == YamlNodeType.Sequence)
                 {
                     YamlSequenceNode sequenceNode = (YamlSequenceNode) valueNode;
@@ -98,6 +102,10 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint256"))
                     {
@@ -108,6 +116,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint128"))
                     {
@@ -118,6 +129,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint64"))
                     {
@@ -128,6 +142,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint32"))
                     {
@@ -138,6 +155,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint16"))
                     {
@@ -148,6 +168,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint8"))
                     {
@@ -158,78 +181,135 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                 }
                 else if (valueType == YamlNodeType.Scalar)
                 {
                     if (validDir.Contains("bitvec") || validDir.Contains("bitlist"))
                     {
+                        uint limit = 0;
+                        Match match = Regex.Match(validDir, "bitlist_(\\d+)", RegexOptions.IgnoreCase);
+                        if (match.Success)
+                        {
+                            limit = (uint.Parse(match.Groups[1].Value) + 255) / 256;
+                        }
+
+//                        if (!validDir.Contains("513_nil_0"))
+//                        {
+//                            continue;
+//                        }
+                        
                         byte[] value = Bytes.FromHexString(((YamlScalarNode) valueNode).Value);
+                        byte[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeBytes(ssz).ToArray();
                         output = new byte[value.Length];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        byte[] clone = output.ToArray();
+                        Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
+                        Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
+                        Span<byte> root = new byte[32];
+                        if (validDir.Contains("bitvec"))
+                        {
+                            Merkle.Ize(root, valueFromSsz);
+                        }
+                        else
+                        {
+                            Merkle.IzeBits(root, valueFromSsz, limit);    
+                        }
+                        
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("boolean"))
                     {
                         bool value = bool.Parse(((YamlScalarNode) valueNode).Value);
                         bool valueFromSsz = Nethermind.Ssz.Ssz.DecodeBool(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
                         output = new byte[1];
                         output[0] = Nethermind.Ssz.Ssz.Encode(value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint_256"))
                     {
                         UInt256 value = UInt256.Parse(((YamlScalarNode) valueNode).Value);
                         UInt256 valueFromSsz = Nethermind.Ssz.Ssz.DecodeUInt256(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
+
                         output = new byte[32];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint_128"))
                     {
                         UInt128 value = UInt128.Parse(((YamlScalarNode) valueNode).Value);
                         UInt128 valueFromSsz = Nethermind.Ssz.Ssz.DecodeUInt128(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
+
                         output = new byte[16];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint_64"))
                     {
                         ulong value = ulong.Parse(((YamlScalarNode) valueNode).Value);
                         ulong valueFromSsz = Nethermind.Ssz.Ssz.DecodeULong(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
+
                         output = new byte[8];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint_32"))
                     {
                         uint value = uint.Parse(((YamlScalarNode) valueNode).Value);
                         uint valueFromSsz = Nethermind.Ssz.Ssz.DecodeUInt(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
+
                         output = new byte[4];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint_16"))
                     {
                         ushort value = ushort.Parse(((YamlScalarNode) valueNode).Value);
                         ushort valueFromSsz = Nethermind.Ssz.Ssz.DecodeUShort(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
+
                         output = new byte[2];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                     else if (validDir.Contains("uint_8"))
                     {
                         byte value = byte.Parse(((YamlScalarNode) valueNode).Value);
                         byte valueFromSsz = Nethermind.Ssz.Ssz.DecodeByte(ssz);
                         Assert.AreEqual(value, valueFromSsz);
-                        
+
                         output = new byte[1];
                         Nethermind.Ssz.Ssz.Encode(output, value);
+                        
+                        Span<byte> root = new byte[32];
+                        Merkle.Ize(root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
                     }
                 }
                 else if (valueType == YamlNodeType.Mapping)
@@ -293,7 +373,7 @@ namespace Ethereum2.Ssz.Test
                         Encode(ref output, testStruct);
                     }
                 }
-                
+
                 if (ssz.ToHexString() != output.ToHexString())
                 {
                     TestContext.Out.WriteLine($"  expected {ssz.ToHexString()}");
@@ -380,18 +460,18 @@ namespace Ethereum2.Ssz.Test
             Nethermind.Ssz.Ssz.Encode(span.Slice(11, 1), testStruct.A);
             Nethermind.Ssz.Ssz.Encode(span.Slice(12, 1), testStruct.D);
         }
-        
+
         private static BitsStruct DecodeBitsStruct(Span<byte> span)
         {
             BitsStruct testStruct = new BitsStruct();
             uint offset0 = Nethermind.Ssz.Ssz.DecodeUInt(span.Slice(0, 4));
             uint offset1 = Nethermind.Ssz.Ssz.DecodeUInt(span.Slice(6, 4));
-            testStruct.A = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice((int)offset0, (int)(offset1 - offset0))).ToArray();
+            testStruct.A = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice((int) offset0, (int) (offset1 - offset0))).ToArray();
             testStruct.B = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice(4, 1)).ToArray();
             testStruct.C = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice(5, 1)).ToArray();
-            testStruct.D = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice((int)offset1, (int)(span.Length - offset1))).ToArray();
+            testStruct.D = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice((int) offset1, (int) (span.Length - offset1))).ToArray();
             testStruct.E = Nethermind.Ssz.Ssz.DecodeBytes(span.Slice(10, 1)).ToArray();
-            
+
             BinaryPrimitives.WriteInt32LittleEndian(span.Slice(0, 4), 11);
             Nethermind.Ssz.Ssz.Encode(span.Slice(4, 1), testStruct.B);
             Nethermind.Ssz.Ssz.Encode(span.Slice(5, 1), testStruct.C);
@@ -407,7 +487,7 @@ namespace Ethereum2.Ssz.Test
             Nethermind.Ssz.Ssz.Encode(span.Slice(0, 2), testStruct.A);
             Nethermind.Ssz.Ssz.Encode(span.Slice(2, 2), testStruct.B);
         }
-        
+
         private static SmallTestStruct DecodeSmallTestStruct(Span<byte> span)
         {
             SmallTestStruct testStruct = new SmallTestStruct();
@@ -420,7 +500,7 @@ namespace Ethereum2.Ssz.Test
         {
             Nethermind.Ssz.Ssz.Encode(span, testStruct.A);
         }
-        
+
         private static SingleFieldTestStruct DecodeSingleFieldTestStruct(Span<byte> span)
         {
             SingleFieldTestStruct testStruct = new SingleFieldTestStruct();
@@ -435,7 +515,7 @@ namespace Ethereum2.Ssz.Test
             Nethermind.Ssz.Ssz.Encode(span.Slice(6, 1), testStruct.C);
             Nethermind.Ssz.Ssz.Encode(span.Slice(7, 2 * testStruct.B.Length), testStruct.B);
         }
-        
+
         private static VarTestStruct DecodeVarTestStruct(Span<byte> span)
         {
             VarTestStruct testStruct = new VarTestStruct();
@@ -451,7 +531,7 @@ namespace Ethereum2.Ssz.Test
             Nethermind.Ssz.Ssz.Encode(span.Slice(1, 8), testStruct.B);
             Nethermind.Ssz.Ssz.Encode(span.Slice(9, 4), testStruct.C);
         }
-        
+
         private static FixedTestStruct DecodeFixTestStruct(Span<byte> span)
         {
             FixedTestStruct testStruct = new FixedTestStruct();
@@ -465,16 +545,16 @@ namespace Ethereum2.Ssz.Test
         {
             int offset = 0;
             int varOffset = 71;
-            
+
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 2), testStruct.A);
             offset += 2; // 2
-            
+
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOffset); // B
             varOffset += testStruct.B.Length * 2;
-            
+
             offset += 4; // 6
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 1), testStruct.C);
-            
+
             offset += 1; // 7
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOffset); // D
             varOffset += testStruct.D.Length;
@@ -482,7 +562,7 @@ namespace Ethereum2.Ssz.Test
             offset += 4; // 11
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), varOffset); // E
             varOffset += 7 + testStruct.E.B.Length * 2;
-            
+
             offset += 4; // 15
             foreach (FixedTestStruct fixedTestStruct in testStruct.F)
             {
@@ -504,7 +584,7 @@ namespace Ethereum2.Ssz.Test
 
             Nethermind.Ssz.Ssz.Encode(span.Slice(offset, 4), 4 * testStruct.G.Count);
             offset += 4;
-            
+
             foreach (VarTestStruct varTestStruct in testStruct.G)
             {
                 if (varTestStruct != testStruct.G.Last())
@@ -513,7 +593,7 @@ namespace Ethereum2.Ssz.Test
                     offset += 4;
                 }
             }
-            
+
             foreach (VarTestStruct varTestStruct in testStruct.G)
             {
                 Encode(span.Slice(offset, 7 + varTestStruct.B.Length * 2), varTestStruct);
