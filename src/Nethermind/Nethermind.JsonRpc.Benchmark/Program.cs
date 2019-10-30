@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,26 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Running;
 
-namespace Nethermind.Blockchain.Find
+namespace Nethermind.JsonRpc.Benchmark
 {
-    public interface IBlockFinder
+    class Program
     {
-        Block FindBlock(Keccak blockHash);
-        Block FindBlock(long blockNumber);
-        Block FindGenesisBlock();
-        Block FindHeadBlock();
-        Block FindEarliestBlock();
-        Block FindLatestBlock();
-        Block FindPendingBlock();
-        BlockHeader FindHeader(Keccak blockHash);
-        BlockHeader FindHeader(long blockNumber);
-        BlockHeader FindGenesisHeader();
-        BlockHeader FindHeadHeader();
-        BlockHeader FindEarliestHeader();
-        BlockHeader FindLatestHeader();
-        BlockHeader FindPendingHeader();
+        static void Main(string[] args)
+        {
+            BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args, new DebugInProcessConfig());
+//            BenchmarkRunner.Run<EthModuleBenchmarks>();
+        }
     }
 }

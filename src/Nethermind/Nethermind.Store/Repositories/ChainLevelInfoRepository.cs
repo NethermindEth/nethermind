@@ -61,7 +61,7 @@ namespace Nethermind.Store.Repositories
         {
             void PersistLevel()
             {
-                // _blockInfoCache.Set(number, level);
+                _blockInfoCache.Set(number, level);
                 _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
             }
 
@@ -91,6 +91,7 @@ namespace Nethermind.Store.Repositories
                 if (levelBytes != null)
                 {
                     chainLevelInfo = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
+                    _blockInfoCache.Set(number, chainLevelInfo);
                 }
             }
 

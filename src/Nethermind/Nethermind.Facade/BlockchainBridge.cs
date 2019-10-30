@@ -329,5 +329,18 @@ namespace Nethermind.Facade
         public Block FindLatestBlock() => _blockFinder.FindLatestBlock();
 
         public Block FindPendingBlock() => _blockFinder.FindPendingBlock();
+        public BlockHeader FindHeader(Keccak blockHash) => _blockFinder.FindHeader(blockHash);
+
+        public BlockHeader FindHeader(long blockNumber) => _blockFinder.FindHeader(blockNumber);
+
+        public BlockHeader FindGenesisHeader() => _blockFinder.FindGenesisHeader();
+
+        public BlockHeader FindHeadHeader() => _blockFinder.FindHeadHeader();
+
+        public BlockHeader FindEarliestHeader() => _blockFinder.FindEarliestHeader();
+
+        public BlockHeader FindLatestHeader() => _blockFinder.FindLatestHeader();
+
+        public BlockHeader FindPendingHeader() => _blockFinder.FindPendingHeader();
     }
 }

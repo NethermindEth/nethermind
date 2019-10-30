@@ -32,14 +32,14 @@ namespace Nethermind.JsonRpc.Data
     {
         public static FilterBlockType ToFilterBlockType(this BlockParameterType type)
         {
-            switch (type)
+            return type switch
             {
-                case BlockParameterType.Latest: return FilterBlockType.Latest;
-                case BlockParameterType.Earliest: return FilterBlockType.Earliest;
-                case BlockParameterType.Pending: return FilterBlockType.Pending;
-                case BlockParameterType.BlockNumber: return FilterBlockType.BlockNumber;
-                default: return FilterBlockType.Latest;
-            }
+                BlockParameterType.Latest => FilterBlockType.Latest,
+                BlockParameterType.Earliest => FilterBlockType.Earliest,
+                BlockParameterType.Pending => FilterBlockType.Pending,
+                BlockParameterType.BlockNumber => FilterBlockType.BlockNumber,
+                _ => FilterBlockType.Latest
+            };
         }
     }
 }

@@ -21,12 +21,15 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
     public class MemDb : IDb
     {
+        private readonly int _writeDelay; // for testing scenarios
+        private readonly int _readDelay; // for testing scenarios
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
         
@@ -38,11 +41,21 @@ namespace Nethermind.Store
         {
             get
             {
+                if (_readDelay > 0)
+                {
+                    Thread.Sleep(_readDelay);
+                }
+                
                 ReadsCount++;
                 return _db.ContainsKey(key) ? _db[key] : null;
             }
             set
             {
+                if (_writeDelay > 0)
+                {
+                    Thread.Sleep(_writeDelay);
+                }
+                
                 WritesCount++;
                 _db[key] = value;
             }
@@ -73,6 +86,13 @@ namespace Nethermind.Store
 
         public MemDb()
         {
+            _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
+        }
+        
+        public MemDb(int writeDelay, int readDelay)
+        {
+            _writeDelay = writeDelay;
+            _readDelay = readDelay;
             _db = new ConcurrentDictionary<byte[], byte[]>(Bytes.EqualityComparer);
         }
 
