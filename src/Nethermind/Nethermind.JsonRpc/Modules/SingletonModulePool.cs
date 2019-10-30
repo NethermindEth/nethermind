@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules
         
         public T GetModule(bool canBeShared)
         {
-            if (!canBeShared && _allowExclusive)
+            if (!canBeShared && !_allowExclusive)
             {
                 throw new InvalidOperationException($"{nameof(SingletonModulePool<T>)} can only return shareable modules");
             }
