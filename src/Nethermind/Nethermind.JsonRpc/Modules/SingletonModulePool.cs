@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.JsonRpc.Modules
 {
     public class SingletonModulePool<T> : IRpcModulePool<T> where T : IModule
@@ -34,8 +36,13 @@ namespace Nethermind.JsonRpc.Modules
             _onlyInstance = factory.Create();
         }
         
-        public T GetModule()
+        public T GetModule(bool canBeShared)
         {
+            if (!canBeShared)
+            {
+                throw new InvalidOperationException($"{nameof(SingletonModulePool<T>)} can only return shareable modules");
+            }
+            
             return _onlyInstance;
         }
 

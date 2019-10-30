@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public interface IRpcModulePool<T> where T : IModule
     {
-        T GetModule();
+        T GetModule(bool canBeShared);
         
         void ReturnModule(T module);
 

@@ -58,14 +58,14 @@ namespace Nethermind.JsonRpc.Test.Modules
             return _provider.Check(methodName);
         }
 
-        public MethodInfo Resolve(string methodName)
+        public (MethodInfo, bool) Resolve(string methodName)
         {
             return _provider.Resolve(methodName);
         }
 
-        public IModule Rent(string methodName)
+        public IModule Rent(string methodName, bool readOnly)
         {
-            return _provider.Rent(methodName);
+            return _provider.Rent(methodName, readOnly);
         }
 
         public void Return(string methodName, IModule module)

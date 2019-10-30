@@ -41,9 +41,9 @@ namespace Nethermind.JsonRpc.Modules
 
         ModuleResolution Check(string methodName);
         
-        MethodInfo Resolve(string methodName);
+        (MethodInfo MethodInfo, bool ReadOnly) Resolve(string methodName);
         
-        IModule Rent(string methodName);
+        IModule Rent(string methodName, bool canBeShared);
         
         void Return(string methodName, IModule module);
     }
