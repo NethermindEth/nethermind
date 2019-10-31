@@ -80,16 +80,10 @@ namespace Nethermind.Benchmarks.Rlp
             Check(Current(), Improved2());
         }
 
-        private RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
-        
         [Benchmark]
         public byte[] Improved()
         {
-            using (MemoryStream stream = _recycler.GetStream())
-            {
-                Nethermind.Core.Encoding.Rlp.Encode(stream, _block);
-                return stream.ToArray();
-            }
+            throw new NotImplementedException();
         }
         
         [Benchmark]
