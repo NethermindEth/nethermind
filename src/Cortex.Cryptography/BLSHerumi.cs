@@ -25,7 +25,6 @@ namespace Cortex.Cryptography
 
         /// <inheritdoc />
         public override string HashToPointName => "ETH2-";
-        //public override string HashToPointName => "SSWU-RO-";
 
         /// <inheritdoc />
         public override BlsScheme Scheme => BlsScheme.Basic;
@@ -188,51 +187,14 @@ namespace Cortex.Cryptography
             return true;
         }
 
-        /*
-        public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, byte[]? domain = null)
+        public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
         {
-            if (destination.Length < SignatureLength)
-            {
-                bytesWritten = 0;
-                return false;
-            }
-
-            EnsureInitialised();
-
-            // TODO: Generate random key if null
-            // EnsurePrivateKey();
-
-            var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey!, _privateKey!.Length);
-            if (bytesRead != _privateKey.Length)
-            {
-                throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
-            }
-
-            var result = Bls384Interop.blsSign(out var blsSignature, blsSecretKey, data.ToArray(), data.Length);
-            if (result != 0)
-            {
-                throw new Exception($"Error generating BLS signature for data. Error: {result}");
-            }
-
-            var buffer = new byte[SignatureLength];
-            bytesWritten = Bls384Interop.blsSignatureSerialize(buffer, buffer.Length, blsSignature);
-            if (bytesWritten != buffer.Length)
-            {
-                throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
-            }
-            buffer.CopyTo(destination);
-            return true;
+            throw new NotImplementedException();
         }
-        */
 
         /// <inheritdoc />
-        public override bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, byte[]? domain = null)
+        public override bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
         {
-            // NOTE: Should be based on the hash algorithm
-            //if (hash.Length != HashLength)
-            //{
-            //    throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
-            //}
             if (destination.Length < SignatureLength)
             {
                 bytesWritten = 0;
@@ -242,7 +204,7 @@ namespace Cortex.Cryptography
             EnsureInitialised();
 
             var hashToSign = new byte[2 * InitialXPartLength];
-            if (domain != null)
+            if (domain.Length > 0)
             {
                 var combineSuccess = TryCombineHashAndDomain(hash, domain, hashToSign, out var combineBytesWritten);
                 if (!combineSuccess || combineBytesWritten != 2 * InitialXPartLength)
@@ -280,92 +242,31 @@ namespace Cortex.Cryptography
             return true;
         }
 
-        //if (!BitConverter.IsLittleEndian)
-        //{
-        //    throw new NotImplementedException();
-        //}
-
-        //var xFp2 = new Bls384Interop.MclBnFp2();
-        //xFp2.d_0.d_0 = BitConverter.ToUInt64(xReal.Slice(0, 8));
-        //xFp2.d_0.d_1 = BitConverter.ToUInt64(xReal.Slice(8, 8));
-        //xFp2.d_0.d_2 = BitConverter.ToUInt64(xReal.Slice(16, 8));
-        //xFp2.d_0.d_3 = BitConverter.ToUInt64(xReal.Slice(24, 8));
-        //xFp2.d_1.d_0 = BitConverter.ToUInt64(xImaginary.Slice(0, 8));
-        //xFp2.d_1.d_1 = BitConverter.ToUInt64(xImaginary.Slice(8, 8));
-        //xFp2.d_1.d_2 = BitConverter.ToUInt64(xImaginary.Slice(16, 8));
-        //xFp2.d_1.d_3 = BitConverter.ToUInt64(xImaginary.Slice(24, 8));
-
-        //var xFp2RealSpan = MemoryMarshal.CreateSpan(ref xFp2.d_0, 1);
-        //MemoryMarshal.Cast<byte, Bls384Interop.MclBnFp>(xReal).CopyTo(xFp2RealSpan);
-        //var xFp2ImaginarySpan = MemoryMarshal.CreateSpan(ref xFp2.d_1, 1);
-        //MemoryMarshal.Cast<byte, Bls384Interop.MclBnFp>(xImaginary).CopyTo(xFp2ImaginarySpan);
-
-        //var fp2Buffer = new byte[1000];
-        //var fp2BytesWritten = Bls384Interop.mclBnFp2_serialize(fp2Buffer, fp2Buffer.Length, xFp2);
-        //if (fp2BytesWritten != 96)
-        //{
-        //    //throw new Exception("Error serializing FP2.");
-        //}
-
         /// <inheritdoc />
-        public override bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, byte[]? domain = null)
+        public override bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, ReadOnlySpan<byte> domain = default)
         {
             // This is going to ignore the public (if any) and verify the provided public keys.
             throw new NotImplementedException();
         }
 
-        /*
-        public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, byte[]? domain = null)
+        public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
         {
-            if (signature.Length != SignatureLength)
-            {
-                throw new ArgumentOutOfRangeException(nameof(signature), signature.Length, $"Signature must be {SignatureLength} bytes long.");
-            }
-            // NOTE: Should be based on the hash algorithm
-            //if (hash.Length != HashLength)
-            //{
-            //    throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
-            //}
-
-            EnsureInitialised();
-            EnsurePublicKey();
-
-            var publicKeyBytesRead = Bls384Interop.blsPublicKeyDeserialize(out var blsPublicKey, _publicKey!, _publicKey!.Length);
-            if (publicKeyBytesRead != _publicKey.Length)
-            {
-                throw new Exception($"Error deserializing BLS public key, length: {publicKeyBytesRead}");
-            }
-
-            var signatureBytesRead = Bls384Interop.blsSignatureDeserialize(out var blsSignature, signature.ToArray(), signature.Length);
-            if (signatureBytesRead != signature.Length)
-            {
-                throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
-            }
-
-            var result = Bls384Interop.blsVerify(blsSignature, blsPublicKey, data.ToArray(), data.Length);
-
-            return (result == 1);
+            throw new NotImplementedException();
         }
-        */
 
         /// <inheritdoc />
-        public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, byte[]? domain = null)
+        public override bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
         {
             if (signature.Length != SignatureLength)
             {
                 throw new ArgumentOutOfRangeException(nameof(signature), signature.Length, $"Signature must be {SignatureLength} bytes long.");
             }
-            // NOTE: Should be based on the hash algorithm
-            //if (hash.Length != HashLength)
-            //{
-            //    throw new ArgumentOutOfRangeException(nameof(hash), hash.Length, $"Hash must be {HashLength} bytes long.");
-            //}
 
             EnsureInitialised();
             EnsurePublicKey();
 
             var hashToCheck = new byte[2 * InitialXPartLength];
-            if (domain != null)
+            if (domain.Length > 0)
             {
                 var combineSuccess = TryCombineHashAndDomain(hash, domain, hashToCheck, out var combineBytesWritten);
                 if (!combineSuccess || combineBytesWritten != 2 * InitialXPartLength)
@@ -389,9 +290,6 @@ namespace Cortex.Cryptography
             {
                 throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
             }
-
-            //var g2 = HashToG2(signingRoot, domain);
-            // NOTE: Might need to calculate our own G2 and then call blsVerifyPairing ??
 
             var result = Bls384Interop.blsVerifyHash(blsSignature, blsPublicKey, hashToCheck, hashToCheck.Length);
 
@@ -420,14 +318,7 @@ namespace Cortex.Cryptography
                 {
                     EnsureInitialised();
 
-                    // NOTE: Standard mentions big endian encoding, but not clear without test cases.
-                    // This does little endian, same as rest of ETH 2.0
-                    // (actually, it does platform endian; so need to fix either way to ensure big/little as needed)
-
-                    // Generated keys have last two as zero, so implying LE ?
-                    //var privateKeyBuffer = new byte[PrivateKeyLength];
-                    //_privateKey.CopyTo(privateKeyBuffer, 0);
-                    //Array.Reverse(privateKeyBuffer);
+                    // Standard values are big endian encoding (are using the Herumi deserialize / serialize)
 
                     var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey, _privateKey.Length);
                     if (bytesRead != _privateKey.Length)

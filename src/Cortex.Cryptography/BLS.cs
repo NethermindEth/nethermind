@@ -9,20 +9,49 @@ namespace Cortex.Cryptography
     /// </summary>
     public abstract class BLS : AsymmetricAlgorithm
     {
+        private HashAlgorithm _hashAlgorithm = SHA256.Create();
 
         protected BLS()
         {
+            // Draft standard: https://github.com/cfrg/draft-irtf-cfrg-bls-signature
+            // Want minimal-pubkey-size, with public keys points in G1, signatures points in G2
+            // G1 is 384-bit integer (48 bytes)
+            // G2 is pair of 384-bit integers (96 bytes)
+            // Private key is < r, which is ~256 bits (32 bytes)
+
+            // Also
+            // https://datatracker.ietf.org/doc/draft-irtf-cfrg-bls-signature
+
+            // Example algorithm name "BLS_SIG_BLS12381G2-SHA256-_NUL_";
+
+            // BLS_SIG_<h2c>_<scheme>_
+            // h2c : hash to curve (for hash to point and hash pubkey to point)
+            // scheme : tag NUL (basic), AUG, POP
+            // signature variant
+            // pairing friendly elliptic curve
+            // hash function
+            // BLS12381G1-SHA256-SSWU-RO- (min sig)
+            // BLS12381G2-SHA256-SSWU-RO- (min pub key)
+            // scheme = basic, curve = BLS12-381, hash = SHA-256
+
+            // Signature variant = MinimalPublicKeySize
+
+            // Pairing-friendly elliptic curve
+
+            // Hash function = Sha256
+
+            // HashToPoint function (hash to G2, for min pub key)
+
+            // Signature Schemes: Basic, MessageAugmentation, ProofOfPossession
+
+            // Standard hash-to-point values
+            // ETH 2 hash to g2 function
+            // Simplified SWU for pairing-friendly curves
+            // -RO uses hash_to_curve, required for random oracle
+            // -NU uses non-unniform, encode_to_curve
+
             LegalKeySizesValue = new[] { new KeySizes(32 * 8, 32 * 8, 0) };
         }
-        // Draft standard: https://github.com/cfrg/draft-irtf-cfrg-bls-signature
-        // Want minimal-pubkey-size, with public keys points in G1, signatures points in G2
-        // G1 is 384-bit integer (48 bytes)
-        // G2 is pair of 384-bit integers (96 bytes)
-        // Private key is < r, which is ~256 bits (32 bytes)
-
-        // https://datatracker.ietf.org/doc/draft-irtf-cfrg-bls-signature
-
-        private HashAlgorithm _hashAlgorithm = SHA256.Create();
 
         /// <summary>
         /// Gets the curve name part of the algorithm name, e.g. "BLS12381"
@@ -41,10 +70,6 @@ namespace Cortex.Cryptography
             }
         }
 
-        // ETH 2 hash to g2 function
-        // Simplified SWU for pairing-friendly curves
-        // -RO uses hash_to_curve, required for random oracle
-        // -NU uses non-unniform, encode_to_curve
         /// <summary>
         /// Gets the hash-to-point name, part of the hash to curve suite, e.g. "SSWU-RO-"
         /// </summary>
@@ -55,16 +80,6 @@ namespace Cortex.Cryptography
         /// </summary>
         public abstract BlsScheme Scheme { get; }
 
-        //public override string SignatureAlgorithm => "BLS_SIG_BLS12381G2-SHA256-_NUL_";
-        // BLS_SIG_<h2c>_<scheme>_
-        // h2c : hash to curve (for hash to point and hash pubkey to point)
-        // scheme : tag NUL (basic), AUG, POP
-        // signature variant
-        // pairing friendly elliptic curve
-        // hash function
-        // BLS12381G1-SHA256-SSWU-RO- (min sig)
-        // BLS12381G2-SHA256-SSWU-RO- (min pub key)
-        // scheme = basic, curve = BLS12-381, hash = SHA-256
         /// <inheritdoc />
         public override string SignatureAlgorithm
         {
@@ -83,13 +98,13 @@ namespace Cortex.Cryptography
         /// </summary>
         public abstract BlsVariant Variant { get; }
 
-        private static IDictionary<BlsScheme, string> SchemeTags => new Dictionary<BlsScheme, string> {
+        protected static IDictionary<BlsScheme, string> SchemeTags => new Dictionary<BlsScheme, string> {
             { BlsScheme.Basic, "NUL"},
             { BlsScheme.MessageAugmentation, "AUG"},
             { BlsScheme.ProofOfPossession, "POP"},
         };
 
-        private static IDictionary<BlsVariant, string> VariantTags => new Dictionary<BlsVariant, string> {
+        protected static IDictionary<BlsVariant, string> VariantTags => new Dictionary<BlsVariant, string> {
             { BlsVariant.MinimalSignatureSize, "G1"},
             { BlsVariant.MinimalPublicKeySize, "G2"},
         };
@@ -116,16 +131,6 @@ namespace Cortex.Cryptography
         /// <returns>true if the signature aggregation was successful; false if the destination is not large enough to hold the result</returns>
         public abstract bool TryAggregateSignatures(ReadOnlySpan<byte> signatures, Span<byte> destination, out int bytesWritten);
 
-        // Signature variant = MinimalPublicKeySize
-
-        // Pairing-friendly elliptic curve
-
-        // Hash function = Sha256
-
-        // HashToPoint function (hash to G2, for min pub key)
-
-        // Signature Schemes: Basic, MessageAugmentation, ProofOfPossession
-
         /// <summary>
         /// Gets the serialized private (secret) key, if available.
         /// </summary>
@@ -142,7 +147,7 @@ namespace Cortex.Cryptography
         /// <returns></returns>
         public abstract bool TryExportBLSPublicKey(Span<byte> desination, out int bytesWritten);
 
-        //public abstract bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, byte[]? domain = null);
+        public abstract bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default);
 
         /// <summary>
         /// sign the specified data, using the current private (secret) key.
@@ -152,11 +157,11 @@ namespace Cortex.Cryptography
         /// <param name="bytesWritten">Output the number of bytes written.</param>
         /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
         /// <returns>true if the signing was successful; false if the destination is not large enough to hold the result</returns>
-        public abstract bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, byte[]? domain = null);
+        public abstract bool TrySignHash(ReadOnlySpan<byte> hash, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default);
 
-        //public abstract bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, byte[]? domain = null);
+        public abstract bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, ReadOnlySpan<byte> domain = default);
 
-        public abstract bool VerifyAggregate(ReadOnlySpan<byte> publicKeys, ReadOnlySpan<byte> hashes, ReadOnlySpan<byte> aggregateSignature, byte[]? domain = null);
+        public abstract bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default);
 
         /// <summary>
         /// Verifies if the provided signature matches the specified hash, using the current public key.
@@ -165,6 +170,6 @@ namespace Cortex.Cryptography
         /// <param name="signature">The signature to check against the data.</param>
         /// <param name="domain">Optional additional data for the hash to point function (if needed).</param>
         /// <returns>true if the signature is valid</returns>
-        public abstract bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, byte[]? domain = null);
+        public abstract bool VerifyHash(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default);
     }
 }
