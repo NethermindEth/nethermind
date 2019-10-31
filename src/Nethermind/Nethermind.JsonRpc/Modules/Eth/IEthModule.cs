@@ -61,13 +61,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<long?>> eth_blockNumber();
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns account balance", IsReadOnly = true)]
-        Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter);
+        Task<ResultWrapper<UInt256?>> eth_getBalance(Address address, BlockParameter blockParameter = null);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns storage data at address. storage_index", IsReadOnly = true)]
-        ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter);
+        ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter = null);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns number of transactions in the block", IsReadOnly = true)]
-        ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter);
+        ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter = null);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns number of transactions in the block block hash", IsReadOnly = true)]
         ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash);
@@ -82,7 +82,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<UInt256?> eth_getUncleCountByBlockNumber(BlockParameter blockParameter);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns account code at given address and block", IsReadOnly = true)]
-        ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter);
+        ResultWrapper<byte[]> eth_getCode(Address address, BlockParameter blockParameter = null);
         
         [JsonRpcMethod(IsImplemented = false, Description = "Signs a transaction", IsReadOnly = true)]
         ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message);
