@@ -176,7 +176,7 @@ namespace Nethermind.Core.Extensions
         {
             return bytes.AsSpan().WithoutLeadingZeros();
         }
-        
+
         public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
@@ -283,7 +283,7 @@ namespace Nethermind.Core.Extensions
 
             return result;
         }
-        
+
         public static void ReverseInPlace(byte[] bytes)
         {
             for (int i = 0; i < bytes.Length / 2; i++)
@@ -333,53 +333,53 @@ namespace Nethermind.Core.Extensions
                 }
             }
         }
-        
+
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
             if (bytes.Length != 4)
             {
                 Span<byte> fourBytes = stackalloc byte[4];
                 bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-                return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);    
+                return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
             }
-            
+
             return BinaryPrimitives.ReadUInt32BigEndian(bytes);
         }
-        
+
         public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
         {
             if (bytes.Length != 4)
             {
                 Span<byte> fourBytes = stackalloc byte[4];
                 bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-                return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);    
+                return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
             }
-            
+
             return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
         }
-        
-        
+
+
         public static int ReadEthInt32(this Span<byte> bytes)
         {
             if (bytes.Length != 4)
             {
                 Span<byte> fourBytes = stackalloc byte[4];
                 bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-                return BinaryPrimitives.ReadInt32BigEndian(fourBytes);    
+                return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
             }
-            
+
             return BinaryPrimitives.ReadInt32BigEndian(bytes);
         }
-        
+
         public static ulong ReadEthUInt64(this Span<byte> bytes)
         {
             if (bytes.Length != 8)
             {
                 Span<byte> eightBytes = stackalloc byte[8];
                 bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
-                return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);    
+                return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
             }
-            
+
             return BinaryPrimitives.ReadUInt64BigEndian(bytes);
         }
 
@@ -421,7 +421,7 @@ namespace Nethermind.Core.Extensions
             {
                 return new BigInteger(bytes, false, endianness == Endianness.Big);
             }
-            
+
             Span<byte> bytesToUse = new byte[byteLength].AsSpan();
             bytes.CopyTo(bytesToUse.Slice(bytesToUse.Length - bytes.Length, bytes.Length));
 
@@ -450,8 +450,8 @@ namespace Nethermind.Core.Extensions
         private static byte Reverse(byte b)
         {
             b = (byte) ((b & 0xF0) >> 4 | (b & 0x0F) << 4);
-            b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);	
-            b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);	
+            b = (byte) ((b & 0xCC) >> 2 | (b & 0x33) << 2);
+            b = (byte) ((b & 0xAA) >> 1 | (b & 0x55) << 1);
             return b;
         }
 
@@ -539,53 +539,68 @@ namespace Nethermind.Core.Extensions
             return ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
+        private struct State
+        {
+            public State(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
+            {
+                Bytes = bytes;
+                LeadingZeros = leadingZeros;
+                WithZeroX = withZeroX;
+                WithEip55Checksum = withEip55Checksum;
+            }
+
+            public int LeadingZeros;
+            public byte[] Bytes;
+            public bool WithZeroX;
+            public bool WithEip55Checksum;
+        }
+
         [DebuggerStepThrough]
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
         {
-            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
-            char[] result = new char[bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
-            string hashHex = null;
-            if (withEip55Checksum)
-            {
-                hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
-            }
-
-            if (withZeroX)
-            {
-                result[0] = '0';
-                result[1] = 'x';
-            }
-
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                uint val = Lookup32[bytes[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
-
-                if (leadingZeros <= i * 2)
-                {
-                    result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char1) && hashHex[2 * i] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
-                }
-
-                if (leadingZeros <= i * 2 + 1)
-                {
-                    result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
-                        withEip55Checksum && char.IsLetter(char2) && hashHex[2 * i + 1] > '7'
-                            ? char.ToUpper(char2)
-                            : char2;
-                }
-            }
-
-            if (skipLeadingZeros && result.Length == (withZeroX ? 2 : 0))
+            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
+            if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
                 return withZeroX ? "0x0" : "0";
             }
 
-            return new string(result);
+            State stateToPass = new State(bytes, leadingZerosFirstCheck, withZeroX, withEip55Checksum);
+            return string.Create(length, stateToPass, (chars, state) =>
+            {
+                string hashHex = null;
+                if (state.WithEip55Checksum)
+                {
+                    // this path is rarely used - only in wallets
+                    hashHex = Keccak.Compute(state.Bytes.ToHexString(false)).ToString(false);
+                }
+
+                int offset = 0;
+                if (state.WithZeroX)
+                {
+                    chars[0] = '0';
+                    chars[1] = 'x';
+                    offset = 2;
+                }
+
+                for (int i = offset; i < chars.Length; i += 2)
+                {
+                    uint val = Lookup32[state.Bytes[(i - offset) / 2 + state.LeadingZeros]];
+                    char char1 = (char) val;
+                    char char2 = (char) (val >> 16);
+
+                    chars[i] =
+                        state.WithEip55Checksum && char.IsLetter(char1) && hashHex[i - offset] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
+
+                    chars[i + 1] =
+                        state.WithEip55Checksum && char.IsLetter(char2) && hashHex[i + 1 - offset] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+                }
+            });
         }
 
         private static readonly uint[] Lookup32 = CreateLookup32("x2");
@@ -629,7 +644,7 @@ namespace Nethermind.Core.Extensions
         }
 
         [DebuggerStepThrough]
-        public static byte[] FromHexString(string hexString)
+        public static byte[] FromHexStringOld(string hexString)
         {
             if (hexString == null)
             {
@@ -648,6 +663,69 @@ namespace Nethermind.Core.Extensions
             for (int i = 0; i < numberChars; i += 2)
             {
                 bytes[i / 2] = Convert.ToByte(hexString.Substring(i + startIndex, 2), 16);
+            }
+
+            return bytes;
+        }
+
+        private static byte[] FromHexNibble1Table = 
+        {
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 0, 16,
+            32, 48, 64, 80, 96, 112, 128, 144, 255, 255,
+            255, 255, 255, 255, 255, 160, 176, 192, 208, 224,
+            240, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 160, 176, 192,
+            208, 224, 240
+        };
+
+        private static byte[] FromHexNibble2Table = 
+        {
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 0, 1,
+            2, 3, 4, 5, 6, 7, 8, 9, 255, 255,
+            255, 255, 255, 255, 255, 10, 11, 12, 13, 14,
+            15, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
+            255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
+            13, 14, 15
+        };
+        
+        [DebuggerStepThrough]
+        public static byte[] FromHexString(string hexString)
+        {
+            if (hexString == null)
+            {
+                throw new ArgumentNullException($"{nameof(hexString)}");
+            }
+
+            int startIndex = hexString.StartsWith("0x") ? 2 : 0;
+            bool odd = hexString.Length % 2 == 1;
+            int numberChars = hexString.Length - startIndex + (odd ? 1 : 0);
+            byte[] bytes = new byte[numberChars / 2];
+            for (int i = 0; i < numberChars; i += 2)
+            {
+                if (odd && i == 0)
+                {
+                    bytes[0] += FromHexNibble2Table[(byte) hexString[startIndex]];
+                }
+                else if (odd)
+                {
+                    bytes[i / 2] += FromHexNibble1Table[(byte) hexString[i + startIndex - 1]];
+                    bytes[i / 2] += FromHexNibble2Table[(byte) hexString[i + startIndex]];
+                }
+                else
+                {
+                    bytes[i / 2] += FromHexNibble1Table[(byte) hexString[i + startIndex]];
+                    bytes[i / 2] += FromHexNibble2Table[(byte) hexString[i + startIndex + 1]];
+                }
             }
 
             return bytes;

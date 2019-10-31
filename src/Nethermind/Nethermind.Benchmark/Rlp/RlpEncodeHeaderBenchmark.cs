@@ -82,8 +82,6 @@ namespace Nethermind.Benchmarks.Rlp
             Console.WriteLine($"Outputs are the same: {a.ToHexString()}");
         }
 
-        private RecyclableMemoryStreamManager _recycler = new RecyclableMemoryStreamManager();
-
         [Benchmark]
         public byte[] Improved2()
         {
@@ -93,11 +91,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public byte[] Improved()
         {
-            using (MemoryStream stream = _recycler.GetStream())
-            {
-                Nethermind.Core.Encoding.Rlp.Encode(stream, _header);
-                return stream.ToArray();
-            }
+         throw new NotImplementedException();
         }
 
         [Benchmark(Baseline = true)]
