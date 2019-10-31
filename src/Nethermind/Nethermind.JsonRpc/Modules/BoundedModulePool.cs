@@ -24,22 +24,30 @@ namespace Nethermind.JsonRpc.Modules
 {
     public class BoundedModulePool<T> : IRpcModulePool<T> where T : IModule
     {
+        private T _shared;
         private ConcurrentBag<T> _bag = new ConcurrentBag<T>();
         private SemaphoreSlim _semaphore;
 
-        public BoundedModulePool(int capacity, IRpcModuleFactory<T> factory)
+        public BoundedModulePool(int exclusiveCapacity, IRpcModuleFactory<T> factory)
         {
             Factory = factory;
             
-            _semaphore = new SemaphoreSlim(capacity);
-            for (int i = 0; i < capacity; i++)
+            _semaphore = new SemaphoreSlim(exclusiveCapacity);
+            for (int i = 0; i < exclusiveCapacity; i++)
             {
                 _bag.Add(Factory.Create());
             }
+
+            _shared = factory.Create();
         }
         
-        public T GetModule()
+        public T GetModule(bool canBeShared)
         {
+            if (canBeShared)
+            {
+                return _shared;
+            }
+            
             if (!_semaphore.Wait(10000))
             {
                 throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}");

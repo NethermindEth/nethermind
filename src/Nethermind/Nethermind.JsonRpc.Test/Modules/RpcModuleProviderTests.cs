@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Method_resolution_is_not_case_sensitive()
         {
-            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()));
+            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
             ModuleResolution resolution = _moduleProvider.Check("net_VeRsIoN");
@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public void Returns_politely_when_no_method_found()
         {
-            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()));
+            SingletonModulePool<INetModule> pool = new SingletonModulePool<INetModule>(new NetModule(LimboLogs.Instance, Substitute.For<INetBridge>()), true);
             _moduleProvider.Register(pool);
 
             ModuleResolution resolution = _moduleProvider.Check("unknown_method");

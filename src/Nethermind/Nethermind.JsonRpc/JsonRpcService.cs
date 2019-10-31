@@ -115,7 +115,7 @@ namespace Nethermind.JsonRpc
             var methodName = rpcRequest.Method.Trim().ToLower();
 
             var result = _rpcModuleProvider.Resolve(methodName);
-            if (result != null)
+            if (result.MethodInfo != null)
             {
                 return await ExecuteAsync(rpcRequest, methodName, result);
             }
@@ -123,9 +123,9 @@ namespace Nethermind.JsonRpc
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
-        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, MethodInfo method)
+        private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, (MethodInfo Info, bool ReadOnly) method)
         {
-            var expectedParameters = method.GetParameters();
+            var expectedParameters = method.Info.GetParameters();
             var providedParameters = request.Params;
             if(_logger.IsInfo) _logger.Info($"Executing JSON RPC call {methodName} with params {string.Join(',', providedParameters)}");
             
@@ -167,10 +167,10 @@ namespace Nethermind.JsonRpc
 
             //execute method
             IResultWrapper resultWrapper = null;
-            IModule module = _rpcModuleProvider.Rent(methodName);
+            IModule module = _rpcModuleProvider.Rent(methodName, method.ReadOnly);
             try
             {
-                var invocationResult = method.Invoke(module, parameters);
+                var invocationResult = method.Info.Invoke(module, parameters);
                 if (invocationResult is IResultWrapper wrapper)
                 {
                     resultWrapper = wrapper;
