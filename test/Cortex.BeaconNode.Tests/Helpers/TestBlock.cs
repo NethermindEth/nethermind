@@ -96,7 +96,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 }
             }
 
-            var privateKeys = TestData.PrivateKeys(timeParameters).ToArray();
+            var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             var privateKey = privateKeys[(int)(ulong)proposerIndex];
 
             var domain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, blockEpoch);

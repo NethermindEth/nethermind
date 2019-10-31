@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
+using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
 using Cortex.Cryptography;
 
@@ -78,11 +79,11 @@ namespace Cortex.BeaconNode.Tests
             TimeParameters timeParameters, BeaconChainUtility beaconChainUtility, int genesisValidatorCount, Gwei amount,
             bool signed)
         {
-            var privateKeys = PrivateKeys(timeParameters).ToArray();
+            var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             BlsPublicKey[] publicKeys;
             if (signed)
             {
-                publicKeys = PublicKeys(privateKeys).ToArray();
+                publicKeys = TestKeys.PublicKeys(privateKeys).ToArray();
             }
             else
             {
@@ -106,18 +107,6 @@ namespace Cortex.BeaconNode.Tests
             return (genesisDeposits, root);
         }
 
-        public static IEnumerable<byte[]> PrivateKeys(TimeParameters timeParameters)
-        {
-            // Private key is ~255 bits (32 bytes) long
-            var privateKeys = Enumerable.Range(0, (int)(ulong)timeParameters.SlotsPerEpoch * 16).Select(x =>
-            {
-                var key = new byte[32];
-                var bytes = BitConverter.GetBytes((ulong)(x + 1));
-                bytes.CopyTo(key, 0);
-                return key;
-            });
-            return privateKeys;
-        }
 
         public static void SignDepositData(BeaconChainUtility beaconChainUtility, DepositData depositData, byte[] privateKey, BeaconState? state = null)
         {
@@ -138,21 +127,6 @@ namespace Cortex.BeaconNode.Tests
 
             var signature = TestUtility.BlsSign(depositData.SigningRoot(), privateKey, domain);
             depositData.SetSignature(signature);
-        }
-
-        private static IEnumerable<BlsPublicKey> PublicKeys(IEnumerable<byte[]> privateKeys)
-        {
-            return privateKeys.Select(x =>
-            {
-                var blsParameters = new BLSParameters()
-                {
-                    PrivateKey = x
-                };
-                using var bls = BLS.Create(blsParameters);
-                var bytes = new Span<byte>(new byte[BlsPublicKey.Length]);
-                bls.TryExportBLSPublicKey(bytes, out var bytesWritten);
-                return new BlsPublicKey(bytes);
-            });
         }
     }
 }

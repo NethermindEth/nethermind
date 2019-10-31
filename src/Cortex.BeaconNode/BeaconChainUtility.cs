@@ -28,11 +28,10 @@ namespace Cortex.BeaconNode
         /// <summary>
         /// Return the committee corresponding to ``indices``, ``seed``, ``index``, and committee ``count``.
         /// </summary>
-        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Hash32 seed, Shard index, ulong committeeCount)
+        public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Hash32 seed, ulong index, ulong count)
         {
-            var start = ((ulong)indices.Count * (ulong)index) / committeeCount;
-            var end = ((ulong)indices.Count * ((ulong)index + 1)) / committeeCount;
-            //var count = indices.Count;
+            var start = ((ulong)indices.Count * (ulong)index) / count;
+            var end = ((ulong)indices.Count * ((ulong)index + 1)) / count;
             var shuffled = new List<ValidatorIndex>();
             for (var i = start; i < end; i++)
             {

@@ -40,14 +40,16 @@ namespace Cortex.BeaconNode.Tests
 
         public static BlsSignature BlsSign(Hash32 messageHash, byte[] privateKey, Domain domain)
         {
+            // HACK: for zero values (that fail) until Herumi supports ETH2 hash-to-point
+            if (messageHash == Hash32.Zero)
+            {
+                return new BlsSignature();
+            }
+
             var parameters = new BLSParameters() { PrivateKey = privateKey };
             using var signingAlgorithm = SignatureAlgorithmFactory(parameters);
-            var data = new Span<byte>(new byte[40]);
-            messageHash.AsSpan().CopyTo(data);
-            domain.AsSpan().CopyTo(data.Slice(32));
             var destination = new Span<byte>(new byte[96]);
-            //var success = signingAlgorithm.TrySignData(data, destination, out var bytesWritten);
-            var success = signingAlgorithm.TrySignHash(data, destination, out var bytesWritten);
+            var success = signingAlgorithm.TrySignHash(messageHash.AsSpan(), destination, out var bytesWritten, domain.AsSpan().ToArray());
             return new BlsSignature(destination);
         }
 

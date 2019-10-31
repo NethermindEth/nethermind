@@ -41,7 +41,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return signature;
         }
 
-        public static Attestation GetValidAttestation(BeaconState state, Slot slot, bool signed,
+        public static Attestation GetValidAttestation(BeaconState state, Slot slot, CommitteeIndex index, bool signed,
                     MiscellaneousParameters miscellaneousParameters,
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
@@ -50,19 +50,23 @@ namespace Cortex.BeaconNode.Tests.Helpers
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {
-            var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
-            var epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
-            var committeesPerSlot = beaconStateAccessor.GetCommitteeCount(state, epoch) / (ulong)timeParameters.SlotsPerEpoch;
-            var shard = (epochStartShard + new Shard(committeesPerSlot * (ulong)(slot % timeParameters.SlotsPerEpoch)))
-                % miscellaneousParameters.ShardCount;
+            // if slot is none
+            // if index is none
 
-            var attestationData = BuildAttestationData(state, slot, shard,
+            var attestationData = BuildAttestationData(state, slot, index,
                 miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
 
-            var crosslinkCommittee = beaconStateAccessor.GetCrosslinkCommittee(state, attestationData.Target.Epoch, attestationData.Crosslink.Shard);
+            var beaconCommittee = beaconStateAccessor.GetBeaconCommittee(state, attestationData.Slot, attestationData.Index);
 
-            var committeeSize = crosslinkCommittee.Count;
+            //var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
+            //var epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
+            //var committeesPerSlot = beaconStateAccessor.GetCommitteeCount(state, epoch) / (ulong)timeParameters.SlotsPerEpoch;
+            //var shard = (epochStartShard + new Shard(committeesPerSlot * (ulong)(slot % timeParameters.SlotsPerEpoch)))
+            //    % miscellaneousParameters.ShardCount;
+            //var crosslinkCommittee = beaconStateAccessor.GetCrosslinkCommittee(state, attestationData.Target.Epoch, attestationData.Crosslink.Shard);
+
+            var committeeSize = beaconCommittee.Count;
             var aggregationBits = new BitArray(committeeSize);
             var custodyBits = new BitArray(committeeSize);
             var attestation = new Attestation(aggregationBits, attestationData, custodyBits, new BlsSignature());
@@ -105,7 +109,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             attestation.SetSignature(signature);
         }
 
-        private static AttestationData BuildAttestationData(BeaconState state, Slot slot, Shard shard,
+        private static AttestationData BuildAttestationData(BeaconState state, Slot slot, CommitteeIndex index,
             MiscellaneousParameters miscellaneousParameters,
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
@@ -160,29 +164,23 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 sourceRoot = state.CurrentJustifiedCheckpoint.Root;
             }
 
-            Crosslink parentCrosslink;
-            var epochOfSlot = beaconChainUtility.ComputeEpochAtSlot(slot);
-            if (epochOfSlot == currentEpoch)
-            {
-                parentCrosslink = state.CurrentCrosslinks[(int)(ulong)shard];
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
+            //Crosslink parentCrosslink;
+            //if (epochOfSlot == currentEpoch)
+            //{
+            //    parentCrosslink = state.CurrentCrosslinks[(int)(ulong)shard];
+            //}
+            //else
+            //{
+            //    throw new NotImplementedException();
+            //}
 
+            var slotEpoch = beaconChainUtility.ComputeEpochAtSlot(slot);
             var attestationData = new AttestationData(
-                new Crosslink(
-                    shard,
-                    parentCrosslink.HashTreeRoot(),
-                    parentCrosslink.EndEpoch,
-                    Epoch.Min(epochOfSlot, parentCrosslink.EndEpoch + timeParameters.MaximumEpochsPerCrosslink),
-                    Hash32.Zero
-                )
-,
+                slot,
+                index,
                 blockRoot,
                 new Checkpoint(sourceEpoch, sourceRoot),
-                new Checkpoint(epochOfSlot, epochBoundaryRoot));
+                new Checkpoint(slotEpoch, epochBoundaryRoot));
 
             return attestationData;
         }
@@ -190,10 +188,9 @@ namespace Cortex.BeaconNode.Tests.Helpers
         private static void FillAggregateAttestation(BeaconState state, Attestation attestation,
                     BeaconStateAccessor beaconStateAccessor)
         {
-            var crosslinkCommittee = beaconStateAccessor.GetCrosslinkCommittee(state,
-                attestation.Data.Target.Epoch,
-                attestation.Data.Crosslink.Shard);
-            for (var i = 0; i < crosslinkCommittee.Count; i++)
+            var beaconCommittee = beaconStateAccessor.GetBeaconCommittee(state, attestation.Data.Slot, attestation.Data.Index);
+
+            for (var i = 0; i < beaconCommittee.Count; i++)
             {
                 attestation.AggregationBits[i] = true;
             }

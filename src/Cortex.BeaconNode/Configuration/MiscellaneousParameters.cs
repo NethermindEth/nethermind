@@ -4,13 +4,15 @@ namespace Cortex.BeaconNode.Configuration
 {
     public class MiscellaneousParameters
     {
+        public ulong MaximumCommitteesPerSlot { get; set; }
+
         public ulong MaximumValidatorsPerCommittee { get; set; }
 
         public int MinimumGenesisActiveValidatorCount { get; set; }
 
         public ulong MinimumGenesisTime { get; set; }
 
-        public Shard ShardCount { get; set; }
+        //public Shard ShardCount { get; set; }
 
         public int ShuffleRoundCount { get; set; }
 

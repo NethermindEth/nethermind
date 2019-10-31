@@ -18,9 +18,9 @@ namespace Cortex.BeaconNode.Tests.Helpers
             chainConstants = new ChainConstants();
             miscellaneousParameterOptions = TestOptionsMonitor.Create(new MiscellaneousParameters()
             {
-                ShardCount = new Shard(8),
+                MaximumCommitteesPerSlot = 4,
                 TargetCommitteeSize = 4,
-                MaximumValidatorsPerCommittee = 4096,
+                MaximumValidatorsPerCommittee = 2048,
                 ShuffleRoundCount = 10,
                 MinimumGenesisActiveValidatorCount = 64,
                 MinimumGenesisTime = 1578009600 // Jan 3, 2020

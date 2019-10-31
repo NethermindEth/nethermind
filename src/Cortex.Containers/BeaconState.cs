@@ -57,7 +57,7 @@ namespace Cortex.Containers
             FinalizedCheckpoint = finalizedCheckpoint;
         }
 
-        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength, Shard shardCount)
+        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength)
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
@@ -71,10 +72,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 new Epoch((ulong)epoch - 2),
                 checkpoints[3],
                 checkpoints[1],
-                sufficientSupport);
+                sufficientSupport,
+                messedUpTarget: false);
 
             // process
-            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
@@ -147,10 +149,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 new Epoch((ulong)epoch - 2),
                 checkpoints[2],
                 checkpoints[1],
-                sufficientSupport);
+                sufficientSupport,
+                messedUpTarget: false);
 
             // process
-            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
@@ -223,7 +226,8 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 new Epoch((ulong)epoch - 2),
                 checkpoints[4],
                 checkpoints[1],
-                sufficientSupport);
+                sufficientSupport,
+                messedUpTarget: false);
 
             //# mock the 1st latest epoch as justifiable, with 3rd as source
             AddMockAttestations(beaconChainUtility,
@@ -234,10 +238,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 new Epoch((ulong)epoch - 1),
                 checkpoints[2],
                 checkpoints[0],
-                sufficientSupport);
+                sufficientSupport,
+                messedUpTarget: false);
 
             // process
-            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
@@ -254,9 +259,10 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         }
 
         [DataTestMethod]
-        [DataRow((ulong)3, true)]
-        [DataRow((ulong)3, false)]
-        public void FinalizeOn12(ulong epochValue, bool sufficientSupport)
+        [DataRow((ulong)3, true, false)]
+        [DataRow((ulong)3, true, true)]
+        [DataRow((ulong)3, false, false)]
+        public void FinalizeOn12(ulong epochValue, bool sufficientSupport, bool messedUpTarget)
         {
             // Arrange
             var loggerFactory = new LoggerFactory(new[] {
@@ -310,14 +316,15 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 new Epoch((ulong)epoch - 1),
                 checkpoints[1],
                 checkpoints[0],
-                sufficientSupport);
+                sufficientSupport,
+                messedUpTarget);
 
             // process
-            RunProcessJustAndFin(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[1]); // changed to old current
-            if (sufficientSupport)
+            if (sufficientSupport && !messedUpTarget)
             {
                 state.CurrentJustifiedCheckpoint.ShouldBe(checkpoints[0]); // changed to 1st latest
                 state.FinalizedCheckpoint.ShouldBe(checkpoints[1]); // finalized previous justified epoch
@@ -329,12 +336,13 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
         }
 
-        private void RunProcessJustAndFin(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
+        private void RunProcessJustificationAndFinalization(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
         {
             TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, "process_justification_and_finalization");
         }
 
-        private void AddMockAttestations(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Epoch epoch, Checkpoint source, Checkpoint target, bool sufficientSupport)
+        private void AddMockAttestations(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Epoch epoch, Checkpoint source, Checkpoint target, 
+            bool sufficientSupport, bool messedUpTarget)
         {
             // we must be at the end of the epoch
             var isEndOfEpoch = ((ulong)state.Slot + 1) % (ulong)timeParameters.SlotsPerEpoch == 0;
@@ -343,6 +351,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var previousEpoch = beaconStateAccessor.GetPreviousEpoch(state);
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
 
+            // state.SetXxx() methods called below instead
             //IReadOnlyList<PendingAttestation> attestations;
             //if (currentEpoch == epoch)
             //{
@@ -353,7 +362,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             //    attestations = state.PreviousEpochAttestations;
             //}
             //else
-            if (epoch != currentEpoch && epoch != previousEpoch)
+            if (currentEpoch != epoch && previousEpoch != epoch)
             {
                 throw new Exception($"Cannot include attestations in epoch {epoch} from epoch {currentEpoch}");
             }
@@ -363,13 +372,14 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
 
             var startSlot = beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
 
-            var addOne = new Slot(1);
+            var oneSlot = new Slot(1);
+            var oneCommitteeIndex = new CommitteeIndex(1);
             var beaconBlockRoot = new Hash32(Enumerable.Repeat((byte)0xff, 32).ToArray()); // irrelevant to testing
-            for (var slot = startSlot; slot < startSlot + timeParameters.SlotsPerEpoch; slot += addOne)
+            for (var slot = startSlot; slot < startSlot + timeParameters.SlotsPerEpoch; slot += oneSlot)
             {
                 var slotEpoch = beaconChainUtility.ComputeEpochAtSlot(slot);
-                var shards = GetShardsForSlot(beaconChainUtility, beaconStateAccessor, miscellaneousParameters, timeParameters, state, slot);
-                foreach (var shard in shards)
+                var committeesPerSlot = beaconStateAccessor.GetCommitteeCountAtSlot(state, slot);
+                for(var index = new CommitteeIndex(); index < new CommitteeIndex(committeesPerSlot); index += oneCommitteeIndex)
                 {
                     // Check if we already have had sufficient balance. (and undone if we don't want it).
                     // If so, do not create more attestations. (we do not have empty pending attestations normally anyway)
@@ -378,7 +388,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                         return;
                     }
 
-                    var committee = beaconStateAccessor.GetCrosslinkCommittee(state, slotEpoch, shard);
+                    var committee = beaconStateAccessor.GetBeaconCommittee(state, slot, index);
 
                     // Create a bitfield filled with the given count per attestation,
                     // exactly on the right-most part of the committee field.
@@ -399,8 +409,20 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                         aggregationBits[1] = false;
                     }
 
-                    var attestationData = new AttestationData(new Crosslink(shard), beaconBlockRoot, source, target);
-                    var attestation = new PendingAttestation(aggregationBits, attestationData, new Slot(1));
+                    Checkpoint attestationTarget;
+                    if (messedUpTarget)
+                    {
+                        var messedUpRoot = new Hash32(Enumerable.Repeat((byte)0x99, 32).ToArray());
+                        attestationTarget = new Checkpoint(target.Epoch, messedUpRoot);
+                    }
+                    else
+                    {
+                        attestationTarget = target;
+                    }
+
+                    var attestationData = new AttestationData(slot, index, beaconBlockRoot, source, attestationTarget);
+                    var attestation = new PendingAttestation(aggregationBits, attestationData, new Slot(1), ValidatorIndex.None);
+
                     if (currentEpoch == epoch)
                     {
                         state.AddCurrentAttestation(attestation);
@@ -409,20 +431,21 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                     {
                         state.AddPreviousAttestation(attestation);
                     }
+
                 }
             }
         }
 
-        private Shard[] GetShardsForSlot(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Slot slot)
-        {
-            var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
-            Shard epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
-            var committeeCount = beaconStateAccessor.GetCommitteeCount(state, epoch);
-            var committeesPerSlot = committeeCount / (ulong)timeParameters.SlotsPerEpoch;
-            var shard = (epochStartShard + new Shard(committeesPerSlot * (ulong)(slot % timeParameters.SlotsPerEpoch))) % miscellaneousParameters.ShardCount;
-            var shards = Enumerable.Range(0, (int)committeesPerSlot).Select(x => shard + new Shard((ulong)x));
-            return shards.ToArray();
-        }
+        //private Shard[] GetShardsForSlot(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Slot slot)
+        //{
+        //    var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
+        //    Shard epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
+        //    var committeeCount = beaconStateAccessor.GetCommitteeCount(state, epoch);
+        //    var committeesPerSlot = committeeCount / (ulong)timeParameters.SlotsPerEpoch;
+        //    var shard = (epochStartShard + new Shard(committeesPerSlot * (ulong)(slot % timeParameters.SlotsPerEpoch))) % miscellaneousParameters.ShardCount;
+        //    var shards = Enumerable.Range(0, (int)committeesPerSlot).Select(x => shard + new Shard((ulong)x));
+        //    return shards.ToArray();
+        //}
 
         private void PutCheckpointsInBlockRoots(BeaconChainUtility beaconChainUtility, TimeParameters timeParameters, BeaconState state, Checkpoint[] checkpoints)
         {

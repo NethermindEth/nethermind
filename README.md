@@ -65,7 +65,7 @@ To re-generate (not usually needed):
 
 * Install Visual Studio C++ tools
 * Get BLS, MCL, and cybozulib_ext projects
-* We G1 (48 byte) as minmal public key so modify bls\setvar.bat to change the CFLAGS line to define BLS_SWAP_G: "set CFLAGS=%CFLAGS% /I ..\mcl\include /I ./ /DBLS_SWAP_G"
+* We want Eth 2.0 behavior (e.g. G1 (48 byte) as minmal public key) so modify bls\setvar.bat to change the CFLAGS line to define BLS_ETH: "set CFLAGS=%CFLAGS% /I ..\mcl\include /I ./ /DBLS_ETH"
 * Open 64-bit Visual Studio command prompt
 * Call "mklib.bat dll" for MCL, then BLS, as per instructions
 * (Can also compile and run test projects, as per instructions; NOTE: will use the modified setvar as above)

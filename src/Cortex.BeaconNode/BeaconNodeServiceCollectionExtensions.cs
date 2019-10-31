@@ -27,7 +27,8 @@ namespace Cortex.BeaconNode
             });
             services.Configure<MiscellaneousParameters>(x =>
             {
-                x.ShardCount = new Shard(configuration.GetValue<ulong>("SHARD_COUNT"));
+                x.MaximumCommitteesPerSlot = configuration.GetValue<ulong>("MAX_COMMITTEES_PER_SLOT");
+                //x.ShardCount = new Shard(configuration.GetValue<ulong>("SHARD_COUNT"));
                 x.TargetCommitteeSize = configuration.GetValue<ulong>("TARGET_COMMITTEE_SIZE");
                 x.MaximumValidatorsPerCommittee = configuration.GetValue<ulong>("MAX_VALIDATORS_PER_COMMITTEE");
                 x.ShuffleRoundCount = configuration.GetValue<int>("SHUFFLE_ROUND_COUNT");

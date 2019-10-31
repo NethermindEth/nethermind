@@ -2,7 +2,8 @@
 
 namespace Cortex.Cryptography
 {
-    internal static class Bls384Interop
+    //internal static class Bls384Interop
+    public static class Bls384Interop
     {
 #pragma warning disable IDE1006 // Naming Styles
 
@@ -128,6 +129,10 @@ namespace Cortex.Cryptography
         // i.e. if X = G2 of hash, then Y = signature ??
         [DllImport(@"bls384.dll")]
         public static extern int blsVerifyPairing(BlsSignature x, BlsSignature y, BlsPublicKey pub);
+
+        // MCLBN_DLL_API mclSize mclBnFp2_serialize(void *buf, mclSize maxBufSize, const mclBnFp2 *x);
+        [DllImport(@"mclbn384_256.dll")]
+        public static extern int mclBnFp2_serialize(byte[] buf, int maxBufSiz, Bls384Interop.MclBnFp2 x);
 
         //typedef struct {
         //#ifdef BLS_SWAP_G

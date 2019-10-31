@@ -49,9 +49,29 @@ namespace Cortex.BeaconNode
         /// </summary>
         public IEnumerable<ValidatorIndex> GetAttestingIndices(BeaconState state, AttestationData data, BitArray bits)
         {
-            throw new NotImplementedException();
-            //var committee = GetCrosslinkCommittee(state, data.Target.Epoch, data.Crosslink.Shard);
-            //return committee.Where((x, index) => bits[index]);
+            var committee = GetBeaconCommittee(state, data.Slot, data.Index);
+            return committee.Where((x, index) => bits[index]);
+        }
+
+        /// <summary>
+        /// Return the beacon committee at ``slot`` for ``index``.
+        /// </summary>
+        public IReadOnlyList<ValidatorIndex> GetBeaconCommittee(BeaconState state, Slot slot, CommitteeIndex index)
+        {
+            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+
+            var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
+            var committeesPerSlot = GetCommitteeCountAtSlot(state, slot);
+            //var committeeCount = GetCommitteeCount(state, epoch);
+
+            var indices = GetActiveValidatorIndices(state, epoch);
+            var seed = GetSeed(state, epoch, DomainType.BeaconAttester);
+            //var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
+            var committeeIndex = (ulong)(slot % _timeParameterOptions.CurrentValue.SlotsPerEpoch) * committeesPerSlot + (ulong)index;
+            var committeeCount = committeesPerSlot * (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch;
+
+            var committee = _beaconChainUtility.ComputeCommittee(indices, seed, committeeIndex, committeeCount);
+            return committee;
         }
 
         /// <summary>
@@ -77,6 +97,15 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Return the block root at the start of a recent ``epoch``.
+        /// </summary>
+        public Hash32 GetBlockRoot(BeaconState state, Epoch epoch)
+        {
+            var startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            return GetBlockRootAtSlot(state, startSlot);
+        }
+
+        /// <summary>
         /// Return the block root at a recent ``slot``.
         /// </summary>
         public Hash32 GetBlockRootAtSlot(BeaconState state, Slot slot)
@@ -95,35 +124,49 @@ namespace Cortex.BeaconNode
             return state.BlockRoots[(int)(ulong)blockIndex];
         }
 
+        ///// <summary>
+        ///// Return the number of committees at ``epoch``.
+        ///// </summary>
+        //public ulong GetCommitteeCount(BeaconState state, Epoch epoch)
+        //{
+        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+        //    var timeParameters = _timeParameterOptions.CurrentValue;
+
+        //    var shardsPerEpoch = (ulong)miscellaneousParameters.ShardCount / (ulong)timeParameters.SlotsPerEpoch;
+        //    var activeValidators = (ulong)GetActiveValidatorIndices(state, epoch).Count;
+        //    var availableValidatorCommittees = (activeValidators / (ulong)timeParameters.SlotsPerEpoch) / miscellaneousParameters.TargetCommitteeSize;
+
+        //    var committeesPerSlot = Math.Max(1, Math.Min(shardsPerEpoch, availableValidatorCommittees));
+        //    return committeesPerSlot * (ulong)timeParameters.SlotsPerEpoch;
+        //}
+
+        ///// <summary>
+        ///// Return the crosslink committee at ``epoch`` for ``shard``.
+        ///// </summary>
+        //public IReadOnlyList<ValidatorIndex> GetCrosslinkCommittee(BeaconState state, Epoch epoch, Shard shard)
+        //{
+        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+
+        //    var indices = GetActiveValidatorIndices(state, epoch);
+        //    var seed = GetSeed(state, epoch, DomainType.BeaconAttester);
+        //    var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
+        //    var committeeCount = GetCommitteeCount(state, epoch);
+        //    var committee = _beaconChainUtility.ComputeCommittee(indices, seed, index, committeeCount);
+        //    return committee;
+        //}
+
         /// <summary>
-        /// Return the number of committees at ``epoch``.
+        /// Return the number of committees at ``slot``.
         /// </summary>
-        public ulong GetCommitteeCount(BeaconState state, Epoch epoch)
+        public ulong GetCommitteeCountAtSlot(BeaconState state, Slot slot)
         {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            var timeParameters = _timeParameterOptions.CurrentValue;
-
-            var shardsPerEpoch = (ulong)miscellaneousParameters.ShardCount / (ulong)timeParameters.SlotsPerEpoch;
-            var activeValidators = (ulong)GetActiveValidatorIndices(state, epoch).Count;
-            var availableValidatorCommittees = (activeValidators / (ulong)timeParameters.SlotsPerEpoch) / miscellaneousParameters.TargetCommitteeSize;
-
-            var committeesPerSlot = Math.Max(1, Math.Min(shardsPerEpoch, availableValidatorCommittees));
-            return committeesPerSlot * (ulong)timeParameters.SlotsPerEpoch;
-        }
-
-        /// <summary>
-        /// Return the crosslink committee at ``epoch`` for ``shard``.
-        /// </summary>
-        public IReadOnlyList<ValidatorIndex> GetCrosslinkCommittee(BeaconState state, Epoch epoch, Shard shard)
-        {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-
+            var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
             var indices = GetActiveValidatorIndices(state, epoch);
-            var seed = GetSeed(state, epoch, DomainType.BeaconAttester);
-            var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
-            var committeeCount = GetCommitteeCount(state, epoch);
-            var committee = _beaconChainUtility.ComputeCommittee(indices, seed, index, committeeCount);
-            return committee;
+            var committeeCount = (ulong)indices.Count
+                / (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch
+                / _miscellaneousParameterOptions.CurrentValue.TargetCommitteeSize;
+
+            return Math.Max(1, Math.Min(_miscellaneousParameterOptions.CurrentValue.MaximumCommitteesPerSlot, committeeCount));
         }
 
         /// <summary>
@@ -207,44 +250,44 @@ namespace Cortex.BeaconNode
             return seed;
         }
 
-        /// <summary>
-        /// Return the number of shards to increment ``state.start_shard`` at ``epoch``.
-        /// </summary>
-        public Shard GetShardDelta(BeaconState state, Epoch epoch)
-        {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            var committeeCount = GetCommitteeCount(state, epoch);
-            var maxShard = miscellaneousParameters.ShardCount - (miscellaneousParameters.ShardCount / (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch);
-            return Shard.Min(new Shard(committeeCount), maxShard);
-        }
+        ///// <summary>
+        ///// Return the number of shards to increment ``state.start_shard`` at ``epoch``.
+        ///// </summary>
+        //public Shard GetShardDelta(BeaconState state, Epoch epoch)
+        //{
+        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+        //    var committeeCount = GetCommitteeCount(state, epoch);
+        //    var maxShard = miscellaneousParameters.ShardCount - (miscellaneousParameters.ShardCount / (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch);
+        //    return Shard.Min(new Shard(committeeCount), maxShard);
+        //}
 
-        /// <summary>
-        /// Return the start shard of the 0th committee at ``epoch``.
-        /// </summary>
-        public Shard GetStartShard(BeaconState state, Epoch epoch)
-        {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            var currentEpoch = GetCurrentEpoch(state);
-            var oneEpoch = new Epoch(1);
-            var checkEpoch = currentEpoch + oneEpoch;
-            if (epoch > checkEpoch)
-            {
-                throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch is too far in the future");
-            }
+        ///// <summary>
+        ///// Return the start shard of the 0th committee at ``epoch``.
+        ///// </summary>
+        //public Shard GetStartShard(BeaconState state, Epoch epoch)
+        //{
+        //    var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+        //    var currentEpoch = GetCurrentEpoch(state);
+        //    var oneEpoch = new Epoch(1);
+        //    var checkEpoch = currentEpoch + oneEpoch;
+        //    if (epoch > checkEpoch)
+        //    {
+        //        throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch is too far in the future");
+        //    }
 
-            var initialShardDelta = GetShardDelta(state, currentEpoch);
-            throw new NotImplementedException();
-            //var shard = (state.StartShard + initialShardDelta) % miscellaneousParameters.ShardCount;
+        //    var initialShardDelta = GetShardDelta(state, currentEpoch);
+        //    throw new NotImplementedException();
+        //    //var shard = (state.StartShard + initialShardDelta) % miscellaneousParameters.ShardCount;
 
-            //while (checkEpoch > epoch)
-            //{
-            //    checkEpoch -= oneEpoch;
-            //    var shardDelta = GetShardDelta(state, checkEpoch);
-            //    shard = (shard + miscellaneousParameters.ShardCount + shardDelta) % miscellaneousParameters.ShardCount;
-            //}
+        //    //while (checkEpoch > epoch)
+        //    //{
+        //    //    checkEpoch -= oneEpoch;
+        //    //    var shardDelta = GetShardDelta(state, checkEpoch);
+        //    //    shard = (shard + miscellaneousParameters.ShardCount + shardDelta) % miscellaneousParameters.ShardCount;
+        //    //}
 
-            //return shard;
-        }
+        //    //return shard;
+        //}
 
         /// <summary>
         /// Return the combined effective balance of the active validators
@@ -273,15 +316,6 @@ namespace Cortex.BeaconNode
                 return new Gwei(1);
             }
             return total;
-        }
-
-        /// <summary>
-        /// Return the block root at the start of a recent ``epoch``.
-        /// </summary>
-        internal Hash32 GetBlockRoot(BeaconState state, Epoch epoch)
-        {
-            var startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
-            return GetBlockRootAtSlot(state, startSlot);
         }
     }
 }

@@ -14,10 +14,15 @@ namespace Cortex.BeaconNode.Tests.Helpers
             // Private key is ~255 bits (32 bytes) long
             var privateKeys = Enumerable.Range(0, (int)(ulong)timeParameters.SlotsPerEpoch * 16).Select(x =>
             {
-                var key = new byte[32];
-                var bytes = BitConverter.GetBytes((ulong)(x + 1));
-                bytes.CopyTo(key, 0);
-                return key;
+                var key = new Span<byte>(new byte[32]);
+                // Key is big endian number, so write Int32 to last 4 bytes.
+                BitConverter.TryWriteBytes(key.Slice(28), x + 1);
+                if (BitConverter.IsLittleEndian)
+                {
+                    // And reverse if necessary
+                    key.Slice(28).Reverse();
+                }
+                return key.ToArray();
             });
             return privateKeys;
         }
