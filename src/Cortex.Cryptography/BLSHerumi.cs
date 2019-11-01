@@ -1,8 +1,13 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace Cortex.Cryptography
 {
+    /// <summary>
+    /// Implementation of BLS that supports Eth 2.0, using the Herumi library.
+    /// </summary>
     public class BLSHerumi : BLS
     {
         private const int HashLength = 32;
@@ -16,6 +21,7 @@ namespace Cortex.Cryptography
 
         public BLSHerumi(BLSParameters parameters)
         {
+            // Only supports minimal public key size
             KeySizeValue = PrivateKeyLength * 8;
             ImportParameters(parameters);
         }
@@ -49,12 +55,14 @@ namespace Cortex.Cryptography
                 throw new NotSupportedException("BLS input key material not supported.");
             }
 
+            // Only supports minimal public key size (or unspecified)
             if (parameters.Variant != BlsVariant.Unknown
                 && parameters.Variant != BlsVariant.MinimalPublicKeySize)
             {
                 throw new NotSupportedException($"BLS variant {parameters.Variant} not supported.");
             }
 
+            // Only supports basic (or unspecified)
             if (parameters.Scheme != BlsScheme.Unknown
                && parameters.Scheme != BlsScheme.Basic)
             {
@@ -86,7 +94,17 @@ namespace Cortex.Cryptography
             Bls384Interop.BlsSignature aggregateBlsSignature = default;
             for (var index = 0; index < signatures.Length; index += SignatureLength)
             {
-                var signatureBytesRead = Bls384Interop.blsSignatureDeserialize(out var blsSignature, signatures.Slice(index, SignatureLength).ToArray(), SignatureLength);
+                var signatureSlice = signatures.Slice(index, SignatureLength);
+                Bls384Interop.BlsSignature blsSignature;
+                int signatureBytesRead;
+                unsafe
+                {
+                    // Using fixed pointer for input data allows us to pass a slice
+                    fixed (byte* signaturePtr = signatureSlice)
+                    {
+                        signatureBytesRead = Bls384Interop.SignatureDeserialize(out blsSignature, signaturePtr, SignatureLength);
+                    }
+                }
                 if (signatureBytesRead != SignatureLength)
                 {
                     throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
@@ -97,23 +115,29 @@ namespace Cortex.Cryptography
                 }
                 else
                 {
-                    Bls384Interop.blsSignatureAdd(ref aggregateBlsSignature, blsSignature);
+                    Bls384Interop.SignatureAdd(ref aggregateBlsSignature, blsSignature);
                 }
             }
 
-            var buffer = new byte[SignatureLength];
-            bytesWritten = Bls384Interop.blsSignatureSerialize(buffer, buffer.Length, aggregateBlsSignature);
-            if (bytesWritten != buffer.Length)
+            unsafe
+            {
+                // Using fixed pointer for output data allows us to write directly to destination
+                fixed (byte* destinationPtr = destination)
+                {
+                    bytesWritten = Bls384Interop.SignatureSerialize(destinationPtr, SignatureLength, aggregateBlsSignature);
+                }
+            }
+            if (bytesWritten != SignatureLength)
             {
                 throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
             }
-            buffer.CopyTo(destination);
             return true;
         }
 
         /// <summary>
-        /// Combines a hash and domain to the input format used by Herumi (the initial X value)
+        /// Combines a hash and domain to the input format used by Herumi (the G2 initial X value).
         /// </summary>
+        /// <returns>true if the operation was successful; false if the destination is not large enough to hold the result</returns>
         public bool TryCombineHashAndDomain(ReadOnlySpan<byte> hash, ReadOnlySpan<byte> domain, Span<byte> destination, out int bytesWritten)
         {
             if (destination.Length < 2 * InitialXPartLength)
@@ -130,7 +154,7 @@ namespace Cortex.Cryptography
             var xRealSuccess = HashAlgorithm.TryComputeHash(xRealInput, xReal, out var xRealBytesWritten);
             if (!xRealSuccess || xRealBytesWritten != HashLength)
             {
-                throw new Exception("Error in getting G2 real component from hash.");
+                throw new Exception("Error in getting G2 initial X real component from hash.");
             }
 
             var xImaginaryInput = new Span<byte>(new byte[hash.Length + domain.Length + 1]);
@@ -141,7 +165,7 @@ namespace Cortex.Cryptography
             var xImaginarySuccess = HashAlgorithm.TryComputeHash(xImaginaryInput, xImaginary, out var xImaginaryBytesWritten);
             if (!xImaginarySuccess || xImaginaryBytesWritten != HashLength)
             {
-                throw new Exception("Error in getting G2 imaginary component from hash.");
+                throw new Exception("Error in getting G2 initial X imaginary component from hash.");
             }
 
             // Initial x value is an Fp2 value, x_re + x_im * i
@@ -187,6 +211,7 @@ namespace Cortex.Cryptography
             return true;
         }
 
+        /// <inheritdoc />
         public override bool TrySignData(ReadOnlySpan<byte> data, Span<byte> destination, out int bytesWritten, ReadOnlySpan<byte> domain = default)
         {
             throw new NotImplementedException();
@@ -203,42 +228,64 @@ namespace Cortex.Cryptography
 
             EnsureInitialised();
 
-            var hashToSign = new byte[2 * InitialXPartLength];
+            ReadOnlySpan<byte> hashToSign;
             if (domain.Length > 0)
             {
-                var combineSuccess = TryCombineHashAndDomain(hash, domain, hashToSign, out var combineBytesWritten);
+                var combined = new byte[2 * InitialXPartLength];
+                var combineSuccess = TryCombineHashAndDomain(hash, domain, combined, out var combineBytesWritten);
                 if (!combineSuccess || combineBytesWritten != 2 * InitialXPartLength)
                 {
                     throw new Exception("Error combining the hash and domain.");
                 }
+                hashToSign = combined;
             }
             else
             {
-                hash.CopyTo(hashToSign);
+                hashToSign = hash;
             }
 
             // TODO: Generate random key if null
             // EnsurePrivateKey();
 
-            var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey!, _privateKey!.Length);
+            Bls384Interop.BlsSecretKey blsSecretKey;
+            int bytesRead;
+            unsafe
+            {
+                fixed (byte* privateKeyPtr = _privateKey)
+                {
+                    bytesRead = Bls384Interop.SecretKeyDeserialize(out blsSecretKey, privateKeyPtr, _privateKey!.Length);
+                }
+            }
             if (bytesRead != _privateKey.Length)
             {
                 throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
             }
 
-            var result = Bls384Interop.blsSignHash(out var blsSignature, blsSecretKey, hashToSign, hashToSign.Length);
+            Bls384Interop.BlsSignature blsSignature;
+            int result;
+            unsafe
+            {
+                fixed (byte* hashPtr = hashToSign)
+                {
+                    result = Bls384Interop.SignHash(out blsSignature, blsSecretKey, hashPtr, hashToSign.Length);
+                }
+            }
             if (result != 0)
             {
                 throw new Exception($"Error generating BLS signature for hash. Error: {result}");
             }
 
-            var signatureBuffer = new byte[SignatureLength];
-            bytesWritten = Bls384Interop.blsSignatureSerialize(signatureBuffer, signatureBuffer.Length, blsSignature);
-            if (bytesWritten != signatureBuffer.Length)
+            unsafe
+            {
+                fixed (byte* destinationPtr = destination)
+                {
+                    bytesWritten = Bls384Interop.SignatureSerialize(destinationPtr, SignatureLength, blsSignature);
+                }
+            }
+            if (bytesWritten != SignatureLength)
             {
                 throw new Exception($"Error serializing BLS signature, length: {bytesWritten}");
             }
-            signatureBuffer.CopyTo(destination);
             return true;
         }
 
@@ -249,6 +296,7 @@ namespace Cortex.Cryptography
             throw new NotImplementedException();
         }
 
+        /// <inheritdoc />
         public override bool VerifyData(ReadOnlySpan<byte> data, ReadOnlySpan<byte> signature, ReadOnlySpan<byte> domain = default)
         {
             throw new NotImplementedException();
@@ -265,33 +313,58 @@ namespace Cortex.Cryptography
             EnsureInitialised();
             EnsurePublicKey();
 
-            var hashToCheck = new byte[2 * InitialXPartLength];
+            ReadOnlySpan<byte> hashToCheck;
             if (domain.Length > 0)
             {
-                var combineSuccess = TryCombineHashAndDomain(hash, domain, hashToCheck, out var combineBytesWritten);
+                var combined = new byte[2 * InitialXPartLength];
+                var combineSuccess = TryCombineHashAndDomain(hash, domain, combined, out var combineBytesWritten);
                 if (!combineSuccess || combineBytesWritten != 2 * InitialXPartLength)
                 {
                     throw new Exception("Error combining the hash and domain.");
                 }
+                hashToCheck = combined;
             }
             else
             {
-                hash.CopyTo(hashToCheck);
+                hashToCheck = hash;
             }
 
-            var publicKeyBytesRead = Bls384Interop.blsPublicKeyDeserialize(out var blsPublicKey, _publicKey!, _publicKey!.Length);
+            Bls384Interop.BlsPublicKey blsPublicKey;
+            int publicKeyBytesRead;
+            unsafe
+            {
+                fixed (byte* publicKeyPtr = _publicKey)
+                {
+                    publicKeyBytesRead = Bls384Interop.PublicKeyDeserialize(out blsPublicKey, publicKeyPtr, _publicKey!.Length);
+                }
+            }
             if (publicKeyBytesRead != _publicKey.Length)
             {
                 throw new Exception($"Error deserializing BLS public key, length: {publicKeyBytesRead}");
             }
 
-            var signatureBytesRead = Bls384Interop.blsSignatureDeserialize(out var blsSignature, signature.ToArray(), signature.Length);
+            Bls384Interop.BlsSignature blsSignature;
+            int signatureBytesRead;
+            unsafe
+            {
+                fixed (byte* signaturePtr = signature)
+                {
+                    signatureBytesRead = Bls384Interop.SignatureDeserialize(out blsSignature, signaturePtr, SignatureLength);
+                }
+            }
             if (signatureBytesRead != signature.Length)
             {
                 throw new Exception($"Error deserializing BLS signature, length: {signatureBytesRead}");
             }
 
-            var result = Bls384Interop.blsVerifyHash(blsSignature, blsPublicKey, hashToCheck, hashToCheck.Length);
+            int result;
+            unsafe
+            {
+                fixed(byte* hashPtr = hashToCheck)
+                {
+                    result = Bls384Interop.VerifyHash(blsSignature, blsPublicKey, hashPtr, hashToCheck.Length);
+                }
+            }
 
             return (result == 1);
         }
@@ -300,12 +373,12 @@ namespace Cortex.Cryptography
         {
             if (!_initialised)
             {
-                var result = Bls384Interop.blsInit(Bls384Interop.MCL_BLS12_381, Bls384Interop.MCLBN_COMPILED_TIME_VAR);
+                var result = Bls384Interop.Init(Bls384Interop.MCL_BLS12_381, Bls384Interop.MCLBN_COMPILED_TIME_VAR);
                 if (result != 0)
                 {
                     throw new Exception($"Error initialising BLS algorithm. Error: {result}");
                 }
-                Bls384Interop.blsSetETHserialization(1);
+                Bls384Interop.SetETHserialization(1);
                 _initialised = true;
             }
         }
@@ -320,21 +393,37 @@ namespace Cortex.Cryptography
 
                     // Standard values are big endian encoding (are using the Herumi deserialize / serialize)
 
-                    var bytesRead = Bls384Interop.blsSecretKeyDeserialize(out var blsSecretKey, _privateKey, _privateKey.Length);
+                    Bls384Interop.BlsSecretKey blsSecretKey;
+                    int bytesRead;
+                    unsafe
+                    {
+                        fixed (byte* ptr = _privateKey)
+                        {
+                            bytesRead = Bls384Interop.SecretKeyDeserialize(out blsSecretKey, ptr, _privateKey.Length);
+                        }
+                    }
                     if (bytesRead != _privateKey.Length)
                     {
                         throw new Exception($"Error deserializing BLS private key, length: {bytesRead}");
                     }
 
-                    Bls384Interop.blsGetPublicKey(out var blsPublicKey, blsSecretKey);
+                    Bls384Interop.GetPublicKey(out var blsPublicKey, blsSecretKey);
 
-                    var buffer = new byte[PublicKeyLength];
-                    var bytesWritten = Bls384Interop.blsPublicKeySerialize(buffer, buffer.Length, blsPublicKey);
+                    var buffer = new Span<byte>(new byte[PublicKeyLength]);
+                    int bytesWritten;
+                    unsafe
+                    {
+                        fixed (byte* ptr = buffer)
+                        {
+                            bytesWritten = Bls384Interop.PublicKeySerialize(ptr, buffer.Length, in blsPublicKey);
+                        }
+                    }
+
                     if (bytesWritten != buffer.Length)
                     {
                         throw new Exception($"Error serializing BLS public key, length: {bytesWritten}");
                     }
-                    _publicKey = buffer;
+                    _publicKey = buffer.ToArray();
                 }
             }
         }

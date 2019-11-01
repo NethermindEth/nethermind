@@ -2,10 +2,21 @@
 
 namespace Cortex.Cryptography
 {
-    //internal static class Bls384Interop
-    public static class Bls384Interop
+    internal static class Bls384Interop
+    //public static class Bls384Interop
     {
-#pragma warning disable IDE1006 // Naming Styles
+        // 	MCL_BLS12_381 = 5,
+        public const int MCL_BLS12_381 = 5;
+
+        //#define MCLBN_COMPILED_TIME_VAR ((MCLBN_FR_UNIT_SIZE) * 10 + (MCLBN_FP_UNIT_SIZE))
+        // The +100 is for BLS_SWAP_G
+        public const int MCLBN_COMPILED_TIME_VAR = MCLBN_FR_UNIT_SIZE * 10 + MCLBN_FP_UNIT_SIZE + 100;
+
+        private const string DllName = "bls384_256.dll";
+
+        // Notes on passing Span as pointer
+        // https://medium.com/@antao.almada/p-invoking-using-span-t-a398b86f95d3
+        // https://ericsink.com/entries/utf8z.html
 
         // Using https://github.com/herumi/bls
         // * Install Visual Studio C++ tools
@@ -13,10 +24,6 @@ namespace Cortex.Cryptography
         // * "mklib.bat dll" worked (as does test, mentioned in readme)
         // * `make BLS_SWAP_G=1` then G1 is assigned to PublicKey and G2 is assigned to Signature.
         // * copy the output dll from bin folder
-
-        // 	MCL_BLS12_381 = 5,
-        public const int MCL_BLS12_381 = 5;
-
         /**
 	        @file
 	        @brief C API of 384-bit optimal ate pairing over BN curves
@@ -25,10 +32,6 @@ namespace Cortex.Cryptography
 	        http://opensource.org/licenses/BSD-3-Clause
         */
 
-        //#define MCLBN_COMPILED_TIME_VAR ((MCLBN_FR_UNIT_SIZE) * 10 + (MCLBN_FP_UNIT_SIZE))
-        // The +100 is for BLS_SWAP_G
-        public const int MCLBN_COMPILED_TIME_VAR = MCLBN_FR_UNIT_SIZE * 10 + MCLBN_FP_UNIT_SIZE + 100;
-
         //#define MCLBN_FP_UNIT_SIZE 6
         //#define MCLBN_FR_UNIT_SIZE 6
         private const int MCLBN_FP_UNIT_SIZE = 6;
@@ -36,8 +39,8 @@ namespace Cortex.Cryptography
         private const int MCLBN_FR_UNIT_SIZE = 4;
 
         // BLS_DLL_API void blsGetPublicKey(blsPublicKey* pub, const blsSecretKey* sec);
-        [DllImport(@"bls384_256.dll")]
-        public static extern void blsGetPublicKey(out BlsPublicKey pub, BlsSecretKey sec);
+        [DllImport(DllName, EntryPoint = "blsGetPublicKey")]
+        public static extern void GetPublicKey(out BlsPublicKey pub, BlsSecretKey sec);
 
         //initialize this library
         //call this once before using the other functions
@@ -48,76 +51,75 @@ namespace Cortex.Cryptography
         //@return 0 if success
         //@note blsInit() is not thread safe
         // BLS_DLL_API int blsInit(int curve, int compiledTimeVar);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsInit(int curve, int compiledTimeVar);
+        [DllImport(DllName, EntryPoint = "blsInit")]
+        public static extern int Init(int curve, int compiledTimeVar);
 
         //BLS_DLL_API mclSize blsPublicKeyDeserialize(blsPublicKey* pub, const void* buf, mclSize bufSize);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsPublicKeyDeserialize(out BlsPublicKey pub, byte[] buf, int bufSize);
+        [DllImport(DllName, EntryPoint = "blsPublicKeyDeserialize")]
+        public static extern unsafe int PublicKeyDeserialize(out BlsPublicKey pub, byte* buf, int bufSize);
 
         //BLS_DLL_API mclSize blsPublicKeySerialize(void *buf, mclSize maxBufSize, const blsPublicKey *pub);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsPublicKeySerialize(byte[] buf, int maxBufSize, BlsPublicKey pub);
+        [DllImport(DllName, EntryPoint = "blsPublicKeySerialize")]
+        public static extern unsafe int PublicKeySerialize(byte* buf, int maxBufSize, in BlsPublicKey pub);
 
         // return read byte size if success else 0
         //BLS_DLL_API mclSize blsIdDeserialize(blsId* id, const void* buf, mclSize bufSize);
         //BLS_DLL_API mclSize blsSecretKeyDeserialize(blsSecretKey* sec, const void* buf, mclSize bufSize);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSecretKeyDeserialize(out BlsSecretKey sec, byte[] buf, int bufSize);
+        [DllImport(DllName, EntryPoint = "blsSecretKeyDeserialize")]
+        public static extern unsafe int SecretKeyDeserialize(out BlsSecretKey sec, byte* buf, int bufSize);
 
         // return written byte size if success else 0
         //BLS_DLL_API mclSize blsIdSerialize(void *buf, mclSize maxBufSize, const blsId *id);
         //BLS_DLL_API mclSize blsSecretKeySerialize(void *buf, mclSize maxBufSize, const blsSecretKey *sec);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSecretKeySerialize(byte[] buf, int maxBufSize, BlsSecretKey sec);
-
-        // set secretKey if system has /dev/urandom or CryptGenRandom
-        // return 0 if success else -1
-        // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSecretKeySetByCSPRNG(out BlsSecretKey sec);
+        [DllImport(DllName, EntryPoint = "blsSecretKeySerialize")]
+        public static extern unsafe int SecretKeySerialize(byte* buf, int maxBufSize, BlsSecretKey sec);
 
         //set ETH serialization mode for BLS12-381
         //@param ETHserialization [in] 1:enable,  0:disable
         //@note ignore the flag if curve is not BLS12-381
         //BLS_DLL_API void blsSetETHserialization(int ETHserialization);
-        [DllImport(@"bls384_256.dll")]
-        public static extern void blsSetETHserialization(int ETHserialization);
+        [DllImport(DllName, EntryPoint = "blsSetETHserialization")]
+        public static extern void SetETHserialization(int ETHserialization);
 
+        // set secretKey if system has /dev/urandom or CryptGenRandom
+        // return 0 if success else -1
+        // BLS_DLL_API int blsSecretKeySetByCSPRNG(blsSecretKey* sec);
+        //[DllImport(DllName, EntryPoint = "blsSecretKeySetByCSPRNG")]
+        //public static extern int SecretKeySetByCSPRNG(out BlsSecretKey sec);
         // calculate the has of m and sign the hash
         // BLS_DLL_API void blsSign(blsSignature* sig, const blsSecretKey* sec, const void* m, mclSize size);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSign(out BlsSignature sig, BlsSecretKey sec, byte[] m, int size);
+        [DllImport(DllName, EntryPoint = "blsSign")]
+        public static extern unsafe int Sign(out BlsSignature sig, BlsSecretKey sec, byte* m, int size);
 
         //BLS_DLL_API void blsSignatureAdd(blsSignature* sig, const blsSignature* rhs);
-        [DllImport(@"bls384_256.dll")]
-        public static extern void blsSignatureAdd(ref BlsSignature sig, BlsSignature rhs);
+        [DllImport(DllName, EntryPoint = "blsSignatureAdd")]
+        public static extern void SignatureAdd(ref BlsSignature sig, BlsSignature rhs);
 
         //BLS_DLL_API mclSize blsSignatureDeserialize(blsSignature* sig, const void* buf, mclSize bufSize);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSignatureDeserialize(out BlsSignature sig, byte[] buf, int bufSize);
+        [DllImport(DllName, EntryPoint = "blsSignatureDeserialize")]
+        public static extern unsafe int SignatureDeserialize(out BlsSignature sig, byte* buf, int bufSize);
 
         //BLS_DLL_API mclSize blsSignatureSerialize(void *buf, mclSize maxBufSize, const blsSignature *sig);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSignatureSerialize(byte[] buf, int maxBufSize, BlsSignature sig);
+        [DllImport(DllName, EntryPoint = "blsSignatureSerialize")]
+        public static extern unsafe int SignatureSerialize(byte* buf, int maxBufSize, BlsSignature sig);
 
         //sign the hash
         //use the low (bitSize of r) - 1 bit of h
         //return 0 if success else -1
         //NOTE : return false if h is zero or c1 or -c1 value for BN254. see hashTest() in test/bls_test.hpp
         //BLS_DLL_API int blsSignHash(blsSignature* sig, const blsSecretKey* sec, const void* h, mclSize size);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsSignHash(out BlsSignature sig, BlsSecretKey sec, byte[] h, int size);
+        [DllImport(DllName, EntryPoint = "blsSignHash")]
+        public static extern unsafe int SignHash(out BlsSignature sig, BlsSecretKey sec, byte* h, int size);
 
         // return 1 if valid
         // BLS_DLL_API int blsVerify(const blsSignature* sig, const blsPublicKey* pub, const void* m, mclSize size);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsVerify(BlsSignature sig, BlsPublicKey pub, byte[] m, int size);
+        [DllImport(DllName, EntryPoint = "blsVerify")]
+        public static extern unsafe int Verify(BlsSignature sig, BlsPublicKey pub, byte* m, int size);
 
         // return 1 if valid
         //BLS_DLL_API int blsVerifyHash(const blsSignature* sig, const blsPublicKey* pub, const void* h, mclSize size);
-        [DllImport(@"bls384_256.dll")]
-        public static extern int blsVerifyHash(BlsSignature sig, BlsPublicKey pub, byte[] h, int size);
+        [DllImport(DllName, EntryPoint = "blsVerifyHash")]
+        public static extern unsafe int VerifyHash(BlsSignature sig, BlsPublicKey pub, byte* h, int size);
 
         //verify X == sY by checking e(X, sQ) = e(Y, Q)
         //@param X [in]
@@ -127,12 +129,12 @@ namespace Cortex.Cryptography
         //BLS_DLL_API int blsVerifyPairing(const blsSignature* X, const blsSignature* Y, const blsPublicKey* pub);
         // Note: bls_verify in Eth 2.0 has "Verify that e(pubkey, hash_to_G2(message_hash, domain)) == e(g, signature)"
         // i.e. if X = G2 of hash, then Y = signature ??
-        [DllImport(@"bls384.dll")]
-        public static extern int blsVerifyPairing(BlsSignature x, BlsSignature y, BlsPublicKey pub);
+        [DllImport(DllName, EntryPoint = "blsVerifyPairing")]
+        public static extern int VerifyPairing(BlsSignature x, BlsSignature y, BlsPublicKey pub);
 
         // MCLBN_DLL_API mclSize mclBnFp2_serialize(void *buf, mclSize maxBufSize, const mclBnFp2 *x);
-        [DllImport(@"mclbn384_256.dll")]
-        public static extern int mclBnFp2_serialize(byte[] buf, int maxBufSiz, Bls384Interop.MclBnFp2 x);
+        //[DllImport(@"mclbn384_256.dll")]
+        //public static extern int mclBnFp2_serialize(byte[] buf, int maxBufSiz, Bls384Interop.MclBnFp2 x);
 
         //typedef struct {
         //#ifdef BLS_SWAP_G
@@ -287,7 +289,5 @@ namespace Cortex.Cryptography
         //#define mclSize size_t
         //#define mclInt int64_t
         //#endif
-
-#pragma warning restore IDE1006 // Naming Styles
     }
 }
