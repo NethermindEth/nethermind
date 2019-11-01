@@ -573,7 +573,7 @@ namespace Nethermind.Core.Extensions
         {
             if (bytes.Length == 0)
             {
-                return withZeroX ? "0x0" : "0";
+                return withZeroX ? "0x" : "";
             }
             
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
