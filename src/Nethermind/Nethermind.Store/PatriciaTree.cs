@@ -175,7 +175,7 @@ namespace Nethermind.Store
 
             node.ResolveKey(isRoot);
             node.IsDirty = false;
-            
+
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);

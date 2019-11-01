@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -34,7 +35,7 @@ namespace Nethermind.Store.Test
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
         [Test]
-        public void Restore_update_restore()
+        public async Task Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainNetSpecProvider.Instance.GetSpec(MainNetSpecProvider.ConstantinopleFixBlockNumber);
             StateDb stateDb = new StateDb(new MemDb());
@@ -44,35 +45,46 @@ namespace Nethermind.Store.Test
             provider.Commit(spec);
             provider.CommitTree();
             Keccak stateRoot0 = provider.StateRoot;
-            
+
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree();
             Keccak stateRoot1 = provider.StateRoot;
-            
+
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree();
             Keccak stateRoot2 = provider.StateRoot;
-            
+
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
             provider.CommitTree();
             Keccak stateRoot3 = provider.StateRoot;
-            
+
             provider.CommitTree();
             stateDb.Commit();
 
             StateReader reader = new StateReader(stateDb, Substitute.For<IDb>(), Logger);
-            UInt256 balance0 = reader.GetBalance(stateRoot0, _address1);
-            UInt256 balance1 = reader.GetBalance(stateRoot1, _address1);
-            UInt256 balance2 = reader.GetBalance(stateRoot2, _address1);
-            UInt256 balance3 = reader.GetBalance(stateRoot3, _address1);
-            
-            Assert.AreEqual((UInt256)1, balance0);
-            Assert.AreEqual((UInt256)2, balance1);
-            Assert.AreEqual((UInt256)3, balance2);
-            Assert.AreEqual((UInt256)4, balance3);
+
+            Task a = StartTask(reader, stateRoot0, 1);
+            Task b = StartTask(reader, stateRoot1, 2);
+            Task c = StartTask(reader, stateRoot2, 3);
+            Task d = StartTask(reader, stateRoot3, 4);
+
+            await Task.WhenAll(a, b, c, d);
+        }
+
+        private Task StartTask(StateReader reader, Keccak stateRoot, UInt256 value)
+        {
+            return Task.Run(
+                () =>
+                {
+                    for (int i = 0; i < 100000; i++)
+                    {
+                        UInt256 balance = reader.GetBalance(stateRoot, _address1);
+                        Assert.AreEqual(value, balance);
+                    }
+                });
         }
     }
 }

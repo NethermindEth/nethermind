@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
@@ -25,7 +26,7 @@ namespace Nethermind.Store.Test
     public class PatriciaTreeTests
     {
         [Test]
-        public void Restore_update_restore()
+        public void Create_commit_change_balance_get()
         {
             Account account = new Account(1);
             StateTree stateTree = new StateTree();
@@ -37,11 +38,11 @@ namespace Nethermind.Store.Test
             stateTree.Commit();
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
-            Assert.AreEqual((UInt256)2, accountRestored.Balance);
+            Assert.AreEqual((UInt256) 2, accountRestored.Balance);
         }
-        
+
         [Test]
-        public void Restore_update_restore_branch()
+        public void Create_create_commit_change_balance_get()
         {
             Account account = new Account(1);
             StateTree stateTree = new StateTree();
@@ -54,7 +55,28 @@ namespace Nethermind.Store.Test
             stateTree.Commit();
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
-            Assert.AreEqual((UInt256)2, accountRestored.Balance);
+            Assert.AreEqual((UInt256) 2, accountRestored.Balance);
+        }
+
+        [Test]
+        public void Create_commit_reset_change_balance_get()
+        {
+            MemDb db = new MemDb();
+            Account account = new Account(1);
+            StateTree stateTree = new StateTree(db);
+            stateTree.Set(TestItem.AddressA, account);
+            stateTree.Commit();
+
+            Keccak rootHash = stateTree.RootHash;
+            stateTree.RootHash = null;
+
+            stateTree.RootHash = rootHash;
+            stateTree.Get(TestItem.AddressA);
+            account = account.WithChangedBalance(2);
+            stateTree.Set(TestItem.AddressA, account);
+            stateTree.Commit();
+
+            Assert.AreEqual(2, db.Keys.Count);
         }
     }
 }
