@@ -214,7 +214,7 @@ namespace Nethermind.Store
             Run(input, input.Length, value, true);
         }
 
-        public byte[] Get(Span<byte> rawKey)
+        public byte[] Get(Span<byte> rawKey, Keccak rootHash = null)
         {
 //            byte[] value = ValueCache.Get(rawKey);
 //            if (value != null)
@@ -227,7 +227,7 @@ namespace Nethermind.Store
                 ? stackalloc byte[nibblesCount]
                 : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            var result = Run(nibbles, nibblesCount,null, false);
+            var result = Run(nibbles, nibblesCount, null, false, rootHash: rootHash);
             if (array != null) ArrayPool<byte>.Shared.Return(array);
             return result;
         }
@@ -262,7 +262,8 @@ namespace Nethermind.Store
             return NodeCache.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
         }
 
-        public byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        public byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate,
+            bool ignoreMissingDelete = true, Keccak rootHash = null)
         {
             if (isUpdate)
             {
@@ -272,6 +273,14 @@ namespace Nethermind.Store
             if (isUpdate && updateValue.Length == 0)
             {
                 updateValue = null;
+            }
+
+            if (!(rootHash is null))
+            {
+                var rootRef = new TrieNode(NodeType.Unknown, rootHash);
+                rootRef.ResolveNode(this);
+                return TraverseNode(rootRef, new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue,
+                    isUpdate, ignoreMissingDelete));
             }
 
             if (RootRef == null)

@@ -48,7 +48,7 @@ namespace Nethermind.Store
             }
             set => _state.RootHash = value;
         }
-
+        
         private readonly StateTree _state;
 
         public bool AccountExists(Keccak rootHash, Address address)
@@ -121,8 +121,7 @@ namespace Nethermind.Store
         private Account GetState(Keccak rootHash, Address address)
         {
             Metrics.StateTreeReads++;
-            _state.RootHash = rootHash;
-            Account account = _state.Get(address);
+            Account account = _state.Get(address, rootHash);
             return account;
         }
     }
