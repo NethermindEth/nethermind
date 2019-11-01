@@ -29,8 +29,8 @@ namespace Nethermind.Benchmarks
     {
         public static void Main(string[] args)
         {
-//            BenchmarkRunner.Run<ByteArrayToHexBenchmarks>();
-            BenchmarkRunner.Run<FromHexBenchmarks>();
+            BenchmarkRunner.Run<ByteArrayToHexBenchmarks>();
+//            BenchmarkRunner.Run<FromHexBenchmarks>();
 //            BenchmarkRunner.Run<BytesCompare>();
 //            BenchmarkRunner.Run<BytesIsZero>();
 //            BenchmarkRunner.Run<BytesPad>();

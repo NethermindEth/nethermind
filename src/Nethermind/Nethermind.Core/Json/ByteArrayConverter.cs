@@ -26,7 +26,14 @@ namespace Nethermind.Core.Json
     {
         public override void WriteJson(JsonWriter writer, byte[] value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            writer.WriteValue(value.ToHexString(true));
+            if (value == null)
+            {
+                writer.WriteNull();
+            }
+            else
+            {
+                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value, true));
+            }
         }
 
         public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
@@ -35,7 +42,7 @@ namespace Nethermind.Core.Json
             {
                 return null;
             }
-            
+
             string s = (string) reader.Value;
             return Bytes.FromHexString(s);
         }

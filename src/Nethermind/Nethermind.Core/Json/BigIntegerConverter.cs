@@ -41,7 +41,7 @@ namespace Nethermind.Core.Json
         {
             if (value.IsZero)
             {
-                writer.WriteValue("0x0");
+                writer.WriteRawValue("\"0x0\"");
                 return;
             }
 

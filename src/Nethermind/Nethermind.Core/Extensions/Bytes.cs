@@ -25,6 +25,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 using System.Text;
@@ -33,7 +34,7 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
-    public static class Bytes
+    public static unsafe class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
 
@@ -539,6 +540,18 @@ namespace Nethermind.Core.Extensions
             return ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
+        private struct StateSmall
+        {
+            public StateSmall(byte[] bytes, bool withZeroX)
+            {
+                Bytes = bytes;
+                WithZeroX = withZeroX;
+            }
+            
+            public byte[] Bytes;
+            public bool WithZeroX;
+        }
+        
         private struct State
         {
             public State(byte[] bytes, int leadingZeros, bool withZeroX, bool withEip55Checksum)
@@ -555,6 +568,36 @@ namespace Nethermind.Core.Extensions
             public bool WithEip55Checksum;
         }
 
+        [DebuggerStepThrough]
+        public static string ByteArrayToHexViaLookup32Safe(byte[] bytes, bool withZeroX)
+        {
+            if (bytes.Length == 0)
+            {
+                return withZeroX ? "0x0" : "0";
+            }
+            
+            int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
+            StateSmall stateToPass = new StateSmall(bytes, withZeroX);
+            return string.Create(length, stateToPass, (chars, state) =>
+            {
+                int offset0x = 0;
+                if (state.WithZeroX)
+                {
+                    chars[0] = '0';
+                    chars[1] = 'x';
+                    offset0x += 2;
+                }
+
+                Span<uint> charsAsInts = MemoryMarshal.Cast<char, uint>(chars.Slice(offset0x));
+                int targetLength = state.Bytes.Length;
+                for (int i = 0; i < targetLength; i += 1)
+                {
+                    uint val = Lookup32[state.Bytes[i]];
+                    charsAsInts[i] = val;
+                }
+            });
+        }
+        
         [DebuggerStepThrough]
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
@@ -590,17 +633,16 @@ namespace Nethermind.Core.Extensions
                 for (int i = offset0x; i < charsLength; i += 2)
                 {
                     uint val = Lookup32[state.Bytes[(i - offset0x + state.LeadingZeros) / 2]];
-                    char char1 = (char) val;
-                    char char2 = (char) (val >> 16);
-
                     if (i != offset0x || !odd)
                     {
+                        char char1 = (char) val;
                         chars[i - oddity] =
                             state.WithEip55Checksum && char.IsLetter(char1) && hashHex[i - offset0x] > '7'
                                 ? char.ToUpper(char1)
                                 : char1;
                     }
 
+                    char char2 = (char) (val >> 16);
                     chars[i + 1 - oddity] =
                         state.WithEip55Checksum && char.IsLetter(char2) && hashHex[i + 1 - offset0x] > '7'
                             ? char.ToUpper(char2)
@@ -609,7 +651,7 @@ namespace Nethermind.Core.Extensions
             });
         }
 
-        private static readonly uint[] Lookup32 = CreateLookup32("x2");
+        private static uint[] Lookup32 = CreateLookup32("x2");
 
         private static uint[] CreateLookup32(string format)
         {
