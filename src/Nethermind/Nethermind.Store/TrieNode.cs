@@ -164,7 +164,7 @@ namespace Nethermind.Store
             set => SetChild(i, value);
         }
 
-        private void ResolveNode(PatriciaTree tree, bool allowCaching)
+        internal void ResolveNode(PatriciaTree tree, bool allowCaching)
         {
             try
             {
