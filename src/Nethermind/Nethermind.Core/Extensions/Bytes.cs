@@ -576,27 +576,33 @@ namespace Nethermind.Core.Extensions
                     hashHex = Keccak.Compute(state.Bytes.ToHexString(false)).ToString(false);
                 }
 
-                int offset = 0;
+                int offset0x = 0;
                 if (state.WithZeroX)
                 {
                     chars[0] = '0';
                     chars[1] = 'x';
-                    offset = 2;
+                    offset0x += 2;
                 }
 
-                for (int i = offset; i < chars.Length; i += 2)
+                bool odd = state.LeadingZeros % 2 == 1;
+                int oddity = odd ? 1 : 0;
+                int charsLength = chars.Length;
+                for (int i = offset0x; i < charsLength; i += 2)
                 {
-                    uint val = Lookup32[state.Bytes[(i - offset) / 2 + state.LeadingZeros]];
+                    uint val = Lookup32[state.Bytes[(i - offset0x + state.LeadingZeros) / 2]];
                     char char1 = (char) val;
                     char char2 = (char) (val >> 16);
 
-                    chars[i] =
-                        state.WithEip55Checksum && char.IsLetter(char1) && hashHex[i - offset] > '7'
-                            ? char.ToUpper(char1)
-                            : char1;
+                    if (i != offset0x || !odd)
+                    {
+                        chars[i - oddity] =
+                            state.WithEip55Checksum && char.IsLetter(char1) && hashHex[i - offset0x] > '7'
+                                ? char.ToUpper(char1)
+                                : char1;
+                    }
 
-                    chars[i + 1] =
-                        state.WithEip55Checksum && char.IsLetter(char2) && hashHex[i + 1 - offset] > '7'
+                    chars[i + 1 - oddity] =
+                        state.WithEip55Checksum && char.IsLetter(char2) && hashHex[i + 1 - offset0x] > '7'
                             ? char.ToUpper(char2)
                             : char2;
                 }
@@ -668,7 +674,7 @@ namespace Nethermind.Core.Extensions
             return bytes;
         }
 
-        private static byte[] FromHexNibble1Table = 
+        private static byte[] FromHexNibble1Table =
         {
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -683,7 +689,7 @@ namespace Nethermind.Core.Extensions
             208, 224, 240
         };
 
-        private static byte[] FromHexNibble2Table = 
+        private static byte[] FromHexNibble2Table =
         {
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
             255, 255, 255, 255, 255, 255, 255, 255, 255, 255,
@@ -697,7 +703,7 @@ namespace Nethermind.Core.Extensions
             255, 255, 255, 255, 255, 255, 255, 10, 11, 12,
             13, 14, 15
         };
-        
+
         [DebuggerStepThrough]
         public static byte[] FromHexString(string hexString)
         {

@@ -59,6 +59,20 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexString);
             Assert.AreEqual(bytes[0], expectedResult, "new");
         }
+        
+        [TestCase("0x07", "0x7", true, true)]
+        [TestCase("0x07", "7", false, true)]
+        [TestCase("0x07", "0x07", true, false)]
+        [TestCase("0x07", "07", false, false)]
+        [TestCase("0x0007", "0x7", true, true)]
+        [TestCase("0x0007", "7", false, true)]
+        [TestCase("0x0007", "0x0007", true, false)]
+        [TestCase("0x0007", "0007", false, false)]
+        public void ToHexString(string input, string expectedResult, bool with0x, bool noLeadingZeros)
+        {
+            byte[] bytes = Bytes.FromHexString(input);
+            Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros));
+        }
 
         [TestCase("0x", "0x", true)]
         [TestCase(null, null, true)]

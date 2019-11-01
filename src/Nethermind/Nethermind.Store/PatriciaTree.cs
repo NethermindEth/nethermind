@@ -173,8 +173,9 @@ namespace Nethermind.Store
                 }
             }
 
-            node.IsDirty = false;
             node.ResolveKey(isRoot);
+            node.IsDirty = false;
+
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);
@@ -214,7 +215,7 @@ namespace Nethermind.Store
             Run(input, input.Length, value, true);
         }
 
-        public byte[] Get(Span<byte> rawKey)
+        public byte[] Get(Span<byte> rawKey, Keccak rootHash = null)
         {
 //            byte[] value = ValueCache.Get(rawKey);
 //            if (value != null)
@@ -227,7 +228,7 @@ namespace Nethermind.Store
                 ? stackalloc byte[nibblesCount]
                 : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
             Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-            var result = Run(nibbles, nibblesCount,null, false);
+            var result = Run(nibbles, nibblesCount, null, false, rootHash: rootHash);
             if (array != null) ArrayPool<byte>.Shared.Return(array);
             return result;
         }
@@ -258,12 +259,17 @@ namespace Nethermind.Store
             {
                 return new Rlp(_db[keccak.Bytes]);
             }
-            
+
             return NodeCache.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
         }
 
-        public byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        public byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak rootHash = null)
         {
+            if (isUpdate && rootHash != null)
+            {
+                throw new InvalidOperationException("Only reads can be done in parallel on the Patricia tree");
+            }
+
             if (isUpdate)
             {
                 _nodeStack.Clear();
@@ -272,6 +278,14 @@ namespace Nethermind.Store
             if (isUpdate && updateValue.Length == 0)
             {
                 updateValue = null;
+            }
+
+            if (!(rootHash is null))
+            {
+                var rootRef = new TrieNode(NodeType.Unknown, rootHash);
+                rootRef.ResolveNode(this);
+                return TraverseNode(rootRef, new TraverseContext(updatePath.Slice(0, nibblesCount), updateValue,
+                    false, ignoreMissingDelete));
             }
 
             if (RootRef == null)
@@ -504,7 +518,7 @@ namespace Nethermind.Store
                 shorterPath = node.Path;
                 longerPath = remaining;
             }
-            
+
             byte[] shorterPathValue;
             byte[] longerPathValue;
 
@@ -709,11 +723,31 @@ namespace Nethermind.Store
             public int PathIndex { get; }
         }
 
-        public void Accept(ITreeVisitor visitor, IDb codeDb)
+        public void Accept(ITreeVisitor visitor, IDb codeDb, Keccak rootHash)
         {
             VisitContext visitContext = new VisitContext();
-            visitor.VisitTree(RootHash, visitContext);
-            RootRef?.Accept(visitor, this, codeDb, visitContext);
+            TrieNode rootRef = null;
+            if (!rootHash.Equals(Keccak.EmptyTreeHash))
+            {
+                rootRef = new TrieNode(NodeType.Unknown, rootHash);
+                try
+                {
+                    // not allowing caching just for test scenarios when we use multiple trees
+                    rootRef.ResolveNode(this, false);
+                }
+                catch (StateException)
+                {
+                    visitor.VisitMissingNode(rootHash, visitContext);
+                    return;
+                }
+            }
+//
+//            VisitContext visitContext = new VisitContext();
+//            visitor.VisitTree(rootHash, visitContext);
+//            rootRef?.Accept(visitor, this, codeDb, visitContext);
+
+            visitor.VisitTree(rootHash, visitContext);
+            rootRef?.Accept(visitor, this, codeDb, visitContext);
         }
     }
 }

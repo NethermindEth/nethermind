@@ -208,6 +208,11 @@ namespace Nethermind.Store
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
+                if (!isTracing && change.ChangeType == ChangeType.JustCache)
+                {
+                    continue;
+                }
+                
                 if (_committedThisRound.Contains(change.StorageAddress))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)

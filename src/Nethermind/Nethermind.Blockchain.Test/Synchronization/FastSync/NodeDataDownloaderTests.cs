@@ -916,12 +916,12 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
             if (!skipLogs) _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
-            _remoteStateTree.Accept(dumper, _remoteCodeDb);
+            _remoteStateTree.Accept(dumper, _remoteCodeDb, _remoteStateTree.RootHash);
             string local = dumper.ToString();
             if (!skipLogs) _logger.Info(local);
             if (!skipLogs) _logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
-            _localStateTree.Accept(dumper, _localCodeDb);
+            _localStateTree.Accept(dumper, _localCodeDb, _localStateTree.RootHash);
             string remote = dumper.ToString();
             if (!skipLogs) _logger.Info(remote);
 
@@ -929,7 +929,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             {
                 Assert.AreEqual(remote, local);
                 TrieStatsCollector collector = new TrieStatsCollector(_logManager);
-                _localStateTree.Accept(collector, _localCodeDb);
+                _localStateTree.Accept(collector, _localCodeDb, _localStateTree.RootHash);
                 Assert.AreEqual(0, collector.Stats.MissingCode);
             }
 

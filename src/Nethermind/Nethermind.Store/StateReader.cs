@@ -38,17 +38,7 @@ namespace Nethermind.Store
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _state = new StateTree(stateDb);
         }
-
-        public Keccak StateRoot
-        {
-            get
-            {
-                _state.UpdateRootHash();
-                return _state.RootHash;
-            }
-            set => _state.RootHash = value;
-        }
-
+        
         private readonly StateTree _state;
 
         public bool AccountExists(Keccak rootHash, Address address)
@@ -102,9 +92,8 @@ namespace Nethermind.Store
         }
 
         public void RunTreeVisitor(Keccak rootHash, ITreeVisitor treeVisitor)	
-        {	
-            _state.RootHash = rootHash;	
-            _state.Accept(treeVisitor, _codeDb);	
+        {
+            _state.Accept(treeVisitor, _codeDb, rootHash);	
         }
 
         public byte[] GetCode(Keccak rootHash, Address address)
@@ -121,8 +110,7 @@ namespace Nethermind.Store
         private Account GetState(Keccak rootHash, Address address)
         {
             Metrics.StateTreeReads++;
-            _state.RootHash = rootHash;
-            Account account = _state.Get(address);
+            Account account = _state.Get(address, rootHash);
             return account;
         }
     }

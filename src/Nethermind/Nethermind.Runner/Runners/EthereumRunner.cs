@@ -864,7 +864,7 @@ namespace Nethermind.Runner.Runners
 
             _blockTree.NewHeadBlock += GenesisProcessed;
             _blockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(5));
+            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
