@@ -13,6 +13,8 @@ namespace Cortex.BeaconNode
 
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<BeaconChainUtility>();
+            services.AddSingleton<BeaconStateAccessor>();
+            services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconNodeConfiguration>();
             services.AddSingleton<Store>();
             services.AddSingleton<ICryptographyService, CryptographyService>();
@@ -22,9 +24,7 @@ namespace Cortex.BeaconNode
 
         private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
         {
-            services.Configure<ChainConstants>(x =>
-            {
-            });
+            services.AddSingleton<ChainConstants>();
             services.Configure<MiscellaneousParameters>(x =>
             {
                 x.MaximumCommitteesPerSlot = configuration.GetValue<ulong>("MAX_COMMITTEES_PER_SLOT");

@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -20,12 +21,16 @@ namespace Cortex.BeaconNode
                 .UseWindowsService()
                 .ConfigureAppConfiguration((hostContext, config) =>
                 {
+                    //var entryAssemblyDirectory = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
+                    //config.SetBasePath(entryAssemblyDirectory);
+                    config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
                     var yamlConfig = hostContext.Configuration[YamlConfigKey];
                     if (string.IsNullOrWhiteSpace(yamlConfig))
                     {
                         yamlConfig = DefaultYamlConfig;
                         config.AddInMemoryCollection(new Dictionary<string, string> { { YamlConfigKey, yamlConfig } });
                     }
+
                     config.AddYamlFile($"{yamlConfig}.yaml");
                     config.AddCommandLine(args);
                 })
