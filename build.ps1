@@ -1,4 +1,4 @@
-@('test/Cortex.Cryptography.Tests', 'test/Cortex.BeaconNode.Tests') | % { 
+@('test/Cortex.BeaconNode.Tests') | % { 
     dotnet test $_
     if (!$?) { throw 'Tests failed' }
 }
