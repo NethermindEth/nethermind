@@ -55,22 +55,6 @@ Client code:
 dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
-### BLS
-
-Library implementation from https://github.com/herumi/bls
-
-This has already been compiled and is in the lib folder.
-
-To re-generate (not usually needed):
-
-* Install Visual Studio C++ tools
-* Get BLS, MCL, and cybozulib_ext projects
-* We want Eth 2.0 behavior (e.g. G1 (48 byte) as minmal public key) so modify bls\setvar.bat to change the CFLAGS line to define BLS_ETH: "set CFLAGS=%CFLAGS% /I ..\mcl\include /I ./ /DBLS_ETH"
-* Open 64-bit Visual Studio command prompt
-* Call "mklib.bat dll" for MCL, then BLS, as per instructions
-* (Can also compile and run test projects, as per instructions; NOTE: will use the modified setvar as above)
-* Copy the output DLL from bin folder to the library folder for Cortex
-
 ## Contributions
 
 Donations (ETH) can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
