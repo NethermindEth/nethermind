@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 
 namespace Nethermind.Store
 {
@@ -22,23 +23,38 @@ namespace Nethermind.Store
     {
         public const int ResetRatio = 2;
         public const int StartCapacity = 64;
-        
-        public static void Reset<T>(ref T[] array, ref int currentCapacity, int startCapacity = StartCapacity)
+    }
+
+    public static class Resettable<T>
+    {
+        private const int ResetRatio = Resettable.ResetRatio;
+        private const int StartCapacity = Resettable.StartCapacity;
+
+        private static ArrayPool<T> _arrayPool = ArrayPool<T>.Shared;
+
+        public static void SizeUpWhenNeeded(ref T[] array, ref int currentCapacity, int currentPosition)
         {
-            if (array.Length < currentCapacity / ResetRatio)
+            while (currentPosition >= currentCapacity - 1)
             {
-                currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
-                array = new T[currentCapacity];
+                currentCapacity *= ResetRatio;
             }
-            else
+
+            if (currentCapacity >= array.Length) // sometimes we ask about the _currentPosition + 1;
             {
-                while (array.Length > currentCapacity)
-                {
-                    currentCapacity *= ResetRatio;
-                }
-                
-                array.AsSpan().Clear();
+                T[] oldArray = array;
+                array = _arrayPool.Rent(currentCapacity);
+                Array.Copy(oldArray, array, oldArray.Length);
+                array.AsSpan(oldArray.Length).Clear();
+                _arrayPool.Return(oldArray);
             }
+        }
+
+        public static void Reset(ref T[] array, ref int currentCapacity, int startCapacity = StartCapacity)
+        {
+            _arrayPool.Return(array);
+            currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
+            array = _arrayPool.Rent(currentCapacity);
+            array.AsSpan().Clear();
         }
     }
 }

@@ -34,7 +34,7 @@ namespace Nethermind.Store
 {
     public class StateProvider : IStateProvider
     {
-        private const int StartCapacity = 64;
+        private const int StartCapacity = Resettable.StartCapacity;
         private ResettableDictionary<Address, Stack<int>> _intraBlockCache = new ResettableDictionary<Address, Stack<int>>();
         private ResettableHashSet<Address> _committedThisRound = new ResettableHashSet<Address>();
 
@@ -488,7 +488,7 @@ namespace Nethermind.Store
             }
 
             _currentPosition = -1;
-            Resettable.Reset(ref _changes, ref _capacity, StartCapacity);
+            Resettable<Change>.Reset(ref _changes, ref _capacity, StartCapacity);
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
 
@@ -628,11 +628,7 @@ namespace Nethermind.Store
         private void IncrementPosition()
         {
             _currentPosition++;
-            if (_currentPosition >= _capacity - 1) // sometimes we ask about the _currentPosition + 1;
-            {
-                _capacity *= 2;
-                Array.Resize(ref _changes, _capacity);
-            }
+            Resettable<Change>.SizeUpWhenNeeded(ref _changes, ref _capacity, _currentPosition);
         }
 
         private void SetupCache(Address address)

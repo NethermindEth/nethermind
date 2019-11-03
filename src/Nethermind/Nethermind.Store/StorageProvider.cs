@@ -43,8 +43,9 @@ namespace Nethermind.Store
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
 
-        private int _capacity = Resettable.StartCapacity;
-        private Change[] _changes = new Change[Resettable.StartCapacity];
+        private const int StartCapacity = Resettable.StartCapacity;
+        private int _capacity = StartCapacity;
+        private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
         public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
@@ -281,7 +282,7 @@ namespace Nethermind.Store
             }
             
             _currentPosition = -1;
-            Resettable.Reset(ref _changes, ref _capacity);
+            Resettable<Change>.Reset(ref _changes, ref _capacity, StartCapacity);
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
@@ -406,11 +407,7 @@ namespace Nethermind.Store
         private void IncrementPosition()
         {
             _currentPosition++;
-            if (_currentPosition >= _capacity - 1) // sometimes we ask about the _currentPosition + 1;
-            {
-                _capacity *= 2;
-                Array.Resize(ref _changes, _capacity);
-            }
+            Resettable<Change>.SizeUpWhenNeeded(ref _changes, ref _capacity, _currentPosition);
         }
 
         private void SetupRegistry(StorageAddress address)
