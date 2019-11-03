@@ -32,8 +32,9 @@ namespace Nethermind.Store
 
         private static ArrayPool<T> _arrayPool = ArrayPool<T>.Shared;
 
-        public static void SizeUpWhenNeeded(ref T[] array, ref int currentCapacity, int currentPosition)
+        public static void IncrementPosition(ref T[] array, ref int currentCapacity, ref int currentPosition)
         {
+            currentPosition++;
             while (currentPosition >= currentCapacity - 1) // sometimes we ask about the _currentPosition + 1;
             {
                 currentCapacity *= ResetRatio;

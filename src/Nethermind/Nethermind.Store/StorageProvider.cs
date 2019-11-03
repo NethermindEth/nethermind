@@ -389,7 +389,7 @@ namespace Nethermind.Store
         private void PushToRegistryOnly(StorageAddress address, byte[] value)
         {
             SetupRegistry(address);
-            IncrementPosition();
+            IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _originalValues[address] = value;
             _changes[_currentPosition] = new Change(ChangeType.JustCache, address, value);
@@ -398,15 +398,14 @@ namespace Nethermind.Store
         private void PushUpdate(StorageAddress address, byte[] value)
         {
             SetupRegistry(address);
-            IncrementPosition();
+            IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.Update, address, value);
         }
 
-        private void IncrementPosition()
+        private void IncrementChangePosition()
         {
-            _currentPosition++;
-            Resettable<Change>.SizeUpWhenNeeded(ref _changes, ref _capacity, _currentPosition);
+            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
         private void SetupRegistry(StorageAddress address)

@@ -611,7 +611,7 @@ namespace Nethermind.Store
         private void Push(ChangeType changeType, Address address, Account touchedAccount)
         {
             SetupCache(address);
-            IncrementPosition();
+            IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(changeType, address, touchedAccount);
         }
@@ -619,15 +619,14 @@ namespace Nethermind.Store
         private void PushNew(Address address, Account account)
         {
             SetupCache(address);
-            IncrementPosition();
+            IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.New, address, account);
         }
 
-        private void IncrementPosition()
+        private void IncrementChangePosition()
         {
-            _currentPosition++;
-            Resettable<Change>.SizeUpWhenNeeded(ref _changes, ref _capacity, _currentPosition);
+            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
         private void SetupCache(Address address)

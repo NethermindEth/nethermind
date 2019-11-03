@@ -25,22 +25,13 @@ namespace Nethermind.Store.Test
         public void Can_resize_up()
         {
             int capacity = Resettable.StartCapacity;
+            int currentPosition = Resettable.StartCapacity;
             int[] array = new int[Resettable.StartCapacity];
-            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity);
+            Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
             
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
         }
-        
-        [Test]
-        public void Can_resize_twice_at_once()
-        {
-            int capacity = Resettable.StartCapacity;
-            int[] array = new int[Resettable.StartCapacity];
-            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity * Resettable.ResetRatio);
-            
-            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio, array.Length);
-        }
-        
+
         [Test]
         public void Resets_on_position_reset()
         {
@@ -59,13 +50,14 @@ namespace Nethermind.Store.Test
         public void Can_resize_down()
         {
             int capacity = Resettable.StartCapacity;
-            int currentPosition = 1;
+            int currentPosition = capacity;
             int[] array = new int[Resettable.StartCapacity];
-            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity);
+            Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
             
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
-            
-            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition, Resettable.StartCapacity - 2);
+
+            currentPosition -= 2;
+            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition, Resettable.StartCapacity);
             
             Assert.AreEqual(Resettable.StartCapacity, array.Length);
         }
@@ -76,7 +68,7 @@ namespace Nethermind.Store.Test
             int capacity = Resettable.StartCapacity;
             int currentPosition = Resettable.StartCapacity;
             int[] array = new int[Resettable.StartCapacity];
-            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, currentPosition);
+            Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
             
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
             
@@ -89,11 +81,15 @@ namespace Nethermind.Store.Test
         public void Delays_downsizing()
         {
             int capacity = Resettable.StartCapacity;
-            int currentPosition = Resettable.StartCapacity;
+            int currentPosition = Resettable.StartCapacity * Resettable.ResetRatio;
             int[] array = new int[Resettable.StartCapacity];
-            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity * Resettable.ResetRatio);
             
+            Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio, array.Length);
+            
+            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
+            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio, array.Length);
+            
             Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
         }
@@ -102,9 +98,10 @@ namespace Nethermind.Store.Test
         public void Copies_values_on_resize_up()
         {
             int capacity = Resettable.StartCapacity;
+            int currentPosition = capacity;
             int[] array = new int[Resettable.StartCapacity];
             array[0] = 30;
-            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity);
+            Resettable<int>.IncrementPosition(ref array, ref capacity, ref currentPosition);
             
             Assert.AreEqual(30, array[0]);
         }

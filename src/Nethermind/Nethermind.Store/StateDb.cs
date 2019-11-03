@@ -132,17 +132,10 @@ namespace Nethermind.Store
 
             if (value == null) throw new ArgumentNullException(nameof(value), "Cannot store null values");
             
-            IncrementPosition();
-
+            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
             Change change = new Change(key, value);
             _changes[_currentPosition] = change;
             _pendingChanges[key] = _currentPosition;
-        }
-
-        private void IncrementPosition()
-        {
-            _currentPosition++;
-            Resettable<Change>.SizeUpWhenNeeded(ref _changes, ref _capacity, _currentPosition);
         }
 
         private struct Change
