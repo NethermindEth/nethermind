@@ -100,9 +100,8 @@ namespace Nethermind.Store
             }
             
             _db.CommitBatch();
-
-            _currentPosition = -1;
-            Resettable<Change>.Reset(ref _changes, ref _capacity, StartCapacity);
+            
+            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _pendingChanges.Reset();
         }
 

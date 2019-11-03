@@ -49,11 +49,17 @@ namespace Nethermind.Store
             }
         }
 
-        public static void Reset(ref T[] array, ref int currentCapacity, int startCapacity = StartCapacity)
+        public static void Reset(ref T[] array, ref int currentCapacity, ref int currentPosition, int startCapacity = StartCapacity)
         {
-            _arrayPool.Return(array);
-            currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
-            array = _arrayPool.Rent(currentCapacity);
+            array.AsSpan().Clear();
+            if (currentPosition < currentCapacity / ResetRatio && currentCapacity > startCapacity)
+            {
+                _arrayPool.Return(array);
+                currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
+                array = _arrayPool.Rent(currentCapacity);    
+            }
+
+            currentPosition = -1;
         }
     }
 }

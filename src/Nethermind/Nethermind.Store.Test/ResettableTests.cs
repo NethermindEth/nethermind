@@ -45,10 +45,11 @@ namespace Nethermind.Store.Test
         public void Resets_on_position_reset()
         {
             int capacity = Resettable.StartCapacity;
+            int currentPosition = Resettable.StartCapacity;
             int[] array = new int[Resettable.StartCapacity];
             array[0] = 30;
             
-            Resettable<int>.Reset(ref array, ref capacity);
+            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
             
             Assert.AreEqual(Resettable.StartCapacity, array.Length);
             Assert.AreEqual(0, array[0]);
@@ -58,25 +59,42 @@ namespace Nethermind.Store.Test
         public void Can_resize_down()
         {
             int capacity = Resettable.StartCapacity;
+            int currentPosition = 1;
             int[] array = new int[Resettable.StartCapacity];
             Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity);
             
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
             
-            Resettable<int>.Reset(ref array, ref capacity, Resettable.StartCapacity - 2);
+            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition, Resettable.StartCapacity - 2);
             
             Assert.AreEqual(Resettable.StartCapacity, array.Length);
+        }
+        
+        [Test]
+        public void Does_not_resize_when_capacity_was_in_use()
+        {
+            int capacity = Resettable.StartCapacity;
+            int currentPosition = Resettable.StartCapacity;
+            int[] array = new int[Resettable.StartCapacity];
+            Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, currentPosition);
+            
+            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
+            
+            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition, Resettable.StartCapacity);
+            
+            Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
         }
         
         [Test]
         public void Delays_downsizing()
         {
             int capacity = Resettable.StartCapacity;
+            int currentPosition = Resettable.StartCapacity;
             int[] array = new int[Resettable.StartCapacity];
             Resettable<int>.SizeUpWhenNeeded(ref array, ref capacity, capacity * Resettable.ResetRatio);
             
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio * Resettable.ResetRatio, array.Length);
-            Resettable<int>.Reset(ref array, ref capacity);
+            Resettable<int>.Reset(ref array, ref capacity, ref currentPosition);
             Assert.AreEqual(Resettable.StartCapacity * Resettable.ResetRatio, array.Length);
         }
         
