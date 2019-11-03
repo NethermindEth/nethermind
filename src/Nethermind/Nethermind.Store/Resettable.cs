@@ -34,17 +34,18 @@ namespace Nethermind.Store
 
         public static void SizeUpWhenNeeded(ref T[] array, ref int currentCapacity, int currentPosition)
         {
-            while (currentPosition >= currentCapacity - 1)
+            while (currentPosition >= currentCapacity - 1) // sometimes we ask about the _currentPosition + 1;
             {
                 currentCapacity *= ResetRatio;
             }
 
-            if (currentCapacity >= array.Length) // sometimes we ask about the _currentPosition + 1;
+            if (currentCapacity > array.Length)
             {
                 T[] oldArray = array;
                 array = _arrayPool.Rent(currentCapacity);
+                array.AsSpan().Clear();
                 Array.Copy(oldArray, array, oldArray.Length);
-                array.AsSpan(oldArray.Length).Clear();
+//                array.AsSpan(oldArray.Length).Clear();
                 _arrayPool.Return(oldArray);
             }
         }
