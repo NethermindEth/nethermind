@@ -33,7 +33,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
+        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(256 * 1024);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
