@@ -27,16 +27,14 @@ namespace Nethermind.Store
     /// </summary>
     public class StateDb : ISnapshotableDb
     {
-        private const int InitialCapacity = 4;
-
         internal readonly IDb _db;
 
-        private int _capacity = InitialCapacity;
-
-        private Change[] _changes = new Change[InitialCapacity];
-
+        private const int StartCapacity = Resettable.StartCapacity;
+        private int _capacity = StartCapacity;
+        private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
-        private Dictionary<byte[], int> _pendingChanges = new Dictionary<byte[], int>(InitialCapacity, Bytes.EqualityComparer);
+
+        private ResettableDictionary<byte[], int> _pendingChanges = new ResettableDictionary<byte[], int>(Bytes.EqualityComparer, StartCapacity);
         
         public string Name { get; } = "State";
 
@@ -102,11 +100,9 @@ namespace Nethermind.Store
             }
             
             _db.CommitBatch();
-
-            _currentPosition = -1;
-            AdjustSize();
-            _pendingChanges.Clear();
-//            _pendingChanges = new Dictionary<Keccak, int>(_capacity);
+            
+            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
+            _pendingChanges.Reset();
         }
 
         public int TakeSnapshot()
@@ -135,27 +131,11 @@ namespace Nethermind.Store
             if (_pendingChanges.ContainsKey(key)) return;
 
             if (value == null) throw new ArgumentNullException(nameof(value), "Cannot store null values");
-
-            _currentPosition++;
-            AdjustSize();
-
+            
+            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
             Change change = new Change(key, value);
             _changes[_currentPosition] = change;
             _pendingChanges[key] = _currentPosition;
-        }
-
-        private void AdjustSize()
-        {
-            if (_currentPosition > _capacity - 1)
-            {
-                _capacity *= 2;
-                Array.Resize(ref _changes, _capacity);
-            }
-            else if (_currentPosition + 1 < _capacity / 4)
-            {
-                _capacity = Math.Max(_capacity / 2, InitialCapacity);
-                Array.Resize(ref _changes, _capacity);
-            }
         }
 
         private struct Change

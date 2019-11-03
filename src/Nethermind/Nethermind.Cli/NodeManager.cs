@@ -71,7 +71,8 @@ namespace Nethermind.Cli
                 stopwatch.Start();
                 object result = await _currentClient.Post<object>(method, parameters);
                 stopwatch.Stop();
-                Console.WriteLine($"Request complete in {stopwatch.ElapsedMilliseconds}ms");
+                decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                 string resultString = result?.ToString();
                 if (resultString == "0x")
                 {
@@ -105,7 +106,8 @@ namespace Nethermind.Cli
                 stopwatch.Start();
                 T result = await _currentClient.Post<T>(method, parameters);
                 stopwatch.Stop();
-                Console.WriteLine($"Request complete in {stopwatch.ElapsedMilliseconds}ms");
+                decimal totalMicroseconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                Console.WriteLine($"Request complete in {totalMicroseconds}μs");
                 return result;
             }
             catch (HttpRequestException e)
