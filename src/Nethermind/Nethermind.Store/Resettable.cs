@@ -43,9 +43,8 @@ namespace Nethermind.Store
             {
                 T[] oldArray = array;
                 array = _arrayPool.Rent(currentCapacity);
-                array.AsSpan().Clear();
                 Array.Copy(oldArray, array, oldArray.Length);
-//                array.AsSpan(oldArray.Length).Clear();
+                oldArray.AsSpan().Clear();
                 _arrayPool.Return(oldArray);
             }
         }
@@ -55,7 +54,6 @@ namespace Nethermind.Store
             _arrayPool.Return(array);
             currentCapacity = Math.Max(startCapacity, currentCapacity / ResetRatio);
             array = _arrayPool.Rent(currentCapacity);
-            array.AsSpan().Clear();
         }
     }
 }

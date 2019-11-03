@@ -34,7 +34,7 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        private ResettableDictionary<byte[], int> _pendingChanges = new ResettableDictionary<byte[], int>();
+        private ResettableDictionary<byte[], int> _pendingChanges = new ResettableDictionary<byte[], int>(Bytes.EqualityComparer, StartCapacity);
         
         public string Name { get; } = "State";
 

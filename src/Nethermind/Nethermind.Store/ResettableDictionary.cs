@@ -28,12 +28,17 @@ namespace Nethermind.Store
 
         private IDictionary<TKey, TValue> _wrapped;
 
-        public ResettableDictionary(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+        public ResettableDictionary(IEqualityComparer<TKey> comparer, int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
         {
-            _wrapped = new Dictionary<TKey, TValue>(startCapacity);
+            _wrapped = new Dictionary<TKey, TValue>(startCapacity, comparer);
             _startCapacity = startCapacity;
             _resetRatio = resetRatio;
             _currentCapacity = _startCapacity;
+        }
+
+        public ResettableDictionary(int startCapacity = Resettable.StartCapacity, int resetRatio = Resettable.ResetRatio)
+            : this(null, startCapacity, resetRatio)
+        {
         }
 
         public IEnumerator<KeyValuePair<TKey, TValue>> GetEnumerator()
@@ -109,7 +114,7 @@ namespace Nethermind.Store
             {
                 return;
             }
-            
+
             if (_wrapped.Count < _currentCapacity / _resetRatio && _currentCapacity != _startCapacity)
             {
                 _currentCapacity = Math.Max(_startCapacity, _currentCapacity / _resetRatio);
@@ -121,7 +126,7 @@ namespace Nethermind.Store
                 {
                     _currentCapacity *= _resetRatio;
                 }
-                
+
                 _wrapped.Clear();
             }
         }
