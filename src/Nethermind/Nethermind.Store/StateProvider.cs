@@ -546,21 +546,13 @@ namespace Nethermind.Store
 
         private Account GetState(Address address)
         {
-            //Account cached = _longTermCache.Get(address);
-            //if (cached != null)
-            //{
-            //    return cached;
-            //}
-
             Metrics.StateTreeReads++;
             Account account = _tree.Get(address);
-            //_longTermCache.Set(address, account);
             return account;
         }
 
         private void SetState(Address address, Account account)
         {
-            //_longTermCache.Set(address, account);
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
         }

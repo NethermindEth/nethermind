@@ -34,7 +34,6 @@ namespace Nethermind.Store
     public class PatriciaTree
     {
         private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
-//        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -741,11 +740,7 @@ namespace Nethermind.Store
                     return;
                 }
             }
-//
-//            VisitContext visitContext = new VisitContext();
-//            visitor.VisitTree(rootHash, visitContext);
-//            rootRef?.Accept(visitor, this, codeDb, visitContext);
-
+            
             visitor.VisitTree(rootHash, visitContext);
             rootRef?.Accept(visitor, this, codeDb, visitContext);
         }
