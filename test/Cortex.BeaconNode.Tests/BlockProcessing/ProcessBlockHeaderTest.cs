@@ -31,6 +31,28 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 beaconStateTransition);
         }
 
+        [TestMethod]
+        public void InvalidSignatureBlockHeader()
+        {
+            // Arrange
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
+
+            var block = TestBlock.BuildEmptyBlockForNextSlot(state, signed: false,
+                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+
+            RunBlockHeaderProcessing(state, block, expectValid: false,
+                beaconStateTransition);
+        }
+
         // Run ``process_block_header``, yielding:
         //  - pre-state('pre')
         //  - block('block')

@@ -16,6 +16,7 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
+        private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
@@ -26,6 +27,7 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlock,
+            ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor)
         {
@@ -35,6 +37,7 @@ namespace Cortex.BeaconNode
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlock = maxOperationsPerBlock;
+            _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
         }
@@ -89,7 +92,43 @@ namespace Cortex.BeaconNode
 
         public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
         {
-            //throw new NotImplementedException();
+            // Verify that the slots match
+            if (block.Slot != state.Slot)
+            {
+                throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Block slot must match state slot {state.Slot}.");
+            }
+            // Verify that the parent matches
+            var latestBlockSigningRoot = state.LatestBlockHeader.SigningRoot();
+            if (block.ParentRoot != latestBlockSigningRoot)
+            {
+                throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockSigningRoot}.");
+            }
+
+            // Save current block as the new latest block
+            var bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+            var newBlockHeader = new BeaconBlockHeader(block.Slot, 
+                block.ParentRoot, 
+                Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
+                bodyRoot,
+                new BlsSignature() //`signature` is zeroed
+                );
+
+            // Verify proposer is not slashed
+            var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            var proposer = state.Validators[(int)(ulong)beaconProposerIndex];
+            if (proposer.IsSlashed)
+            {
+                throw new Exception("Beacon proposer must not be slashed.");
+            }
+
+            // Verify proposer signature
+            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+            var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, Epoch.None);
+            var validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
+            if (!validSignature)
+            {
+                throw new Exception($"Block signature must match proposer public key ${proposer.PublicKey}");
+            }
         }
 
         public void ProcessCrosslinks(BeaconState state)

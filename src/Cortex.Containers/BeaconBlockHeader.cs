@@ -2,12 +2,23 @@
 {
     public class BeaconBlockHeader
     {
-        public BeaconBlockHeader(Hash32 bodyRoot)
+        public BeaconBlockHeader(
+            Slot slot,
+            Hash32 parentRoot,
+            Hash32 stateRoot,
+            Hash32 bodyRoot,
+            BlsSignature signature)
         {
+            Slot = slot;
+            ParentRoot = parentRoot;
+            StateRoot = stateRoot;
             BodyRoot = bodyRoot;
-            ParentRoot = Hash32.Zero;
-            Signature = new BlsSignature();
-            StateRoot = Hash32.Zero;
+            Signature = signature;
+        }
+
+        public BeaconBlockHeader(Hash32 bodyRoot)
+            : this (Slot.Zero, Hash32.Zero, Hash32.Zero, bodyRoot, new BlsSignature())
+        {
         }
 
         public Hash32 BodyRoot { get; private set; }
