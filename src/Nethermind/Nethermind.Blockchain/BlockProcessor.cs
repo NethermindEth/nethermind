@@ -211,12 +211,11 @@ namespace Nethermind.Blockchain
                 SetReceiptsRoot(block, receipts);
                 ApplyMinerRewards(block, blockTracer);
                 
-                _additionalBlockProcessor?.PostProcess(block, receipts, options);
-                
                 _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-
                 block.Header.StateRoot = _stateProvider.StateRoot;
                 block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+                
+                _additionalBlockProcessor?.PostProcess(block, receipts, options);
 
                 if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
                 {

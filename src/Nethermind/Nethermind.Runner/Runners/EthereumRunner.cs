@@ -174,7 +174,7 @@ namespace Nethermind.Runner.Runners
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
         private INetworkConfig _networkConfig;
-        private ChainLevelInfoRepository _chainLevelInfoRepository;
+        private IChainLevelInfoRepository _chainLevelInfoRepository;
         private IBlockFinalizationManager _finalizationManager;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
@@ -546,10 +546,11 @@ namespace Nethermind.Runner.Runners
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
 
-            InitBlockProducers();
-
             _blockchainProcessor.Start();
             LoadGenesisBlock(string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash));
+            
+            InitBlockProducers();
+            
             if (_initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
@@ -650,9 +651,11 @@ namespace Nethermind.Runner.Runners
                     
                     case SealEngineType.AuRa:
                     {
-                        var producerChain = GetProducerChain((db, s, b, t, l)  => new[] {new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
+                        IAuRaValidatorProcessor validator = null;
+                        var producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
                         if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
                         _blockProducer = new AuRaBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _nodeKey.Address, _sealer, producerChain.ReadOnlyStateProvider, _logManager);
+                        validator.SetFinalizationManager(_finalizationManager, true);
                         break;
                     }
 

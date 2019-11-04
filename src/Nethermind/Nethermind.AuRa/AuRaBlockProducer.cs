@@ -38,6 +38,8 @@ namespace Nethermind.AuRa
     {
         private static readonly UInt256 UInt128MaxValue;
         private static readonly BigInteger MinGasPriceForMining = 1;
+        private static readonly TimeSpan Threshold = TimeSpan.FromMilliseconds(100);
+        
         private readonly IBlockTree _blockTree;
         private readonly ITimestamper _timestamper;
         private readonly IAuRaStepCalculator _auRaStepCalculator;
@@ -79,11 +81,7 @@ namespace Nethermind.AuRa
 
         public void Start()
         {
-            _producerTask = Task.Factory.StartNew(
-                ProducerLoop,
-                _cancellationTokenSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
+            _producerTask = Task.Run(ProducerLoop, _cancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -100,7 +98,7 @@ namespace Nethermind.AuRa
             });
         }
 
-        private async void ProducerLoop()
+        private async Task ProducerLoop()
         {
             while (!_cancellationTokenSource.IsCancellationRequested)
             {
@@ -114,7 +112,9 @@ namespace Nethermind.AuRa
                     ProduceNewBlock(parentHeader);
                 }
 
-                await Task.Delay(_auRaStepCalculator.TimeToNextStep);
+                var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
+                if (_logger.IsDebug) _logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
+                await Task.Delay(timeToNextStep + Threshold);
             }
         }
 

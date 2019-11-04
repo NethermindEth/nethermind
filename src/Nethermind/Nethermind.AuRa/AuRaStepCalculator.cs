@@ -39,10 +39,8 @@ namespace Nethermind.AuRa
 
         public long CurrentStep => _timestamper.EpochSecondsLong / _stepDuration;
 
-        public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInMilliseconds);
+        public TimeSpan TimeToNextStep => new TimeSpan(TimeToNextStepInTicks);
 
-        public TimeSpan TimeToNextStepWithSyncThreshold => new TimeSpan(TimeToNextStepInMilliseconds + _stepDuration / 10 * TimeSpan.TicksPerSecond);
-        
-        private long TimeToNextStepInMilliseconds => _timestamper.EpochMillisecondsLong % _stepDurationMilliseconds * TimeSpan.TicksPerMillisecond;
+        private long TimeToNextStepInTicks => (_stepDurationMilliseconds - _timestamper.EpochMillisecondsLong % _stepDurationMilliseconds) * TimeSpan.TicksPerMillisecond;
     }
 }

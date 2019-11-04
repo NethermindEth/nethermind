@@ -33,6 +33,6 @@ namespace Nethermind.Blockchain
 
         public BlockHeader FinalizingBlock { get; }
         public IReadOnlyList<BlockHeader> FinalizedBlocks { get; }
-        
+
     }
 }

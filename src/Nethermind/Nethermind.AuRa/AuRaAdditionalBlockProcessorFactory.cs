@@ -40,7 +40,7 @@ namespace Nethermind.AuRa
 {
     public class AuRaAdditionalBlockProcessorFactory : IAuRaAdditionalBlockProcessorFactory
     {
-        private const long DefaultStartBlockNumber = 0;
+        private const long DefaultStartBlockNumber = 1;
         
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;

@@ -25,6 +25,6 @@ namespace Nethermind.AuRa.Validators
     {
         bool IsValidSealer(Address address, long step);
         int MinSealersForFinalization { get; }
-        void SetFinalizationManager(IBlockFinalizationManager finalizationManager);
+        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing = false);
     }
 }

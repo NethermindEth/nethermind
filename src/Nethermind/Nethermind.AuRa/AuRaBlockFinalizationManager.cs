@@ -22,6 +22,7 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
@@ -36,7 +37,7 @@ namespace Nethermind.AuRa
         private readonly IAuRaValidator _auRaValidator;
         private readonly ILogger _logger;
         private readonly IBlockProcessor _blockProcessor;
-        private long _lastFinalizedBlockLevel = -1L;
+        private long _lastFinalizedBlockLevel;
         private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
@@ -154,6 +155,7 @@ namespace Nethermind.AuRa
                         {
                             blockInfo.IsFinalized = true;
                             _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+
                             finalizedBlocks.Add(block);
                             _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
                         }

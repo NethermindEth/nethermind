@@ -36,6 +36,8 @@ namespace Nethermind.Runner.Runners
     {
         public IBlockchainProcessor Processor { get; }
         public IStateProvider ReadOnlyStateProvider { get; }
+        public IEnumerable<IAdditionalBlockProcessor> AdditionalBlockProcessors { get; }
+        public IBlockProcessor BlockProcessor { get; }
 
         public ReadOnlyChain(ReadOnlyBlockTree readOnlyTree,
             IBlockValidator blockValidator,
@@ -54,9 +56,9 @@ namespace Nethermind.Runner.Runners
             VirtualMachine virtualMachine = new VirtualMachine(ReadOnlyStateProvider, storageProvider, blockhashProvider, specProvider, logManager);
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, ReadOnlyStateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, 
-                additionalBlockProcessorsFactory?.Invoke(dbProvider.StateDb, ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager));
-            Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, blockProcessor, recoveryStep, logManager, false, false));
+            AdditionalBlockProcessors = additionalBlockProcessorsFactory?.Invoke(dbProvider.StateDb, ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager);
+            BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, AdditionalBlockProcessors);
+            Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, BlockProcessor, recoveryStep, logManager, false, false));
         }
     }
 }
