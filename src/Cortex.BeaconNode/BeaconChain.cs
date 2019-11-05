@@ -178,7 +178,7 @@ namespace Cortex.BeaconNode
                 if (IsValidGenesisState(candidateState))
                 {
                     var genesisState = candidateState;
-                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, 
+                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue,
                         _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue));
                     State = genesisState;
                     return true;

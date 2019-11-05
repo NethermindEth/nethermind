@@ -13,7 +13,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
             MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility, 
+            BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {
@@ -33,9 +33,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 previousBlockSigningRoot,
                 Hash32.Zero,
                 new BeaconBlockBody(
-                    new BlsSignature(), 
-                    eth1Data, 
+                    new BlsSignature(),
+                    eth1Data,
                     new Bytes32(),
+                    Array.Empty<ProposerSlashing>(),
                     Array.Empty<Attestation>(),
                     Array.Empty<Deposit>()
                 ),
@@ -56,7 +57,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
             MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility, 
+            BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {

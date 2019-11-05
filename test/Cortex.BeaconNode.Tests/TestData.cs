@@ -83,7 +83,7 @@ namespace Cortex.BeaconNode.Tests
             BlsPublicKey[] publicKeys;
             if (signed)
             {
-                publicKeys = TestKeys.PublicKeys(privateKeys).ToArray();
+                publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
             }
             else
             {

@@ -20,11 +20,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 beaconStateTransition.ProcessJustificationAndFinalization(state);
                 return;
             }
-            if (processName == "process_crosslinks")
-            {
-                beaconStateTransition.ProcessCrosslinks(state);
-                return;
-            }
+            //if (processName == "process_crosslinks")
+            //{
+            //    beaconStateTransition.ProcessCrosslinks(state);
+            //    return;
+            //}
 
             throw new NotImplementedException();
         }

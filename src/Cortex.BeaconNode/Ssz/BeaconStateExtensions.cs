@@ -34,7 +34,7 @@ namespace Cortex.BeaconNode.Ssz
 
             //# Eth1
             yield return item.Eth1Data.ToSszContainer();
-            //eth1_data_votes: List[Eth1Data, SLOTS_PER_ETH1_VOTING_PERIOD]
+            yield return new SszList(item.Eth1DataVotes.Select(x => x.ToSszContainer()), (ulong)timeParameters.SlotsPerEth1VotingPeriod);
             yield return item.Eth1DepositIndex.ToSszBasicElement();
 
             //# Registry

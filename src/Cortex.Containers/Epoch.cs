@@ -19,6 +19,11 @@ namespace Cortex.Containers
 
         public static explicit operator ulong(Epoch slot) => slot._value;
 
+        public static object Max(Epoch val1, Epoch val2)
+        {
+            return new Epoch(Math.Max(val1._value, val2._value));
+        }
+
         public static Epoch Min(Epoch val1, Epoch val2)
         {
             return new Epoch(Math.Min(val1._value, val2._value));

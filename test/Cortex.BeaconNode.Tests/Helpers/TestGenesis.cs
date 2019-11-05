@@ -1,17 +1,36 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
-using Cortex.Cryptography;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestGenesis
     {
+        public static Validator BuildMockValidator(ChainConstants chainConstants, InitialValues initialValues, GweiValues gweiValues, TimeParameters timeParameters, ulong validatorIndex, Gwei balance)
+        {
+            var publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
+            var publicKey = publicKeys[validatorIndex];
+            // insecurely use pubkey as withdrawal key if no credentials provided
+            var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
+            withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
+            var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
+
+            var validator = new Validator(
+                publicKey,
+                withdrawalCredentials,
+                Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance)
+,
+                chainConstants.FarFutureEpoch,
+                chainConstants.FarFutureEpoch,
+                chainConstants.FarFutureEpoch,
+                chainConstants.FarFutureEpoch);
+
+            return validator;
+        }
+
         public static BeaconState CreateGenesisState(ChainConstants chainConstants,
-            MiscellaneousParameters miscellaneousParameters,
+                    MiscellaneousParameters miscellaneousParameters,
             InitialValues initialValues,
             GweiValues gweiValues,
             TimeParameters timeParameters,
@@ -50,29 +69,5 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             return state;
         }
-
-        public static Validator BuildMockValidator(ChainConstants chainConstants, InitialValues initialValues, GweiValues gweiValues, TimeParameters timeParameters, ulong validatorIndex, Gwei balance)
-        {
-            var privateKeys = TestKeys.PrivateKeys(timeParameters);
-            var publicKeys = TestKeys.PublicKeys(privateKeys).ToArray();
-            var publicKey = publicKeys[validatorIndex];
-            // insecurely use pubkey as withdrawal key if no credentials provided
-            var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
-            withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
-            var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
-
-            var validator = new Validator(
-                publicKey,
-                withdrawalCredentials,
-                Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance)
-,
-                chainConstants.FarFutureEpoch,
-                chainConstants.FarFutureEpoch,
-                chainConstants.FarFutureEpoch,
-                chainConstants.FarFutureEpoch);
-
-            return validator;
-        }
-
     }
 }

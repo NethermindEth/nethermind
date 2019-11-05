@@ -1,8 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 
 namespace Cortex.Containers
 {
-    public class Eth1Data
+    public class Eth1Data : IEquatable<Eth1Data>
     {
         public Eth1Data(ulong depositCount, Hash32 eth1BlockHash)
             : this(Hash32.Zero, depositCount, eth1BlockHash)
@@ -27,6 +28,34 @@ namespace Cortex.Containers
                 other.DepositCount,
                 Hash32.Clone(other.BlockHash));
             return clone;
+        }
+
+        public static bool operator !=(Eth1Data left, Eth1Data right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator ==(Eth1Data left, Eth1Data right)
+        {
+            return EqualityComparer<Eth1Data>.Default.Equals(left, right);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as Eth1Data);
+        }
+
+        public bool Equals(Eth1Data? other)
+        {
+            return !(other is null) &&
+                BlockHash == other.BlockHash &&
+                DepositCount == other.DepositCount &&
+                DepositRoot.Equals(other.DepositRoot);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(BlockHash, DepositCount, DepositRoot);
         }
 
         public void SetDepositRoot(Hash32 depositRoot)

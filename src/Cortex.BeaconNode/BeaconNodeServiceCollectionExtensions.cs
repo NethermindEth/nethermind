@@ -50,16 +50,25 @@ namespace Cortex.BeaconNode
                 x.MinimumAttestationInclusionDelay = new Slot(configuration.GetValue<ulong>("MIN_ATTESTATION_INCLUSION_DELAY"));
                 x.SlotsPerEpoch = new Slot(configuration.GetValue<ulong>("SLOTS_PER_EPOCH"));
                 x.MinimumSeedLookahead = new Epoch(configuration.GetValue<ulong>("MIN_SEED_LOOKAHEAD"));
+                x.SlotsPerEth1VotingPeriod = new Slot(configuration.GetValue<ulong>("SLOTS_PER_ETH1_VOTING_PERIOD"));
                 x.SlotsPerHistoricalRoot = new Slot(configuration.GetValue<ulong>("SLOTS_PER_HISTORICAL_ROOT"));
                 x.MaximumEpochsPerCrosslink = new Epoch(configuration.GetValue<ulong>("MAX_EPOCHS_PER_CROSSLINK"));
             });
             services.Configure<StateListLengths>(x =>
             {
                 x.EpochsPerHistoricalVector = new Epoch(configuration.GetValue<ulong>("EPOCHS_PER_HISTORICAL_VECTOR"));
+                x.EpochsPerSlashingsVector = new Epoch(configuration.GetValue<ulong>("EPOCHS_PER_SLASHINGS_VECTOR"));
                 x.ValidatorRegistryLimit = configuration.GetValue<ulong>("VALIDATOR_REGISTRY_LIMIT");
+            });
+            services.Configure<RewardsAndPenalties>(x =>
+            {
+                x.WhistleblowerRewardQuotient = configuration.GetValue<ulong>("WHISTLEBLOWER_REWARD_QUOTIENT");
+                x.ProposerRewardQuotient = configuration.GetValue<ulong>("PROPOSER_REWARD_QUOTIENT");
+                x.MinimumSlashingPenaltyQuotient = configuration.GetValue<ulong>("MIN_SLASHING_PENALTY_QUOTIENT");
             });
             services.Configure<MaxOperationsPerBlock>(x =>
             {
+                x.MaximumProposerSlashings = configuration.GetValue<ulong>("MAX_PROPOSER_SLASHINGS");
                 x.MaximumAttestations = configuration.GetValue<ulong>("MAX_ATTESTATIONS");
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
             });

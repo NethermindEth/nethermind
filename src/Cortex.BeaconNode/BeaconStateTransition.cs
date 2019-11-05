@@ -13,10 +13,11 @@ namespace Cortex.BeaconNode
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
+        private readonly BeaconStateMutator _beaconStateMutator;
+        private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
-        private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
@@ -29,7 +30,8 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlock,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor)
+            BeaconStateAccessor beaconStateAccessor,
+            BeaconStateMutator beaconStateMutator)
         {
             _logger = logger;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
@@ -40,6 +42,7 @@ namespace Cortex.BeaconNode
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
+            _beaconStateMutator = beaconStateMutator;
         }
 
         public Gwei GetAttestingBalance(BeaconState state, IEnumerable<PendingAttestation> attestations)
@@ -106,8 +109,8 @@ namespace Cortex.BeaconNode
 
             // Save current block as the new latest block
             var bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
-            var newBlockHeader = new BeaconBlockHeader(block.Slot, 
-                block.ParentRoot, 
+            var newBlockHeader = new BeaconBlockHeader(block.Slot,
+                block.ParentRoot,
                 Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
                 bodyRoot,
                 new BlsSignature() //`signature` is zeroed
@@ -131,16 +134,11 @@ namespace Cortex.BeaconNode
             }
         }
 
-        public void ProcessCrosslinks(BeaconState state)
-        {
-            //throw new NotImplementedException();
-        }
-
         public void ProcessEpoch(BeaconState state)
         {
             _logger.LogDebug(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
             ProcessJustificationAndFinalization(state);
-            
+
             // Did this change ???
             //ProcessCrosslinks(state);
 
@@ -155,7 +153,12 @@ namespace Cortex.BeaconNode
 
         public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
         {
-            //throw new NotImplementedException();
+            state.AppendEth1DataVotes(body.Eth1Data);
+            var eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
+            if (eth1DataVoteCount * 2 > (int)(ulong)_timeParameterOptions.CurrentValue.SlotsPerEth1VotingPeriod)
+            {
+                state.SetEth1Data(body.Eth1Data);
+            }
         }
 
         public void ProcessJustificationAndFinalization(BeaconState state)
@@ -230,12 +233,87 @@ namespace Cortex.BeaconNode
 
         public void ProcessOperations(BeaconState state, BeaconBlockBody body)
         {
-            //throw new NotImplementedException();
+            // Verify that outstanding deposits are processed up to the maximum number of deposits
+            var outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
+            var expectedDeposits = Math.Min(_maxOperationsPerBlock.CurrentValue.MaximumDeposits, outstandingDeposits);
+            if (body.Deposits.Count != (int)expectedDeposits)
+            {
+                throw new ArgumentOutOfRangeException("body.Deposits.Count", body.Deposits.Count, $"Block body does not have the expected number of outstanding deposits {expectedDeposits}.");
+            }
+
+            foreach (var proposerSlashing in body.ProposerSlashings)
+            {
+                ProcessProposerSlashing(state, proposerSlashing);
+            }
+            // ProcessAttesterSlashing
+            //ProcessAttestation();
+            //ProcessDeposit();
+            //ProcessVoluntaryExit();
+            //ProcessShareReceiptProof();
+        }
+
+        public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
+        {
+            var proposer = state.Validators[(int)(ulong)proposerSlashing.ProposerIndex];
+            // Verify slots match
+            if (proposerSlashing.Header1.Slot != proposerSlashing.Header2.Slot)
+            {
+                throw new Exception($"Proposer slashing header 1 slot {proposerSlashing.Header1.Slot} must match header 2 slot {proposerSlashing.Header2.Slot}.");
+            }
+            // But the headers are different
+            if (!proposerSlashing.Header1.Equals(proposerSlashing.Header2))
+            {
+                throw new Exception($"Proposer slashing must be for two different headers.");
+            }
+            // Check proposer is slashable
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            var isSlashable = _beaconChainUtility.IsSlashableValidator(proposer, currentEpoch);
+            if (!isSlashable)
+            {
+                throw new Exception($"Proposer {proposerSlashing.ProposerIndex} is not slashable at epoch {currentEpoch}.");
+            }
+            // Signatures are valid
+            var slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.Header1.Slot);
+            var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, slashingEpoch);
+
+            var signingRoot1 = proposerSlashing.Header1.SigningRoot();
+            var signature1 = proposerSlashing.Header1.Signature;
+            var header1Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot1, signature1, domain);
+            if (!header1Valid)
+            {
+                throw new Exception("Proposer slashing header 1 signature is not valid.");
+            }
+
+            var signingRoot2 = proposerSlashing.Header2.SigningRoot();
+            var signature2 = proposerSlashing.Header2.Signature;
+            var header2Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot2, signature2, domain);
+            if (!header2Valid)
+            {
+                throw new Exception("Proposer slashing header 2 signature is not valid.");
+            }
+
+            _beaconStateMutator.SlashValidator(state, proposerSlashing.ProposerIndex);
         }
 
         public void ProcessRandao(BeaconState state, BeaconBlockBody body)
         {
-            //throw new NotImplementedException();
+            var epoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            // Verify RANDAO reveal
+            var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            var proposer = state.Validators[(int)(ulong)beaconProposerIndex];
+            var epochRoot = epoch.HashTreeRoot();
+            var domain = _beaconStateAccessor.GetDomain(state, DomainType.Randao, Epoch.None);
+            var validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
+            if (!validRandaoReveal)
+            {
+                throw new Exception($"Randao reveal must match proposer public key ${proposer.PublicKey}");
+            }
+            // Mix in RANDAO reveal
+            var randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
+            var randaoHash = _cryptographyService.Hash(body.RandaoReveal.AsSpan());
+            var mix = randaoMix.Xor(randaoHash);
+            var randaoIndex = epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector;
+            state.SetRandaoMix(randaoIndex, mix);
         }
 
         public void ProcessSlot(BeaconState state)

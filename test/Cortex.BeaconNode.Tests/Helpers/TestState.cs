@@ -1,4 +1,5 @@
-﻿using Cortex.BeaconNode.Configuration;
+﻿using System;
+using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
@@ -40,6 +41,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var state = TestGenesis.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
             return (beaconChainUtility, beaconStateAccessor, beaconStateTransition, state);
+        }
+
+        public static Gwei GetBalance(BeaconState state, ValidatorIndex proposerIndex)
+        {
+            return state.Balances[(int)(ulong)proposerIndex];
         }
     }
 }

@@ -48,7 +48,7 @@ namespace Cortex.Containers
 
         public bool Equals(BlsPublicKey? other)
         {
-            return other != null &&
+            return !(other is null) &&
                 _bytes.SequenceEqual(other._bytes);
         }
 

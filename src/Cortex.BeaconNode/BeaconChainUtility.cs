@@ -10,8 +10,8 @@ namespace Cortex.BeaconNode
     public class BeaconChainUtility
     {
         private readonly ICryptographyService _cryptographyService;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
+        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconChainUtility(IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
@@ -59,6 +59,45 @@ namespace Cortex.BeaconNode
         public Epoch ComputeEpochAtSlot(Slot slot)
         {
             return new Epoch(slot / _timeParameterOptions.CurrentValue.SlotsPerEpoch);
+        }
+
+        /// <summary>
+        /// Return from ``indices`` a random index sampled by effective balance.
+        /// </summary>
+        public ValidatorIndex ComputeProposerIndex(BeaconState state, IList<ValidatorIndex> indices, Hash32 seed)
+        {
+            if (!indices.Any())
+            {
+                throw new ArgumentException("Indices can not be empty", nameof(indices));
+            }
+
+            const ulong maxRandomByte = (1 << 8) - 1;
+            var indexCount = (ulong)indices.Count();
+            var index = (ulong)0;
+            while (true)
+            {
+                var initialValidatorIndex = new ValidatorIndex(index % indexCount);
+                var shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
+                var candidateIndex = indices[(int)(ulong)shuffledIndex];
+
+                var randomInputBytes = new Span<byte>(new byte[40]);
+                seed.AsSpan().CopyTo(randomInputBytes);
+                BitConverter.TryWriteBytes(randomInputBytes.Slice(32), index / 32);
+                if (!BitConverter.IsLittleEndian)
+                {
+                    randomInputBytes.Slice(32).Reverse();
+                }
+                var randomHash = _cryptographyService.Hash(randomInputBytes);
+                var random = randomHash.AsSpan()[(int)(index % 32)];
+
+                var effectiveBalance = state.Validators[(int)(ulong)candidateIndex].EffectiveBalance;
+                if ((effectiveBalance * maxRandomByte) >=
+                    (_gweiValueOptions.CurrentValue.MaximumEffectiveBalance * random))
+                {
+                    return candidateIndex;
+                }
+                index++;
+            }
         }
 
         /// <summary>
@@ -117,52 +156,12 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
-        /// Return from ``indices`` a random index sampled by effective balance.
-        /// </summary>
-        public ValidatorIndex ComputeProposerIndex(BeaconState state, IList<ValidatorIndex> indices, Hash32 seed)
-        {
-            if (!indices.Any())
-            {
-                throw new ArgumentException("Indices can not be empty", nameof(indices));
-            }
-
-            const ulong maxRandomByte = (1 << 8) - 1;
-            var indexCount = (ulong)indices.Count();
-            var index = (ulong)0;
-            while (true)
-            {
-                var initialValidatorIndex = new ValidatorIndex(index % indexCount);
-                var shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
-                var candidateIndex = indices[(int)(ulong)shuffledIndex];
-
-                var randomInputBytes = new Span<byte>(new byte[40]);
-                seed.AsSpan().CopyTo(randomInputBytes);
-                BitConverter.TryWriteBytes(randomInputBytes.Slice(32), index / 32);
-                if (!BitConverter.IsLittleEndian)
-                {
-                    randomInputBytes.Slice(32).Reverse();
-                }
-                var randomHash = _cryptographyService.Hash(randomInputBytes);
-                var random = randomHash.AsSpan()[(int)(index % 32)];
-
-                var effectiveBalance = state.Validators[(int)(ulong)candidateIndex].EffectiveBalance;
-                if ((effectiveBalance * maxRandomByte) >= 
-                    (_gweiValueOptions.CurrentValue.MaximumEffectiveBalance * random))
-                {
-                    return candidateIndex;
-                }
-                index++;
-            }
-        }
-
-        /// <summary>
         /// Return the start slot of 'epoch'
         /// </summary>
         public Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
             return _timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch;
         }
-
 
         /// <summary>
         /// Check if ``validator`` is active.
@@ -171,6 +170,16 @@ namespace Cortex.BeaconNode
         {
             return validator.ActivationEpoch <= epoch
                 && epoch < validator.ExitEpoch;
+        }
+
+        /// <summary>
+        /// Check if ``validator`` is slashable.
+        /// </summary>
+        public bool IsSlashableValidator(Validator validator, Epoch epoch)
+        {
+            return (!validator.IsSlashed)
+                && (validator.ActivationEpoch <= epoch)
+                && (epoch < validator.WithdrawableEpoch);
         }
 
         /// <summary>

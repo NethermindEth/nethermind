@@ -19,14 +19,14 @@ namespace Cortex.BeaconNode.Tests.Helpers
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, false, 
+            var block = TestBlock.BuildEmptyBlockForNextSlot(state, false,
                 miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             block.SetSlot(slot);
             block.Body.AddAttestations(attestation);
             beaconStateTransition.ProcessSlots(state, block.Slot);
-            TestBlock.SignBlock(state, block, ValidatorIndex.None, 
-                miscellaneousParameters, timeParameters, maxOperationsPerBlock, 
+            TestBlock.SignBlock(state, block, ValidatorIndex.None,
+                miscellaneousParameters, timeParameters, maxOperationsPerBlock,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }

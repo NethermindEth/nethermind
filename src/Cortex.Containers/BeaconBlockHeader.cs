@@ -1,6 +1,9 @@
-﻿namespace Cortex.Containers
+﻿using System;
+using System.Collections.Generic;
+
+namespace Cortex.Containers
 {
-    public class BeaconBlockHeader
+    public class BeaconBlockHeader : IEquatable<BeaconBlockHeader>
     {
         public BeaconBlockHeader(
             Slot slot,
@@ -17,7 +20,7 @@
         }
 
         public BeaconBlockHeader(Hash32 bodyRoot)
-            : this (Slot.Zero, Hash32.Zero, Hash32.Zero, bodyRoot, new BlsSignature())
+            : this(Slot.Zero, Hash32.Zero, Hash32.Zero, bodyRoot, new BlsSignature())
         {
         }
 
@@ -37,15 +40,45 @@
                 Slot = other.Slot,
                 ParentRoot = Hash32.Clone(other.ParentRoot),
                 StateRoot = Hash32.Clone(other.StateRoot),
-                //BodyRoot = Hash32.Clone(other.BodyRoot),
+                BodyRoot = Hash32.Clone(other.BodyRoot),
                 Signature = BlsSignature.Clone(other.Signature)
             };
             return clone;
         }
 
+        public void SetSignature(BlsSignature signature)
+        {
+            Signature = signature;
+        }
+
         public void SetStateRoot(Hash32 stateRoot)
         {
             StateRoot = stateRoot;
+        }
+
+        public bool Equals(BeaconBlockHeader other)
+        {
+            return BodyRoot == other.BodyRoot
+                && ParentRoot == other.ParentRoot
+                && Signature == other.Signature
+                && Slot == other.Slot
+                && StateRoot == other.StateRoot;
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(BodyRoot, ParentRoot, Signature, Slot, StateRoot);
+        }
+
+        public override bool Equals(object obj)
+        {
+            var other = obj as BeaconBlockHeader;
+            return !(other is null) && Equals(other);
+        }
+
+        public override string ToString()
+        {
+            return base.ToString();
         }
     }
 }

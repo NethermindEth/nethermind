@@ -1,4 +1,6 @@
-﻿namespace Cortex.Containers
+﻿using System;
+
+namespace Cortex.Containers
 {
     public class Validator
     {
@@ -31,12 +33,12 @@
 
         public Epoch ExitEpoch { get; }
 
-        public bool IsSlashed { get; }
+        public bool IsSlashed { get; private set; }
 
         public BlsPublicKey PublicKey { get; }
 
         /// <summary>Gets when  validator can withdraw or transfer funds</summary>
-        public Epoch WithdrawableEpoch { get; }
+        public Epoch WithdrawableEpoch { get; private set; }
 
         /// <summary>Gets the public key commitment for withdrawals and transfers</summary>
         public Hash32 WithdrawalCredentials { get; }
@@ -55,19 +57,14 @@
             return clone;
         }
 
-        public void SetActive(Epoch activationEpoch)
-        {
-            ActivationEpoch = activationEpoch;
-        }
+        public void SetActive(Epoch activationEpoch) => ActivationEpoch = activationEpoch;
 
-        public void SetEffectiveBalance(Gwei effectiveBalance)
-        {
-            EffectiveBalance = effectiveBalance;
-        }
+        public void SetEffectiveBalance(Gwei effectiveBalance) => EffectiveBalance = effectiveBalance;
 
-        public void SetEligible(Epoch activationEligibilityEpoch)
-        {
-            ActivationEligibilityEpoch = activationEligibilityEpoch;
-        }
+        public void SetEligible(Epoch activationEligibilityEpoch) => ActivationEligibilityEpoch = activationEligibilityEpoch;
+
+        public void SetSlashed() => IsSlashed = true;
+
+        public void SetWithdrawableEpoch(object withdrawableEpoch) => WithdrawableEpoch = withdrawableEpoch;
     }
 }

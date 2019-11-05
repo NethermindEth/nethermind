@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -8,16 +9,22 @@ namespace Cortex.Containers
     {
         private readonly List<Gwei> _balances;
         private readonly Hash32[] _blockRoots;
+
         //private readonly Crosslink[] _currentCrosslinks;
         private readonly List<PendingAttestation> _currentEpochAttestations;
+
+        private readonly List<Eth1Data> _eth1DataVotes;
+
         //private readonly Crosslink[] _previousCrosslinks;
         private readonly List<PendingAttestation> _previousEpochAttestations;
+
         private readonly Hash32[] _randaoMixes;
+        private readonly Gwei[] _slashings;
         private readonly Hash32[] _stateRoots;
         private readonly List<Validator> _validators;
 
         public BeaconState(
-            ulong genesisTime, 
+            ulong genesisTime,
             Slot slot,
             Fork fork,
             BeaconBlockHeader latestBlockHeader,
@@ -25,8 +32,8 @@ namespace Cortex.Containers
             Hash32[] stateRoots,
             //IList<Hash32> historicalRoots,
             Eth1Data eth1Data,
-            //IList<Eth1Data> eth1DataVotes,
-            ulong eth1DepositIndex, 
+            IList<Eth1Data> eth1DataVotes,
+            ulong eth1DepositIndex,
             IList<Validator> validators,
             IList<Gwei> balances,
             Hash32[] randaoMixes,
@@ -42,9 +49,10 @@ namespace Cortex.Containers
             Slot = slot;
             Fork = fork;
             LatestBlockHeader = latestBlockHeader;
-            _blockRoots =blockRoots;
+            _blockRoots = blockRoots;
             _stateRoots = stateRoots;
             Eth1Data = eth1Data;
+            _eth1DataVotes = eth1DataVotes.ToList();
             Eth1DepositIndex = eth1DepositIndex;
             _validators = validators.ToList();
             _balances = balances.ToList();
@@ -61,6 +69,7 @@ namespace Cortex.Containers
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;
+            _eth1DataVotes = new List<Eth1Data>();
             Eth1Data = eth1Data;
             LatestBlockHeader = latestBlockHeader;
             _validators = new List<Validator>();
@@ -80,6 +89,12 @@ namespace Cortex.Containers
             //_currentCrosslinks = Enumerable.Range(0, (int)(ulong)shardCount).Select(x => new Crosslink(new Shard((ulong)x))).ToArray();
         }
 
+        public void AddSlashings(Epoch slashingsIndex, Gwei effectiveBalance)
+        {
+            _slashings
+            throw new NotImplementedException();
+        }
+
         public IReadOnlyList<Gwei> Balances { get { return _balances; } }
 
         public IReadOnlyList<Hash32> BlockRoots { get { return _blockRoots; } }
@@ -90,7 +105,9 @@ namespace Cortex.Containers
 
         public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
 
-        public Eth1Data Eth1Data { get; }
+        public Eth1Data Eth1Data { get; private set; }
+
+        public IReadOnlyList<Eth1Data> Eth1DataVotes { get { return _eth1DataVotes; } }
 
         public ulong Eth1DepositIndex { get; private set; }
 
@@ -112,6 +129,8 @@ namespace Cortex.Containers
 
         public IReadOnlyList<Hash32> RandaoMixes { get { return _randaoMixes; } }
 
+        public IReadOnlyList<Gwei> Slashings { get { return _slashings;  } }
+
         public Slot Slot { get; private set; }
 
         //public Shard StartShard { get; }
@@ -119,6 +138,34 @@ namespace Cortex.Containers
         public IReadOnlyList<Hash32> StateRoots { get { return _stateRoots; } }
 
         public IReadOnlyList<Validator> Validators { get { return _validators; } }
+
+        /// <summary>
+        /// Creates a deep copy of the object.
+        /// </summary>
+        public static BeaconState Clone(BeaconState other)
+        {
+            var clone = new BeaconState(
+                other.GenesisTime,
+                other.Slot,
+                Fork.Clone(other.Fork),
+                BeaconBlockHeader.Clone(other.LatestBlockHeader),
+                other.BlockRoots.Select(x => Hash32.Clone(x)).ToArray(),
+                other.StateRoots.Select(x => Hash32.Clone(x)).ToArray(),
+                Eth1Data.Clone(other.Eth1Data),
+                other.Eth1DataVotes.Select(x => Eth1Data.Clone(x)).ToList(),
+                other.Eth1DepositIndex,
+                other.Validators.Select(x => Validator.Clone(x)).ToList(),
+                other.Balances.Select(x => x).ToList(),
+                other.RandaoMixes.Select(x => Hash32.Clone(x)).ToArray(),
+                other.PreviousEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
+                other.CurrentEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
+                new BitArray(other.JustificationBits),
+                Checkpoint.Clone(other.PreviousJustifiedCheckpoint),
+                Checkpoint.Clone(other.CurrentJustifiedCheckpoint),
+                Checkpoint.Clone(other.FinalizedCheckpoint)
+                );
+            return clone;
+        }
 
         public void AddCurrentAttestation(PendingAttestation attestation)
         {
@@ -134,6 +181,11 @@ namespace Cortex.Containers
         {
             _validators.Add(validator);
             _balances.Add(amount);
+        }
+
+        public void AppendEth1DataVotes(Eth1Data eth1Data)
+        {
+            _eth1DataVotes.Add(eth1Data);
         }
 
         /// <summary>
@@ -175,6 +227,11 @@ namespace Cortex.Containers
             CurrentJustifiedCheckpoint = checkpoint;
         }
 
+        public void SetEth1Data(Eth1Data eth1Data)
+        {
+            Eth1Data = eth1Data;
+        }
+
         public void SetFinalizedCheckpoint(Checkpoint checkpoint)
         {
             FinalizedCheckpoint = checkpoint;
@@ -191,6 +248,11 @@ namespace Cortex.Containers
             PreviousJustifiedCheckpoint = checkpoint;
         }
 
+        public void SetRandaoMix(Epoch randaoIndex, Hash32 mix)
+        {
+            _randaoMixes[(int)(ulong)randaoIndex] = mix;
+        }
+
         public void SetSlot(Slot slot)
         {
             Slot = slot;
@@ -204,33 +266,6 @@ namespace Cortex.Containers
         public override string ToString()
         {
             return $"G:{GenesisTime} S:{Slot} F:({Fork})";
-        }
-
-        /// <summary>
-        /// Creates a deep copy of the object.
-        /// </summary>
-        public static BeaconState Clone(BeaconState other)
-        {
-            var clone = new BeaconState(
-                other.GenesisTime,
-                other.Slot,
-                Fork.Clone(other.Fork),
-                BeaconBlockHeader.Clone(other.LatestBlockHeader),
-                other.BlockRoots.Select(x => Hash32.Clone(x)).ToArray(),
-                other.StateRoots.Select(x => Hash32.Clone(x)).ToArray(),
-                Eth1Data.Clone(other.Eth1Data),
-                other.Eth1DepositIndex,
-                other.Validators.Select(x => Validator.Clone(x)).ToList(),
-                other.Balances.Select(x => x).ToList(),
-                other.RandaoMixes.Select(x => Hash32.Clone(x)).ToArray(),
-                other.PreviousEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
-                other.CurrentEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
-                new BitArray(other.JustificationBits),
-                Checkpoint.Clone(other.PreviousJustifiedCheckpoint),
-                Checkpoint.Clone(other.CurrentJustifiedCheckpoint),
-                Checkpoint.Clone(other.FinalizedCheckpoint)
-                );
-            return clone;
         }
     }
 }

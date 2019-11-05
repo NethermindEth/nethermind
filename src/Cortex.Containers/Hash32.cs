@@ -67,7 +67,7 @@ namespace Cortex.Containers
 
         public bool Equals(Hash32? other)
         {
-            return other != null &&
+            return !(other is null) &&
                 _bytes.SequenceEqual(other._bytes);
         }
 
@@ -79,6 +79,12 @@ namespace Cortex.Containers
         public override string ToString()
         {
             return BitConverter.ToString(_bytes).Replace("-", "");
+        }
+
+        public Hash32 Xor(Hash32 other)
+        {
+            var xorBytes = _bytes.Zip(other._bytes, (a, b) => (byte)(a ^ b)).ToArray();
+            return new Hash32(xorBytes);
         }
     }
 }
