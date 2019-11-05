@@ -17,17 +17,13 @@
  */
 
 using System.Threading.Tasks;
-using Nethermind.Core;
 
 namespace Nethermind.PubSub
 {
-    public class EmptySubscription : ISubscription
+    public interface IProducer
     {
-        public Task PublishBlockAsync(Block block) => Task.CompletedTask;
-        public Task PublishTransactionAsync(FullTransaction transaction) => Task.CompletedTask;
-
-        public void Dispose()
-        {
-        }
+        Task InitAsync();
+        Task PublishAsync<T>(T data) where T : class;
+        Task CloseAsync();
     }
 }
