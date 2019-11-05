@@ -60,7 +60,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityLikeTxTrace> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            throw new NotImplementedException();
+            ParityLikeTxTrace result = _tracer.ParityTraceRawTransaction(data, GetParityTypes(traceTypes));
+            return ResultWrapper<ParityLikeTxTrace>.Success(result);
         }
 
         public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak txHash, string[] traceTypes)
