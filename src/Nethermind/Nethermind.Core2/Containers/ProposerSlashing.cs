@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
@@ -21,9 +22,28 @@ namespace Nethermind.Core2.Containers
     public class ProposerSlashing
     {
         public const int SszLength = ValidatorIndex.SszLength + 2 * BeaconBlockHeader.SszLength;
-        
+
         public ValidatorIndex ProposerIndex { get; set; }
         public BeaconBlockHeader Header1 { get; set; }
         public BeaconBlockHeader Header2 { get; set; }
+
+        public bool Equals(ProposerSlashing other)
+        {
+            return ProposerIndex == other.ProposerIndex &&
+                   Equals(Header1, other.Header1) &&
+                   Equals(Header2, other.Header2);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((ProposerSlashing) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

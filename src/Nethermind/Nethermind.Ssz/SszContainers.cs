@@ -353,6 +353,13 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
             }
+            
+            int offset = 0;
+            Encode(span.Slice(0, ValidatorIndex.SszLength), container.ProposerIndex);
+            offset += ValidatorIndex.SszLength;
+            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header1);
+            offset += BeaconBlockHeader.SszLength;
+            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header2);
         }
         
         public static ProposerSlashing DecodeProposerSlashing(Span<byte> span)
@@ -362,7 +369,14 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
             }
             
-            return new ProposerSlashing();
+            ProposerSlashing container = new ProposerSlashing();
+            int offset = 0;
+            container.ProposerIndex = DecodeValidatorIndex(span.Slice(0, ValidatorIndex.SszLength));
+            offset += ValidatorIndex.SszLength;
+            container.Header1 = DecodeBeaconBlockHeader(span.Slice(offset, BeaconBlockHeader.SszLength));
+            offset += BeaconBlockHeader.SszLength;
+            container.Header2 = DecodeBeaconBlockHeader(span.Slice(offset, BeaconBlockHeader.SszLength));
+            return container;
         }
         
         public static void Encode(Span<byte> span, AttesterSlashing container)

@@ -168,7 +168,29 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Proposer_slashing_there_and_back()
         {
-            throw new NotImplementedException();
+            BeaconBlockHeader header1 = new BeaconBlockHeader();
+            header1.Slot = new Slot(1);
+            header1.ParentRoot = Sha256.OfAnEmptyString;
+            header1.BodyRoot = Sha256.OfAnEmptyString;
+            header1.StateRoot = Sha256.OfAnEmptyString;
+            header1.Signature = BlsSignature.TestSig1;
+            
+            BeaconBlockHeader header2 = new BeaconBlockHeader();
+            header2.Slot = new Slot(2);
+            header2.ParentRoot = Sha256.OfAnEmptyString;
+            header2.BodyRoot = Sha256.OfAnEmptyString;
+            header2.StateRoot = Sha256.OfAnEmptyString;
+            header2.Signature = BlsSignature.TestSig1;
+            
+            ProposerSlashing container = new ProposerSlashing();
+            container.ProposerIndex = new ValidatorIndex(1);
+            container.Header1 = header1;
+            container.Header2 = header2;
+            
+            Span<byte> encoded = stackalloc byte[ProposerSlashing.SszLength];
+            Ssz.Encode(encoded, container);
+            ProposerSlashing decoded = Ssz.DecodeProposerSlashing(encoded);
+            Assert.AreEqual(container, decoded);
         }
 
         [Test]
