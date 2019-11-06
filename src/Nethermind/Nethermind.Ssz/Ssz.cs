@@ -29,39 +29,45 @@ namespace Nethermind.Ssz
     /// <summary>
     /// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz
     /// </summary>
-    public static class Ssz
+    public static partial class Ssz
     {
         public static void Encode(Span<byte> span, byte value)
         {
             span[0] = value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, ushort value)
         {
             BinaryPrimitives.WriteUInt16LittleEndian(span, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, int value)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, uint value)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(span, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, ulong value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, UInt128 value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), value.S0);
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), value.S1);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, UInt256 value)
         {
             value.ToLittleEndian(span);
@@ -77,7 +83,7 @@ namespace Nethermind.Ssz
         {
             if (span.Length != value.Length)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<bool[]>(span.Length, value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -91,7 +97,7 @@ namespace Nethermind.Ssz
             const int typeSize = 32;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<UInt256[]>(span.Length, value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -105,7 +111,7 @@ namespace Nethermind.Ssz
             const int typeSize = 16;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<UInt128[]>(span.Length, value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -119,7 +125,7 @@ namespace Nethermind.Ssz
             const int typeSize = 8;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<ulong[]>(span.Length, value.Length);
             }
 
             MemoryMarshal.Cast<ulong, byte>(value).CopyTo(span);
@@ -130,7 +136,7 @@ namespace Nethermind.Ssz
             const int typeSize = 4;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<uint[]>(span.Length, value.Length);
             }
 
             MemoryMarshal.Cast<uint, byte>(value).CopyTo(span);
@@ -141,7 +147,7 @@ namespace Nethermind.Ssz
             const int typeSize = 2;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<ushort[]>(span.Length, value.Length);
             }
 
             MemoryMarshal.Cast<ushort, byte>(value).CopyTo(span);
@@ -153,7 +159,7 @@ namespace Nethermind.Ssz
             const int typeSize = 1;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowInvalidTargetLength<byte[]>(span.Length, value.Length);
             }
 
             value.CopyTo(span);
@@ -164,7 +170,6 @@ namespace Nethermind.Ssz
             return span[0] != 0;
         }
 
-        
         public static byte DecodeByte(Span<byte> span)
         {
             const int expectedLength = 1;
@@ -316,9 +321,14 @@ namespace Nethermind.Ssz
             return MemoryMarshal.Cast<byte, bool>(span);
         }
 
-        private static void ThrowInvalidTargetLength(int targetLength, int expectedLength)
+        private static void ThrowInvalidTargetLength<T>(int targetLength, int expectedLength)
         {
-            throw new InvalidDataException($"Invalid target length in SSZ encoding. Target length is {targetLength} and expected length is {expectedLength}.");
+            throw new InvalidDataException($"Invalid target length in SSZ encoding of {nameof(T)}. Target length is {targetLength} and expected length is {expectedLength}.");
+        }
+        
+        private static void ThrowInvalidSourceLength<T>(int sourceLength, int expectedLength)
+        {
+            throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is {expectedLength}.");
         }
     }
 }
