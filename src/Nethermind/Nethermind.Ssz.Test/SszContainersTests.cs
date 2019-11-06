@@ -80,7 +80,7 @@ namespace Nethermind.Ssz.Test
         }
         
         [Test]
-        public void Attestation_data__and_custody_bit_there_and_back()
+        public void Attestation_data_and_custody_bit_there_and_back()
         {
             AttestationData data = new AttestationData();
             data.Slot = new Slot(1);
@@ -97,6 +97,90 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             AttestationDataAndCustodyBit decoded = Ssz.DecodeAttestationDataAndCustodyBit(encoded);
             Assert.AreEqual(container, decoded);
+        }
+        
+        [Test]
+        public void Indexed_attestation_there_and_back()
+        {
+            throw new NotSupportedException();
+        }
+        
+        [Test]
+        public void Pending_attestation_there_and_back()
+        {
+            throw new NotSupportedException();
+        }
+        
+        [Test]
+        public void Eth1_data_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Historical_batch_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Deposit_data_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Beacon_block_header_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Proposer_slashing_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Attester_slashing_there_and_back()
+        {
+            throw new NotSupportedException();
+        }
+        
+        [Test]
+        public void Attestation_there_and_back()
+        {
+            throw new NotSupportedException();
+        }
+        
+        [Test]
+        public void Deposit_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Voluntary_exit_there_and_back()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Test]
+        public void Beacon_block_body_there_and_back()
+        {
+            throw new NotSupportedException();
+        }
+        
+        [Test]
+        public void Beacon_block_there_and_back()
+        {
+            throw new NotSupportedException();
+        }
+        
+        [Test]
+        public void Beacon_state_there_and_back()
+        {
+            throw new NotSupportedException();
         }
     }
 }

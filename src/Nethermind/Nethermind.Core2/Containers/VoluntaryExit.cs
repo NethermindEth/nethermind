@@ -21,6 +21,8 @@ namespace Nethermind.Core2.Containers
 {
     public class VoluntaryExit
     {
+        public const int SszLength = Types.Epoch.SszLength + ValidatorIndex.SszLength + BlsSignature.SszLength;
+        
         public Epoch Epoch { get; set; }
         public ValidatorIndex ValidatorIndex { get; set; }
         public BlsSignature Signature { get; set; }

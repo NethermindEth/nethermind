@@ -14,23 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Crypto;
-
-namespace Nethermind.Core2.Containers
+namespace Nethermind.Core2
 {
-    public class Eth1Data
+    /// <summary>
+    /// Temporarily - constants that are not assigned anywhere...
+    /// </summary>
+    public static class Constants
     {
-        public const int SszLength = 2 * Sha256.SszLength + sizeof(ulong);
-        
-        /// <summary>
-        /// Is it Keccak?
-        /// </summary>
-        public Sha256 DepositRoot { get; set; }
-        public ulong DepositCount { get; set; }
-        
-        /// <summary>
-        /// Is it Keccak?
-        /// </summary>
-        public Sha256 BlockHash { get; set; }
     }
 }

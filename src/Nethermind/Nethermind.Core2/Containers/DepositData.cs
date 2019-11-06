@@ -21,6 +21,8 @@ namespace Nethermind.Core2.Containers
 {
     public class DepositData
     {
+        public const int SszLength = BlsPublicKey.SszLength + Sha256.SszLength + Gwei.SszLength + BlsSignature.SszLength;
+        
         public BlsPublicKey PublicKey { get; set; }
         public Sha256 WithdrawalCredentials { get; set; }
         public Gwei Amount { get; set; }

@@ -28,5 +28,10 @@ namespace Nethermind.Core2.Containers
         public Attestation[] Attestations { get; set; }
         public Deposit[] Deposits { get; set; }
         public VoluntaryExit[] VoluntaryExits { get; set; }
+
+        public static int SszLength(BeaconBlockBody container)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

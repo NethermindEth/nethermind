@@ -24,5 +24,10 @@ namespace Nethermind.Core2.Containers
         public AttestationData Data { get; set; }
         public byte[] CustodyBits { get; set; }
         public BlsSignature Signature { get; set; }
+
+        public static int SszLength(Attestation container)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

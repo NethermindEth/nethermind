@@ -14,12 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
     public class PendingAttestation
     {
+        public static int SszLength(PendingAttestation value)
+        {
+            throw new NotImplementedException();
+        }
+        
         public byte[] AggregationBits { get; set; }
         public AttestationData Data { get; set; }
         public Slot InclusionDelay { get; set; }

@@ -41,5 +41,10 @@ namespace Nethermind.Core2.Containers
         public Checkpoint PreviousJustifiedCheckpoint { get; set; }
         public Checkpoint CurrentJustifiedCheckpoint { get; set; }
         public Checkpoint FinalizedCheckpoint { get; set; }
+
+        public static int SszLength(BeaconState container)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

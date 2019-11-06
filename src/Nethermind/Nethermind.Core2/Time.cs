@@ -20,5 +20,7 @@ namespace Nethermind.Core2
     {
         // choose the best type or create one per type
         public const uint SecondsPerDay = 86400;
+        
+        public static int SlotsPerHistoricalRoot = 8192;
     }
 }

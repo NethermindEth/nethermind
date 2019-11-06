@@ -36,5 +36,10 @@ namespace Nethermind.Core2.Containers
         public static uint MaxDeposits { get; set; } = 16;
         
         public static uint MaxVoluntaryExits { get; set; } = 16;
+
+        public static int SszLength(BeaconBlock container)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

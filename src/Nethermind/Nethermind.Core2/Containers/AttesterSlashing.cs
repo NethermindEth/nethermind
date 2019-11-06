@@ -20,5 +20,10 @@ namespace Nethermind.Core2.Containers
     {
         public IndexedAttestation Attestation1 { get; set; }
         public IndexedAttestation Attestation2 { get; set; }
+
+        public static int SszLength(AttesterSlashing container)
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

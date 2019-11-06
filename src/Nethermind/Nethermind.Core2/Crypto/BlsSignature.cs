@@ -18,6 +18,6 @@ namespace Nethermind.Core2.Crypto
 {
     public class BlsSignature
     {
-        
+        public const int SszLength = 96;
     }
 }

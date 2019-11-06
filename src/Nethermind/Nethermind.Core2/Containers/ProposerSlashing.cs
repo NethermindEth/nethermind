@@ -20,6 +20,8 @@ namespace Nethermind.Core2.Containers
 {
     public class ProposerSlashing
     {
+        public const int SszLength = ValidatorIndex.SszLength + 2 * BeaconBlockHeader.SszLength;
+        
         public ValidatorIndex ProposerIndex { get; set; }
         public BeaconBlockHeader Header1 { get; set; }
         public BeaconBlockHeader Header2 { get; set; }

@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Crypto;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -194,6 +193,223 @@ namespace Nethermind.Ssz
             offset += AttestationData.SszLength;
             container.CustodyBit = DecodeBool(span.Slice(offset, 1));
             return container;
+        }
+        
+        public static void Encode(Span<byte> span, IndexedAttestation container)
+        {
+            if (span.Length != IndexedAttestation.SszLength(container))
+            {
+                ThrowInvalidTargetLength<IndexedAttestation>(span.Length, IndexedAttestation.SszLength(container));
+            }
+        }
+        
+        public static IndexedAttestation DecodeIndexedAttestation(Span<byte> span)
+        {
+            return new IndexedAttestation();
+        }
+        
+        public static void Encode(Span<byte> span, PendingAttestation container)
+        {
+            if (span.Length != PendingAttestation.SszLength(container))
+            {
+                ThrowInvalidTargetLength<PendingAttestation>(span.Length, PendingAttestation.SszLength(container));
+            }
+        }
+        
+        public static PendingAttestation DecodePendingAttestation(Span<byte> span)
+        {
+            return new PendingAttestation();
+        }
+        
+        public static void Encode(Span<byte> span, Eth1Data container)
+        {
+            if (span.Length != Eth1Data.SszLength)
+            {
+                ThrowInvalidTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
+            }
+        }
+        
+        public static Eth1Data DecodeEth1Data(Span<byte> span)
+        {
+            if (span.Length != Eth1Data.SszLength)
+            {
+                ThrowInvalidSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
+            }
+            
+            return new Eth1Data();
+        }
+        
+        public static void Encode(Span<byte> span, HistoricalBatch container)
+        {
+            if (span.Length != HistoricalBatch.SszLength)
+            {
+                ThrowInvalidTargetLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
+            }
+        }
+        
+        public static HistoricalBatch DecodeHistoricalBatch(Span<byte> span)
+        {
+            if (span.Length != HistoricalBatch.SszLength)
+            {
+                ThrowInvalidSourceLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
+            }
+            
+            return new HistoricalBatch();
+        }
+        
+        public static void Encode(Span<byte> span, DepositData container)
+        {
+            if (span.Length != DepositData.SszLength)
+            {
+                ThrowInvalidTargetLength<DepositData>(span.Length, DepositData.SszLength);
+            }
+        }
+        
+        public static DepositData DecodeDepositData(Span<byte> span)
+        {
+            if (span.Length != DepositData.SszLength)
+            {
+                ThrowInvalidSourceLength<DepositData>(span.Length, DepositData.SszLength);
+            }
+            
+            return new DepositData();
+        }
+        
+        public static void Encode(Span<byte> span, BeaconBlockHeader container)
+        {
+            if (span.Length != BeaconBlockHeader.SszLength)
+            {
+                ThrowInvalidTargetLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
+            }
+        }
+        
+        public static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span)
+        {
+            if (span.Length != BeaconBlockHeader.SszLength)
+            {
+                ThrowInvalidSourceLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
+            }
+            
+            return new BeaconBlockHeader();
+        }
+        
+        public static void Encode(Span<byte> span, ProposerSlashing container)
+        {
+            if (span.Length != ProposerSlashing.SszLength)
+            {
+                ThrowInvalidTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+            }
+        }
+        
+        public static ProposerSlashing DecodeProposerSlashing(Span<byte> span)
+        {
+            if (span.Length != ProposerSlashing.SszLength)
+            {
+                ThrowInvalidSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+            }
+            
+            return new ProposerSlashing();
+        }
+        
+        public static void Encode(Span<byte> span, AttesterSlashing container)
+        {
+            if (span.Length != AttesterSlashing.SszLength(container))
+            {
+                ThrowInvalidTargetLength<AttesterSlashing>(span.Length, AttesterSlashing.SszLength(container));
+            }
+        }
+        
+        public static AttesterSlashing DecodeAttesterSlashing(Span<byte> span)
+        {
+            return new AttesterSlashing();
+        }
+        
+        public static void Encode(Span<byte> span, Attestation container)
+        {
+            if (span.Length != Attestation.SszLength(container))
+            {
+                ThrowInvalidTargetLength<Attestation>(span.Length, Attestation.SszLength(container));
+            }
+        }
+        
+        public static Attestation DecodeAttestation(Span<byte> span)
+        {
+            return new Attestation();
+        }
+        
+        public static void Encode(Span<byte> span, Deposit container)
+        {
+            if (span.Length != Deposit.SszLength)
+            {
+                ThrowInvalidTargetLength<Deposit>(span.Length, Deposit.SszLength);
+            }
+        }
+        
+        public static Deposit DecodeDeposit(Span<byte> span)
+        {
+            if (span.Length != Deposit.SszLength)
+            {
+                ThrowInvalidSourceLength<Deposit>(span.Length, Deposit.SszLength);
+            }
+            
+            return new Deposit();
+        }
+        
+        public static void Encode(Span<byte> span, VoluntaryExit container)
+        {
+            if (span.Length != VoluntaryExit.SszLength)
+            {
+                ThrowInvalidTargetLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
+            }
+        }
+        
+        public static VoluntaryExit DecodeVoluntaryExit(Span<byte> span)
+        {
+            if (span.Length != VoluntaryExit.SszLength)
+            {
+                ThrowInvalidSourceLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
+            }
+            
+            return new VoluntaryExit();
+        }
+        
+        public static void Encode(Span<byte> span, BeaconBlockBody container)
+        {
+            if (span.Length != BeaconBlockBody.SszLength(container))
+            {
+                ThrowInvalidTargetLength<BeaconBlockBody>(span.Length, BeaconBlockBody.SszLength(container));
+            }
+        }
+        
+        public static BeaconBlockBody DecodeBeaconBlockBody(Span<byte> span)
+        {
+            return new BeaconBlockBody();
+        }
+        
+        public static void Encode(Span<byte> span, BeaconBlock container)
+        {
+            if (span.Length != BeaconBlock.SszLength(container))
+            {
+                ThrowInvalidTargetLength<BeaconBlock>(span.Length, BeaconBlock.SszLength(container));
+            }
+        }
+        
+        public static BeaconBlock DecodeBeaconBlock(Span<byte> span)
+        {
+            return new BeaconBlock();
+        }
+        
+        public static void Encode(Span<byte> span, BeaconState container)
+        {
+            if (span.Length != BeaconState.SszLength(container))
+            {
+                ThrowInvalidTargetLength<BeaconState>(span.Length, BeaconState.SszLength(container));
+            }
+        }
+        
+        public static BeaconState DecodeBeaconState(Span<byte> span)
+        {
+            return new BeaconState();
         }
     }
 }

@@ -20,6 +20,10 @@ namespace Nethermind.Core2.Containers
 {
     public class Deposit
     {
+        public const int ContractTreeDepth = 32;
+
+        public const int SszLength = DepositData.SszLength + (ContractTreeDepth + 1) * Sha256.SszLength;
+        
         public Sha256[] Proof { get; set; }
         public DepositData Data { get; set; }
     }

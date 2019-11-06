@@ -21,6 +21,8 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockHeader
     {
+        public const int SszLength = Types.Slot.SszLength + 2 * Sha256.SszLength + BlsSignature.SszLength;
+        
         public Slot Slot { get; set; }
         public Sha256 ParentRoot { get; set; }
         public Sha256 StateRoot { get; set; }

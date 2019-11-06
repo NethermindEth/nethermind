@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -21,6 +22,11 @@ namespace Nethermind.Core2.Containers
 {
     public class IndexedAttestation
     {
+        public static int SszLength(IndexedAttestation value)
+        {
+            throw new NotImplementedException();
+        }
+        
         public ValidatorIndex[] CustodyBit0Indices { get; set; }
         public ValidatorIndex[] CustodyBit1Indices { get; set; }
         public AttestationData Data { get; set; }

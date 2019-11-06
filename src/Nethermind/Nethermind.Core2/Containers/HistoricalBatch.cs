@@ -20,6 +20,8 @@ namespace Nethermind.Core2.Containers
 {
     public class HistoricalBatch
     {
+        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * Sha256.SszLength;  
+        
         public Sha256[] BlockRoots { get; set; }
         public Sha256[] StateRoots { get; set; }
     }
