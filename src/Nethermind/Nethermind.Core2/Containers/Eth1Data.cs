@@ -20,6 +20,29 @@ namespace Nethermind.Core2.Containers
 {
     public class Eth1Data
     {
+        public bool Equals(Eth1Data other)
+        {
+            return Equals(DepositRoot, other.DepositRoot) && DepositCount == other.DepositCount && Equals(BlockHash, other.BlockHash);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((Eth1Data) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hashCode = (DepositRoot != null ? DepositRoot.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ DepositCount.GetHashCode();
+                hashCode = (hashCode * 397) ^ (BlockHash != null ? BlockHash.GetHashCode() : 0);
+                return hashCode;
+            }
+        }
+
         public const int SszLength = 2 * Sha256.SszLength + sizeof(ulong);
         
         /// <summary>

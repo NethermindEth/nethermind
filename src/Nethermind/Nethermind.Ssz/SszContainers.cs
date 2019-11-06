@@ -227,6 +227,10 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             }
+
+            Encode(span.Slice(0, Sha256.SszLength), container.DepositRoot);
+            Encode(span.Slice(Sha256.SszLength, sizeof(ulong)), container.DepositCount);
+            Encode(span.Slice(Sha256.SszLength + sizeof(ulong)), container.BlockHash);
         }
         
         public static Eth1Data DecodeEth1Data(Span<byte> span)
@@ -236,7 +240,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             }
             
-            return new Eth1Data();
+            Eth1Data eth1Data = new Eth1Data();
+            eth1Data.DepositRoot = DecodeSha256(span.Slice(0, Sha256.SszLength));
+            eth1Data.DepositCount = DecodeULong(span.Slice(Sha256.SszLength, sizeof(ulong)));
+            eth1Data.BlockHash = DecodeSha256(span.Slice(Sha256.SszLength + sizeof(ulong), Sha256.SszLength));
+            return eth1Data;
         }
         
         public static void Encode(Span<byte> span, HistoricalBatch container)

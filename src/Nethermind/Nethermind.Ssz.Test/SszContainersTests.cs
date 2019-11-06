@@ -114,7 +114,14 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Eth1_data_there_and_back()
         {
-            throw new NotImplementedException();
+            Eth1Data container = new Eth1Data();
+            container.BlockHash = Sha256.OfAnEmptyString;
+            container.DepositCount = 1;
+            container.DepositRoot = Sha256.OfAnEmptyString;
+            Span<byte> encoded = stackalloc byte[Eth1Data.SszLength];
+            Ssz.Encode(encoded, container);
+            Eth1Data decoded = Ssz.DecodeEth1Data(encoded);
+            Assert.AreEqual(container, decoded);
         }
         
         [Test]
