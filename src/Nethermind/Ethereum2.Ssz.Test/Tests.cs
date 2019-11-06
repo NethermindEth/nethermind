@@ -40,44 +40,44 @@ namespace Ethereum2.Ssz.Test
         [Test]
         public void Ssz_basic_vector()
         {
-            Assert.True(RunSszTests("basic_vector"));
+            Assert.True(RunGenericSszTests("basic_vector"));
         }
 
         [Test]
         public void Ssz_bitvector()
         {
-            Assert.True(RunSszTests("bitvector"));
+            Assert.True(RunGenericSszTests("bitvector"));
         }
 
         [Test]
         public void Ssz_bitlist()
         {
-            Assert.True(RunSszTests("bitlist"));
+            Assert.True(RunGenericSszTests("bitlist"));
         }
 
         [Test]
         public void Ssz_boolean()
         {
-            Assert.True(RunSszTests("boolean"));
+            Assert.True(RunGenericSszTests("boolean"));
         }
 
         [Test]
         public void Ssz_uints()
         {
-            Assert.True(RunSszTests("uints"));
+            Assert.True(RunGenericSszTests("uints"));
         }
 
         [Test]
         public void Ssz_containers()
         {
-            Assert.True(RunSszTests("containers"));
+            Assert.True(RunGenericSszTests("containers"));
         }
 
-        private static bool RunSszTests(string category)
+        private static bool RunGenericSszTests(string category)
         {
             bool success = true;
-            string[] valid = Directory.GetDirectories(Path.Combine(category, "valid"));
-            string[] invalid = Directory.GetDirectories(Path.Combine(category, "invalid"));
+            string[] valid = Directory.GetDirectories(Path.Combine("generic", category, "valid"));
+            string[] invalid = Directory.GetDirectories(Path.Combine("generic", category, "invalid"));
 
             foreach (string validDir in valid)
             {
