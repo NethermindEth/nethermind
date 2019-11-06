@@ -277,6 +277,15 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<DepositData>(span.Length, DepositData.SszLength);
             }
+
+            int offset = 0;
+            Encode(span.Slice(0, BlsPublicKey.SszLength), container.PublicKey);
+            offset += BlsPublicKey.SszLength;
+            Encode(span.Slice(offset, Sha256.SszLength), container.WithdrawalCredentials);
+            offset += Sha256.SszLength;
+            Encode(span.Slice(offset, Gwei.SszLength), container.Amount);
+            offset += Gwei.SszLength;
+            Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
         }
         
         public static DepositData DecodeDepositData(Span<byte> span)
@@ -286,7 +295,16 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<DepositData>(span.Length, DepositData.SszLength);
             }
             
-            return new DepositData();
+            DepositData container = new DepositData();
+            int offset = 0;
+            container.PublicKey = DecodeBlsPublicKey(span.Slice(0, BlsPublicKey.SszLength));
+            offset += BlsPublicKey.SszLength;
+            container.WithdrawalCredentials = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            container.Amount = DecodeGwei(span.Slice(offset, Gwei.SszLength));
+            offset += Gwei.SszLength;
+            container.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+            return container;
         }
         
         public static void Encode(Span<byte> span, BeaconBlockHeader container)

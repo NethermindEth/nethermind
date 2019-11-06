@@ -75,6 +75,16 @@ namespace Nethermind.Ssz
             return new BlsPublicKey(DecodeBytes(span).ToArray());
         }    
         
+        public static void Encode(Span<byte> span, BlsSignature value)
+        {
+            Encode(span, value.Bytes);
+        }
+        
+        public static BlsSignature DecodeBlsSignature(Span<byte> span)
+        {
+            return new BlsSignature(DecodeBytes(span).ToArray());
+        }    
+        
         public static void Encode(Span<byte> span, Sha256 value)
         {
             Encode(span, value?.Bytes ?? Sha256.Zero.Bytes);

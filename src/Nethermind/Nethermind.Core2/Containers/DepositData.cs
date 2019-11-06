@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -22,10 +23,30 @@ namespace Nethermind.Core2.Containers
     public class DepositData
     {
         public const int SszLength = BlsPublicKey.SszLength + Sha256.SszLength + Gwei.SszLength + BlsSignature.SszLength;
-        
+
         public BlsPublicKey PublicKey { get; set; }
         public Sha256 WithdrawalCredentials { get; set; }
         public Gwei Amount { get; set; }
         public BlsSignature Signature { get; set; }
+        
+        public bool Equals(DepositData other)
+        {
+            return Equals(PublicKey, other.PublicKey) &&
+                   Equals(WithdrawalCredentials, other.WithdrawalCredentials) &&
+                   Amount == other.Amount &&
+                   Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((DepositData) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

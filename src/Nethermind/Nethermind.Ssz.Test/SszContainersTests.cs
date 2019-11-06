@@ -139,7 +139,15 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Deposit_data_there_and_back()
         {
-            throw new NotImplementedException();
+            DepositData container = new DepositData();
+            container.PublicKey = BlsPublicKey.TestKey1;
+            container.WithdrawalCredentials = Sha256.OfAnEmptyString;
+            container.Amount = Gwei.One;
+            container.Signature = BlsSignature.TestSig1;
+            Span<byte> encoded = stackalloc byte[DepositData.SszLength];
+            Ssz.Encode(encoded, container);
+            DepositData decoded = Ssz.DecodeDepositData(encoded);
+            Assert.AreEqual(container, decoded);
         }
         
         [Test]
