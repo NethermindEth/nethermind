@@ -138,7 +138,7 @@ namespace Nethermind.Ssz
         
         public static ValidatorIndex DecodeValidatorIndex(Span<byte> span)
         {
-            return new ValidatorIndex(DecodeUInt(span));
+            return new ValidatorIndex(DecodeULong(span));
         }
     }
 }

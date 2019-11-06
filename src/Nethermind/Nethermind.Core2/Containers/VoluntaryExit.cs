@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -22,9 +23,26 @@ namespace Nethermind.Core2.Containers
     public class VoluntaryExit
     {
         public const int SszLength = Types.Epoch.SszLength + ValidatorIndex.SszLength + BlsSignature.SszLength;
-        
+
         public Epoch Epoch { get; set; }
         public ValidatorIndex ValidatorIndex { get; set; }
         public BlsSignature Signature { get; set; }
+
+        public bool Equals(VoluntaryExit other)
+        {
+            return Epoch == other.Epoch && ValidatorIndex == other.ValidatorIndex && Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((VoluntaryExit) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotImplementedException();
+        }
     }
 }

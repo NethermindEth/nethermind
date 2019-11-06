@@ -399,6 +399,13 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
             }
+
+            int offset = 0;
+            Encode(span.Slice(offset, Epoch.SszLength), container.Epoch);
+            offset += Epoch.SszLength;
+            Encode(span.Slice(offset, ValidatorIndex.SszLength), container.ValidatorIndex);
+            offset += ValidatorIndex.SszLength;
+            Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
         }
         
         public static VoluntaryExit DecodeVoluntaryExit(Span<byte> span)
@@ -408,7 +415,14 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
             }
             
-            return new VoluntaryExit();
+            VoluntaryExit container = new VoluntaryExit();
+            int offset = 0;
+            container.Epoch = DecodeEpoch(span.Slice(offset, Epoch.SszLength));
+            offset += Epoch.SszLength;
+            container.ValidatorIndex = DecodeValidatorIndex(span.Slice(offset, ValidatorIndex.SszLength));
+            offset += ValidatorIndex.SszLength;
+            container.Signature = DecodeBlsSignature(span.Slice(offset));
+            return container;
         }
         
         public static void Encode(Span<byte> span, BeaconBlockBody container)

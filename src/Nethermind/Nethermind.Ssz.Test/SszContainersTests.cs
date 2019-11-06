@@ -196,7 +196,15 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Voluntary_exit_there_and_back()
         {
-            throw new NotImplementedException();
+            VoluntaryExit container = new VoluntaryExit();
+            container.Epoch = new Epoch(1);
+            container.ValidatorIndex = new ValidatorIndex(2);
+            container.Signature = BlsSignature.TestSig1;
+
+            Span<byte> encoded = stackalloc byte[VoluntaryExit.SszLength];
+            Ssz.Encode(encoded, container);
+            VoluntaryExit decoded = Ssz.DecodeVoluntaryExit(encoded);
+            Assert.AreEqual(container, decoded);
         }
         
         [Test]
