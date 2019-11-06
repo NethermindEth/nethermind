@@ -101,6 +101,14 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Return the epoch during which validator activations and exits initiated in ``epoch`` take effect.
+        /// </summary>
+        public Epoch ComputeActivationExitEpoch(Epoch epoch)
+        {
+            return epoch + new Epoch(1) + _timeParameterOptions.CurrentValue.MaximumSeedLookahead;
+        }
+
+        /// <summary>
         /// Return the shuffled validator index corresponding to ``seed`` (and ``index_count``).
         /// </summary>
         public ValidatorIndex ComputeShuffledIndex(ValidatorIndex index, ulong indexCount, Hash32 seed)

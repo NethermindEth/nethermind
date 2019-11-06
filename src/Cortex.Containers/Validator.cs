@@ -31,7 +31,7 @@ namespace Cortex.Containers
         /// <summary>Gets the balance at stake</summary>
         public Gwei EffectiveBalance { get; private set; }
 
-        public Epoch ExitEpoch { get; }
+        public Epoch ExitEpoch { get; private set; }
 
         public bool IsSlashed { get; private set; }
 
@@ -65,6 +65,8 @@ namespace Cortex.Containers
 
         public void SetSlashed() => IsSlashed = true;
 
-        public void SetWithdrawableEpoch(object withdrawableEpoch) => WithdrawableEpoch = withdrawableEpoch;
+        public void SetWithdrawableEpoch(Epoch withdrawableEpoch) => WithdrawableEpoch = withdrawableEpoch;
+
+        public void SetExitEpoch(Epoch exitEpoch) => ExitEpoch = exitEpoch;
     }
 }

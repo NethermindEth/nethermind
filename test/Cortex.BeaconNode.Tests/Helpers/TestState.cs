@@ -24,6 +24,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
+            IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
         {
             var loggerFactory = new LoggerFactory(new[] {
@@ -34,9 +35,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                beaconChainUtility, beaconStateAccessor);
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(), 
                 miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
             var state = TestGenesis.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 

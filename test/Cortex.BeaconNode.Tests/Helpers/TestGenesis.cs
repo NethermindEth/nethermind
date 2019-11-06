@@ -46,6 +46,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock)),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
+                stateListLengths.EpochsPerSlashingsVector,
                 chainConstants.JustificationBitsLength
                 );
 

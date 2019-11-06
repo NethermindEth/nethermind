@@ -42,6 +42,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var initialValueOptions,
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
@@ -53,10 +54,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                 beaconChainUtility, beaconStateAccessor);
 
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             // Act
             var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
@@ -76,6 +79,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var initialValueOptions,
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
@@ -87,10 +91,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                 beaconChainUtility, beaconStateAccessor);
 
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             // Act
             var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
@@ -111,6 +117,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var initialValueOptions,
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
@@ -122,10 +129,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                 beaconChainUtility, beaconStateAccessor);
 
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             // Act
             var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
@@ -147,6 +156,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var initialValueOptions,
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
@@ -158,10 +168,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                 beaconChainUtility, beaconStateAccessor);
 
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount + 1;
             (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true);
@@ -186,6 +198,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var initialValueOptions,
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
@@ -197,10 +210,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                 beaconChainUtility, beaconStateAccessor);
 
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount - 1;
             (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true);

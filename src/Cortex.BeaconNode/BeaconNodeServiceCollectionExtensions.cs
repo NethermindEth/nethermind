@@ -15,6 +15,7 @@ namespace Cortex.BeaconNode
             services.AddSingleton<BeaconChainUtility>();
             services.AddSingleton<BeaconStateAccessor>();
             services.AddSingleton<BeaconStateTransition>();
+            services.AddSingleton<BeaconStateMutator>();
             services.AddSingleton<BeaconNodeConfiguration>();
             services.AddSingleton<Store>();
             services.AddSingleton<ICryptographyService, CryptographyService>();
@@ -31,6 +32,8 @@ namespace Cortex.BeaconNode
                 //x.ShardCount = new Shard(configuration.GetValue<ulong>("SHARD_COUNT"));
                 x.TargetCommitteeSize = configuration.GetValue<ulong>("TARGET_COMMITTEE_SIZE");
                 x.MaximumValidatorsPerCommittee = configuration.GetValue<ulong>("MAX_VALIDATORS_PER_COMMITTEE");
+                x.MinimumPerEpochChurnLimit = configuration.GetValue<ulong>("MIN_PER_EPOCH_CHURN_LIMIT");
+                x.ChurnLimitQuotient = configuration.GetValue<ulong>("CHURN_LIMIT_QUOTIENT");
                 x.ShuffleRoundCount = configuration.GetValue<int>("SHUFFLE_ROUND_COUNT");
                 x.MinimumGenesisActiveValidatorCount = configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT");
                 x.MinimumGenesisTime = configuration.GetValue<ulong>("MIN_GENESIS_TIME");
@@ -50,9 +53,11 @@ namespace Cortex.BeaconNode
                 x.MinimumAttestationInclusionDelay = new Slot(configuration.GetValue<ulong>("MIN_ATTESTATION_INCLUSION_DELAY"));
                 x.SlotsPerEpoch = new Slot(configuration.GetValue<ulong>("SLOTS_PER_EPOCH"));
                 x.MinimumSeedLookahead = new Epoch(configuration.GetValue<ulong>("MIN_SEED_LOOKAHEAD"));
+                x.MaximumSeedLookahead = new Epoch(configuration.GetValue<ulong>("MAX_SEED_LOOKAHEAD"));
                 x.SlotsPerEth1VotingPeriod = new Slot(configuration.GetValue<ulong>("SLOTS_PER_ETH1_VOTING_PERIOD"));
                 x.SlotsPerHistoricalRoot = new Slot(configuration.GetValue<ulong>("SLOTS_PER_HISTORICAL_ROOT"));
-                x.MaximumEpochsPerCrosslink = new Epoch(configuration.GetValue<ulong>("MAX_EPOCHS_PER_CROSSLINK"));
+                x.MinimumValidatorWithdrawabilityDelay = new Epoch(configuration.GetValue<ulong>("MIN_VALIDATOR_WITHDRAWABILITY_DELAY"));
+                //x.MaximumEpochsPerCrosslink = new Epoch(configuration.GetValue<ulong>("MAX_EPOCHS_PER_CROSSLINK"));
             });
             services.Configure<StateListLengths>(x =>
             {

@@ -1,9 +1,9 @@
-﻿using Cortex.Containers;
-
-namespace Cortex.BeaconNode.Configuration
+﻿namespace Cortex.BeaconNode.Configuration
 {
     public class MiscellaneousParameters
     {
+        public ulong ChurnLimitQuotient { get; set; }
+
         public ulong MaximumCommitteesPerSlot { get; set; }
 
         public ulong MaximumValidatorsPerCommittee { get; set; }
@@ -13,6 +13,8 @@ namespace Cortex.BeaconNode.Configuration
         public ulong MinimumGenesisTime { get; set; }
 
         //public Shard ShardCount { get; set; }
+
+        public ulong MinimumPerEpochChurnLimit { get; set; }
 
         public int ShuffleRoundCount { get; set; }
 

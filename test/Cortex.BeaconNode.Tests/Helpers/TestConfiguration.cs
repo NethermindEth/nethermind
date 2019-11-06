@@ -22,6 +22,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 MaximumCommitteesPerSlot = 4,
                 TargetCommitteeSize = 4,
                 MaximumValidatorsPerCommittee = 2048,
+                MinimumPerEpochChurnLimit = 4,
+                ChurnLimitQuotient = 65536,
                 ShuffleRoundCount = 10,
                 MinimumGenesisActiveValidatorCount = 64,
                 MinimumGenesisTime = 1578009600, // Jan 3, 2020
@@ -41,9 +43,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 MinimumAttestationInclusionDelay = new Slot(1),
                 SlotsPerEpoch = new Slot(8),
                 MinimumSeedLookahead = new Epoch(1),
+                MaximumSeedLookahead = new Epoch(4),
                 SlotsPerEth1VotingPeriod = new Slot(16),
                 SlotsPerHistoricalRoot = new Slot(64),
-                MaximumEpochsPerCrosslink = new Epoch(4),
+                MinimumValidatorWithdrawabilityDelay = new Epoch(256),
+                //MaximumEpochsPerCrosslink = new Epoch(4),
             });
             stateListLengthOptions = TestOptionsMonitor.Create(new StateListLengths()
             {

@@ -261,7 +261,7 @@ namespace Cortex.BeaconNode
                 throw new Exception($"Proposer slashing header 1 slot {proposerSlashing.Header1.Slot} must match header 2 slot {proposerSlashing.Header2.Slot}.");
             }
             // But the headers are different
-            if (!proposerSlashing.Header1.Equals(proposerSlashing.Header2))
+            if (proposerSlashing.Header1.Equals(proposerSlashing.Header2))
             {
                 throw new Exception($"Proposer slashing must be for two different headers.");
             }
@@ -292,7 +292,7 @@ namespace Cortex.BeaconNode
                 throw new Exception("Proposer slashing header 2 signature is not valid.");
             }
 
-            _beaconStateMutator.SlashValidator(state, proposerSlashing.ProposerIndex);
+            _beaconStateMutator.SlashValidator(state, proposerSlashing.ProposerIndex, ValidatorIndex.None);
         }
 
         public void ProcessRandao(BeaconState state, BeaconBlockBody body)

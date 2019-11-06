@@ -37,6 +37,7 @@ namespace Cortex.BeaconNode.Tests
                 out var initialValueOptions,
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
@@ -45,9 +46,11 @@ namespace Cortex.BeaconNode.Tests
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
+            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
+                beaconChainUtility, beaconStateAccessor);
             var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, 
-                cryptographyService, beaconChainUtility, beaconStateAccessor);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             // Act
             var eth1BlockHash = Hash32.Zero;

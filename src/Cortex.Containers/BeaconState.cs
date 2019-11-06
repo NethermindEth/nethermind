@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -37,7 +36,7 @@ namespace Cortex.Containers
             IList<Validator> validators,
             IList<Gwei> balances,
             Hash32[] randaoMixes,
-            //Gwei[] slashings,
+            Gwei[] slashings,
             IList<PendingAttestation> previousEpochAttestations,
             IList<PendingAttestation> currentEpochAttestations,
             BitArray justificationBits,
@@ -57,6 +56,7 @@ namespace Cortex.Containers
             _validators = validators.ToList();
             _balances = balances.ToList();
             _randaoMixes = randaoMixes;
+            _slashings = slashings;
             _previousEpochAttestations = previousEpochAttestations.ToList();
             _currentEpochAttestations = currentEpochAttestations.ToList();
             JustificationBits = justificationBits;
@@ -65,7 +65,8 @@ namespace Cortex.Containers
             FinalizedCheckpoint = finalizedCheckpoint;
         }
 
-        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader, Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, int justificationBitsLength)
+        public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader,
+            Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, Epoch epochsPerSlashingsVector, int justificationBitsLength)
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;
@@ -77,6 +78,7 @@ namespace Cortex.Containers
             _blockRoots = Enumerable.Repeat(Hash32.Zero, (int)(ulong)slotsPerHistoricalRoot).ToArray();
             _stateRoots = Enumerable.Repeat(Hash32.Zero, (int)(ulong)slotsPerHistoricalRoot).ToArray();
             _randaoMixes = Enumerable.Repeat(Hash32.Zero, (int)(ulong)epochsPerHistoricalVector).ToArray();
+            _slashings = Enumerable.Repeat(Gwei.Zero, (int)(ulong)epochsPerSlashingsVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
@@ -89,20 +91,13 @@ namespace Cortex.Containers
             //_currentCrosslinks = Enumerable.Range(0, (int)(ulong)shardCount).Select(x => new Crosslink(new Shard((ulong)x))).ToArray();
         }
 
-        public void AddSlashings(Epoch slashingsIndex, Gwei effectiveBalance)
-        {
-            _slashings
-            throw new NotImplementedException();
-        }
-
         public IReadOnlyList<Gwei> Balances { get { return _balances; } }
 
         public IReadOnlyList<Hash32> BlockRoots { get { return _blockRoots; } }
 
-        //public IReadOnlyList<Crosslink> CurrentCrosslinks { get { return _currentCrosslinks; } }
-
         public IReadOnlyList<PendingAttestation> CurrentEpochAttestations { get { return _currentEpochAttestations; } }
 
+        //public IReadOnlyList<Crosslink> CurrentCrosslinks { get { return _currentCrosslinks; } }
         public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
 
         public Eth1Data Eth1Data { get; private set; }
@@ -121,22 +116,20 @@ namespace Cortex.Containers
 
         public BeaconBlockHeader LatestBlockHeader { get; }
 
-        //public IReadOnlyList<Crosslink> PreviousCrosslinks { get { return _previousCrosslinks; } }
-
         public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
 
+        //public IReadOnlyList<Crosslink> PreviousCrosslinks { get { return _previousCrosslinks; } }
         public Checkpoint PreviousJustifiedCheckpoint { get; private set; }
 
         public IReadOnlyList<Hash32> RandaoMixes { get { return _randaoMixes; } }
 
-        public IReadOnlyList<Gwei> Slashings { get { return _slashings;  } }
+        public IReadOnlyList<Gwei> Slashings { get { return _slashings; } }
 
         public Slot Slot { get; private set; }
 
-        //public Shard StartShard { get; }
-
         public IReadOnlyList<Hash32> StateRoots { get { return _stateRoots; } }
 
+        //public Shard StartShard { get; }
         public IReadOnlyList<Validator> Validators { get { return _validators; } }
 
         /// <summary>
@@ -157,6 +150,7 @@ namespace Cortex.Containers
                 other.Validators.Select(x => Validator.Clone(x)).ToList(),
                 other.Balances.Select(x => x).ToList(),
                 other.RandaoMixes.Select(x => Hash32.Clone(x)).ToArray(),
+                other.Slashings.Select(x => x).ToArray(),
                 other.PreviousEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
                 other.CurrentEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
                 new BitArray(other.JustificationBits),
@@ -177,6 +171,11 @@ namespace Cortex.Containers
             _previousEpochAttestations.Add(attestation);
         }
 
+        public void AddSlashings(Epoch slashingsIndex, Gwei amount)
+        {
+            _slashings[(int)(ulong)slashingsIndex] += amount;
+        }
+
         public void AddValidatorWithBalance(Validator validator, Gwei amount)
         {
             _validators.Add(validator);
@@ -186,18 +185,6 @@ namespace Cortex.Containers
         public void AppendEth1DataVotes(Eth1Data eth1Data)
         {
             _eth1DataVotes.Add(eth1Data);
-        }
-
-        /// <summary>
-        /// Increase the validator balance at index 'index' by 'delta'.
-        /// </summary>
-        public void IncreaseBalanceForValidator(ValidatorIndex index, Gwei amount)
-        {
-            // TODO: Would a dictionary be better, to handle ulong index?
-            var arrayIndex = (int)(ulong)index;
-            var balance = _balances[arrayIndex];
-            balance += amount;
-            _balances[arrayIndex] = balance;
         }
 
         public void IncreaseEth1DepositIndex()
@@ -215,6 +202,11 @@ namespace Cortex.Containers
             // state.justification_bits[1:] = state.justification_bits[:-1]
             // Treated as little endian, so left shift sets new bit 1,to old bit 0, new bit 2 to old bit 1, etc
             JustificationBits.LeftShift(1);
+        }
+
+        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance)
+        {
+            _balances[(int)(ulong)validatorIndex] = balance;
         }
 
         public void SetBlockRoot(Slot index, Hash32 blockRoot)

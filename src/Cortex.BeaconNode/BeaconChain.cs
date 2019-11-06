@@ -14,6 +14,7 @@ namespace Cortex.BeaconNode
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
+        private readonly BeaconStateMutator _beaconStateMutator;
         private readonly ICryptographyService _blsSignatureService;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
@@ -34,12 +35,14 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             ICryptographyService blsSignatureService,
             BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor)
+            BeaconStateAccessor beaconStateAccessor,
+            BeaconStateMutator beaconStateMutator)
         {
             _logger = logger;
             _blsSignatureService = blsSignatureService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
+            _beaconStateMutator = beaconStateMutator;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
@@ -66,7 +69,7 @@ namespace Cortex.BeaconNode
             var eth1Data = new Eth1Data((ulong)deposits.Count(), eth1BlockHash);
             var emptyBlockBody = new BeaconBlockBody();
             var latestBlockHeader = new BeaconBlockHeader(emptyBlockBody.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue));
-            var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, _chainConstants.JustificationBitsLength);
+            var state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
             var depositDataList = new List<DepositData>();
@@ -164,7 +167,7 @@ namespace Cortex.BeaconNode
             else
             {
                 var index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
-                state.IncreaseBalanceForValidator(index, amount);
+                _beaconStateMutator.IncreaseBalance(state, index, amount);
             }
         }
 

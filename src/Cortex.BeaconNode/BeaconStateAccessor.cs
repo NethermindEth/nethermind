@@ -97,6 +97,18 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Return the validator churn limit for the current epoch.
+        /// </summary>
+        public ulong GetValidatorChurnLimit(BeaconState state)
+        {
+            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+            var currentEpoch = GetCurrentEpoch(state);
+            var activeValidatorIndices = GetActiveValidatorIndices(state, currentEpoch);
+            var churnLimit = (ulong)activeValidatorIndices.Count / miscellaneousParameters.ChurnLimitQuotient;
+            return Math.Max(churnLimit, miscellaneousParameters.MinimumPerEpochChurnLimit);
+        }
+
+        /// <summary>
         /// Return the block root at the start of a recent ``epoch``.
         /// </summary>
         public Hash32 GetBlockRoot(BeaconState state, Epoch epoch)
