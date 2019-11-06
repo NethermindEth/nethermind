@@ -78,5 +78,25 @@ namespace Nethermind.Ssz.Test
             AttestationData decoded = Ssz.DecodeAttestationData(encoded);
             Assert.AreEqual(container, decoded);
         }
+        
+        [Test]
+        public void Attestation_data__and_custody_bit_there_and_back()
+        {
+            AttestationData data = new AttestationData();
+            data.Slot = new Slot(1);
+            data.CommitteeIndex = new CommitteeIndex(2);
+            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
+            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            
+            AttestationDataAndCustodyBit container = new AttestationDataAndCustodyBit();
+            container.Data = data;
+            container.CustodyBit = true;
+
+            Span<byte> encoded = stackalloc byte[AttestationDataAndCustodyBit.SszLength];
+            Ssz.Encode(encoded, container);
+            AttestationDataAndCustodyBit decoded = Ssz.DecodeAttestationDataAndCustodyBit(encoded);
+            Assert.AreEqual(container, decoded);
+        }
     }
 }

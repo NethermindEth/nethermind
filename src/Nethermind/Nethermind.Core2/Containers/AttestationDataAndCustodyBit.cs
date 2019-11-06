@@ -18,6 +18,29 @@ namespace Nethermind.Core2.Containers
 {
     public class AttestationDataAndCustodyBit
     {
+        protected bool Equals(AttestationDataAndCustodyBit other)
+        {
+            return Equals(Data, other.Data) && CustodyBit == other.CustodyBit;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((AttestationDataAndCustodyBit) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return ((Data != null ? Data.GetHashCode() : 0) * 397) ^ CustodyBit.GetHashCode();
+            }
+        }
+
+        public const int SszLength = AttestationData.SszLength + 1;
+        
         public AttestationData Data { get; set; }
         
         /// <summary>

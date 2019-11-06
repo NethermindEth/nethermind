@@ -25,9 +25,9 @@ namespace Nethermind.Core2.Containers
         {
             return Slot.Equals(other.Slot) &&
                    CommitteeIndex == other.CommitteeIndex &&
-                   Equals(BeaconBlockRoot, other.BeaconBlockRoot) &&
-                   Source.Equals(other.Source) &&
-                   Target.Equals(other.Target);
+                   BeaconBlockRoot == other.BeaconBlockRoot &&
+                   Source == other.Source &&
+                   Target == other.Target;
         }
 
         public override bool Equals(object obj)
