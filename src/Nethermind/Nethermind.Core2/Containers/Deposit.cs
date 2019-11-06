@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
@@ -21,10 +22,42 @@ namespace Nethermind.Core2.Containers
     public class Deposit
     {
         public const int ContractTreeDepth = 32;
-
-        public const int SszLength = DepositData.SszLength + (ContractTreeDepth + 1) * Sha256.SszLength;
         
-        public Sha256[] Proof { get; set; }
+        public const int SszLengthOfProof = (ContractTreeDepth + 1) * Sha256.SszLength;
+        
+        public const int SszLength = SszLengthOfProof + DepositData.SszLength;
+        
+        public Sha256[] Proof = new Sha256[ContractTreeDepth + 1];
         public DepositData Data { get; set; }
+        
+        public bool Equals(Deposit other)
+        {
+            if(!Equals(Data, other.Data))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < ContractTreeDepth + 1; i++)
+            {
+                if (Proof[i] != other.Proof[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((Deposit) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

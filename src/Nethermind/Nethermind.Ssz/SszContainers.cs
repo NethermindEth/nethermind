@@ -375,6 +375,9 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<Deposit>(span.Length, Deposit.SszLength);
             }
+            
+            Encode(span.Slice(0, Deposit.SszLengthOfProof), container.Proof);
+            Encode(span.Slice(Deposit.SszLengthOfProof), container.Data);
         }
         
         public static Deposit DecodeDeposit(Span<byte> span)
@@ -384,7 +387,10 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<Deposit>(span.Length, Deposit.SszLength);
             }
             
-            return new Deposit();
+            Deposit deposit = new Deposit();
+            deposit.Proof = DecodeHashes(span.Slice(0, Deposit.SszLengthOfProof));
+            deposit.Data = DecodeDepositData(span.Slice(Deposit.SszLengthOfProof));
+            return deposit;
         }
         
         public static void Encode(Span<byte> span, VoluntaryExit container)
