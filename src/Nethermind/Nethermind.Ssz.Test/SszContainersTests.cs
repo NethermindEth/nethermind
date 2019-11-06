@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using NUnit.Framework;
 
@@ -27,11 +28,39 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Fork_there_and_back()
         {
-            Fork fork = new Fork(new ForkVersion(1), new ForkVersion(2), new Epoch(3));
+            Fork container = new Fork(new ForkVersion(1), new ForkVersion(2), new Epoch(3));
             Span<byte> encoded = stackalloc byte[Fork.SszLength];
-            Ssz.Encode(encoded, fork);
+            Ssz.Encode(encoded, container);
             Fork decoded = Ssz.DecodeFork(encoded);
-            Assert.AreEqual(fork, decoded);
+            Assert.AreEqual(container, decoded);
+        }
+        
+        [Test]
+        public void Checkpoint_there_and_back()
+        {
+            Checkpoint container = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
+            Span<byte> encoded = stackalloc byte[Checkpoint.SszLength];
+            Ssz.Encode(encoded, container);
+            Checkpoint decoded = Ssz.DecodeCheckpoint(encoded);
+            Assert.AreEqual(container, decoded);
+        }
+        
+        [Test]
+        public void Validator_there_and_back()
+        {
+            Validator container = new Validator(BlsPublicKey.TestKey1);
+            container.Slashed = true;
+            container.WithdrawalCredentials = Sha256.OfAnEmptyString;
+            container.EffectiveBalance = Gwei.One;
+            container.ActivationEligibilityEpoch = new Epoch(4);
+            container.ActivationEpoch = new Epoch(5);
+            container.ExitEpoch = new Epoch(6);
+            container.ActivationEligibilityEpoch = new Epoch(7);
+            
+            Span<byte> encoded = stackalloc byte[Validator.SszLength];
+            Ssz.Encode(encoded, container);
+            Validator decoded = Ssz.DecodeValidator(encoded);
+            Assert.AreEqual(container, decoded);
         }
     }
 }

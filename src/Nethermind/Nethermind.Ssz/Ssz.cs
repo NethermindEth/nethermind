@@ -72,6 +72,12 @@ namespace Nethermind.Ssz
         {
             value.ToLittleEndian(span);
         }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Encode(Span<byte> span, bool value)
+        {
+            span[0] = Encode(value);
+        }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte Encode(bool value)

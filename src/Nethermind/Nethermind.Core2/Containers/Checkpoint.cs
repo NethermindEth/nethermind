@@ -21,7 +21,15 @@ namespace Nethermind.Core2.Containers
 {
     public struct Checkpoint
     {
-        public Epoch Epoch { get; set; }
-        public Sha256 Root { get; set; }
+        public const int SszLength = Sha256.SszLength + Epoch.SszLength; 
+        
+        public Checkpoint(Epoch epoch, Sha256 root)
+        {
+            Epoch = epoch;
+            Root = root;
+        }
+        
+        public Epoch Epoch { get; }
+        public Sha256 Root { get; }
     }
 }

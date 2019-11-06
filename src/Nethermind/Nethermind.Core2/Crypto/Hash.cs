@@ -28,6 +28,8 @@ namespace Nethermind.Core2.Crypto
     [DebuggerStepThrough]
     public class Sha256 : IEquatable<Sha256>
     {
+        public const int SszLength = 32;
+        
         private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();  
 
         internal const int Size = 32;

@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -61,8 +62,27 @@ namespace Nethermind.Ssz
         {
             return new Gwei(DecodeULong(span));
         }
-
         
+        public static void Encode(Span<byte> span, BlsPublicKey value)
+        {
+            Encode(span, value.Bytes);
+        }
+        
+        public static BlsPublicKey DecodeBlsPublicKey(Span<byte> span)
+        {
+            return new BlsPublicKey(DecodeBytes(span).ToArray());
+        }    
+        
+        public static void Encode(Span<byte> span, Sha256 value)
+        {
+            Encode(span, value.Bytes);
+        }
+        
+        public static Sha256 DecodeSha256(Span<byte> span)
+        {
+            return new Sha256(DecodeBytes(span).ToArray());
+        }
+
         public static void Encode(Span<byte> span, Slot value)
         {
             Encode(span, value.Number);
