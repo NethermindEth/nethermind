@@ -34,7 +34,7 @@ namespace Nethermind.Ssz.Test
             Fork decoded = Ssz.DecodeFork(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Checkpoint_there_and_back()
         {
@@ -44,7 +44,7 @@ namespace Nethermind.Ssz.Test
             Checkpoint decoded = Ssz.DecodeCheckpoint(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Validator_there_and_back()
         {
@@ -56,13 +56,13 @@ namespace Nethermind.Ssz.Test
             container.ActivationEpoch = new Epoch(5);
             container.ExitEpoch = new Epoch(6);
             container.ActivationEligibilityEpoch = new Epoch(7);
-            
+
             Span<byte> encoded = stackalloc byte[Validator.SszLength];
             Ssz.Encode(encoded, container);
             Validator decoded = Ssz.DecodeValidator(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Attestation_data_there_and_back()
         {
@@ -78,7 +78,7 @@ namespace Nethermind.Ssz.Test
             AttestationData decoded = Ssz.DecodeAttestationData(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Attestation_data_and_custody_bit_there_and_back()
         {
@@ -88,7 +88,7 @@ namespace Nethermind.Ssz.Test
             data.BeaconBlockRoot = Sha256.OfAnEmptyString;
             data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
             data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
-            
+
             AttestationDataAndCustodyBit container = new AttestationDataAndCustodyBit();
             container.Data = data;
             container.CustodyBit = true;
@@ -98,19 +98,19 @@ namespace Nethermind.Ssz.Test
             AttestationDataAndCustodyBit decoded = Ssz.DecodeAttestationDataAndCustodyBit(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Indexed_attestation_there_and_back()
         {
             throw new NotSupportedException();
         }
-        
+
         [Test]
         public void Pending_attestation_there_and_back()
         {
             throw new NotSupportedException();
         }
-        
+
         [Test]
         public void Eth1_data_there_and_back()
         {
@@ -123,7 +123,7 @@ namespace Nethermind.Ssz.Test
             Eth1Data decoded = Ssz.DecodeEth1Data(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Historical_batch_there_and_back()
         {
@@ -135,7 +135,7 @@ namespace Nethermind.Ssz.Test
             HistoricalBatch decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Deposit_data_there_and_back()
         {
@@ -149,31 +149,40 @@ namespace Nethermind.Ssz.Test
             DepositData decoded = Ssz.DecodeDepositData(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Beacon_block_header_there_and_back()
         {
-            throw new NotImplementedException();
+            BeaconBlockHeader container = new BeaconBlockHeader();
+            container.Slot = new Slot(1);
+            container.ParentRoot = Sha256.OfAnEmptyString;
+            container.BodyRoot = Sha256.OfAnEmptyString;
+            container.StateRoot = Sha256.OfAnEmptyString;
+            container.Signature = BlsSignature.TestSig1;
+            Span<byte> encoded = stackalloc byte[BeaconBlockHeader.SszLength];
+            Ssz.Encode(encoded, container);
+            BeaconBlockHeader decoded = Ssz.DecodeBeaconBlockHeader(encoded);
+            Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Proposer_slashing_there_and_back()
         {
             throw new NotImplementedException();
         }
-        
+
         [Test]
         public void Attester_slashing_there_and_back()
         {
             throw new NotSupportedException();
         }
-        
+
         [Test]
         public void Attestation_there_and_back()
         {
             throw new NotSupportedException();
         }
-        
+
         [Test]
         public void Deposit_there_and_back()
         {
@@ -182,17 +191,17 @@ namespace Nethermind.Ssz.Test
             data.WithdrawalCredentials = Sha256.OfAnEmptyString;
             data.Amount = Gwei.One;
             data.Signature = BlsSignature.TestSig1;
-            
+
             Deposit container = new Deposit();
             container.Data = data;
             container.Proof[7] = Sha256.OfAnEmptyString;
-            
+
             Span<byte> encoded = stackalloc byte[Deposit.SszLength];
             Ssz.Encode(encoded, container);
             Deposit decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Voluntary_exit_there_and_back()
         {
@@ -206,19 +215,19 @@ namespace Nethermind.Ssz.Test
             VoluntaryExit decoded = Ssz.DecodeVoluntaryExit(encoded);
             Assert.AreEqual(container, decoded);
         }
-        
+
         [Test]
         public void Beacon_block_body_there_and_back()
         {
             throw new NotSupportedException();
         }
-        
+
         [Test]
         public void Beacon_block_there_and_back()
         {
             throw new NotSupportedException();
         }
-        
+
         [Test]
         public void Beacon_state_there_and_back()
         {

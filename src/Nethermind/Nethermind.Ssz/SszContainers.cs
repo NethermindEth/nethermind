@@ -313,6 +313,17 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
             }
+            
+            int offset = 0;
+            Encode(span.Slice(0, Slot.SszLength), container.Slot);
+            offset += Slot.SszLength;
+            Encode(span.Slice(offset, Sha256.SszLength), container.ParentRoot);
+            offset += Sha256.SszLength;
+            Encode(span.Slice(offset, Sha256.SszLength), container.StateRoot);
+            offset += Sha256.SszLength;
+            Encode(span.Slice(offset, Sha256.SszLength), container.BodyRoot);
+            offset += Sha256.SszLength;
+            Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
         }
         
         public static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span)
@@ -322,7 +333,18 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
             }
             
-            return new BeaconBlockHeader();
+            BeaconBlockHeader container = new BeaconBlockHeader();
+            int offset = 0;
+            container.Slot = DecodeSlot(span.Slice(0, Slot.SszLength));
+            offset += Slot.SszLength;
+            container.ParentRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            container.StateRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            container.BodyRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            container.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+            return container;
         }
         
         public static void Encode(Span<byte> span, ProposerSlashing container)

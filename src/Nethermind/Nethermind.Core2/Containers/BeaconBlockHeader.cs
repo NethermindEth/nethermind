@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -21,12 +22,34 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockHeader
     {
-        public const int SszLength = Types.Slot.SszLength + 2 * Sha256.SszLength + BlsSignature.SszLength;
+        public const int SszLength = Types.Slot.SszLength + 3 * Sha256.SszLength + BlsSignature.SszLength;
         
         public Slot Slot { get; set; }
         public Sha256 ParentRoot { get; set; }
         public Sha256 StateRoot { get; set; }
         public Sha256 BodyRoot { get; set; }
         public BlsSignature Signature { get; set; }
+        
+        public bool Equals(BeaconBlockHeader other)
+        {
+            return Slot.Equals(other.Slot) &&
+                   Equals(ParentRoot, other.ParentRoot) &&
+                   Equals(StateRoot, other.StateRoot) &&
+                   Equals(BodyRoot, other.BodyRoot) &&
+                   Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((BeaconBlockHeader) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
+
     }
 }
