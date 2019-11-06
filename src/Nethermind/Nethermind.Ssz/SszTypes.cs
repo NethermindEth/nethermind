@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -75,12 +77,38 @@ namespace Nethermind.Ssz
         
         public static void Encode(Span<byte> span, Sha256 value)
         {
-            Encode(span, value.Bytes);
+            Encode(span, value?.Bytes ?? Sha256.Zero.Bytes);
         }
         
+        public static void Encode(Span<byte> span, Span<Sha256> value)
+        {
+            for (int i = 0; i < value.Length; i++)
+            {
+                Encode(span.Slice(i * Sha256.SszLength, Sha256.SszLength), value[i]);    
+            }
+        }
+       
         public static Sha256 DecodeSha256(Span<byte> span)
         {
-            return new Sha256(DecodeBytes(span).ToArray());
+            return Bytes.AreEqual(Bytes.Zero32, span) ? null : new Sha256(DecodeBytes(span).ToArray());
+        }
+        
+        public static Sha256[] DecodeHashes(Span<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return Array.Empty<Sha256>();
+            }
+            
+            int count = span.Length / Sha256.SszLength;
+            Sha256[] result = new Sha256[count];
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> current = span.Slice(i * Sha256.SszLength, Sha256.SszLength);
+                result[i] = DecodeSha256(current);
+            }
+
+            return result;
         }
 
         public static void Encode(Span<byte> span, Slot value)

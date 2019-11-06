@@ -127,7 +127,13 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Historical_batch_there_and_back()
         {
-            throw new NotImplementedException();
+            HistoricalBatch container = new HistoricalBatch();
+            container.BlockRoots[3] = Sha256.OfAnEmptyString;
+            container.StateRoots[7] = Sha256.OfAnEmptyString;
+            Span<byte> encoded = stackalloc byte[HistoricalBatch.SszLength];
+            Ssz.Encode(encoded, container);
+            HistoricalBatch decoded = Ssz.DecodeHistoricalBatch(encoded);
+            Assert.AreEqual(container, decoded);
         }
         
         [Test]

@@ -240,11 +240,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             }
             
-            Eth1Data eth1Data = new Eth1Data();
-            eth1Data.DepositRoot = DecodeSha256(span.Slice(0, Sha256.SszLength));
-            eth1Data.DepositCount = DecodeULong(span.Slice(Sha256.SszLength, sizeof(ulong)));
-            eth1Data.BlockHash = DecodeSha256(span.Slice(Sha256.SszLength + sizeof(ulong), Sha256.SszLength));
-            return eth1Data;
+            Eth1Data container = new Eth1Data();
+            container.DepositRoot = DecodeSha256(span.Slice(0, Sha256.SszLength));
+            container.DepositCount = DecodeULong(span.Slice(Sha256.SszLength, sizeof(ulong)));
+            container.BlockHash = DecodeSha256(span.Slice(Sha256.SszLength + sizeof(ulong), Sha256.SszLength));
+            return container;
         }
         
         public static void Encode(Span<byte> span, HistoricalBatch container)
@@ -253,6 +253,9 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
             }
+
+            Encode(span.Slice(0, HistoricalBatch.SszLength / 2), container.BlockRoots);
+            Encode(span.Slice(HistoricalBatch.SszLength / 2), container.StateRoots);
         }
         
         public static HistoricalBatch DecodeHistoricalBatch(Span<byte> span)
@@ -262,7 +265,10 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
             }
             
-            return new HistoricalBatch();
+            HistoricalBatch container = new HistoricalBatch();
+            container.BlockRoots = DecodeHashes(span.Slice(0, HistoricalBatch.SszLength / 2));
+            container.StateRoots = DecodeHashes(span.Slice(HistoricalBatch.SszLength / 2));
+            return container;
         }
         
         public static void Encode(Span<byte> span, DepositData container)

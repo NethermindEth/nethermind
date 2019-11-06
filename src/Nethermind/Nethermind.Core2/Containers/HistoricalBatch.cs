@@ -14,15 +14,46 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
 {
     public class HistoricalBatch
     {
-        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * Sha256.SszLength;  
-        
-        public Sha256[] BlockRoots { get; set; }
-        public Sha256[] StateRoots { get; set; }
+        public bool Equals(HistoricalBatch other)
+        {
+            for (int i = 0; i < Time.SlotsPerHistoricalRoot; i++)
+            {
+                if (StateRoots[i] != other.StateRoots[i])
+                {
+                    return false;
+                }
+                
+                if (BlockRoots[i] != other.BlockRoots[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((HistoricalBatch) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
+
+        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * Sha256.SszLength;
+
+        public Sha256[] BlockRoots = new Sha256[Time.SlotsPerHistoricalRoot];
+        public Sha256[] StateRoots = new Sha256[Time.SlotsPerHistoricalRoot];
     }
 }
