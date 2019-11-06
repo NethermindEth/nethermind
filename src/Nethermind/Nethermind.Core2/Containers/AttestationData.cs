@@ -21,6 +21,37 @@ namespace Nethermind.Core2.Containers
 {
     public class AttestationData
     {
+        public bool Equals(AttestationData other)
+        {
+            return Slot.Equals(other.Slot) &&
+                   CommitteeIndex == other.CommitteeIndex &&
+                   Equals(BeaconBlockRoot, other.BeaconBlockRoot) &&
+                   Source.Equals(other.Source) &&
+                   Target.Equals(other.Target);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((AttestationData) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hashCode = Slot.GetHashCode();
+                hashCode = (hashCode * 397) ^ CommitteeIndex.GetHashCode();
+                hashCode = (hashCode * 397) ^ (BeaconBlockRoot != null ? BeaconBlockRoot.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ Source.GetHashCode();
+                hashCode = (hashCode * 397) ^ Target.GetHashCode();
+                return hashCode;
+            }
+        }
+
+        public const int SszLength = Slot.SszLength + CommitteeIndex.SszLength + Sha256.SszLength + 2 * Checkpoint.SszLength; 
+        
         public Slot Slot { get; set; }
         public CommitteeIndex CommitteeIndex { get; set; }
         public Sha256 BeaconBlockRoot { get; set; }

@@ -14,9 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics;
+
 namespace Nethermind.Core2.Types
 {
-    public class ValidatorIndex
+    [DebuggerDisplay("{Number}")]
+    public struct ValidatorIndex
     {
         public const int SszLength = sizeof(ulong);
 
@@ -26,5 +29,35 @@ namespace Nethermind.Core2.Types
         }
         
         public ulong Number { get; }
+        
+        public static bool operator ==(ValidatorIndex a, ValidatorIndex b)
+        {
+            return a.Number == b.Number;
+        }
+
+        public static bool operator !=(ValidatorIndex a, ValidatorIndex b)
+        {
+            return !(a == b);
+        }
+        
+        public bool Equals(ValidatorIndex other)
+        {
+            return Number == other.Number;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is ValidatorIndex other && Equals(other);
+        }
+        
+        public override int GetHashCode()
+        {
+            return Number.GetHashCode();
+        }
+        
+        public override string ToString()
+        {
+            return Number.ToString();
+        }
     }
 }

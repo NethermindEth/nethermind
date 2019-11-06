@@ -14,11 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
+    [DebuggerDisplay("{Epoch}_{Root}")]
     public struct Checkpoint
     {
         public const int SszLength = Sha256.SszLength + Epoch.SszLength; 
@@ -28,8 +30,41 @@ namespace Nethermind.Core2.Containers
             Epoch = epoch;
             Root = root;
         }
-        
+
         public Epoch Epoch { get; }
         public Sha256 Root { get; }
+        
+        public static bool operator ==(Checkpoint a, Checkpoint b)
+        {
+            return a.Epoch == b.Epoch && a.Root == b.Root;
+        }
+
+        public static bool operator !=(Checkpoint a, Checkpoint b)
+        {
+            return !(a == b);
+        }
+
+        public bool Equals(Checkpoint other)
+        {
+            return Epoch == other.Epoch && Root == other.Root;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is Checkpoint other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                return (Epoch.GetHashCode() * 397) ^ (Root != null ? Root.GetHashCode() : 0);
+            }
+        }
+
+        public override string ToString()
+        {
+            return $"{Epoch}_{Root}";
+        }
     }
 }

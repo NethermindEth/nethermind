@@ -14,8 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics;
+
 namespace Nethermind.Core2.Types
 {
+    [DebuggerDisplay("{Number}")]
     public struct Slot
     {
         public const int SszLength = sizeof(ulong);
@@ -80,5 +83,10 @@ namespace Nethermind.Core2.Types
         }
 
         public static uint Seconds { get; set; } = 12;
+        
+        public override string ToString()
+        {
+            return Number.ToString();
+        }
     }
 }

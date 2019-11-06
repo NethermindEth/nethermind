@@ -30,7 +30,7 @@ namespace Nethermind.Ssz
         
         public static CommitteeIndex DecodeCommitteeIndex(Span<byte> span)
         {
-            return new CommitteeIndex(DecodeUInt(span));
+            return new CommitteeIndex(DecodeULong(span));
         }
 
         public static void Encode(Span<byte> span, Epoch value)

@@ -62,5 +62,21 @@ namespace Nethermind.Ssz.Test
             Validator decoded = Ssz.DecodeValidator(encoded);
             Assert.AreEqual(container, decoded);
         }
+        
+        [Test]
+        public void Attestation_data_there_and_back()
+        {
+            AttestationData container = new AttestationData();
+            container.Slot = new Slot(1);
+            container.CommitteeIndex = new CommitteeIndex(2);
+            container.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            container.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
+            container.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+
+            Span<byte> encoded = stackalloc byte[AttestationData.SszLength];
+            Ssz.Encode(encoded, container);
+            AttestationData decoded = Ssz.DecodeAttestationData(encoded);
+            Assert.AreEqual(container, decoded);
+        }
     }
 }

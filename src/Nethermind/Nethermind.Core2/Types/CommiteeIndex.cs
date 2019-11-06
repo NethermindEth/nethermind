@@ -14,9 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Diagnostics;
+
 namespace Nethermind.Core2.Types
 {
-    public class CommitteeIndex
+    [DebuggerDisplay("{Number}")]
+    public struct CommitteeIndex
     {
         public const int SszLength = sizeof(ulong);
 
@@ -26,5 +29,35 @@ namespace Nethermind.Core2.Types
         }
         
         public ulong Number { get; }
+        
+        public bool Equals(ValidatorIndex other)
+        {
+            return Number == other.Number;
+        }
+        
+        public static bool operator ==(CommitteeIndex a, CommitteeIndex b)
+        {
+            return a.Number == b.Number;
+        }
+
+        public static bool operator !=(CommitteeIndex a, CommitteeIndex b)
+        {
+            return !(a == b);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is CommitteeIndex other && Equals(other);
+        }
+        
+        public override int GetHashCode()
+        {
+            return Number.GetHashCode();
+        }
+        
+        public override string ToString()
+        {
+            return Number.ToString();
+        }
     }
 }
