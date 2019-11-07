@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Encoding;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -24,12 +25,56 @@ namespace Nethermind.Core2.Containers
     {
         public static int SszLength(IndexedAttestation value)
         {
-            throw new NotImplementedException();
+            return 2 * sizeof(uint) +
+                   (value.CustodyBit0Indices.Length + value.CustodyBit1Indices.Length) * ValidatorIndex.SszLength +
+                   AttestationData.SszLength +
+                   BlsSignature.SszLength;
         }
-        
+
         public ValidatorIndex[] CustodyBit0Indices { get; set; }
         public ValidatorIndex[] CustodyBit1Indices { get; set; }
         public AttestationData Data { get; set; }
         public BlsSignature Signature { get; set; }
+        
+        public bool Equals(IndexedAttestation other)
+        {
+            if (!Equals(Data, other.Data) ||
+                !Equals(Signature, other.Signature) ||
+                CustodyBit0Indices.Length != other.CustodyBit0Indices.Length ||
+                CustodyBit1Indices.Length != other.CustodyBit1Indices.Length)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < CustodyBit0Indices.Length; i++)
+            {
+                if (CustodyBit0Indices[i] != other.CustodyBit0Indices[i])
+                {
+                    return false;
+                }
+            }
+            
+            for (int i = 0; i < CustodyBit1Indices.Length; i++)
+            {
+                if (CustodyBit1Indices[i] != other.CustodyBit1Indices[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((IndexedAttestation) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

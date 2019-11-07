@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -136,9 +137,19 @@ namespace Nethermind.Ssz
             Encode(span, value.Number);
         }
         
+        public static void Encode(Span<byte> span, Span<ValidatorIndex> value)
+        {
+            Encode(span, MemoryMarshal.Cast<ValidatorIndex, ulong>(value));
+        }
+        
         public static ValidatorIndex DecodeValidatorIndex(Span<byte> span)
         {
             return new ValidatorIndex(DecodeULong(span));
+        }
+        
+        public static ValidatorIndex[] DecodeValidatorIndexes(Span<byte> span)
+        {
+            return MemoryMarshal.Cast<byte, ValidatorIndex>(span).ToArray();
         }
     }
 }
