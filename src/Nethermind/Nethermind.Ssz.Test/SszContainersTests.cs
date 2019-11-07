@@ -315,13 +315,56 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_block_body_there_and_back()
         {
-            throw new NotSupportedException();
+            Eth1Data eth1Data = new Eth1Data();
+            eth1Data.BlockHash = Sha256.OfAnEmptyString;
+            eth1Data.DepositCount = 1;
+            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            
+            BeaconBlockBody container = new BeaconBlockBody();
+            container.RandaoReversal = BlsSignature.TestSig1;
+            container.Eth1Data = eth1Data;
+            container.Graffiti = new byte[32];
+            container.ProposerSlashings = new ProposerSlashing[2];
+            container.AttesterSlashings = new AttesterSlashing[3];
+            container.Attestations = new Attestation[4];
+            container.Deposits = new Deposit[5];
+            container.VoluntaryExits = new VoluntaryExit[6];
+            
+            Span<byte> encoded = stackalloc byte[BeaconBlockBody.SszLength(container)];
+            Ssz.Encode(encoded, container);
+            BeaconBlockBody decoded = Ssz.DecodeBeaconBlockBody(encoded);
+            Assert.AreEqual(container, decoded);
         }
 
         [Test]
         public void Beacon_block_there_and_back()
         {
-            throw new NotSupportedException();
+            Eth1Data eth1Data = new Eth1Data();
+            eth1Data.BlockHash = Sha256.OfAnEmptyString;
+            eth1Data.DepositCount = 1;
+            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            
+            BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
+            beaconBlockBody.RandaoReversal = BlsSignature.TestSig1;
+            beaconBlockBody.Eth1Data = eth1Data;
+            beaconBlockBody.Graffiti = new byte[32];
+            beaconBlockBody.ProposerSlashings = new ProposerSlashing[2];
+            beaconBlockBody.AttesterSlashings = new AttesterSlashing[3];
+            beaconBlockBody.Attestations = new Attestation[4];
+            beaconBlockBody.Deposits = new Deposit[5];
+            beaconBlockBody.VoluntaryExits = new VoluntaryExit[6];
+            
+            BeaconBlock container = new BeaconBlock();
+            container.Body = beaconBlockBody;
+            container.Signature = BlsSignature.TestSig1;
+            container.Slot = new Slot(1);
+            container.ParentRoot = Sha256.OfAnEmptyString;
+            container.StateRoot = Sha256.OfAnEmptyString;
+            
+            Span<byte> encoded = stackalloc byte[BeaconBlock.SszLength(container)];
+            Ssz.Encode(encoded, container);
+            BeaconBlock decoded = Ssz.DecodeBeaconBlock(encoded);
+            Assert.AreEqual(container, decoded);
         }
 
         [Test]

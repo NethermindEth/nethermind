@@ -336,5 +336,10 @@ namespace Nethermind.Ssz
         {
             throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is {expectedLength}.");
         }
+        
+        private static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
+        {
+            throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
+        }
     }
 }

@@ -25,6 +25,11 @@ namespace Nethermind.Core2.Containers
 
         public static int SszLength(AttesterSlashing container)
         {
+            if (container == null)
+            {
+                return 0;
+            }
+            
             return 2 * sizeof(uint) +
                    IndexedAttestation.SszLength(container.Attestation1) +
                    IndexedAttestation.SszLength(container.Attestation2);

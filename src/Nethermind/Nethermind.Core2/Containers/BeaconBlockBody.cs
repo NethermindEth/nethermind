@@ -14,35 +14,110 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockBody
     {
-        public const int SszDynamicOffset = BlsSignature.SszLength + Eth1Data.SszLength + 6 * sizeof(uint);
-        
+        public bool Equals(BeaconBlockBody other)
+        {
+            bool basicEquality = Equals(RandaoReversal, other.RandaoReversal) &&
+                                 Equals(Eth1Data, other.Eth1Data) &&
+                                 Bytes.AreEqual(Graffiti, other.Graffiti) &&
+                                 ProposerSlashings.Length == other.ProposerSlashings.Length &&
+                                 AttesterSlashings.Length == other.AttesterSlashings.Length &&
+                                 Attestations.Length == other.Attestations.Length &&
+                                 Deposits.Length == other.Deposits.Length &&
+                                 VoluntaryExits.Length == other.VoluntaryExits.Length;
+
+            if (!basicEquality)
+            {
+                return false;
+            }
+            
+            for (int i = 0; i < AttesterSlashings.Length; i++)
+            {
+                if (!Equals(AttesterSlashings[i], other.AttesterSlashings[i]))
+                {
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < ProposerSlashings.Length; i++)
+            {
+                if (!Equals(ProposerSlashings[i], other.ProposerSlashings[i]))
+                {
+                    return false;
+                }
+            }
+            
+            for (int i = 0; i < Attestations.Length; i++)
+            {
+                if (!Equals(Attestations[i], other.Attestations[i]))
+                {
+                    return false;
+                }
+            }
+            
+            for (int i = 0; i < Deposits.Length; i++)
+            {
+                if (!Equals(Deposits[i], other.Deposits[i]))
+                {
+                    return false;
+                }
+            }
+            
+            for (int i = 0; i < VoluntaryExits.Length; i++)
+            {
+                if (!Equals(VoluntaryExits[i], other.VoluntaryExits[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((BeaconBlockBody) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new ArgumentNullException();
+        }
+
+        public const int SszDynamicOffset = BlsSignature.SszLength + Eth1Data.SszLength + 32 + 5 * sizeof(uint);
+
         public static int SszLength(BeaconBlockBody container)
         {
-            int result = SszDynamicOffset + container.Graffiti.Length;
+            int result = SszDynamicOffset;
             
             result += ProposerSlashing.SszLength * container.ProposerSlashings.Length;
             result += Deposit.SszLength * container.Deposits.Length;
             result += VoluntaryExit.SszLength * container.VoluntaryExits.Length;
-            
+
+            result += sizeof(uint) * container.AttesterSlashings.Length;
             for (int i = 0; i < container.AttesterSlashings.Length; i++)
             {
-                result += AttesterSlashing.SszLength(container.AttesterSlashings[i]);    
+                result += AttesterSlashing.SszLength(container.AttesterSlashings[i]);
             }
-            
+
+            result += sizeof(uint) * container.Attestations.Length;
             for (int i = 0; i < container.Attestations.Length; i++)
             {
-                result += Attestation.SszLength(container.Attestations[i]);    
+                result += Attestation.SszLength(container.Attestations[i]);
             }
 
             return result;
         }
-        
+
         public BlsSignature RandaoReversal { get; set; }
         public Eth1Data Eth1Data { get; set; }
         public byte[] Graffiti { get; set; }

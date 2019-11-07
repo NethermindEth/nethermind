@@ -26,6 +26,11 @@ namespace Nethermind.Core2.Containers
         
         public static int SszLength(Attestation container)
         {
+            if (container == null)
+            {
+                return 0;
+            }
+            
             return SszDynamicOffset + container.AggregationBits.Length + container.CustodyBits.Length;
         }
         

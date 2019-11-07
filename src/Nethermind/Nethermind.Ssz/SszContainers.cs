@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
+using System.Linq;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -23,6 +25,8 @@ namespace Nethermind.Ssz
 {
     public partial class Ssz
     {
+        private const int VarOffsetSize = sizeof(uint);
+
         public static void Encode(Span<byte> span, Fork container)
         {
             if (span.Length != Fork.SszLength)
@@ -203,15 +207,15 @@ namespace Nethermind.Ssz
             }
 
             int offset = 0;
-            int dynamicOffset = 2 * sizeof(uint) + AttestationData.SszLength + BlsSignature.SszLength;
+            int dynamicOffset = 2 * VarOffsetSize + AttestationData.SszLength + BlsSignature.SszLength;
             int lengthBits0 = container.CustodyBit0Indices.Length * ValidatorIndex.SszLength;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, lengthBits0), container.CustodyBit0Indices);
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
             dynamicOffset += lengthBits0;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset), container.CustodyBit1Indices);
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
             Encode(span.Slice(offset, AttestationData.SszLength), container.Data);
             offset += AttestationData.SszLength;
             Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
@@ -220,16 +224,16 @@ namespace Nethermind.Ssz
         public static IndexedAttestation DecodeIndexedAttestation(Span<byte> span)
         {
             IndexedAttestation container = new IndexedAttestation();
-            uint bits0Offset = DecodeUInt(span.Slice(0, sizeof(uint)));
-            uint bits1Offset = DecodeUInt(span.Slice(sizeof(uint), sizeof(uint)));
+            uint bits0Offset = DecodeUInt(span.Slice(0, VarOffsetSize));
+            uint bits1Offset = DecodeUInt(span.Slice(VarOffsetSize, VarOffsetSize));
 
             uint bits0Length = bits1Offset - bits0Offset;
             uint bits1Length = (uint) span.Length - bits1Offset;
 
             container.CustodyBit0Indices = DecodeValidatorIndexes(span.Slice((int) bits0Offset, (int) bits0Length));
             container.CustodyBit1Indices = DecodeValidatorIndexes(span.Slice((int) bits1Offset, (int) bits1Length));
-            container.Data = DecodeAttestationData(span.Slice(2 * sizeof(uint), AttestationData.SszLength));
-            container.Signature = DecodeBlsSignature(span.Slice(2 * sizeof(uint) + AttestationData.SszLength, BlsSignature.SszLength));
+            container.Data = DecodeAttestationData(span.Slice(2 * VarOffsetSize, AttestationData.SszLength));
+            container.Signature = DecodeBlsSignature(span.Slice(2 * VarOffsetSize + AttestationData.SszLength, BlsSignature.SszLength));
 
             return container;
         }
@@ -243,9 +247,9 @@ namespace Nethermind.Ssz
 
             int offset = 0;
             int dynamicOffset = PendingAttestation.SszDynamicOffset;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset), container.AggregationBits);
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
             Encode(span.Slice(offset, AttestationData.SszLength), container.Data);
             offset += AttestationData.SszLength;
             Encode(span.Slice(offset, Slot.SszLength), container.InclusionDelay);
@@ -256,18 +260,18 @@ namespace Nethermind.Ssz
         public static PendingAttestation DecodePendingAttestation(Span<byte> span)
         {
             int offset = 0;
-            int dynamicOffset = (int) DecodeUInt(span.Slice(0, sizeof(uint)));
+            int dynamicOffset = (int) DecodeUInt(span.Slice(0, VarOffsetSize));
             int length = span.Length - dynamicOffset;
-            
+
             PendingAttestation pendingAttestation = new PendingAttestation();
             pendingAttestation.AggregationBits = DecodeBytes(span.Slice(dynamicOffset, length)).ToArray();
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
             pendingAttestation.Data = DecodeAttestationData(span.Slice(offset, AttestationData.SszLength));
             offset += AttestationData.SszLength;
             pendingAttestation.InclusionDelay = DecodeSlot(span.Slice(offset, Slot.SszLength));
             offset += Slot.SszLength;
             pendingAttestation.ProposerIndex = DecodeValidatorIndex(span.Slice(offset, ValidatorIndex.SszLength));
-            
+
             return pendingAttestation;
         }
 
@@ -404,6 +408,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
             }
 
+            if (container == null)
+            {
+                return;
+            }
+
             int offset = 0;
             Encode(span.Slice(0, ValidatorIndex.SszLength), container.ProposerIndex);
             offset += ValidatorIndex.SszLength;
@@ -412,11 +421,18 @@ namespace Nethermind.Ssz
             Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header2);
         }
 
+        private static byte[] _nullProposerSlashing = new byte[ProposerSlashing.SszLength];
+        
         public static ProposerSlashing DecodeProposerSlashing(Span<byte> span)
         {
             if (span.Length != ProposerSlashing.SszLength)
             {
                 ThrowInvalidSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+            }
+
+            if (span.SequenceEqual(_nullProposerSlashing))
+            {
+                return null;
             }
 
             ProposerSlashing container = new ProposerSlashing();
@@ -438,15 +454,15 @@ namespace Nethermind.Ssz
 
             for (int i = 0; i < containers.Length; i++)
             {
-                Encode(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength), containers[i]);    
+                Encode(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength), containers[i]);
             }
         }
-        
+
         public static ProposerSlashing[] DecodeProposerSlashings(Span<byte> span)
         {
-            if (span.Length != ProposerSlashing.SszLength)
+            if (span.Length % ProposerSlashing.SszLength != 0)
             {
-                ThrowInvalidSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+                ThrowInvalidSourceArrayLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
             }
 
             int count = span.Length / ProposerSlashing.SszLength;
@@ -458,7 +474,7 @@ namespace Nethermind.Ssz
 
             return containers;
         }
-        
+
         public static void Encode(Span<byte> span, Deposit[] containers)
         {
             if (span.Length != Deposit.SszLength * containers.Length)
@@ -468,15 +484,15 @@ namespace Nethermind.Ssz
 
             for (int i = 0; i < containers.Length; i++)
             {
-                Encode(span.Slice(i * Deposit.SszLength, Deposit.SszLength), containers[i]);    
+                Encode(span.Slice(i * Deposit.SszLength, Deposit.SszLength), containers[i]);
             }
         }
-        
+
         public static Deposit[] DecodeDeposits(Span<byte> span)
         {
-            if (span.Length != Deposit.SszLength)
+            if (span.Length % Deposit.SszLength != 0)
             {
-                ThrowInvalidSourceLength<Deposit>(span.Length, Deposit.SszLength);
+                ThrowInvalidSourceArrayLength<Deposit>(span.Length, Deposit.SszLength);
             }
 
             int count = span.Length / Deposit.SszLength;
@@ -488,7 +504,7 @@ namespace Nethermind.Ssz
 
             return containers;
         }
-        
+
         public static void Encode(Span<byte> span, VoluntaryExit[] containers)
         {
             if (span.Length != VoluntaryExit.SszLength * containers.Length)
@@ -498,15 +514,15 @@ namespace Nethermind.Ssz
 
             for (int i = 0; i < containers.Length; i++)
             {
-                Encode(span.Slice(i * VoluntaryExit.SszLength, VoluntaryExit.SszLength), containers[i]);    
+                Encode(span.Slice(i * VoluntaryExit.SszLength, VoluntaryExit.SszLength), containers[i]);
             }
         }
-        
+
         public static VoluntaryExit[] DecodeVoluntaryExits(Span<byte> span)
         {
-            if (span.Length != VoluntaryExit.SszLength)
+            if (span.Length % VoluntaryExit.SszLength != 0)
             {
-                ThrowInvalidSourceLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
+                ThrowInvalidSourceArrayLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
             }
 
             int count = span.Length / VoluntaryExit.SszLength;
@@ -518,30 +534,40 @@ namespace Nethermind.Ssz
 
             return containers;
         }
-        
+
         public static void Encode(Span<byte> span, AttesterSlashing container)
         {
             if (span.Length != AttesterSlashing.SszLength(container))
             {
                 ThrowInvalidTargetLength<AttesterSlashing>(span.Length, AttesterSlashing.SszLength(container));
             }
+            
+            if (container == null)
+            {
+                return;
+            }
 
-            int dynamicOffset = 2 * sizeof(uint);
+            int dynamicOffset = 2 * VarOffsetSize;
             int length1 = IndexedAttestation.SszLength(container.Attestation1);
-            Encode(span.Slice(0, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(0, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length1), container.Attestation1);
 
             dynamicOffset += IndexedAttestation.SszLength(container.Attestation1);
             int length2 = IndexedAttestation.SszLength(container.Attestation2);
-            Encode(span.Slice(sizeof(uint), sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(VarOffsetSize, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length2), container.Attestation2);
         }
 
         public static AttesterSlashing DecodeAttesterSlashing(Span<byte> span)
         {
+            if (span.Length == 0)
+            {
+                return null;
+            }
+            
             AttesterSlashing attesterSlashing = new AttesterSlashing();
-            int offset1 = (int) DecodeUInt(span.Slice(0, sizeof(uint)));
-            int offset2 = (int) DecodeUInt(span.Slice(sizeof(uint), sizeof(uint)));
+            int offset1 = (int) DecodeUInt(span.Slice(0, VarOffsetSize));
+            int offset2 = (int) DecodeUInt(span.Slice(VarOffsetSize, VarOffsetSize));
 
             int length1 = offset2 - offset1;
             int length2 = span.Length - offset2;
@@ -552,6 +578,44 @@ namespace Nethermind.Ssz
             return attesterSlashing;
         }
 
+        public static void Encode(Span<byte> span, AttesterSlashing[] containers)
+        {
+            int offset = 0;
+            int dynamicOffset = containers.Length * VarOffsetSize;
+            for (int i = 0; i < containers.Length; i++)
+            {
+                int currentLength = AttesterSlashing.SszLength(containers[i]);
+                Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+                Encode(span.Slice(dynamicOffset, currentLength), containers[i]);
+                offset += VarOffsetSize;
+                dynamicOffset += currentLength;
+            }
+        }
+
+        public static AttesterSlashing[] DecodeAttesterSlashings(Span<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return Array.Empty<AttesterSlashing>();
+            }
+            
+            int offset = 0;
+            int dynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(0, VarOffsetSize));
+            int itemsCount = dynamicOffset / VarOffsetSize;
+            AttesterSlashing[] containers = new AttesterSlashing[itemsCount];
+            for (int i = 0; i < itemsCount; i++)
+            {
+                int nextDynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
+                int length = nextDynamicOffset - dynamicOffset;
+                AttesterSlashing container = DecodeAttesterSlashing(span.Slice(dynamicOffset, length));
+                containers[i] = container;
+                offset += VarOffsetSize;
+                dynamicOffset = nextDynamicOffset;
+            }
+
+            return containers;
+        }
+
         public static void Encode(Span<byte> span, Attestation container)
         {
             if (span.Length != Attestation.SszLength(container))
@@ -559,43 +623,98 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<Attestation>(span.Length, Attestation.SszLength(container));
             }
 
+            if (container == null)
+            {
+                return;
+            }
+
             int offset = 0;
             int dynamicOffset = Attestation.SszDynamicOffset;
             int length1 = container.AggregationBits.Length;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length1), container.AggregationBits);
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
 
             Encode(span.Slice(offset, AttestationData.SszLength), container.Data);
             offset += AttestationData.SszLength;
-            
+
             dynamicOffset += length1;
             int length2 = container.CustodyBits.Length;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length2), container.CustodyBits);
-            offset += sizeof(uint);
-            
+            offset += VarOffsetSize;
+
             Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
+        }
+        
+        public static void Encode(Span<byte> span, Attestation[] containers)
+        {
+            int offset = 0;
+            int dynamicOffset = containers.Length * VarOffsetSize;
+            for (int i = 0; i < containers.Length; i++)
+            {
+                int currentLength = Attestation.SszLength(containers[i]);
+                Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+                Encode(span.Slice(dynamicOffset, currentLength), containers[i]);
+                offset += VarOffsetSize;
+                dynamicOffset += currentLength;
+            }
+        }
+
+        public static Attestation[] DecodeAttestations(Span<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return Array.Empty<Attestation>();
+            }
+            
+            int offset = 0;
+            int dynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(0, VarOffsetSize));
+            offset += VarOffsetSize;
+            
+            int itemsCount = dynamicOffset / VarOffsetSize;
+            Attestation[] containers = new Attestation[itemsCount];
+            for (int i = 0; i < itemsCount; i++)
+            {
+                int nextDynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
+                if (i == itemsCount - 1)
+                {
+                    nextDynamicOffset = span.Length;
+                }
+
+                int length = nextDynamicOffset - dynamicOffset;
+                Attestation container = DecodeAttestation(span.Slice(dynamicOffset, length));
+                containers[i] = container;
+                offset += VarOffsetSize;
+                dynamicOffset = nextDynamicOffset;
+            }
+
+            return containers;
         }
 
         public static Attestation DecodeAttestation(Span<byte> span)
         {
+            if (span.Length == 0)
+            {
+                return null;
+            }
+            
             Attestation container = new Attestation();
             int offset = 0;
-            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
+            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += VarOffsetSize;
             container.Data = DecodeAttestationData(span.Slice(offset, AttestationData.SszLength));
             offset += AttestationData.SszLength;
-            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
+            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += VarOffsetSize;
             container.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
 
             int length1 = dynamicOffset2 - dynamicOffset1;
             int length2 = span.Length - dynamicOffset2;
-            
+
             container.AggregationBits = DecodeBytes(span.Slice(dynamicOffset1, length1)).ToArray();
             container.CustodyBits = DecodeBytes(span.Slice(dynamicOffset2, length2)).ToArray();
-            
+
             return container;
         }
 
@@ -606,15 +725,27 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<Deposit>(span.Length, Deposit.SszLength);
             }
 
+            if (container == null)
+            {
+                return;
+            }
+
             Encode(span.Slice(0, Deposit.SszLengthOfProof), container.Proof);
             Encode(span.Slice(Deposit.SszLengthOfProof), container.Data);
         }
 
+        private static byte[] _nullDeposit = new byte[Deposit.SszLength]; 
+        
         public static Deposit DecodeDeposit(Span<byte> span)
         {
             if (span.Length != Deposit.SszLength)
             {
                 ThrowInvalidSourceLength<Deposit>(span.Length, Deposit.SszLength);
+            }
+
+            if (span.SequenceEqual(_nullDeposit))
+            {
+                return null;
             }
 
             Deposit deposit = new Deposit();
@@ -630,6 +761,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
             }
 
+            if (container == null)
+            {
+                return;
+            }
+            
             int offset = 0;
             Encode(span.Slice(offset, Epoch.SszLength), container.Epoch);
             offset += Epoch.SszLength;
@@ -638,6 +774,8 @@ namespace Nethermind.Ssz
             Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
         }
 
+        private static byte[] _nullVoluntaryExit = new byte[VoluntaryExit.SszLength];
+        
         public static VoluntaryExit DecodeVoluntaryExit(Span<byte> span)
         {
             if (span.Length != VoluntaryExit.SszLength)
@@ -645,6 +783,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidSourceLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
             }
 
+            if (span.SequenceEqual(_nullVoluntaryExit))
+            {
+                return null;
+            }
+            
             VoluntaryExit container = new VoluntaryExit();
             int offset = 0;
             container.Epoch = DecodeEpoch(span.Slice(offset, Epoch.SszLength));
@@ -661,48 +804,54 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<BeaconBlockBody>(span.Length, BeaconBlockBody.SszLength(container));
             }
-            
+
             int offset = 0;
-            int dynamicOffset = BeaconBlockBody.SszDynamicOffset;
             Encode(span.Slice(offset, BlsSignature.SszLength), container.RandaoReversal);
             offset += BlsSignature.SszLength;
             Encode(span.Slice(offset, Eth1Data.SszLength), container.Eth1Data);
             offset += Eth1Data.SszLength;
+            Encode(span.Slice(offset, container.Graffiti.Length), container.Graffiti);
+            offset += container.Graffiti.Length;
             
-            int length1 = container.Graffiti.Length;
+            int dynamicOffset = BeaconBlockBody.SszDynamicOffset;
+
+            int length1 = container.ProposerSlashings.Length * ProposerSlashing.SszLength;
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length1), container.ProposerSlashings);
             dynamicOffset += length1;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length1), container.Graffiti);
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
+
+            int length2 = container.AttesterSlashings.Length * VarOffsetSize;
+            for (int i = 0; i < container.AttesterSlashings.Length; i++)
+            {
+                length2 += AttesterSlashing.SszLength(container.AttesterSlashings[i]);
+            }
             
-            int length2 = container.ProposerSlashings.Length;
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length2), container.AttesterSlashings);
             dynamicOffset += length2;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length2), container.ProposerSlashings);
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
+
+            int length3 = container.Attestations.Length * VarOffsetSize;
+            for (int i = 0; i < container.Attestations.Length; i++)
+            {
+                length3 += Attestation.SszLength(container.Attestations[i]);
+            }
             
-            int length3 = container.AttesterSlashings.Length;
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length3), container.Attestations);
             dynamicOffset += length3;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length3), container.AttesterSlashings);
-            offset += sizeof(uint);
-            
-            int length4 = container.Attestations.Length;
+            offset += VarOffsetSize;
+
+            int length4 = container.Deposits.Length * Deposit.SszLength;
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length4), container.Deposits);
             dynamicOffset += length4;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length4), container.Attestations);
-            offset += sizeof(uint);
-            
-            int length5 = container.Deposits.Length;
-            dynamicOffset += length5;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length5), container.Deposits);
-            offset += sizeof(uint);
-            
-            int length6 = container.VoluntaryExits.Length;
-            dynamicOffset += length6;
-            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length6), container.VoluntaryExits);
+            offset += VarOffsetSize;
+
+            int length5 = container.VoluntaryExits.Length * VoluntaryExit.SszLength;
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length5), container.VoluntaryExits);
         }
 
         public static BeaconBlockBody DecodeBeaconBlockBody(Span<byte> span)
@@ -713,33 +862,31 @@ namespace Nethermind.Ssz
             offset += BlsSignature.SszLength;
             container.Eth1Data = DecodeEth1Data(span.Slice(offset, Eth1Data.SszLength));
             offset += Eth1Data.SszLength;
+            container.Graffiti = DecodeBytes(span.Slice(offset, 32)).ToArray();
+            offset += 32;
 
-            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
-            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
-            int dynamicOffset3 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
-            int dynamicOffset4 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
-            int dynamicOffset5 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
-            offset += sizeof(uint);
-            int dynamicOffset6 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += VarOffsetSize;
+            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += VarOffsetSize;
+            int dynamicOffset3 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += VarOffsetSize;
+            int dynamicOffset4 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += VarOffsetSize;
+            int dynamicOffset5 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
 
             int length1 = dynamicOffset2 - dynamicOffset1;
             int length2 = dynamicOffset3 - dynamicOffset2;
             int length3 = dynamicOffset4 - dynamicOffset3;
             int length4 = dynamicOffset5 - dynamicOffset4;
-            int length5 = dynamicOffset6 - dynamicOffset5;
-            int length6 = span.Length - dynamicOffset6;
-
-            container.Graffiti = DecodeBytes(span.Slice(dynamicOffset1, length1)).ToArray();
-            container.ProposerSlashings = DecodeProposerSlashings(span.Slice(dynamicOffset2, length2));
-            container.AttesterSlashings = DecodeAttesterSlashings(span.Slice(dynamicOffset3, length3));
-            container.Attestations = DecodeAttestations(span.Slice(dynamicOffset4, length4));
-            container.Deposits = DecodeDeposits(span.Slice(dynamicOffset5, length5));
-            container.VoluntaryExits = DecodeVoluntaryExits(span.Slice(dynamicOffset6, length6));
+            int length5 = span.Length - dynamicOffset5;
             
+            container.ProposerSlashings = DecodeProposerSlashings(span.Slice(dynamicOffset1, length1));
+            container.AttesterSlashings = DecodeAttesterSlashings(span.Slice(dynamicOffset2, length2));
+            container.Attestations = DecodeAttestations(span.Slice(dynamicOffset3, length3));
+            container.Deposits = DecodeDeposits(span.Slice(dynamicOffset4, length4));
+            container.VoluntaryExits = DecodeVoluntaryExits(span.Slice(dynamicOffset5, length5));
+
             return container;
         }
 
@@ -749,16 +896,17 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<BeaconBlock>(span.Length, BeaconBlock.SszLength(container));
             }
-
+            
             int offset = 0;
+            int dynamicOffset = BeaconBlock.SszDynamicOffset;
             Encode(span.Slice(offset, Slot.SszLength), container.Slot);
             offset += Slot.SszLength;
             Encode(span.Slice(offset, Sha256.SszLength), container.ParentRoot);
             offset += Sha256.SszLength;
             Encode(span.Slice(offset, Sha256.SszLength), container.StateRoot);
             offset += Sha256.SszLength;
-            Encode(span.Slice(offset, sizeof(uint)), BeaconBlockBody.SszLength(container.Body));
-            offset += sizeof(uint);
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            offset += VarOffsetSize;
             Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
             offset += BlsSignature.SszLength;
             Encode(span.Slice(offset), container.Body);
@@ -767,7 +915,7 @@ namespace Nethermind.Ssz
         public static BeaconBlock DecodeBeaconBlock(Span<byte> span)
         {
             BeaconBlock beaconBlock = new BeaconBlock();
-            
+
             int offset = 0;
             beaconBlock.Slot = DecodeSlot(span.Slice(offset, Slot.SszLength));
             offset += Slot.SszLength;
@@ -775,8 +923,9 @@ namespace Nethermind.Ssz
             offset += Sha256.SszLength;
             beaconBlock.StateRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
             offset += Sha256.SszLength;
-            offset += sizeof(uint);
+            offset += VarOffsetSize;
             beaconBlock.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+            offset += BlsSignature.SszLength;
             beaconBlock.Body = DecodeBeaconBlockBody(span.Slice(offset));
 
             return beaconBlock;

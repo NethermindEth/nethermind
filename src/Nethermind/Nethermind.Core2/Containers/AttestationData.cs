@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -39,15 +40,7 @@ namespace Nethermind.Core2.Containers
 
         public override int GetHashCode()
         {
-            unchecked
-            {
-                int hashCode = Slot.GetHashCode();
-                hashCode = (hashCode * 397) ^ CommitteeIndex.GetHashCode();
-                hashCode = (hashCode * 397) ^ (BeaconBlockRoot != null ? BeaconBlockRoot.GetHashCode() : 0);
-                hashCode = (hashCode * 397) ^ Source.GetHashCode();
-                hashCode = (hashCode * 397) ^ Target.GetHashCode();
-                return hashCode;
-            }
+            throw new NotSupportedException();
         }
 
         public const int SszLength = Slot.SszLength + CommitteeIndex.SszLength + Sha256.SszLength + 2 * Checkpoint.SszLength; 
