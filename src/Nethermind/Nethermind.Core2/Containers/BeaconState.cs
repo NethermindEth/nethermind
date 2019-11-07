@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -48,15 +50,15 @@ namespace Nethermind.Core2.Containers
             {
                 result += PendingAttestation.SszLength(container.PreviousEpochAttestations[i]);
             }
-            
+
             for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
             {
                 result += PendingAttestation.SszLength(container.CurrentEpochAttestations[i]);
             }
-            
+
             return result;
         }
-        
+
         public ulong GenesisTime { get; set; }
         public Slot Slot { get; set; }
         public Fork Fork { get; set; }
@@ -77,5 +79,41 @@ namespace Nethermind.Core2.Containers
         public Checkpoint PreviousJustifiedCheckpoint { get; set; }
         public Checkpoint CurrentJustifiedCheckpoint { get; set; }
         public Checkpoint FinalizedCheckpoint { get; set; }
+        
+        public bool Equals(BeaconState other)
+        {
+            return GenesisTime == other.GenesisTime &&
+                   Slot.Equals(other.Slot) &&
+                   Fork.Equals(other.Fork) &&
+                   Equals(LatestBlockHeader, other.LatestBlockHeader) &&
+                   BlockRoots.Length == other.BlockRoots.Length &&
+                   StateRoots.Length == other.StateRoots.Length &&
+                   HistoricalRoots.Length == other.HistoricalRoots.Length &&
+                   Equals(Eth1Data, other.Eth1Data) &&
+                   Equals(EthDataVotes, other.EthDataVotes) &&
+                   Eth1DepositIndex == other.Eth1DepositIndex &&
+                   Validators.Length == other.Validators.Length &&
+                   Balances.Length == other.Balances.Length &&
+                   Equals(RandaoMixes, other.RandaoMixes) &&
+                   Slashings.Length == other.Slashings.Length &&
+                   PreviousEpochAttestations.Length == other.PreviousEpochAttestations.Length &&
+                   CurrentEpochAttestations.Length == other.CurrentEpochAttestations.Length &&
+                   Bytes.AreEqual(JustificationBits, other.JustificationBits) &&
+                   PreviousJustifiedCheckpoint.Equals(other.PreviousJustifiedCheckpoint) &&
+                   CurrentJustifiedCheckpoint.Equals(other.CurrentJustifiedCheckpoint) &&
+                   FinalizedCheckpoint.Equals(other.FinalizedCheckpoint);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((BeaconState) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

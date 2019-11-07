@@ -620,7 +620,40 @@ namespace Nethermind.Ssz
 
         public static BeaconBlockBody DecodeBeaconBlockBody(Span<byte> span)
         {
-            return new BeaconBlockBody();
+            BeaconBlockBody container = new BeaconBlockBody();
+            int offset = 0;
+            container.RandaoReversal = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+            offset += BlsSignature.SszLength;
+            container.Eth1Data = DecodeEth1Data(span.Slice(offset, Eth1Data.SszLength));
+            offset += Eth1Data.SszLength;
+
+            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            int dynamicOffset3 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            int dynamicOffset4 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            int dynamicOffset5 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            int dynamicOffset6 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+
+            int length1 = dynamicOffset2 - dynamicOffset1;
+            int length2 = dynamicOffset3 - dynamicOffset2;
+            int length3 = dynamicOffset4 - dynamicOffset3;
+            int length4 = dynamicOffset5 - dynamicOffset4;
+            int length5 = dynamicOffset6 - dynamicOffset5;
+            int length6 = span.Length - dynamicOffset6;
+
+            container.Graffiti = DecodeBytes(span.Slice(dynamicOffset1, length1)).ToArray();
+            container.ProposerSlashings = DecodeProposerSlashings(span.Slice(dynamicOffset2, length2));
+            container.AttesterSlashings = DecodeAttesterSlashings(span.Slice(dynamicOffset3, length3));
+            container.Attestations = DecodeAttestations(span.Slice(dynamicOffset4, length4));
+            container.Deposits = DecodeDeposits(span.Slice(dynamicOffset5, length5));
+            container.VoluntaryExits = DecodeVoluntaryExits(span.Slice(dynamicOffset6, length6));
+            
+            return container;
         }
 
         public static void Encode(Span<byte> span, BeaconBlock container)
