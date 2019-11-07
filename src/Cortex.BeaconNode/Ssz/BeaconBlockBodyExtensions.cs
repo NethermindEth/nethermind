@@ -26,7 +26,7 @@ namespace Cortex.BeaconNode.Ssz
             yield return item.Graffiti.ToSszBasicVector();
             // Operations
             yield return item.ProposerSlashings.ToSszList(maxOperationsPerBlock.MaximumProposerSlashings);
-            //yield return item.AttesterSlashings.ToSszList(MAX_ATTESTER_SLASHINGS);
+            yield return item.AttesterSlashings.ToSszList(maxOperationsPerBlock.MaximumAttesterSlashings, miscellaneousParameters);
             yield return item.Attestations.ToSszList(maxOperationsPerBlock.MaximumAttestations, miscellaneousParameters);
             yield return item.Deposits.ToSszList(maxOperationsPerBlock.MaximumDeposits);
             //yield return item.VoluntaryExits.ToSszList(MAX_VOLUNTARY_EXITS);

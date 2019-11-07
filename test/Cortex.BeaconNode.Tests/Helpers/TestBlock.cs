@@ -37,6 +37,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                     eth1Data,
                     new Bytes32(),
                     Array.Empty<ProposerSlashing>(),
+                    Array.Empty<AttesterSlashing>(),
                     Array.Empty<Attestation>(),
                     Array.Empty<Deposit>()
                 ),

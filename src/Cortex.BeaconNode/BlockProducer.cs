@@ -27,6 +27,7 @@ namespace Cortex.BeaconNode
                 new Eth1Data(0, Hash32.Zero), 
                 new Bytes32(), 
                 Array.Empty<ProposerSlashing>(),
+                Array.Empty<AttesterSlashing>(),
                 Array.Empty<Attestation>(),
                 Array.Empty<Deposit>());
             var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, new BlsSignature());

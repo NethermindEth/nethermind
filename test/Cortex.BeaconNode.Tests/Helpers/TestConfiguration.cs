@@ -63,6 +63,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             maxOperationsPerBlockOptions = TestOptionsMonitor.Create(new MaxOperationsPerBlock()
             {
                 MaximumProposerSlashings = 16,
+                MaximumAttesterSlashings = 1,
                 MaximumAttestations = 128,
                 MaximumDeposits = 16,
             });

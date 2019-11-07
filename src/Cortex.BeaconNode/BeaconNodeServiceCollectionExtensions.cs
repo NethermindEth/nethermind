@@ -74,6 +74,7 @@ namespace Cortex.BeaconNode
             services.Configure<MaxOperationsPerBlock>(x =>
             {
                 x.MaximumProposerSlashings = configuration.GetValue<ulong>("MAX_PROPOSER_SLASHINGS");
+                x.MaximumAttesterSlashings = configuration.GetValue<ulong>("MAX_ATTESTER_SLASHINGS");
                 x.MaximumAttestations = configuration.GetValue<ulong>("MAX_ATTESTATIONS");
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
             });

@@ -85,6 +85,11 @@ namespace Cortex.BeaconNode
             return output.Where(x => !state.Validators[(int)(ulong)x].IsSlashed);
         }
 
+        public void ProcessAttesterSlashing(BeaconState state, AttesterSlashing attesterSlashing)
+        {
+            throw new NotImplementedException();
+        }
+
         public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
             ProcessBlockHeader(state, block);
@@ -245,7 +250,10 @@ namespace Cortex.BeaconNode
             {
                 ProcessProposerSlashing(state, proposerSlashing);
             }
-            // ProcessAttesterSlashing
+            foreach (var attesterSlashing in body.AttesterSlashings)
+            {
+                ProcessAttesterSlashing(state, attesterSlashing);
+            }
             //ProcessAttestation();
             //ProcessDeposit();
             //ProcessVoluntaryExit();

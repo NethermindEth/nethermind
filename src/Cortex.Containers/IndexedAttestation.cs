@@ -1,21 +1,32 @@
-using System;
-using System.Collections.Generic;
-
-using ValidatorIndex = System.UInt64;
-using BlsSignature = System.Byte; // Byte96
+﻿using System.Collections.Generic;
 
 namespace Cortex.Containers
 {
-    // public class IndexedAttestation
-    // {
-    //     /// <summary>Gets indices with custody bit equal to 0</summary>
-    //     public IList<ValidatorIndex> CustodyBit0Indices { get; }
+    public class IndexedAttestation
+    {
+        private List<ValidatorIndex> _custodyBit0Indices;
+        private List<ValidatorIndex> _custodyBit1Indices;
 
-    //     /// <summary>Gets indices with custody bit equal to 1</summary>
-    //     public IList<ValidatorIndex> CustodyBit1Indices { get; }
+        public IndexedAttestation(
+            IEnumerable<ValidatorIndex> custodyBit0Indices,
+            IEnumerable<ValidatorIndex> custodyBit1Indices,
+            AttestationData data,
+            BlsSignature signature)
+        {
+            _custodyBit0Indices = new List<ValidatorIndex>(custodyBit0Indices);
+            _custodyBit1Indices = new List<ValidatorIndex>(custodyBit1Indices);
+            Data = data;
+            Signature = signature;
+        }
 
-    //     public AttestationData Data { get; }
+        /// <summary>Gets indices with custody bit equal to 0</summary>
+        public IList<ValidatorIndex> CustodyBit0Indices { get { return _custodyBit0Indices; } }
 
-    //     public BlsSignature Signature { get; }
-    // }
+        /// <summary>Gets indices with custody bit equal to 1</summary>
+        public IList<ValidatorIndex> CustodyBit1Indices { get { return _custodyBit1Indices; } }
+
+        public AttestationData Data { get; }
+
+        public BlsSignature Signature { get; }
+    }
 }
