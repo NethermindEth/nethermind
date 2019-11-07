@@ -212,7 +212,33 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Attester_slashing_there_and_back()
         {
-            throw new NotSupportedException();
+            AttestationData data = new AttestationData();
+            data.Slot = new Slot(1);
+            data.CommitteeIndex = new CommitteeIndex(2);
+            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
+            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            
+            IndexedAttestation indexedAttestation1 = new IndexedAttestation();
+            indexedAttestation1.CustodyBit0Indices = new ValidatorIndex[3];
+            indexedAttestation1.CustodyBit1Indices = new ValidatorIndex[7];
+            indexedAttestation1.Data = data;
+            indexedAttestation1.Signature = BlsSignature.TestSig1;
+            
+            IndexedAttestation indexedAttestation2 = new IndexedAttestation();
+            indexedAttestation2.CustodyBit0Indices = new ValidatorIndex[5];
+            indexedAttestation2.CustodyBit1Indices = new ValidatorIndex[11];
+            indexedAttestation2.Data = data;
+            indexedAttestation2.Signature = BlsSignature.TestSig1;
+            
+            AttesterSlashing container = new AttesterSlashing();
+            container.Attestation1 = indexedAttestation1;
+            container.Attestation2 = indexedAttestation2;
+            
+            Span<byte> encoded = stackalloc byte[AttesterSlashing.SszLength(container)];
+            Ssz.Encode(encoded, container);
+            AttesterSlashing decoded = Ssz.DecodeAttesterSlashing(encoded);
+            Assert.AreEqual(container, decoded);
         }
 
         [Test]

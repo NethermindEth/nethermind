@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+
 namespace Nethermind.Core2.Containers
 {
     public class AttesterSlashing
@@ -23,7 +25,27 @@ namespace Nethermind.Core2.Containers
 
         public static int SszLength(AttesterSlashing container)
         {
-            throw new System.NotImplementedException();
+            return 2 * sizeof(uint) +
+                   IndexedAttestation.SszLength(container.Attestation1) +
+                   IndexedAttestation.SszLength(container.Attestation2);
+        }
+        
+        public bool Equals(AttesterSlashing other)
+        {
+            return Equals(Attestation1, other.Attestation1) &&
+                   Equals(Attestation2, other.Attestation2);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((AttesterSlashing) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
         }
     }
 }
