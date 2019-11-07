@@ -136,15 +136,15 @@ namespace Nethermind.Ssz
         {
             Encode(span, value.Number);
         }
+
+        public static ValidatorIndex DecodeValidatorIndex(Span<byte> span)
+        {
+            return new ValidatorIndex(DecodeULong(span));
+        }
         
         public static void Encode(Span<byte> span, Span<ValidatorIndex> value)
         {
             Encode(span, MemoryMarshal.Cast<ValidatorIndex, ulong>(value));
-        }
-        
-        public static ValidatorIndex DecodeValidatorIndex(Span<byte> span)
-        {
-            return new ValidatorIndex(DecodeULong(span));
         }
         
         public static ValidatorIndex[] DecodeValidatorIndexes(Span<byte> span)

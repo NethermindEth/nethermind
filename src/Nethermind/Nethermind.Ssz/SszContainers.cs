@@ -15,12 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers.Binary;
-using Nethermind.Core;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Newtonsoft.Json.Converters;
 
 namespace Nethermind.Ssz
 {
@@ -432,6 +429,96 @@ namespace Nethermind.Ssz
             return container;
         }
 
+        public static void Encode(Span<byte> span, ProposerSlashing[] containers)
+        {
+            if (span.Length != ProposerSlashing.SszLength * containers.Length)
+            {
+                ThrowInvalidTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+            }
+
+            for (int i = 0; i < containers.Length; i++)
+            {
+                Encode(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength), containers[i]);    
+            }
+        }
+        
+        public static ProposerSlashing[] DecodeProposerSlashings(Span<byte> span)
+        {
+            if (span.Length != ProposerSlashing.SszLength)
+            {
+                ThrowInvalidSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+            }
+
+            int count = span.Length / ProposerSlashing.SszLength;
+            ProposerSlashing[] containers = new ProposerSlashing[count];
+            for (int i = 0; i < count; i++)
+            {
+                containers[i] = DecodeProposerSlashing(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength));
+            }
+
+            return containers;
+        }
+        
+        public static void Encode(Span<byte> span, Deposit[] containers)
+        {
+            if (span.Length != Deposit.SszLength * containers.Length)
+            {
+                ThrowInvalidTargetLength<Deposit>(span.Length, Deposit.SszLength);
+            }
+
+            for (int i = 0; i < containers.Length; i++)
+            {
+                Encode(span.Slice(i * Deposit.SszLength, Deposit.SszLength), containers[i]);    
+            }
+        }
+        
+        public static Deposit[] DecodeDeposits(Span<byte> span)
+        {
+            if (span.Length != Deposit.SszLength)
+            {
+                ThrowInvalidSourceLength<Deposit>(span.Length, Deposit.SszLength);
+            }
+
+            int count = span.Length / Deposit.SszLength;
+            Deposit[] containers = new Deposit[count];
+            for (int i = 0; i < count; i++)
+            {
+                containers[i] = DecodeDeposit(span.Slice(i * Deposit.SszLength, Deposit.SszLength));
+            }
+
+            return containers;
+        }
+        
+        public static void Encode(Span<byte> span, VoluntaryExit[] containers)
+        {
+            if (span.Length != VoluntaryExit.SszLength * containers.Length)
+            {
+                ThrowInvalidTargetLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
+            }
+
+            for (int i = 0; i < containers.Length; i++)
+            {
+                Encode(span.Slice(i * VoluntaryExit.SszLength, VoluntaryExit.SszLength), containers[i]);    
+            }
+        }
+        
+        public static VoluntaryExit[] DecodeVoluntaryExits(Span<byte> span)
+        {
+            if (span.Length != VoluntaryExit.SszLength)
+            {
+                ThrowInvalidSourceLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
+            }
+
+            int count = span.Length / VoluntaryExit.SszLength;
+            VoluntaryExit[] containers = new VoluntaryExit[count];
+            for (int i = 0; i < count; i++)
+            {
+                containers[i] = DecodeVoluntaryExit(span.Slice(i * VoluntaryExit.SszLength, VoluntaryExit.SszLength));
+            }
+
+            return containers;
+        }
+        
         public static void Encode(Span<byte> span, AttesterSlashing container)
         {
             if (span.Length != AttesterSlashing.SszLength(container))
