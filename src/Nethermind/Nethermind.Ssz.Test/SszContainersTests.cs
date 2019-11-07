@@ -260,7 +260,23 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Attestation_there_and_back()
         {
-            throw new NotSupportedException();
+            AttestationData data = new AttestationData();
+            data.Slot = new Slot(1);
+            data.CommitteeIndex = new CommitteeIndex(2);
+            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
+            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            
+            Attestation container = new Attestation();
+            container.AggregationBits = new byte[3];
+            container.Data = data;
+            container.CustodyBits = new byte[7];
+            container.Signature = BlsSignature.TestSig1;
+            
+            Span<byte> encoded = stackalloc byte[Attestation.SszLength(container)];
+            Ssz.Encode(encoded, container);
+            Attestation decoded = Ssz.DecodeAttestation(encoded);
+            Assert.AreEqual(container, decoded);
         }
 
         [Test]

@@ -470,11 +470,45 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<Attestation>(span.Length, Attestation.SszLength(container));
             }
+
+            int offset = 0;
+            int dynamicOffset = Attestation.SszDynamicOffset;
+            int length1 = container.AggregationBits.Length;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length1), container.AggregationBits);
+            offset += sizeof(uint);
+
+            Encode(span.Slice(offset, AttestationData.SszLength), container.Data);
+            offset += AttestationData.SszLength;
+            
+            dynamicOffset += length1;
+            int length2 = container.CustodyBits.Length;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length2), container.CustodyBits);
+            offset += sizeof(uint);
+            
+            Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
         }
 
         public static Attestation DecodeAttestation(Span<byte> span)
         {
-            return new Attestation();
+            Attestation container = new Attestation();
+            int offset = 0;
+            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            container.Data = DecodeAttestationData(span.Slice(offset, AttestationData.SszLength));
+            offset += AttestationData.SszLength;
+            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, sizeof(uint)));
+            offset += sizeof(uint);
+            container.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+
+            int length1 = dynamicOffset2 - dynamicOffset1;
+            int length2 = span.Length - dynamicOffset2;
+            
+            container.AggregationBits = DecodeBytes(span.Slice(dynamicOffset1, length1)).ToArray();
+            container.CustodyBits = DecodeBytes(span.Slice(dynamicOffset2, length2)).ToArray();
+            
+            return container;
         }
 
         public static void Encode(Span<byte> span, Deposit container)

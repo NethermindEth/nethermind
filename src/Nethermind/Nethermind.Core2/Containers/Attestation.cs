@@ -14,20 +14,44 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
 {
     public class Attestation
     {
+        public const int SszDynamicOffset = 2 * sizeof(uint) + AttestationData.SszLength + BlsSignature.SszLength; 
+        
+        public static int SszLength(Attestation container)
+        {
+            return SszDynamicOffset + container.AggregationBits.Length + container.CustodyBits.Length;
+        }
+        
         public byte[] AggregationBits { get; set; }
         public AttestationData Data { get; set; }
         public byte[] CustodyBits { get; set; }
         public BlsSignature Signature { get; set; }
 
-        public static int SszLength(Attestation container)
+        public bool Equals(Attestation other)
         {
-            throw new System.NotImplementedException();
+            return Bytes.AreEqual(AggregationBits, other.AggregationBits) &&
+                   Equals(Data, other.Data) &&
+                   Bytes.AreEqual(CustodyBits, other.CustodyBits) &&
+                   Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((Attestation) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
         }
     }
 }
