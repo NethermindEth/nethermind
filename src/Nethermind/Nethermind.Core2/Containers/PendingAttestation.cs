@@ -15,20 +15,47 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Drawing;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
     public class PendingAttestation
     {
+        public const int SszDynamicOffset = sizeof(uint) +
+                                            AttestationData.SszLength +
+                                            Slot.SszLength +
+                                            ValidatorIndex.SszLength;
+        
         public static int SszLength(PendingAttestation value)
         {
-            throw new NotImplementedException();
+            return SszDynamicOffset + value.AggregationBits.Length;
         }
         
         public byte[] AggregationBits { get; set; }
         public AttestationData Data { get; set; }
         public Slot InclusionDelay { get; set; }
         public ValidatorIndex ProposerIndex { get; set; }
+        
+        public bool Equals(PendingAttestation other)
+        {
+            return Bytes.AreEqual(AggregationBits, other.AggregationBits) &&
+                   Equals(Data, other.Data) &&
+                   InclusionDelay == other.InclusionDelay &&
+                   ProposerIndex == other.ProposerIndex;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((PendingAttestation) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

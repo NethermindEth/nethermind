@@ -242,11 +242,35 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<PendingAttestation>(span.Length, PendingAttestation.SszLength(container));
             }
+
+            int offset = 0;
+            int dynamicOffset = PendingAttestation.SszDynamicOffset;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset), container.AggregationBits);
+            offset += sizeof(uint);
+            Encode(span.Slice(offset, AttestationData.SszLength), container.Data);
+            offset += AttestationData.SszLength;
+            Encode(span.Slice(offset, Slot.SszLength), container.InclusionDelay);
+            offset += Slot.SszLength;
+            Encode(span.Slice(offset, ValidatorIndex.SszLength), container.ProposerIndex);
         }
 
         public static PendingAttestation DecodePendingAttestation(Span<byte> span)
         {
-            return new PendingAttestation();
+            int offset = 0;
+            int dynamicOffset = (int) DecodeUInt(span.Slice(0, sizeof(uint)));
+            int length = span.Length - dynamicOffset;
+            
+            PendingAttestation pendingAttestation = new PendingAttestation();
+            pendingAttestation.AggregationBits = DecodeBytes(span.Slice(dynamicOffset, length)).ToArray();
+            offset += sizeof(uint);
+            pendingAttestation.Data = DecodeAttestationData(span.Slice(offset, AttestationData.SszLength));
+            offset += AttestationData.SszLength;
+            pendingAttestation.InclusionDelay = DecodeSlot(span.Slice(offset, Slot.SszLength));
+            offset += Slot.SszLength;
+            pendingAttestation.ProposerIndex = DecodeValidatorIndex(span.Slice(offset, ValidatorIndex.SszLength));
+            
+            return pendingAttestation;
         }
 
         public static void Encode(Span<byte> span, Eth1Data container)

@@ -124,7 +124,23 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Pending_attestation_there_and_back()
         {
-            throw new NotSupportedException();
+            AttestationData data = new AttestationData();
+            data.Slot = new Slot(1);
+            data.CommitteeIndex = new CommitteeIndex(2);
+            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
+            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            
+            PendingAttestation container = new PendingAttestation();
+            container.AggregationBits = new byte[3];
+            container.Data = data;
+            container.InclusionDelay = new Slot(7);
+            container.ProposerIndex = new ValidatorIndex(13);
+            
+            Span<byte> encoded = stackalloc byte[PendingAttestation.SszLength(container)];
+            Ssz.Encode(encoded, container);
+            PendingAttestation decoded = Ssz.DecodePendingAttestation(encoded);
+            Assert.AreEqual(container, decoded);
         }
 
         [Test]
