@@ -16,6 +16,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Core;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -573,6 +574,48 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<BeaconBlockBody>(span.Length, BeaconBlockBody.SszLength(container));
             }
+            
+            int offset = 0;
+            int dynamicOffset = BeaconBlockBody.SszDynamicOffset;
+            Encode(span.Slice(offset, BlsSignature.SszLength), container.RandaoReversal);
+            offset += BlsSignature.SszLength;
+            Encode(span.Slice(offset, Eth1Data.SszLength), container.Eth1Data);
+            offset += Eth1Data.SszLength;
+            
+            int length1 = container.Graffiti.Length;
+            dynamicOffset += length1;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length1), container.Graffiti);
+            offset += sizeof(uint);
+            
+            int length2 = container.ProposerSlashings.Length;
+            dynamicOffset += length2;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length2), container.ProposerSlashings);
+            offset += sizeof(uint);
+            
+            int length3 = container.AttesterSlashings.Length;
+            dynamicOffset += length3;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length3), container.AttesterSlashings);
+            offset += sizeof(uint);
+            
+            int length4 = container.Attestations.Length;
+            dynamicOffset += length4;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length4), container.Attestations);
+            offset += sizeof(uint);
+            
+            int length5 = container.Deposits.Length;
+            dynamicOffset += length5;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length5), container.Deposits);
+            offset += sizeof(uint);
+            
+            int length6 = container.VoluntaryExits.Length;
+            dynamicOffset += length6;
+            Encode(span.Slice(offset, sizeof(uint)), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length6), container.VoluntaryExits);
         }
 
         public static BeaconBlockBody DecodeBeaconBlockBody(Span<byte> span)
@@ -586,11 +629,37 @@ namespace Nethermind.Ssz
             {
                 ThrowInvalidTargetLength<BeaconBlock>(span.Length, BeaconBlock.SszLength(container));
             }
+
+            int offset = 0;
+            Encode(span.Slice(offset, Slot.SszLength), container.Slot);
+            offset += Slot.SszLength;
+            Encode(span.Slice(offset, Sha256.SszLength), container.ParentRoot);
+            offset += Sha256.SszLength;
+            Encode(span.Slice(offset, Sha256.SszLength), container.StateRoot);
+            offset += Sha256.SszLength;
+            Encode(span.Slice(offset, sizeof(uint)), BeaconBlockBody.SszLength(container.Body));
+            offset += sizeof(uint);
+            Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
+            offset += BlsSignature.SszLength;
+            Encode(span.Slice(offset), container.Body);
         }
 
         public static BeaconBlock DecodeBeaconBlock(Span<byte> span)
         {
-            return new BeaconBlock();
+            BeaconBlock beaconBlock = new BeaconBlock();
+            
+            int offset = 0;
+            beaconBlock.Slot = DecodeSlot(span.Slice(offset, Slot.SszLength));
+            offset += Slot.SszLength;
+            beaconBlock.ParentRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            beaconBlock.StateRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            offset += sizeof(uint);
+            beaconBlock.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+            beaconBlock.Body = DecodeBeaconBlockBody(span.Slice(offset));
+
+            return beaconBlock;
         }
 
         public static void Encode(Span<byte> span, BeaconState container)

@@ -21,6 +21,42 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconState
     {
+        public const int SszDynamicOffset = sizeof(ulong) +
+                                            Slot.SszLength +
+                                            Fork.SszLength +
+                                            BeaconBlockHeader.SszLength +
+                                            3 * sizeof(uint) +
+                                            2 * Eth1Data.SszLength +
+                                            sizeof(ulong) +
+                                            2 * sizeof(uint) +
+                                            Sha256.SszLength +
+                                            4 * sizeof(uint) +
+                                            3 * Checkpoint.SszLength;
+
+        public static int SszLength(BeaconState container)
+        {
+            int result = SszDynamicOffset;
+            result += Sha256.SszLength * container.BlockRoots.Length;
+            result += Sha256.SszLength * container.StateRoots.Length;
+            result += Sha256.SszLength * container.HistoricalRoots.Length;
+            result += Validator.SszLength * container.Validators.Length;
+            result += Gwei.SszLength * container.Balances.Length;
+            result += Gwei.SszLength * container.Slashings.Length;
+            result += container.JustificationBits.Length;
+
+            for (int i = 0; i < container.PreviousEpochAttestations.Length; i++)
+            {
+                result += PendingAttestation.SszLength(container.PreviousEpochAttestations[i]);
+            }
+            
+            for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
+            {
+                result += PendingAttestation.SszLength(container.CurrentEpochAttestations[i]);
+            }
+            
+            return result;
+        }
+        
         public ulong GenesisTime { get; set; }
         public Slot Slot { get; set; }
         public Fork Fork { get; set; }
@@ -41,10 +77,5 @@ namespace Nethermind.Core2.Containers
         public Checkpoint PreviousJustifiedCheckpoint { get; set; }
         public Checkpoint CurrentJustifiedCheckpoint { get; set; }
         public Checkpoint FinalizedCheckpoint { get; set; }
-
-        public static int SszLength(BeaconState container)
-        {
-            throw new System.NotImplementedException();
-        }
     }
 }

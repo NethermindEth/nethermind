@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -21,6 +22,13 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
+        public const int SszDynamicOffset = Slot.SszLength + 2 * Sha256.SszLength + sizeof(uint) + BlsSignature.SszLength;
+        
+        public static int SszLength(BeaconBlock container)
+        {
+            return SszDynamicOffset + BeaconBlockBody.SszLength(container.Body);
+        }
+        
         public Slot Slot { get; set; }
         public Sha256 ParentRoot { get; set; }
         public Sha256 StateRoot { get; set; }
@@ -36,10 +44,26 @@ namespace Nethermind.Core2.Containers
         public static uint MaxDeposits { get; set; } = 16;
         
         public static uint MaxVoluntaryExits { get; set; } = 16;
-
-        public static int SszLength(BeaconBlock container)
+        
+        public bool Equals(BeaconBlock other)
         {
-            throw new System.NotImplementedException();
+            return Slot == other.Slot &&
+                   Equals(ParentRoot, other.ParentRoot) &&
+                   Equals(StateRoot, other.StateRoot) &&
+                   Equals(Body, other.Body) &&
+                   Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((BeaconBlock) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
         }
     }
 }

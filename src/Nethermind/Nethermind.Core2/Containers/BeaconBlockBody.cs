@@ -20,6 +20,29 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockBody
     {
+        public const int SszDynamicOffset = BlsSignature.SszLength + Eth1Data.SszLength + 6 * sizeof(uint);
+        
+        public static int SszLength(BeaconBlockBody container)
+        {
+            int result = SszDynamicOffset + container.Graffiti.Length;
+            
+            result += ProposerSlashing.SszLength * container.ProposerSlashings.Length;
+            result += Deposit.SszLength * container.Deposits.Length;
+            result += VoluntaryExit.SszLength * container.VoluntaryExits.Length;
+            
+            for (int i = 0; i < container.AttesterSlashings.Length; i++)
+            {
+                result += AttesterSlashing.SszLength(container.AttesterSlashings[i]);    
+            }
+            
+            for (int i = 0; i < container.Attestations.Length; i++)
+            {
+                result += Attestation.SszLength(container.Attestations[i]);    
+            }
+
+            return result;
+        }
+        
         public BlsSignature RandaoReversal { get; set; }
         public Eth1Data Eth1Data { get; set; }
         public byte[] Graffiti { get; set; }
@@ -28,10 +51,5 @@ namespace Nethermind.Core2.Containers
         public Attestation[] Attestations { get; set; }
         public Deposit[] Deposits { get; set; }
         public VoluntaryExit[] VoluntaryExits { get; set; }
-
-        public static int SszLength(BeaconBlockBody container)
-        {
-            throw new System.NotImplementedException();
-        }
     }
 }
