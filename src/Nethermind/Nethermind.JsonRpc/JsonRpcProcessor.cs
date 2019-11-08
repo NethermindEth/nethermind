@@ -28,6 +28,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.JsonRpc
@@ -85,24 +86,22 @@ namespace Nethermind.JsonRpc
             if (File.Exists(filePath))
             {
                 string str = File.ReadAllText(filePath);
-                if ((str.Length + log.Length) > 300)
+                if ((str.Length + log.Length) > 20000000)
                 {
                     fileCounter++;
                     filePath = string.Concat("logs/rpc.log_",fileCounter,".txt").GetApplicationResourcePath();
                     using(StreamWriter _sw = File.AppendText(filePath))
                     {
-                    string fileLength = File.ReadAllText(filePath);   
-                        {
-                            _sw.WriteLine(log);
-                            _sw.Close();
-                        }
+                        _sw.WriteLine(log.Replace("\r\n"," "));
+                        _sw.Close();
                     }
                 }
                 else
                 {
                     using(StreamWriter _sw = File.AppendText(filePath))
                     {
-                        _sw.WriteLine(log);
+                        string singleLine = log.Replace(Environment.NewLine, " ");
+                        _sw.WriteLine(singleLine);
                         _sw.Close();
                     }
                 }
