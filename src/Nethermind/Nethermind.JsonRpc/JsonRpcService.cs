@@ -52,9 +52,7 @@ namespace Nethermind.JsonRpc
         private readonly ILogger _logger;
         private readonly IRpcModuleProvider _rpcModuleProvider;
         private readonly JsonSerializer _serializer;
-
-        private Dictionary<Type, JsonConverter> _converterLookup = new Dictionary<Type, JsonConverter>();
-
+        
         public JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
@@ -65,7 +63,6 @@ namespace Nethermind.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} inside {nameof(JsonRpcService)}");
                 _serializer.Converters.Add(converter);
-                _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
                 Converters.Add(converter);
             }
 
@@ -73,7 +70,6 @@ namespace Nethermind.JsonRpc
             {
                 if (_logger.IsDebug) _logger.Debug($"Registering {converter.GetType().Name} (default)");
                 _serializer.Converters.Add(converter);
-                _converterLookup.Add(converter.GetType().BaseType.GenericTypeArguments[0], converter);
                 Converters.Add(converter);
             }
         }
