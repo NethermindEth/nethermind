@@ -25,7 +25,7 @@ using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
 
 namespace Nethermind.Ssz
 {
-    public static class Merkle
+    public static partial class Merkle
     {
         public static UInt256[] ZeroHashes = new UInt256[64];
 
@@ -165,6 +165,11 @@ namespace Nethermind.Ssz
         public static void Ize(Span<byte> root, UInt256 value)
         {
             Ssz.Encode(root, value);
+        }
+        
+        public static void Ize(Span<byte> root, Sha256 value)
+        {
+            value.Bytes.AsSpan().CopyTo(root);
         }
 
         public static void Ize(Span<byte> root, Span<bool> value)
@@ -351,7 +356,18 @@ namespace Nethermind.Ssz
 
         public static void Ize(Span<byte> root, Span<UInt256> value)
         {
-            Ize(root, value, Span<UInt256>.Empty);
+            Ize(root, value, Span<Chunk>.Empty);
+        }
+        
+        public static void Ize(Span<byte> root, params Sha256[] value)
+        {
+            Span<Chunk> chunks = new UInt256[value.Length];
+            for (int i = 0; i < value.Length; i++)
+            {
+                chunks[i] = MemoryMarshal.Read<UInt256>(value[i].Bytes.AsSpan());
+            }
+            
+            Ize(root, chunks, Span<Chunk>.Empty);
         }
 
         private static void Ize(Span<byte> root, Span<Chunk> value, Span<Chunk> lastChunk, uint limit = 0)

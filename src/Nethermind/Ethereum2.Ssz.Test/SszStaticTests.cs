@@ -22,7 +22,9 @@ using System.IO;
 using System.Reflection;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using NUnit.Framework;
+using YamlDotNet.RepresentationModel;
 
 namespace Ethereum2.Ssz.Test
 {
@@ -46,7 +48,7 @@ namespace Ethereum2.Ssz.Test
 
             return "Ssz_static" + string.Join("", result);
         }
-        
+
         [Test]
         public void All_containers_tested()
         {
@@ -57,66 +59,66 @@ namespace Ethereum2.Ssz.Test
                 Assert.NotNull(GetType().GetMethod(testCaseName, BindingFlags.Public | BindingFlags.Instance), category);
             }
         }
-        
+
         [SetUp]
         public void Setup()
         {
         }
-        
+
         [Test]
         public void Ssz_static_aggregate_and_proof()
         {
 //            RunStaticTests("AggregateAndProof");
         }
-        
+
         [Test]
         public void Ssz_static_attestation()
         {
             RunStaticTests("Attestation");
         }
-        
+
         [Test]
         public void Ssz_static_attestation_data()
         {
             RunStaticTests("AttestationData");
         }
-        
+
         [Test]
         public void Ssz_static_attestation_data_and_custody_bit()
         {
             RunStaticTests("AttestationDataAndCustodyBit");
         }
-        
+
         [Test]
         public void Ssz_static_attester_slashing()
         {
             RunStaticTests("AttesterSlashing");
         }
-        
+
         [Test]
         public void Ssz_static_beacon_block()
         {
             RunStaticTests("BeaconBlock");
         }
-        
+
         [Test]
         public void Ssz_static_beacon_block_body()
         {
             RunStaticTests("BeaconBlockBody");
         }
-        
+
         [Test]
         public void Ssz_static_beacon_block_header()
         {
             RunStaticTests("BeaconBlockHeader");
         }
-        
+
         [Test]
         public void Ssz_static_beacon_state()
         {
             RunStaticTests("BeaconState");
         }
-        
+
         [Test]
         public void Ssz_static_checkpoint()
         {
@@ -128,126 +130,141 @@ namespace Ethereum2.Ssz.Test
         {
             RunStaticTests("Deposit");
         }
-        
+
         [Test]
         public void Ssz_static_deposit_data()
         {
             RunStaticTests("DepositData");
         }
-        
+
         [Test]
         public void Ssz_static_eth1_data()
         {
             RunStaticTests("Eth1Data");
         }
-        
+
         [Test]
         public void Ssz_static_fork()
         {
             RunStaticTests("Fork");
         }
-        
+
         [Test]
         public void Ssz_static_historical_batch()
         {
             RunStaticTests("HistoricalBatch");
         }
-        
+
         [Test]
         public void Ssz_static_indexed_attestation()
         {
             RunStaticTests("IndexedAttestation");
         }
-        
+
         [Test]
         public void Ssz_static_pending_attestation()
         {
             RunStaticTests("PendingAttestation");
         }
-        
+
         [Test]
         public void Ssz_static_proposer_slashing()
         {
             RunStaticTests("ProposerSlashing");
         }
-        
+
         [Test]
         public void Ssz_static_validator()
         {
             RunStaticTests("Validator");
         }
-        
+
         [Test]
         public void Ssz_static_voluntary_exit()
         {
             RunStaticTests("VoluntaryExit");
         }
 
+        private static (YamlNode rootNode, YamlNodeType nodeType) LoadValue(string file)
+        {
+            using FileStream fileStream = File.OpenRead(file); // value.yaml
+            using var input = new StreamReader(fileStream);
+            var yaml = new YamlStream();
+            yaml.Load(input);
+
+            var rootNode = yaml.Documents[0].RootNode;
+            YamlNodeType nodeType = rootNode.NodeType;
+            return (rootNode, nodeType);
+        }
+        
         private void RunStaticTests(string category)
         {
             string[] cases = Directory.GetDirectories(Path.Combine("static", category, "ssz_random"));
             foreach (string testCaseDir in cases)
             {
                 byte[] serialized = File.ReadAllBytes(Directory.GetFiles(testCaseDir)[1]);
+                (YamlNode merkleRootYaml, _) = LoadValue(Directory.GetFiles(testCaseDir)[0]); // meta.yaml
+                string expectedMerkleRootHex = ((YamlScalarNode) merkleRootYaml["root"]).Value;
+                Sha256 expectedMerkleRoot = new Sha256(Bytes.FromHexString(expectedMerkleRootHex));
                 Console.WriteLine(category + "." + testCaseDir);
                 switch (category)
                 {
                     case "Attestation":
-                        TestAttestationSsz(serialized, testCaseDir);
+                        TestAttestationSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "AttestationData":
-                        TestAttestationDataSsz(serialized, testCaseDir);
+                        TestAttestationDataSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "AttestationDataAndCustodyBit":
-                        TestAttestationDataAndCustodyBitSsz(serialized, testCaseDir);
+                        TestAttestationDataAndCustodyBitSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "AttesterSlashing":
-                        TestAttesterSlashingSsz(serialized, testCaseDir);
+                        TestAttesterSlashingSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "BeaconBlock":
-                        TestBeaconBlockSsz(serialized, testCaseDir);
+                        TestBeaconBlockSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "BeaconBlockBody":
-                        TestBeaconBlockBodySsz(serialized, testCaseDir);
+                        TestBeaconBlockBodySsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "BeaconBlockHeader":
-                        TestBeaconBlockHeaderSsz(serialized, testCaseDir);
+                        TestBeaconBlockHeaderSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "BeaconState":
-                        TestBeaconStateSsz(serialized, testCaseDir);
+                        TestBeaconStateSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "Checkpoint":
-                        TestCheckpointSsz(serialized, testCaseDir);
+                        TestCheckpointSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "Deposit":
-                        TestDepositSsz(serialized, testCaseDir);
+                        TestDepositSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "DepositData":
-                        TestDepositDataSsz(serialized, testCaseDir);
+                        TestDepositDataSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "Eth1Data":
-                        TestEth1DataSsz(serialized, testCaseDir);
+                        TestEth1DataSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "Fork":
-                        TestForkSsz(serialized, testCaseDir);
+                        TestForkSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "HistoricalBatch":
-                        TestHistoricBatchSsz(serialized, testCaseDir);
+                        TestHistoricBatchSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "IndexedAttestation":
-                        TestIndexedAttestationSsz(serialized, testCaseDir);
+                        TestIndexedAttestationSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "PendingAttestation":
-                        TestPendingAttestationSsz(serialized, testCaseDir);
+                        TestPendingAttestationSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "ProposerSlashing":
-                        TestProposerSlashingSsz(serialized, testCaseDir);
+                        TestProposerSlashingSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "Validator":
-                        TestValidatorSsz(serialized, testCaseDir);
+                        TestValidatorSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     case "VoluntaryExit":
-                        TestVoluntaryExitSsz(serialized, testCaseDir);
+                        TestVoluntaryExitSsz(serialized, expectedMerkleRoot, testCaseDir);
                         break;
                     default:
                         throw new InvalidOperationException($"Unknown test case {category}");
@@ -255,156 +272,251 @@ namespace Ethereum2.Ssz.Test
             }
         }
 
-        private static void TestAttestationSsz(byte[] serialized, string testCaseDir)
+        private static void TestAttestationSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             Attestation container = Nethermind.Ssz.Ssz.DecodeAttestation(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+
+            // byte[] merkleRootBytes = new byte[32]; 
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestAttestationDataSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestAttestationDataSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             AttestationData container = Nethermind.Ssz.Ssz.DecodeAttestationData(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestAttestationDataAndCustodyBitSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestAttestationDataAndCustodyBitSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             AttestationDataAndCustodyBit container = Nethermind.Ssz.Ssz.DecodeAttestationDataAndCustodyBit(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestAttesterSlashingSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestAttesterSlashingSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             AttesterSlashing container = Nethermind.Ssz.Ssz.DecodeAttesterSlashing(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestBeaconBlockSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestBeaconBlockSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             BeaconBlock container = Nethermind.Ssz.Ssz.DecodeBeaconBlock(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestBeaconBlockBodySsz(byte[] serialized, string testCaseDir)
+
+        private static void TestBeaconBlockBodySsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             BeaconBlockBody container = Nethermind.Ssz.Ssz.DecodeBeaconBlockBody(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestBeaconBlockHeaderSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestBeaconBlockHeaderSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             BeaconBlockHeader container = Nethermind.Ssz.Ssz.DecodeBeaconBlockHeader(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestBeaconStateSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestBeaconStateSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             BeaconState container = Nethermind.Ssz.Ssz.DecodeBeaconState(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
 
-        private static void TestCheckpointSsz(byte[] serialized, string testCaseDir)
+        private static void TestCheckpointSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             Checkpoint container = Nethermind.Ssz.Ssz.DecodeCheckpoint(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestDepositSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestDepositSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             Deposit container = Nethermind.Ssz.Ssz.DecodeDeposit(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestDepositDataSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestDepositDataSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             DepositData container = Nethermind.Ssz.Ssz.DecodeDepositData(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestEth1DataSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestEth1DataSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             Eth1Data container = Nethermind.Ssz.Ssz.DecodeEth1Data(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            byte[] merkleRootBytes = new byte[32];
+            Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestForkSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestForkSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             Fork container = Nethermind.Ssz.Ssz.DecodeFork(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestHistoricBatchSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestHistoricBatchSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             HistoricalBatch container = Nethermind.Ssz.Ssz.DecodeHistoricalBatch(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestIndexedAttestationSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestIndexedAttestationSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             IndexedAttestation deposit = Nethermind.Ssz.Ssz.DecodeIndexedAttestation(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, deposit);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestPendingAttestationSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestPendingAttestationSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             PendingAttestation deposit = Nethermind.Ssz.Ssz.DecodePendingAttestation(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, deposit);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestProposerSlashingSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestProposerSlashingSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             ProposerSlashing deposit = Nethermind.Ssz.Ssz.DecodeProposerSlashing(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, deposit);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestValidatorSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestValidatorSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             Validator deposit = Nethermind.Ssz.Ssz.DecodeValidator(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, deposit);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
-        
-        private static void TestVoluntaryExitSsz(byte[] serialized, string testCaseDir)
+
+        private static void TestVoluntaryExitSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
             VoluntaryExit deposit = Nethermind.Ssz.Ssz.DecodeVoluntaryExit(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, deposit);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
+            
+            // byte[] merkleRootBytes = new byte[32];
+            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
     }
 }
