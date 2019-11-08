@@ -22,12 +22,18 @@ namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcConfig : IConfig
     {
-        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startuo. Configure host nad port if default values do not work for you.", DefaultValue = "false")]
+        [ConfigItem(Description = "Defines whether the JSON RPC service is enabled on node startup. Configure host nad port if default values do not work for you.", DefaultValue = "false")]
         bool Enabled { get; set; }
 
         [ConfigItem(Description = "Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "\"127.0.0.1\"")]
         string Host { get; set; }
-        
+
+        [ConfigItem(Description = "Path to the file with stored RPC requests.", DefaultValue = "\"logs/rpc.log_1.txt\"")]
+        string RpcLogFilePath { get; set; }
+
+        [ConfigItem(Description = "Defines whether the JSON RPC logging is enabled on node startup", DefaultValue = "false")]
+        bool RpcLoggingEnabled { get; set; }
+
         [ConfigItem(Description = "Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "8545")]
         int Port { get; set; }
         

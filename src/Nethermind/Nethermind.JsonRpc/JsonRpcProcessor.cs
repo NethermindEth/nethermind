@@ -38,13 +38,20 @@ namespace Nethermind.JsonRpc
         private readonly IJsonSerializer _jsonSerializer;
         private JsonSerializer _traceSerializer;
         private readonly ILogger _logger;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, ILogManager logManager)
+        public JsonRpcProcessor(IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
         {
             _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             
+            if(_jsonRpcConfig.RpcLoggingEnabled == true)
+            {
+                File.AppendText(_jsonRpcConfig.RpcLogFilePath.GetApplicationResourcePath());
+            }
+
             BuildTraceJsonSerializer();
         }
 
@@ -67,8 +74,47 @@ namespace Nethermind.JsonRpc
             _traceSerializer = JsonSerializer.Create(jsonSettings);
         }
 
+        string filePath;
+        int fileCounter = 1;
+
+        private void rpcLogger(string log)
+        {
+            filePath = _jsonRpcConfig.RpcLogFilePath.GetApplicationResourcePath();
+            FileInfo fileInfo = new FileInfo(filePath);
+            filePath = string.Concat("logs/rpc.log_",fileCounter,".txt").GetApplicationResourcePath();
+            if (File.Exists(filePath))
+            {
+                string str = File.ReadAllText(filePath);
+                if ((str.Length + log.Length) > 300)
+                {
+                    fileCounter++;
+                    filePath = string.Concat("logs/rpc.log_",fileCounter,".txt").GetApplicationResourcePath();
+                    using(StreamWriter _sw = File.AppendText(filePath))
+                    {
+                    string fileLength = File.ReadAllText(filePath);   
+                        {
+                            _sw.WriteLine(log);
+                            _sw.Close();
+                        }
+                    }
+                }
+                else
+                {
+                    using(StreamWriter _sw = File.AppendText(filePath))
+                    {
+                        _sw.WriteLine(log);
+                        _sw.Close();
+                    }
+                }
+            }   
+        }
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
+            if(_jsonRpcConfig.RpcLoggingEnabled == true)
+            {
+                rpcLogger(request);
+            }
+            
             Stopwatch stopwatch = Stopwatch.StartNew();
             (JsonRpcRequest Model, List<JsonRpcRequest> Collection) rpcRequest;
             try
