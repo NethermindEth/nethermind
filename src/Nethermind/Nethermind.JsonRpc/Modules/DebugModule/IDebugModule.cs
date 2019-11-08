@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = false)]
-        ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
+        ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter);
         
         [JsonRpcMethod(Description = "", IsImplemented = false, IsReadOnly = true)]
         ResultWrapper<GcStats> debug_gcStats();

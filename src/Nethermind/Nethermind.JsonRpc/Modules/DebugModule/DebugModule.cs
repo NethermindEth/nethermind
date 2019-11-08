@@ -147,7 +147,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter)
+        public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter)
         {
             throw new NotImplementedException();
         }

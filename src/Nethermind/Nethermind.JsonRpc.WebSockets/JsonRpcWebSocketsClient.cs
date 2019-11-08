@@ -42,14 +42,15 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public async Task ReceiveAsync(byte[] data)
         {
-            var result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data));
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync(Encoding.UTF8.GetString(data));
             if (result.IsCollection)
             {
                 await SendRawAsync(_jsonSerializer.Serialize(result.Responses));
-                return;
             }
-
-            await SendRawAsync(_jsonSerializer.Serialize(result.Responses.SingleOrDefault()));
+            else
+            {
+                await SendRawAsync(_jsonSerializer.Serialize(result.Response));
+            }
         }
 
         public Task SendRawAsync(string data) => _client.SendRawAsync(data);

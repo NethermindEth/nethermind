@@ -29,7 +29,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _jsonRpcProcessor = new JsonRpcProcessor(Substitute.For<IJsonRpcService>(), new EthereumJsonSerializer(), LimboLogs.Instance);
+            _jsonRpcProcessor = new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),  new EthereumJsonSerializer(), new JsonRpcConfig(), LimboLogs.Instance);
         }
 
         private JsonRpcProcessor _jsonRpcProcessor;
