@@ -28,11 +28,11 @@ namespace Nethermind.JsonRpc
         [ConfigItem(Description = "Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "\"127.0.0.1\"")]
         string Host { get; set; }
 
-        [ConfigItem(Description = "Path to the file with stored RPC requests.", DefaultValue = "\"logs/rpc.log_1.txt\"")]
-        string RpcLogFilePath { get; set; }
+        [ConfigItem(Description = "Base file path for diagnostic JSON RPC recorder.", DefaultValue = "\"logs/rpc.log_1.txt\"")]
+        string RpcRecorderBaseFilePath { get; set; }
 
-        [ConfigItem(Description = "Defines whether the JSON RPC logging is enabled on node startup", DefaultValue = "false")]
-        bool RpcLoggingEnabled { get; set; }
+        [ConfigItem(Description = "Defines whether the JSON RPC diagnostic recording is enabled on node startup", DefaultValue = "false")]
+        bool RpcRecorderEnabled { get; set; }
 
         [ConfigItem(Description = "Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.", DefaultValue = "8545")]
         int Port { get; set; }
