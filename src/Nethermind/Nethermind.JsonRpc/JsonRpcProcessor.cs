@@ -20,11 +20,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.Contracts;
 using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -77,7 +74,7 @@ namespace Nethermind.JsonRpc
 
             _traceSerializer = JsonSerializer.Create(jsonSettings);
         }
-
+        
         public async Task<JsonRpcResult> ProcessAsync(string request)
         {
             if (_jsonRpcConfig.RpcRecorderEnabled)
