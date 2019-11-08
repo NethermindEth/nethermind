@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -44,7 +45,7 @@ namespace Nethermind.Core.Json
             new NullableBigIntegerConverter(),
             new PublicKeyConverter()
         };
-        
+
         private static IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
         {
             new AddressConverter(),
@@ -59,21 +60,21 @@ namespace Nethermind.Core.Json
             new NullableBigIntegerConverter(NumberConversion.Decimal),
             new PublicKeyConverter()
         };
-        
+
         private static JsonSerializerSettings _settings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.None,
             Converters = BasicConverters
         };
-        
+
         private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
         {
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.Indented,
             Converters = ReadableConverters
         };
-        
+
         public T DeserializeAnonymousType<T>(string json, T definition)
         {
             throw new NotSupportedException();
@@ -98,11 +99,11 @@ namespace Nethermind.Core.Json
 
                 return (default, array.ToObject<List<T>>(_serializer));
             }
-            
+
             UpdateParams(token);
             return (token.ToObject<T>(_serializer), null);
         }
-        
+
         private void UpdateParams(JToken token)
         {
             var paramsToken = token.SelectToken("params");
@@ -120,26 +121,14 @@ namespace Nethermind.Core.Json
 //                }
             }
             
-            var values = new List<string>();
-            foreach (var value in paramsToken.Value<IEnumerable<object>>())
+            JArray arrayToken = (JArray)paramsToken;
+            for (int i = 0; i < arrayToken.Count; i++)
             {
-                var valueString = value?.ToString();
-                if (valueString == null)
+                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
                 {
-                    values.Add($"\"null\"");
-                    continue;
+                    arrayToken[i].Replace(JToken.Parse(Serialize(arrayToken[i].Value<object>().ToString())));
                 }
-                
-                if (valueString.StartsWith("{") || valueString.StartsWith("["))
-                {
-                    values.Add(Serialize(valueString));
-                    continue;
-                }
-                values.Add($"\"{valueString}\"");
             }
-
-            var json = $"[{string.Join(",", values)}]";
-            paramsToken.Replace(JToken.Parse(json));
         }
 
         public string Serialize<T>(T value, bool indented = false)
@@ -151,14 +140,14 @@ namespace Nethermind.Core.Json
         {
             BasicConverters.Add(converter);
             ReadableConverters.Add(converter);
-            
+
             _readableSettings = new JsonSerializerSettings
             {
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.Indented,
                 Converters = ReadableConverters
             };
-            
+
             _settings = new JsonSerializerSettings
             {
                 NullValueHandling = NullValueHandling.Ignore,
