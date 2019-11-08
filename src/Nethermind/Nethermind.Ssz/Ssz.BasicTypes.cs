@@ -16,12 +16,10 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Collections;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Ssz
@@ -29,42 +27,93 @@ namespace Nethermind.Ssz
     /// <summary>
     /// https://github.com/ethereum/eth2.0-specs/blob/dev/specs/simple-serialize.md#simpleserialize-ssz
     /// </summary>
-    public static class Ssz
+    public static partial class Ssz
     {
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, byte[] value, ref int offset)
+        {
+            Encode(span.Slice(offset, value.Length), value);
+            offset += value.Length;
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, int value, ref int offset)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, sizeof(int)), value);
+            offset += sizeof(int);
+        }
+        
+        private static void Encode(Span<byte> span, uint value, ref int offset)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset, sizeof(uint)), value);
+            offset += sizeof(uint);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, ulong value, ref int offset)
+        {
+            Encode(span.Slice(offset, sizeof(ulong)), value);
+            offset += sizeof(ulong);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void Encode(Span<byte> span, bool value, ref int offset)
+        {
+            Encode(span.Slice(offset, 1), value);
+            offset ++;
+        }
+        
+        private static bool DecodeBool(Span<byte> span, ref int offset)
+        {
+            return span[offset++] == 1;
+        }
+        
         public static void Encode(Span<byte> span, byte value)
         {
             span[0] = value;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, ushort value)
         {
             BinaryPrimitives.WriteUInt16LittleEndian(span, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, int value)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(span, (uint)value);
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, uint value)
         {
             BinaryPrimitives.WriteUInt32LittleEndian(span, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, ulong value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span, value);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, UInt128 value)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(0, 8), value.S0);
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(8, 8), value.S1);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, UInt256 value)
         {
             value.ToLittleEndian(span);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static void Encode(Span<byte> span, bool value)
+        {
+            span[0] = Encode(value);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -77,7 +126,7 @@ namespace Nethermind.Ssz
         {
             if (span.Length != value.Length)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<bool[]>(span.Length, value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -91,7 +140,7 @@ namespace Nethermind.Ssz
             const int typeSize = 32;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<UInt256[]>(span.Length, value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -105,7 +154,7 @@ namespace Nethermind.Ssz
             const int typeSize = 16;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<UInt128[]>(span.Length, value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
@@ -119,7 +168,7 @@ namespace Nethermind.Ssz
             const int typeSize = 8;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<ulong[]>(span.Length, value.Length);
             }
 
             MemoryMarshal.Cast<ulong, byte>(value).CopyTo(span);
@@ -130,7 +179,7 @@ namespace Nethermind.Ssz
             const int typeSize = 4;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<uint[]>(span.Length, value.Length);
             }
 
             MemoryMarshal.Cast<uint, byte>(value).CopyTo(span);
@@ -141,30 +190,39 @@ namespace Nethermind.Ssz
             const int typeSize = 2;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<ushort[]>(span.Length, value.Length);
             }
 
             MemoryMarshal.Cast<ushort, byte>(value).CopyTo(span);
         }
-
+        
+        private static void Encode(Span<byte> span, Span<byte> value, ref int offset, ref int dynamicOffset)
+        {
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            offset += VarOffsetSize;
+            value.CopyTo(span.Slice(dynamicOffset, value.Length));
+            dynamicOffset += value.Length;
+        }
+        
         [Todo(Improve.Refactor, "Not sure if this will be useful for readability")]
         public static void Encode(Span<byte> span, Span<byte> value)
         {
             const int typeSize = 1;
             if (span.Length != value.Length * typeSize)
             {
-                ThrowInvalidTargetLength(span.Length, value.Length);
+                ThrowTargetLength<byte[]>(span.Length, value.Length);
             }
 
             value.CopyTo(span);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool DecodeBool(Span<byte> span)
         {
             return span[0] != 0;
         }
 
-        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static byte DecodeByte(Span<byte> span)
         {
             const int expectedLength = 1;
@@ -187,6 +245,7 @@ namespace Nethermind.Ssz
             return BinaryPrimitives.ReadUInt16LittleEndian(span);
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static uint DecodeUInt(Span<byte> span)
         {
             const int expectedLength = 4;
@@ -198,6 +257,7 @@ namespace Nethermind.Ssz
             return BinaryPrimitives.ReadUInt32LittleEndian(span);
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ulong DecodeULong(Span<byte> span)
         {
             const int expectedLength = 8;
@@ -207,6 +267,14 @@ namespace Nethermind.Ssz
             }
             
             return BinaryPrimitives.ReadUInt64LittleEndian(span);
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong DecodeULong(Span<byte> span, ref int offset)
+        {
+            ulong result = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, sizeof(ulong)));
+            offset += sizeof(ulong);
+            return result;
         }
         
         public static UInt128 DecodeUInt128(Span<byte> span)
@@ -311,14 +379,35 @@ namespace Nethermind.Ssz
             return span;
         }
         
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static byte[] DecodeBytes32(Span<byte> span, ref int offset)
+        {
+            byte[] bytes = span.Slice(offset, 32).ToArray();
+            offset += 32;
+            return bytes;
+        }
+        
         public static Span<bool> DecodeBools(Span<byte> span)
         {
             return MemoryMarshal.Cast<byte, bool>(span);
         }
 
-        private static void ThrowInvalidTargetLength(int targetLength, int expectedLength)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ThrowTargetLength<T>(int targetLength, int expectedLength)
         {
-            throw new InvalidDataException($"Invalid target length in SSZ encoding. Target length is {targetLength} and expected length is {expectedLength}.");
+            throw new InvalidDataException($"Invalid target length in SSZ encoding of {nameof(T)}. Target length is {targetLength} and expected length is {expectedLength}.");
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ThrowSourceLength<T>(int sourceLength, int expectedLength)
+        {
+            throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is {expectedLength}.");
+        }
+        
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ThrowInvalidSourceArrayLength<T>(int sourceLength, int expectedItemLength)
+        {
+            throw new InvalidDataException($"Invalid source length in SSZ decoding of {nameof(T)}. Source length is {sourceLength} and expected length is a multiple of {expectedItemLength}.");
         }
     }
 }

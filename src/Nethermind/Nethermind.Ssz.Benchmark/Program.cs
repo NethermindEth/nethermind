@@ -24,8 +24,10 @@ namespace Nethermind.Ssz.Benchmarks
     {
         public static void Main(string[] args)
         {
-            BenchmarkRunner.Run<SszUIntBenchmarks>();
-            BenchmarkRunner.Run<SszBoolBenchmarks>();
+//            BenchmarkRunner.Run<SszUIntBenchmarks>();
+//            BenchmarkRunner.Run<SszBoolBenchmarks>();
+            BenchmarkRunner.Run<SszBeaconBlockHeaderBenchmark>();
+            BenchmarkRunner.Run<SszBeaconBlockBodyBenchmark>();
         }
     }
 }

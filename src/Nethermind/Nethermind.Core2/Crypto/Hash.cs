@@ -19,16 +19,17 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.HashLib;
 
-namespace Nethermind.Core2
+namespace Nethermind.Core2.Crypto
 {
     [DebuggerStepThrough]
     public class Sha256 : IEquatable<Sha256>
     {
+        public const int SszLength = 32;
+        
         private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();  
 
         internal const int Size = 32;

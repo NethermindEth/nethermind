@@ -15,7 +15,11 @@
 
     <ItemGroup>
         <EmbeddedResource Include="..\..\eth2.0-spec-tests\tests\general\phase0\ssz_generic\**\*.*">
-            <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+            <Link>generic\%(RecursiveDir)%(FileName)%(Extension)</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </EmbeddedResource>
+        <EmbeddedResource Include="..\..\eth2.0-spec-tests\tests\mainnet\phase0\ssz_static\**\*.*">
+            <Link>static\%(RecursiveDir)%(FileName)%(Extension)</Link>
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </EmbeddedResource>
     </ItemGroup>
