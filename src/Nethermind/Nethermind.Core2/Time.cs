@@ -22,5 +22,9 @@ namespace Nethermind.Core2
         public const uint SecondsPerDay = 86400;
         
         public static int SlotsPerHistoricalRoot = 8192;
+        
+        public static int EpochsPerHistoricalVector = 65536;
+        
+        public static int EpochsPerSlashingsVector = 8192;
     }
 }

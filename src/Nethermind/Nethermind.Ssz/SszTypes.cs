@@ -61,6 +61,14 @@ namespace Nethermind.Ssz
             Encode(span, value.Amount);
         }
         
+        public static void Encode(Span<byte> span, Gwei[] value)
+        {
+            for (int i = 0; i < value.Length; i++)
+            {
+                Encode(span.Slice(i * Gwei.SszLength, Gwei.SszLength), value[i].Amount);    
+            }
+        }
+        
         public static Gwei DecodeGwei(Span<byte> span)
         {
             return new Gwei(DecodeULong(span));

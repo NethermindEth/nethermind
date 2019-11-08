@@ -63,15 +63,15 @@ namespace Nethermind.Core2.Containers
         public Slot Slot { get; set; }
         public Fork Fork { get; set; }
         public BeaconBlockHeader LatestBlockHeader { get; set; }
-        public Sha256[] BlockRoots { get; set; }
-        public Sha256[] StateRoots { get; set; }
+        public Sha256[] BlockRoots { get; } = new Sha256[Time.SlotsPerHistoricalRoot]; 
+        public Sha256[] StateRoots { get; } = new Sha256[Time.SlotsPerHistoricalRoot];
         public Sha256[] HistoricalRoots { get; set; }
         public Eth1Data Eth1Data { get; set; }
         public Eth1Data EthDataVotes { get; set; }
         public ulong Eth1DepositIndex { get; set; }
         public Validator[] Validators { get; set; }
         public Gwei[] Balances { get; set; }
-        public Sha256 RandaoMixes { get; set; }
+        public Sha256[] RandaoMixes { get; } = new Sha256[Time.EpochsPerHistoricalVector];
         public Gwei[] Slashings { get; set; }
         public PendingAttestation[] PreviousEpochAttestations { get; set; }
         public PendingAttestation[] CurrentEpochAttestations { get; set; }
