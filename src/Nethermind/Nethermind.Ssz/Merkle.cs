@@ -16,22 +16,16 @@
 
 using System;
 using System.Buffers.Binary;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
-using System.Security.Cryptography;
-using System.Text;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
 
 namespace Nethermind.Ssz
 {
-    public class Merkle
+    public static class Merkle
     {
         public static UInt256[] ZeroHashes = new UInt256[64];
 
