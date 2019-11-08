@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Extensions;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -381,7 +382,65 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_state_there_and_back()
         {
-            throw new NotSupportedException();
+            Eth1Data eth1Data = new Eth1Data();
+            eth1Data.BlockHash = Sha256.OfAnEmptyString;
+            eth1Data.DepositCount = 1;
+            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            
+            BeaconBlockHeader beaconBlockHeader = new BeaconBlockHeader();
+            beaconBlockHeader.Signature = BlsSignature.TestSig1;
+            beaconBlockHeader.Slot = new Slot(14);
+            beaconBlockHeader.BodyRoot = Sha256.OfAnEmptyString;
+            beaconBlockHeader.ParentRoot = Sha256.OfAnEmptyString;
+            beaconBlockHeader.StateRoot = Sha256.OfAnEmptyString;
+            
+            BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
+            beaconBlockBody.RandaoReversal = BlsSignature.TestSig1;
+            beaconBlockBody.Eth1Data = eth1Data;
+            beaconBlockBody.Graffiti = new byte[32];
+            beaconBlockBody.ProposerSlashings = new ProposerSlashing[2];
+            beaconBlockBody.AttesterSlashings = new AttesterSlashing[3];
+            beaconBlockBody.Attestations = new Attestation[4];
+            beaconBlockBody.Deposits = new Deposit[5];
+            beaconBlockBody.VoluntaryExits = new VoluntaryExit[6];
+            
+            BeaconBlock beaconBlock = new BeaconBlock();
+            beaconBlock.Body = beaconBlockBody;
+            beaconBlock.Signature = BlsSignature.TestSig1;
+            beaconBlock.Slot = new Slot(1);
+            beaconBlock.ParentRoot = Sha256.OfAnEmptyString;
+            beaconBlock.StateRoot = Sha256.OfAnEmptyString;
+            
+            BeaconState container = new BeaconState();
+            container.Balances = new Gwei[3];
+            container.Fork = new Fork(new ForkVersion(5), new ForkVersion(7), new Epoch(3));
+            container.Slashings = new Gwei[Time.EpochsPerSlashingsVector];
+            container.Slot = new Slot(1);
+            container.Validators = new Validator[7];
+            container.BlockRoots = new Sha256[Time.SlotsPerHistoricalRoot];
+            container.StateRoots = new Sha256[Time.SlotsPerHistoricalRoot];
+            container.Eth1Data = eth1Data;
+            container.Eth1DataVotes = new Eth1Data[2];
+            container.PreviousJustifiedCheckpoint = new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString);
+            container.CurrentJustifiedCheckpoint = new Checkpoint(new Epoch(5), Sha256.OfAnEmptyString);
+            container.FinalizedCheckpoint = new Checkpoint(new Epoch(7), Sha256.OfAnEmptyString);
+            container.GenesisTime = 123;
+            container.HistoricalRoots = new Sha256[13];
+            container.JustificationBits = 9;
+            container.RandaoMixes = new Sha256[Time.EpochsPerHistoricalVector];
+            container.PreviousEpochAttestations = new PendingAttestation[1];
+            container.CurrentEpochAttestations = new PendingAttestation[11];
+            container.Eth1DepositIndex = 1234;
+            container.LatestBlockHeader = beaconBlockHeader;
+
+            Span<byte> encoded = new byte[BeaconState.SszLength(container)];
+            Ssz.Encode(encoded, container);
+            BeaconState decoded = Ssz.DecodeBeaconState(encoded);
+            Assert.AreEqual(container, decoded);
+            
+            Span<byte> encodedAgain = new byte[BeaconState.SszLength(decoded)];
+            Ssz.Encode(encodedAgain, decoded);
+            Assert.True(Bytes.AreEqual(encodedAgain, encoded));
         }
     }
 }

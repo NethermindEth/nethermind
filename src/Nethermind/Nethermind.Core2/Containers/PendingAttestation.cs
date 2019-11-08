@@ -30,6 +30,11 @@ namespace Nethermind.Core2.Containers
         
         public static int SszLength(PendingAttestation value)
         {
+            if (value == null)
+            {
+                return 0;
+            }
+            
             return SszDynamicOffset + value.AggregationBits.Length;
         }
         

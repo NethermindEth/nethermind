@@ -66,6 +66,13 @@ namespace Nethermind.Ssz
             Encode(span.Slice(Epoch.SszLength), container.Root);
         }
 
+        public static Checkpoint DecodeCheckpoint(Span<byte> span, ref int offset)
+        {
+            Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, Checkpoint.SszLength));
+            offset += Checkpoint.SszLength;
+            return checkpoint;
+        }
+        
         public static Checkpoint DecodeCheckpoint(Span<byte> span)
         {
             if (span.Length != Checkpoint.SszLength)
@@ -86,6 +93,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<Validator>(span.Length, Validator.SszLength);
             }
 
+            if (container == null)
+            {
+                return;
+            }
+            
             int offset = 0;
             Encode(span.Slice(0, BlsPublicKey.SszLength), container.PublicKey);
             offset += BlsPublicKey.SszLength;
@@ -130,6 +142,23 @@ namespace Nethermind.Ssz
             container.WithdrawableEpoch = DecodeEpoch(span.Slice(offset));
 
             return container;
+        }
+        
+        public static Validator[] DecodeValidators(Span<byte> span)
+        {
+            if (span.Length % Validator.SszLength != 0)
+            {
+                ThrowInvalidSourceArrayLength<Validator>(span.Length, Validator.SszLength);
+            }
+
+            int count = span.Length / Validator.SszLength;
+            Validator[] containers = new Validator[count];
+            for (int i = 0; i < count; i++)
+            {
+                containers[i] = DecodeValidator(span.Slice(i * Validator.SszLength, Validator.SszLength));
+            }
+
+            return containers;
         }
 
         public static void Encode(Span<byte> span, AttestationData container)
@@ -247,6 +276,11 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<PendingAttestation>(span.Length, PendingAttestation.SszLength(container));
             }
 
+            if (container == null)
+            {
+                return;
+            }
+            
             int offset = 0;
             int dynamicOffset = PendingAttestation.SszDynamicOffset;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
@@ -275,6 +309,11 @@ namespace Nethermind.Ssz
 
         public static PendingAttestation DecodePendingAttestation(Span<byte> span)
         {
+            if (span.Length == 0)
+            {
+                return null;
+            }
+            
             int offset = 0;
             int dynamicOffset = (int) DecodeUInt(span.Slice(0, VarOffsetSize));
             int length = span.Length - dynamicOffset;
@@ -290,6 +329,32 @@ namespace Nethermind.Ssz
 
             return pendingAttestation;
         }
+        
+        public static PendingAttestation[] DecodePendingAttestations(Span<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return Array.Empty<PendingAttestation>();
+            }
+            
+            int offset = 0;
+            int dynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(0, VarOffsetSize));
+            offset += VarOffsetSize;
+
+            int itemsCount = dynamicOffset / VarOffsetSize;
+            PendingAttestation[] containers = new PendingAttestation[itemsCount];
+            for (int i = 0; i < itemsCount; i++)
+            {
+                int nextDynamicOffset = i == itemsCount - 1 ? span.Length : BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
+                int length = nextDynamicOffset - dynamicOffset;
+                PendingAttestation container = DecodePendingAttestation(span.Slice(dynamicOffset, length));
+                containers[i] = container;
+                dynamicOffset = nextDynamicOffset;
+                offset += VarOffsetSize;
+            }
+
+            return containers;
+        }
 
         public static void Encode(Span<byte> span, Eth1Data container)
         {
@@ -298,11 +363,23 @@ namespace Nethermind.Ssz
                 ThrowInvalidTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             }
 
+            if (container == null)
+            {
+                return;
+            }
+
             Encode(span.Slice(0, Sha256.SszLength), container.DepositRoot);
             Encode(span.Slice(Sha256.SszLength, sizeof(ulong)), container.DepositCount);
             Encode(span.Slice(Sha256.SszLength + sizeof(ulong)), container.BlockHash);
         }
 
+        public static Eth1Data DecodeEth1Data(Span<byte> span, ref int offset)
+        {
+            Eth1Data eth1Data = DecodeEth1Data(span.Slice(offset, Eth1Data.SszLength));
+            offset += Eth1Data.SszLength;
+            return eth1Data;
+        }
+        
         public static Eth1Data DecodeEth1Data(Span<byte> span)
         {
             if (span.Length != Eth1Data.SszLength)
@@ -315,6 +392,23 @@ namespace Nethermind.Ssz
             container.DepositCount = DecodeULong(span.Slice(Sha256.SszLength, sizeof(ulong)));
             container.BlockHash = DecodeSha256(span.Slice(Sha256.SszLength + sizeof(ulong), Sha256.SszLength));
             return container;
+        }
+        
+        public static Eth1Data[] DecodeEth1Datas(Span<byte> span)
+        {
+            if (span.Length % Eth1Data.SszLength != 0)
+            {
+                ThrowInvalidSourceArrayLength<Eth1Data>(span.Length, Eth1Data.SszLength);
+            }
+
+            int count = span.Length / Eth1Data.SszLength;
+            Eth1Data[] containers = new Eth1Data[count];
+            for (int i = 0; i < count; i++)
+            {
+                containers[i] = DecodeEth1Data(span.Slice(i * Eth1Data.SszLength, Eth1Data.SszLength));
+            }
+
+            return containers;
         }
 
         public static void Encode(Span<byte> span, HistoricalBatch container)
@@ -396,6 +490,13 @@ namespace Nethermind.Ssz
             Encode(span.Slice(offset, BlsSignature.SszLength), container.Signature);
         }
 
+        public static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span, ref int offset)
+        {
+            BeaconBlockHeader beaconBlockHeader = DecodeBeaconBlockHeader(span.Slice(offset, BeaconBlockHeader.SszLength));
+            offset += BeaconBlockHeader.SszLength;
+            return beaconBlockHeader;
+        }
+        
         public static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span)
         {
             if (span.Length != BeaconBlockHeader.SszLength)
@@ -501,6 +602,19 @@ namespace Nethermind.Ssz
             for (int i = 0; i < containers.Length; i++)
             {
                 Encode(span.Slice(i * Deposit.SszLength, Deposit.SszLength), containers[i]);
+            }
+        }
+
+        public static void Encode(Span<byte> span, Eth1Data[] containers)
+        {
+            if (span.Length != Eth1Data.SszLength * containers.Length)
+            {
+                ThrowInvalidTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
+            }
+
+            for (int i = 0; i < containers.Length; i++)
+            {
+                Encode(span.Slice(i * Eth1Data.SszLength, Eth1Data.SszLength), containers[i]);
             }
         }
         
@@ -820,7 +934,7 @@ namespace Nethermind.Ssz
             offset += Epoch.SszLength;
             container.ValidatorIndex = DecodeValidatorIndex(span.Slice(offset, ValidatorIndex.SszLength));
             offset += ValidatorIndex.SszLength;
-            container.Signature = DecodeBlsSignature(span.Slice(offset));
+            container.Signature = DecodeBlsSignature(span, ref offset);
             return container;
         }
 
@@ -884,22 +998,16 @@ namespace Nethermind.Ssz
         {
             BeaconBlockBody container = new BeaconBlockBody();
             int offset = 0;
-            container.RandaoReversal = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
-            offset += BlsSignature.SszLength;
-            container.Eth1Data = DecodeEth1Data(span.Slice(offset, Eth1Data.SszLength));
-            offset += Eth1Data.SszLength;
+            container.RandaoReversal = DecodeBlsSignature(span, ref offset);
+            container.Eth1Data = DecodeEth1Data(span, ref offset);
             container.Graffiti = DecodeBytes(span.Slice(offset, 32)).ToArray();
             offset += 32;
 
-            int dynamicOffset1 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
-            offset += VarOffsetSize;
-            int dynamicOffset2 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
-            offset += VarOffsetSize;
-            int dynamicOffset3 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
-            offset += VarOffsetSize;
-            int dynamicOffset4 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
-            offset += VarOffsetSize;
-            int dynamicOffset5 = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset2);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset3);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset4);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset5);
 
             int length1 = dynamicOffset2 - dynamicOffset1;
             int length2 = dynamicOffset3 - dynamicOffset2;
@@ -943,17 +1051,12 @@ namespace Nethermind.Ssz
             BeaconBlock beaconBlock = new BeaconBlock();
 
             int offset = 0;
-            beaconBlock.Slot = DecodeSlot(span.Slice(offset, Slot.SszLength));
-            offset += Slot.SszLength;
-            beaconBlock.ParentRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
-            offset += Sha256.SszLength;
-            beaconBlock.StateRoot = DecodeSha256(span.Slice(offset, Sha256.SszLength));
-            offset += Sha256.SszLength;
-            offset += VarOffsetSize;
-            beaconBlock.Signature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
-            offset += BlsSignature.SszLength;
-            beaconBlock.Body = DecodeBeaconBlockBody(span.Slice(offset));
-
+            beaconBlock.Slot = DecodeSlot(span, ref offset);
+            beaconBlock.ParentRoot = DecodeSha256(span, ref offset);
+            beaconBlock.StateRoot = DecodeSha256(span, ref offset);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
+            beaconBlock.Signature = DecodeBlsSignature(span, ref offset);
+            beaconBlock.Body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
             return beaconBlock;
         }
 
@@ -986,63 +1089,103 @@ namespace Nethermind.Ssz
             offset += VarOffsetSize;
             Encode(span.Slice(offset, Eth1Data.SszLength), container.Eth1Data);
             offset += Eth1Data.SszLength;
-            Encode(span.Slice(offset, Eth1Data.SszLength), container.EthDataVotes);
-            offset += Eth1Data.SszLength;
-            Encode(span.Slice(offset, sizeof(ulong)), container.Eth1DepositIndex);
-            offset += sizeof(ulong);
-            int length2 = container.Validators.Length * Validator.SszLength;
+            int length2 = container.Eth1DataVotes.Length * Eth1Data.SszLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length2), container.Validators);
+            Encode(span.Slice(dynamicOffset, length2), container.Eth1DataVotes);
             dynamicOffset += length2;
             offset += VarOffsetSize;
-            int length3 = container.Balances.Length * Gwei.SszLength;
+            Encode(span.Slice(offset, sizeof(ulong)), container.Eth1DepositIndex);
+            offset += sizeof(ulong);
+            int length3 = container.Validators.Length * Validator.SszLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length3), container.Balances);
+            Encode(span.Slice(dynamicOffset, length3), container.Validators);
             dynamicOffset += length3;
+            offset += VarOffsetSize;
+            int length4 = container.Balances.Length * Gwei.SszLength;
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length4), container.Balances);
+            dynamicOffset += length4;
             offset += VarOffsetSize;
             Encode(span.Slice(offset, Time.EpochsPerHistoricalVector * Sha256.SszLength), container.RandaoMixes);
             offset += Time.EpochsPerHistoricalVector * Sha256.SszLength;
             Encode(span.Slice(offset, Time.EpochsPerSlashingsVector * Gwei.SszLength), container.Slashings);
             offset += Time.EpochsPerSlashingsVector * Gwei.SszLength;
             
-            int length4 = container.PreviousEpochAttestations.Length * VarOffsetSize;
+            int length5 = container.PreviousEpochAttestations.Length * VarOffsetSize;
             for (int i = 0; i < container.PreviousEpochAttestations.Length; i++)
             {
-                length4 += PendingAttestation.SszLength(container.PreviousEpochAttestations[i]);
+                length5 += PendingAttestation.SszLength(container.PreviousEpochAttestations[i]);
             }
             
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length4), container.PreviousEpochAttestations);
-            dynamicOffset += length4;
-            offset += VarOffsetSize;
-            
-            int length5 = container.CurrentEpochAttestations.Length * VarOffsetSize;
-            for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
-            {
-                length5 += PendingAttestation.SszLength(container.CurrentEpochAttestations[i]);
-            }
-            
-            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
-            Encode(span.Slice(dynamicOffset, length4), container.CurrentEpochAttestations);
+            Encode(span.Slice(dynamicOffset, length5), container.PreviousEpochAttestations);
             dynamicOffset += length5;
             offset += VarOffsetSize;
             
-            Encode(span.Slice(offset, container.JustificationBits.Length), container.JustificationBits);
-            offset += container.JustificationBits.Length;
+            int length6 = container.CurrentEpochAttestations.Length * VarOffsetSize;
+            for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
+            {
+                length6 += PendingAttestation.SszLength(container.CurrentEpochAttestations[i]);
+            }
+            
+            Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
+            Encode(span.Slice(dynamicOffset, length6), container.CurrentEpochAttestations);
+            dynamicOffset += length6;
+            offset += VarOffsetSize;
+            
+            Encode(span.Slice(offset, 1), container.JustificationBits);
+            offset += 1;
             Encode(span.Slice(offset, Checkpoint.SszLength), container.PreviousJustifiedCheckpoint);
             offset += Checkpoint.SszLength;
             Encode(span.Slice(offset, Checkpoint.SszLength), container.CurrentJustifiedCheckpoint);
             offset += Checkpoint.SszLength;
             Encode(span.Slice(offset, Checkpoint.SszLength), container.FinalizedCheckpoint);
             offset += Checkpoint.SszLength;
-            
-            //-dynamic-//
-            
         }
 
         public static BeaconState DecodeBeaconState(Span<byte> span)
         {
-            return new BeaconState();
+            int offset = 0;
+            BeaconState beaconState = new BeaconState();
+            beaconState.GenesisTime = DecodeULong(span, ref offset);
+            beaconState.Slot = DecodeSlot(span, ref offset);
+            beaconState.Fork = DecodeFork(span, ref offset);
+            beaconState.LatestBlockHeader = DecodeBeaconBlockHeader(span, ref offset);
+            
+            beaconState.BlockRoots = DecodeHashes(span.Slice(offset, Time.SlotsPerHistoricalRoot * Sha256.SszLength)).ToArray();
+            offset += Time.SlotsPerHistoricalRoot * Sha256.SszLength;
+            beaconState.StateRoots = DecodeHashes(span.Slice(offset, Time.SlotsPerHistoricalRoot * Sha256.SszLength)).ToArray();
+            offset += Time.SlotsPerHistoricalRoot * Sha256.SszLength;
+            
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
+            beaconState.Eth1Data = DecodeEth1Data(span, ref offset);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset2);
+            beaconState.Eth1DepositIndex = DecodeULong(span, ref offset);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset3);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset4);
+            beaconState.RandaoMixes = DecodeHashes(span.Slice(offset, Time.EpochsPerHistoricalVector * Sha256.SszLength));
+            offset += Time.EpochsPerHistoricalVector * Sha256.SszLength;
+            beaconState.Slashings = DecodeGweis(span.Slice(offset, Time.EpochsPerSlashingsVector * Gwei.SszLength));
+            offset += Time.EpochsPerSlashingsVector * Gwei.SszLength;
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset5);
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset6);
+            
+            // how many justification bits?
+            beaconState.JustificationBits = DecodeByte(span.Slice(offset, 1));
+            offset += 1;
+
+            beaconState.PreviousJustifiedCheckpoint = DecodeCheckpoint(span, ref offset);
+            beaconState.CurrentJustifiedCheckpoint = DecodeCheckpoint(span, ref offset);
+            beaconState.FinalizedCheckpoint = DecodeCheckpoint(span, ref offset);
+
+            beaconState.HistoricalRoots = DecodeHashes(span.Slice(dynamicOffset1, dynamicOffset2 - dynamicOffset1));
+            beaconState.Eth1DataVotes = DecodeEth1Datas(span.Slice(dynamicOffset2, dynamicOffset3 - dynamicOffset2));
+            beaconState.Validators = DecodeValidators(span.Slice(dynamicOffset3, dynamicOffset4 - dynamicOffset3));
+            beaconState.Balances = DecodeGweis(span.Slice(dynamicOffset4, dynamicOffset5 - dynamicOffset4));
+            beaconState.PreviousEpochAttestations = DecodePendingAttestations(span.Slice(dynamicOffset5, dynamicOffset6 - dynamicOffset5));
+            beaconState.CurrentEpochAttestations = DecodePendingAttestations(span.Slice(dynamicOffset6, span.Length - dynamicOffset6));
+
+            return beaconState;
         }
     }
 }

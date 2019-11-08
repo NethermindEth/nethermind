@@ -74,6 +74,24 @@ namespace Nethermind.Ssz
             return new Gwei(DecodeULong(span));
         }
         
+        public static Gwei[] DecodeGweis(Span<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return Array.Empty<Gwei>();
+            }
+            
+            int count = span.Length / Gwei.SszLength;
+            Gwei[] result = new Gwei[count];
+            for (int i = 0; i < count; i++)
+            {
+                Span<byte> current = span.Slice(i * Gwei.SszLength, Gwei.SszLength);
+                result[i] = DecodeGwei(current);
+            }
+
+            return result;
+        }
+        
         public static void Encode(Span<byte> span, BlsPublicKey value)
         {
             Encode(span, value.Bytes);
@@ -87,6 +105,13 @@ namespace Nethermind.Ssz
         public static void Encode(Span<byte> span, BlsSignature value)
         {
             Encode(span, value.Bytes);
+        }
+
+        public static BlsSignature DecodeBlsSignature(Span<byte> span, ref int offset)
+        {
+            BlsSignature blsSignature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
+            offset += BlsSignature.SszLength;
+            return blsSignature;
         }
         
         public static BlsSignature DecodeBlsSignature(Span<byte> span)
@@ -106,7 +131,14 @@ namespace Nethermind.Ssz
                 Encode(span.Slice(i * Sha256.SszLength, Sha256.SszLength), value[i]);    
             }
         }
-       
+
+        public static Sha256 DecodeSha256(Span<byte> span, ref int offset)
+        {
+            Sha256 sha256 = DecodeSha256(span.Slice(offset, Sha256.SszLength));
+            offset += Sha256.SszLength;
+            return sha256;
+        }
+        
         public static Sha256 DecodeSha256(Span<byte> span)
         {
             return Bytes.AreEqual(Bytes.Zero32, span) ? null : new Sha256(DecodeBytes(span).ToArray());
@@ -138,6 +170,18 @@ namespace Nethermind.Ssz
         public static Slot DecodeSlot(Span<byte> span)
         {
             return new Slot(DecodeULong(span));
+        }    
+        
+        public static Slot DecodeSlot(Span<byte> span, ref int offset)
+        {
+            return new Slot(DecodeULong(span, ref offset));
+        }    
+        
+        public static Fork DecodeFork(Span<byte> span, ref int offset)
+        {
+            Fork fork = DecodeFork(span.Slice(offset, Fork.SszLength));
+            offset += Fork.SszLength;
+            return fork;
         }    
         
         public static void Encode(Span<byte> span, ValidatorIndex value)

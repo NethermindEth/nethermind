@@ -198,6 +198,12 @@ namespace Nethermind.Ssz
             return BinaryPrimitives.ReadUInt16LittleEndian(span);
         }
 
+        public static void DecodeDynamicOffset(Span<byte> span, ref int offset, out int dynamicOffset)
+        {
+            dynamicOffset = (int) DecodeUInt(span.Slice(offset, VarOffsetSize));
+            offset += sizeof(uint);
+        }
+        
         public static uint DecodeUInt(Span<byte> span)
         {
             const int expectedLength = 4;
@@ -218,6 +224,13 @@ namespace Nethermind.Ssz
             }
             
             return BinaryPrimitives.ReadUInt64LittleEndian(span);
+        }
+        
+        public static ulong DecodeULong(Span<byte> span, ref int offset)
+        {
+            ulong result = BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, sizeof(ulong)));
+            offset += sizeof(ulong);
+            return result;
         }
         
         public static UInt128 DecodeUInt128(Span<byte> span)

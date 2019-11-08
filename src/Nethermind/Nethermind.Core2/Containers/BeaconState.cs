@@ -23,34 +23,37 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconState
     {
-        public const int SszDynamicOffset = sizeof(ulong) +
+        public static int SszDynamicOffset = sizeof(ulong) +
                                             Slot.SszLength +
                                             Fork.SszLength +
                                             BeaconBlockHeader.SszLength +
-                                            3 * sizeof(uint) +
-                                            2 * Eth1Data.SszLength +
+                                            2 * Time.SlotsPerHistoricalRoot * Sha256.Size +
+                                            sizeof(uint) +
+                                            Eth1Data.SszLength +
+                                            sizeof(uint) +
                                             sizeof(ulong) +
                                             2 * sizeof(uint) +
-                                            Sha256.SszLength +
-                                            4 * sizeof(uint) +
+                                            Time.EpochsPerHistoricalVector * Sha256.SszLength +
+                                            Time.EpochsPerSlashingsVector * Gwei.SszLength +
+                                            2 * sizeof(uint) +
+                                            1 + // not sure
                                             3 * Checkpoint.SszLength;
 
         public static int SszLength(BeaconState container)
         {
             int result = SszDynamicOffset;
-            result += Sha256.SszLength * container.BlockRoots.Length;
-            result += Sha256.SszLength * container.StateRoots.Length;
             result += Sha256.SszLength * container.HistoricalRoots.Length;
             result += Validator.SszLength * container.Validators.Length;
             result += Gwei.SszLength * container.Balances.Length;
-            result += Gwei.SszLength * container.Slashings.Length;
-            result += container.JustificationBits.Length;
+            result += Eth1Data.SszLength * container.Eth1DataVotes.Length;
 
+            result += container.PreviousEpochAttestations.Length * sizeof(uint);
             for (int i = 0; i < container.PreviousEpochAttestations.Length; i++)
             {
                 result += PendingAttestation.SszLength(container.PreviousEpochAttestations[i]);
             }
 
+            result += container.CurrentEpochAttestations.Length * sizeof(uint);
             for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
             {
                 result += PendingAttestation.SszLength(container.CurrentEpochAttestations[i]);
@@ -63,19 +66,19 @@ namespace Nethermind.Core2.Containers
         public Slot Slot { get; set; }
         public Fork Fork { get; set; }
         public BeaconBlockHeader LatestBlockHeader { get; set; }
-        public Sha256[] BlockRoots { get; } = new Sha256[Time.SlotsPerHistoricalRoot]; 
-        public Sha256[] StateRoots { get; } = new Sha256[Time.SlotsPerHistoricalRoot];
+        public Sha256[] BlockRoots { get; set; } = new Sha256[Time.SlotsPerHistoricalRoot]; 
+        public Sha256[] StateRoots { get; set; } = new Sha256[Time.SlotsPerHistoricalRoot];
         public Sha256[] HistoricalRoots { get; set; }
         public Eth1Data Eth1Data { get; set; }
-        public Eth1Data EthDataVotes { get; set; }
+        public Eth1Data[] Eth1DataVotes { get; set; }
         public ulong Eth1DepositIndex { get; set; }
         public Validator[] Validators { get; set; }
         public Gwei[] Balances { get; set; }
-        public Sha256[] RandaoMixes { get; } = new Sha256[Time.EpochsPerHistoricalVector];
-        public Gwei[] Slashings { get; set; }
+        public Sha256[] RandaoMixes { get; set; } = new Sha256[Time.EpochsPerHistoricalVector];
+        public Gwei[] Slashings { get; set; } = new Gwei[Time.EpochsPerSlashingsVector];
         public PendingAttestation[] PreviousEpochAttestations { get; set; }
         public PendingAttestation[] CurrentEpochAttestations { get; set; }
-        public byte[] JustificationBits { get; set; }
+        public byte JustificationBits { get; set; }
         public Checkpoint PreviousJustifiedCheckpoint { get; set; }
         public Checkpoint CurrentJustifiedCheckpoint { get; set; }
         public Checkpoint FinalizedCheckpoint { get; set; }
@@ -90,15 +93,15 @@ namespace Nethermind.Core2.Containers
                    StateRoots.Length == other.StateRoots.Length &&
                    HistoricalRoots.Length == other.HistoricalRoots.Length &&
                    Equals(Eth1Data, other.Eth1Data) &&
-                   Equals(EthDataVotes, other.EthDataVotes) &&
+                   Eth1DataVotes.Length == other.Eth1DataVotes.Length &&
                    Eth1DepositIndex == other.Eth1DepositIndex &&
                    Validators.Length == other.Validators.Length &&
                    Balances.Length == other.Balances.Length &&
-                   Equals(RandaoMixes, other.RandaoMixes) &&
+                   RandaoMixes.Length == other.RandaoMixes.Length &&
                    Slashings.Length == other.Slashings.Length &&
                    PreviousEpochAttestations.Length == other.PreviousEpochAttestations.Length &&
                    CurrentEpochAttestations.Length == other.CurrentEpochAttestations.Length &&
-                   Bytes.AreEqual(JustificationBits, other.JustificationBits) &&
+                   JustificationBits == other.JustificationBits &&
                    PreviousJustifiedCheckpoint.Equals(other.PreviousJustifiedCheckpoint) &&
                    CurrentJustifiedCheckpoint.Equals(other.CurrentJustifiedCheckpoint) &&
                    FinalizedCheckpoint.Equals(other.FinalizedCheckpoint);
