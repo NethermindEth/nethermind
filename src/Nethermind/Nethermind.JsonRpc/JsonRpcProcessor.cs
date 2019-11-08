@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc
             {
                 if (_logger.IsWarn) _logger.Warn("Enabling JSON RPC diagnostics recorder - this will affect performance and should be only used in a diagnostics mode.");
                 string recorderBaseFilePath = _jsonRpcConfig.RpcRecorderBaseFilePath.GetApplicationResourcePath();
-                _recorder = new Recorder(recorderBaseFilePath);
+                _recorder = new Recorder(recorderBaseFilePath, _logger);
             }
 
             BuildTraceJsonSerializer();
