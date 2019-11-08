@@ -601,16 +601,18 @@ namespace Nethermind.Ssz
             
             int offset = 0;
             int dynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(0, VarOffsetSize));
+            offset += 4;
+            
             int itemsCount = dynamicOffset / VarOffsetSize;
             AttesterSlashing[] containers = new AttesterSlashing[itemsCount];
             for (int i = 0; i < itemsCount; i++)
             {
-                int nextDynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
+                int nextDynamicOffset = i == itemsCount - 1 ? span.Length : BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
                 int length = nextDynamicOffset - dynamicOffset;
                 AttesterSlashing container = DecodeAttesterSlashing(span.Slice(dynamicOffset, length));
                 containers[i] = container;
-                offset += VarOffsetSize;
                 dynamicOffset = nextDynamicOffset;
+                offset += VarOffsetSize;
             }
 
             return containers;
@@ -671,22 +673,17 @@ namespace Nethermind.Ssz
             int offset = 0;
             int dynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(0, VarOffsetSize));
             offset += VarOffsetSize;
-            
+
             int itemsCount = dynamicOffset / VarOffsetSize;
             Attestation[] containers = new Attestation[itemsCount];
             for (int i = 0; i < itemsCount; i++)
             {
-                int nextDynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
-                if (i == itemsCount - 1)
-                {
-                    nextDynamicOffset = span.Length;
-                }
-
+                int nextDynamicOffset = i == itemsCount - 1 ? span.Length : BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
                 int length = nextDynamicOffset - dynamicOffset;
                 Attestation container = DecodeAttestation(span.Slice(dynamicOffset, length));
                 containers[i] = container;
-                offset += VarOffsetSize;
                 dynamicOffset = nextDynamicOffset;
+                offset += VarOffsetSize;
             }
 
             return containers;

@@ -232,6 +232,7 @@ namespace Ethereum2.Ssz.Test
             foreach (string testCaseDir in cases)
             {
                 byte[] serialized = File.ReadAllBytes(Directory.GetFiles(testCaseDir)[1]);
+                Console.WriteLine(category + "." + testCaseDir);
                 switch (category)
                 {
                     case "Attestation":

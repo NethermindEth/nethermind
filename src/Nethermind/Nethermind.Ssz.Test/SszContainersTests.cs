@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -77,6 +78,10 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             AttestationData decoded = Ssz.DecodeAttestationData(encoded);
             Assert.AreEqual(container, decoded);
+            
+            Span<byte> encodedAgain = stackalloc byte[AttestationData.SszLength];
+            Ssz.Encode(encodedAgain, decoded);
+            Assert.True(Bytes.AreEqual(encodedAgain, encoded));
         }
 
         [Test]
@@ -97,6 +102,8 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             AttestationDataAndCustodyBit decoded = Ssz.DecodeAttestationDataAndCustodyBit(encoded);
             Assert.AreEqual(container, decoded);
+            
+            
         }
 
         [Test]
@@ -365,6 +372,10 @@ namespace Nethermind.Ssz.Test
             Ssz.Encode(encoded, container);
             BeaconBlock decoded = Ssz.DecodeBeaconBlock(encoded);
             Assert.AreEqual(container, decoded);
+            
+            Span<byte> encodedAgain = stackalloc byte[BeaconBlock.SszLength(container)];
+            Ssz.Encode(encodedAgain, decoded);
+            Assert.True(Bytes.AreEqual(encodedAgain, encoded));
         }
 
         [Test]
