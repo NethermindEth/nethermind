@@ -204,7 +204,7 @@ namespace Nethermind.Runner
             {
                 rpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(new Web3Module(logManager), true));
                 var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
-                var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, logManager);
+                var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, logManager);
                 if (initConfig.WebSocketsEnabled)
                 {
                     webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer));
