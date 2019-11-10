@@ -7,6 +7,8 @@ namespace Cortex.Containers
     {
         public const int Length = 48;
 
+        //public static BlsPublicKey Infinity = new BlsPublicKey(new byte[] { 0xC0 }.Concat(Enumerable.Repeat((byte)0x00, Length - 1)).ToArray());
+
         private readonly byte[] _bytes;
 
         public BlsPublicKey()

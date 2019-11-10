@@ -9,25 +9,23 @@ namespace Cortex.BeaconNode
 {
     public class CryptographyService : ICryptographyService
     {
-        private const int HashLength = 32;
-        private const int PublicKeyLength = 48;
         private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
 
         public Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
 
         public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
         {
-            var publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * PublicKeyLength]);
+            var publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * BlsPublicKey.Length]);
             var publicKeysSpanIndex = 0;
             foreach (var publicKey in publicKeys)
             {
                 publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
-                publicKeysSpanIndex += PublicKeyLength;
+                publicKeysSpanIndex += BlsPublicKey.Length;
             }
             using var signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            var aggregatePublicKey = new Span<byte>(new byte[PublicKeyLength]);
+            var aggregatePublicKey = new Span<byte>(new byte[BlsPublicKey.Length]);
             var success = signatureAlgorithm.TryAggregatePublicKeys(publicKeysSpan, aggregatePublicKey, out var bytesWritten);
-            if (!success || bytesWritten != PublicKeyLength)
+            if (!success || bytesWritten != BlsPublicKey.Length)
             {
                 throw new Exception("Error generating aggregate public key.");
             }
@@ -43,20 +41,22 @@ namespace Cortex.BeaconNode
 
         public bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain)
         {
-            var publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * PublicKeyLength]);
+            var count = publicKeys.Count();
+
+            var publicKeysSpan = new Span<byte>(new byte[count * BlsPublicKey.Length]);
             var publicKeysSpanIndex = 0;
             foreach (var publicKey in publicKeys)
             {
                 publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
-                publicKeysSpanIndex += PublicKeyLength;
+                publicKeysSpanIndex += BlsPublicKey.Length;
             }
 
-            var messageHashesSpan = new Span<byte>(new byte[publicKeys.Count() * PublicKeyLength]);
+            var messageHashesSpan = new Span<byte>(new byte[count * Hash32.Length]);
             var messageHashesSpanIndex = 0;
             foreach (var messageHash in messageHashes)
             {
                 messageHash.AsSpan().CopyTo(messageHashesSpan.Slice(messageHashesSpanIndex));
-                messageHashesSpanIndex += HashLength;
+                messageHashesSpanIndex += Hash32.Length;
             }
 
             using var signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
@@ -65,17 +65,17 @@ namespace Cortex.BeaconNode
 
         public Hash32 Hash(Hash32 a, Hash32 b)
         {
-            var input = new Span<byte>(new byte[HashLength * 2]);
+            var input = new Span<byte>(new byte[Hash32.Length * 2]);
             a.AsSpan().CopyTo(input);
-            b.AsSpan().CopyTo(input.Slice(HashLength));
+            b.AsSpan().CopyTo(input.Slice(Hash32.Length));
             return Hash(input);
         }
 
         public Hash32 Hash(ReadOnlySpan<byte> bytes)
         {
-            var result = new Span<byte>(new byte[HashLength]);
+            var result = new Span<byte>(new byte[Hash32.Length]);
             var success = _hashAlgorithm.TryComputeHash(bytes, result, out var bytesWritten);
-            if (!success || bytesWritten != HashLength)
+            if (!success || bytesWritten != Hash32.Length)
             {
                 throw new Exception("Error generating hash value.");
             }
