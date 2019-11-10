@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Text;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
@@ -45,13 +46,13 @@ namespace Nethermind.Ssz.Test
         {
             Assert.AreEqual(expectedResult, Merkle.NextPowerOfTwo(value));
         }
-        
+
         [Test]
         public void Zero_hashes_0_is_correct()
         {
             Assert.AreEqual(UInt256.Zero, Merkle.ZeroHashes[0]);
         }
-        
+
         [Test]
         public void Can_merkleize_bool()
         {
@@ -59,31 +60,31 @@ namespace Nethermind.Ssz.Test
             Merkle.Ize(root, true);
             Assert.AreEqual("0x0100000000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_byte()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, (byte)34);
+            Merkle.Ize(root, (byte) 34);
             Assert.AreEqual("0x2200000000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_ushort()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, (ushort)(34 + byte.MaxValue));
+            Merkle.Ize(root, (ushort) (34 + byte.MaxValue));
             Assert.AreEqual("0x2101000000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, (uint)34 + byte.MaxValue + ushort.MaxValue);
+            Merkle.Ize(root, (uint) 34 + byte.MaxValue + ushort.MaxValue);
             Assert.AreEqual("0x2001010000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_int()
         {
@@ -91,15 +92,15 @@ namespace Nethermind.Ssz.Test
             Merkle.Ize(root, 34 + byte.MaxValue + ushort.MaxValue);
             Assert.AreEqual("0x2001010000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_ulong()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, (ulong)34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue);
+            Merkle.Ize(root, (ulong) 34 + byte.MaxValue + ushort.MaxValue + uint.MaxValue);
             Assert.AreEqual("0x1f01010001000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint128()
         {
@@ -113,7 +114,7 @@ namespace Nethermind.Ssz.Test
             Merkle.Ize(root, input);
             Assert.AreEqual("0x1e01010001000000010000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint256()
         {
@@ -132,71 +133,71 @@ namespace Nethermind.Ssz.Test
         public void Can_merkleize_bool_vector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new []{true, false});
+            Merkle.Ize(root, new[] {true, false});
             Assert.AreEqual("0x0100000000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_ushort_vector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new []{(ushort)1, (ushort)3});
+            Merkle.Ize(root, new[] {(ushort) 1, (ushort) 3});
             Assert.AreEqual("0x0100030000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint_vector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new []{1U, 3U});
+            Merkle.Ize(root, new[] {1U, 3U});
             Assert.AreEqual("0x0100000003000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_ulong_vector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new []{1UL, 3UL});
+            Merkle.Ize(root, new[] {1UL, 3UL});
             Assert.AreEqual("0x0100000000000000030000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint128_vector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new UInt128[]{1, 3, 5});
+            Merkle.Ize(root, new UInt128[] {1, 3, 5});
             Assert.AreEqual("0xf189891181de961f99a35c1aa21c0d909bf30bb8bebb760050f3d06dc56e488a", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint256_vector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new UInt256[]{1});
+            Merkle.Ize(root, new UInt256[] {1});
             Assert.AreEqual("0x0100000000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint256_vector_longer()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new UInt256[]{1, 2, 3, 4});
+            Merkle.Ize(root, new UInt256[] {1, 2, 3, 4});
             Assert.AreEqual("0xbfe3c665d2e561f13b30606c580cb703b2041287e212ade110f0bfd8563e21bb", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_uint128_vector_full()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new UInt128[]{1, 3});
+            Merkle.Ize(root, new UInt128[] {1, 3});
             Assert.AreEqual("0x0100000000000000000000000000000003000000000000000000000000000000", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_bitlist()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.IzeBits(root, new byte[]{123}, 0);
+            Merkle.IzeBits(root, new byte[] {123}, 0);
             Assert.AreEqual("0xe5e12694be373406e317c583b5fd9e7a642913dc20a5c4947edb202dafbbc0ee", root.ToHexString(true));
         }
 
@@ -204,32 +205,109 @@ namespace Nethermind.Ssz.Test
         public void Can_merkleize_bitlist_with_limit()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.IzeBits(root, new byte[]{17}, 2);
+            Merkle.IzeBits(root, new byte[] {17}, 2);
             Assert.AreEqual("0x60d461bd1cec1a858ba48a27799c9686c15ad1625743bafa70674afc530f981a", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_bitlist_high_limit_and_null()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.IzeBits(root, new byte[]{0}, 8);
+            Merkle.IzeBits(root, new byte[] {0}, 8);
             Assert.AreEqual("0x881690bb860e3a4f7681f51f1eccc59dac2718eeb0c0585cd698ad0650938b33", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_bitlist_high_limit_and_small()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.IzeBits(root, new byte[]{3}, 8);
+            Merkle.IzeBits(root, new byte[] {3}, 8);
             Assert.AreEqual("0x9e1ff035a32c3d3085074e676356984c077f70bed47814956a9ef8852dcb8161", root.ToHexString(true));
         }
-        
+
         [Test]
         public void Can_merkleize_bitvector()
         {
             Span<byte> root = stackalloc byte[32];
-            Merkle.Ize(root, new byte[]{123});
+            Merkle.Ize(root, new byte[] {123});
             Assert.AreEqual("0x7b00000000000000000000000000000000000000000000000000000000000000", root.ToHexString(true));
+        }
+
+        [Test]
+        public void Set_check()
+        {
+            Merkleizer context = new Merkleizer(1);
+            for (int i = 0; i < 64; i++)
+            {
+                context.SetKthBit(i);
+                Assert.True(context.IsKthBitSet(i), i.ToString());
+                context.UnsetKthBit(i);
+                Assert.False(context.IsKthBitSet(i), i.ToString());
+            }
+        }
+
+        [Test]
+        public void Check_false()
+        {
+            Merkleizer context = new Merkleizer(1);
+            for (int i = 0; i < 64; i++)
+            {
+                Assert.False(context.IsKthBitSet(i), i.ToString());
+            }
+        }
+
+        [TestCase(2, 1)]
+        [TestCase(4, 2)]
+        [TestCase(8, 3)]
+        [TestCase(16, 4)]
+        [TestCase(32, 5)]
+        [TestCase(64, 6)]
+        public void Feed_test(int leafs, int depth)
+        {
+            Merkleizer merkleizer = new Merkleizer(depth);
+            for (int i = 0; i < leafs; i++)
+            {
+                merkleizer.Feed(Merkle.ZeroHashes[0]);
+            }
+            
+            Assert.AreEqual(Merkle.ZeroHashes[depth], merkleizer.CalculateRoot());
+        }
+
+        [TestCase(2, 1)]
+        [TestCase(4, 2)]
+        [TestCase(8, 3)]
+        [TestCase(16, 4)]
+        [TestCase(32, 5)]
+        [TestCase(64, 6)]
+        public void Feed_test_fill(int leafs, int depth)
+        {
+            UInt256 result = UInt256.Zero;
+            for (int j = 0; j < leafs; j++)
+            {
+                Merkleizer merkleizer = new Merkleizer(depth);
+                for (int i = j; i < leafs; i++)
+                {
+                    merkleizer.Feed(Merkle.ZeroHashes[0]);
+                }
+
+                result = merkleizer.CalculateRoot();
+            }
+
+            Assert.AreEqual(Merkle.ZeroHashes[depth], result);
+        }
+
+        [Test]
+        public void Fill()
+        {
+            Merkleizer merkleizer = new Merkleizer(6);
+            for (int i = 0; i < 7; i++)
+            {
+                merkleizer.Feed(Merkle.ZeroHashes[0]);
+            }
+
+            UInt256 result = merkleizer.CalculateRoot();
+
+            Assert.AreEqual(Merkle.ZeroHashes[6], result);
         }
     }
 }

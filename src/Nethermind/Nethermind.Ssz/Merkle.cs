@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
@@ -101,7 +102,7 @@ namespace Nethermind.Ssz
             return MemoryMarshal.Cast<byte, Chunk>(Sha256.Compute(MemoryMarshal.Cast<Chunk, byte>(span)).Bytes)[0];
         }
 
-        private static Chunk HashConcatenation(Chunk left, Chunk right, int level)
+        internal static Chunk HashConcatenation(Chunk left, Chunk right, int level)
         {
             if (IsZeroHash(left, level) && IsZeroHash(right, level))
             {
@@ -131,7 +132,7 @@ namespace Nethermind.Ssz
         {
             root[0] = Ssz.Encode(value);
         }
-        
+
         public static void Ize(Span<byte> root, byte value)
         {
             Ssz.Encode(root.Slice(0, 1), value);
@@ -146,7 +147,7 @@ namespace Nethermind.Ssz
         {
             Ize(root, (uint) value);
         }
-        
+
         public static void Ize(Span<byte> root, uint value)
         {
             Ssz.Encode(root.Slice(0, 4), value);
@@ -166,7 +167,7 @@ namespace Nethermind.Ssz
         {
             Ssz.Encode(root, value);
         }
-        
+
         public static void Ize(Span<byte> root, Sha256 value)
         {
             value.Bytes.AsSpan().CopyTo(root);
@@ -358,7 +359,7 @@ namespace Nethermind.Ssz
         {
             Ize(root, value, Span<Chunk>.Empty);
         }
-        
+
         public static void Ize(Span<byte> root, params Sha256[] value)
         {
             Span<Chunk> chunks = new UInt256[value.Length];
@@ -366,7 +367,7 @@ namespace Nethermind.Ssz
             {
                 chunks[i] = MemoryMarshal.Read<UInt256>(value[i].Bytes.AsSpan());
             }
-            
+
             Ize(root, chunks, Span<Chunk>.Empty);
         }
 
@@ -374,7 +375,7 @@ namespace Nethermind.Ssz
         {
             // everything here (including last chunk) is designed for zero allocation
             // the last chunk introduces a lot of additional complexity
-            
+
             int nonVirtualChunksCount = value.Length + lastChunk.Length;
             uint chunkCount = NextPowerOfTwo(limit != 0 ? limit : (uint) nonVirtualChunksCount);
 

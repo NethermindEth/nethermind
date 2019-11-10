@@ -456,9 +456,9 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestIndexedAttestationSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
-            IndexedAttestation deposit = Nethermind.Ssz.Ssz.DecodeIndexedAttestation(serialized);
+            IndexedAttestation container = Nethermind.Ssz.Ssz.DecodeIndexedAttestation(serialized);
             byte[] again = new byte[serialized.Length];
-            Nethermind.Ssz.Ssz.Encode(again, deposit);
+            Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
             
             // byte[] merkleRootBytes = new byte[32];
@@ -469,9 +469,9 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestPendingAttestationSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
-            PendingAttestation deposit = Nethermind.Ssz.Ssz.DecodePendingAttestation(serialized);
+            PendingAttestation container = Nethermind.Ssz.Ssz.DecodePendingAttestation(serialized);
             byte[] again = new byte[serialized.Length];
-            Nethermind.Ssz.Ssz.Encode(again, deposit);
+            Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
             
             // byte[] merkleRootBytes = new byte[32];
@@ -482,9 +482,9 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestProposerSlashingSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
-            ProposerSlashing deposit = Nethermind.Ssz.Ssz.DecodeProposerSlashing(serialized);
+            ProposerSlashing container = Nethermind.Ssz.Ssz.DecodeProposerSlashing(serialized);
             byte[] again = new byte[serialized.Length];
-            Nethermind.Ssz.Ssz.Encode(again, deposit);
+            Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
             
             // byte[] merkleRootBytes = new byte[32];
@@ -495,28 +495,28 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestValidatorSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
-            Validator deposit = Nethermind.Ssz.Ssz.DecodeValidator(serialized);
+            Validator container = Nethermind.Ssz.Ssz.DecodeValidator(serialized);
             byte[] again = new byte[serialized.Length];
-            Nethermind.Ssz.Ssz.Encode(again, deposit);
+            Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
             
-            // byte[] merkleRootBytes = new byte[32];
-            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
-            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
-            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
+            byte[] merkleRootBytes = new byte[32];
+            Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
 
         private static void TestVoluntaryExitSsz(byte[] serialized, Sha256 expectedMerkleRoot, string testCaseDir)
         {
-            VoluntaryExit deposit = Nethermind.Ssz.Ssz.DecodeVoluntaryExit(serialized);
+            VoluntaryExit container = Nethermind.Ssz.Ssz.DecodeVoluntaryExit(serialized);
             byte[] again = new byte[serialized.Length];
-            Nethermind.Ssz.Ssz.Encode(again, deposit);
+            Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
             
-            // byte[] merkleRootBytes = new byte[32];
-            // Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
-            // Sha256 merkleRoot = new Sha256(merkleRootBytes);
-            // Assert.AreEqual(expectedMerkleRoot, merkleRoot);
+            byte[] merkleRootBytes = new byte[32];
+            Nethermind.Ssz.Merkle.Ize(merkleRootBytes, container);
+            Sha256 merkleRoot = new Sha256(merkleRootBytes);
+            Assert.AreEqual(expectedMerkleRoot, merkleRoot);
         }
     }
 }
