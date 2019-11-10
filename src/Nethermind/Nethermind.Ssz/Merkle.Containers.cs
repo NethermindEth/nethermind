@@ -95,6 +95,16 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
         
+        public static void Ize(out UInt256 root, Attestation container)
+        {
+            Merkleizer merkleizer = new Merkleizer(3);
+            merkleizer.Feed(container.AggregationBits);
+            merkleizer.Feed(container.Data);
+            merkleizer.Feed(container.CustodyBits);
+            merkleizer.Feed(container.Signature);
+            merkleizer.CalculateRoot(out root);
+        }
+        
         public static void Ize(out UInt256 root, ProposerSlashing container)
         {
             Merkleizer merkleizer = new Merkleizer(2);

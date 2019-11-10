@@ -93,6 +93,12 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
+        public void Feed(byte[] value)
+        {
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+        
         public void Feed(BlsPublicKey value)
         {
             Merkle.Ize(out _chunks[^1], value.Bytes);
@@ -130,6 +136,12 @@ namespace Nethermind.Ssz
         }
         
         public void Feed(BeaconBlockHeader value)
+        {
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(AttestationData value)
         {
             Merkle.Ize(out _chunks[^1], value);
             Feed(_chunks[^1]);
@@ -188,11 +200,6 @@ namespace Nethermind.Ssz
             }
         }
 
-        public void CalculateRoot(Span<byte> root)
-        {
-            CalculateRoot().ToLittleEndian(root);
-        }
-        
         public void CalculateRoot(out UInt256 root)
         {
             root = CalculateRoot();
