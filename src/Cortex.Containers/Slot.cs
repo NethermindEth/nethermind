@@ -11,6 +11,8 @@ namespace Cortex.Containers
             _value = value;
         }
 
+        public static Slot None => new Slot(ulong.MaxValue);
+
         public static Slot Zero => new Slot(0);
 
         public static explicit operator Slot(ulong value) => new Slot(value);

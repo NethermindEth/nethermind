@@ -12,7 +12,7 @@ namespace Cortex.Containers
 
         public Epoch Epoch { get; }
 
-        public Hash32 Root { get; }
+        public Hash32 Root { get; private set; }
 
         public static Checkpoint Clone(Checkpoint other)
         {
@@ -29,9 +29,9 @@ namespace Cortex.Containers
 
         public bool Equals(Checkpoint? other)
         {
-            return other != null &&
-                   Epoch == other.Epoch &&
-                   Root.Equals(other.Root);
+            return !(other is null)
+                && Epoch == other.Epoch
+                && Root.Equals(other.Root);
         }
 
         public override int GetHashCode()
@@ -39,9 +39,14 @@ namespace Cortex.Containers
             return HashCode.Combine(Epoch, Root);
         }
 
+        public void SetRoot(Hash32 root)
+        {
+            Root = root;
+        }
+
         public override string ToString()
         {
-            return $"{Epoch}:{Root.ToString().Substring(0, 16)}";
+            return $"{Epoch}:{Root.ToString().Substring(0, 12)}";
         }
     }
 }

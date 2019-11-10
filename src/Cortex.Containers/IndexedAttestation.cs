@@ -28,5 +28,10 @@ namespace Cortex.Containers
         public AttestationData Data { get; }
 
         public BlsSignature Signature { get; }
+
+        public override string ToString()
+        {
+            return $"C:{Data.Index} S:{Data.Slot} Sig:{Signature.ToString().Substring(0, 12)}";
+        }
     }
 }

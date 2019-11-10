@@ -18,7 +18,7 @@ namespace Cortex.Containers
 
         public override string ToString()
         {           
-            return $"I:{Proof[Proof.Count - 1].ToString().Substring(0, 8)} P:{Data.PublicKey.ToString().Substring(0, 16)} A:{Data.Amount}";
+            return $"I:{Proof[Proof.Count - 1].ToString().Substring(0, 12)} P:{Data.PublicKey.ToString().Substring(0, 12)} A:{Data.Amount}";
         }
     }
 }

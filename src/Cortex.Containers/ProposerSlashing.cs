@@ -15,5 +15,10 @@
         public BeaconBlockHeader Header1 { get; }
         public BeaconBlockHeader Header2 { get; }
         public ValidatorIndex ProposerIndex { get; }
+
+        public override string ToString()
+        {
+            return $"P:{ProposerIndex} for B1:({Header1})";
+        }
     }
 }

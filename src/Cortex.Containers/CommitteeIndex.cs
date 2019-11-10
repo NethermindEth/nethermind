@@ -11,6 +11,8 @@ namespace Cortex.Containers
             _value = value;
         }
 
+        public static CommitteeIndex None => new CommitteeIndex(ulong.MaxValue);
+
         public static explicit operator CommitteeIndex(ulong value) => new CommitteeIndex(value);
 
         public static explicit operator ulong(CommitteeIndex committeeIndex) => committeeIndex._value;

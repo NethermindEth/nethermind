@@ -50,21 +50,20 @@ namespace Cortex.BeaconNode.Tests.Helpers
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition)
         {
-            // if slot is none
-            // if index is none
+            if (slot == Slot.None)
+            {
+                slot = state.Slot;
+            }
+            if (index == CommitteeIndex.None)
+            {
+                index = new CommitteeIndex(0);
+            }
 
             var attestationData = BuildAttestationData(state, slot, index,
                 miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
 
             var beaconCommittee = beaconStateAccessor.GetBeaconCommittee(state, attestationData.Slot, attestationData.Index);
-
-            //var epoch = beaconChainUtility.ComputeEpochAtSlot(slot);
-            //var epochStartShard = beaconStateAccessor.GetStartShard(state, epoch);
-            //var committeesPerSlot = beaconStateAccessor.GetCommitteeCount(state, epoch) / (ulong)timeParameters.SlotsPerEpoch;
-            //var shard = (epochStartShard + new Shard(committeesPerSlot * (ulong)(slot % timeParameters.SlotsPerEpoch)))
-            //    % miscellaneousParameters.ShardCount;
-            //var crosslinkCommittee = beaconStateAccessor.GetCrosslinkCommittee(state, attestationData.Target.Epoch, attestationData.Crosslink.Shard);
 
             var committeeSize = beaconCommittee.Count;
             var aggregationBits = new BitArray(committeeSize);

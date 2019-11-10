@@ -12,5 +12,10 @@
 
         public IndexedAttestation Attestation1 { get; }
         public IndexedAttestation Attestation2 { get; }
+
+        public override string ToString()
+        {
+            return $"A1:({Attestation1}) A2:({Attestation2})";
+        }
     }
 }

@@ -2,6 +2,7 @@
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Shouldly;
@@ -41,14 +42,20 @@ namespace Cortex.BeaconNode.Tests
                 out var maxOperationsPerBlockOptions);
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
+            var loggerFactory = new LoggerFactory(new[] {
+                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
+            });
+
             var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions, 
+            var beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(), 
+                miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions, 
                 cryptographyService);
             var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
                 cryptographyService, beaconChainUtility);
             var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                 beaconChainUtility, beaconStateAccessor);
-            var beaconChain = new BeaconChain(Substitute.For<ILogger<BeaconChain>>(), chainConstants, miscellaneousParameterOptions,
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
+                chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, 
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 

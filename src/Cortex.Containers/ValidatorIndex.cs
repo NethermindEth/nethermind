@@ -2,7 +2,7 @@
 
 namespace Cortex.Containers
 {
-    public struct ValidatorIndex : IEquatable<ValidatorIndex>
+    public struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
     {
         private readonly ulong _value;
 
@@ -27,9 +27,34 @@ namespace Cortex.Containers
             return !(left == right);
         }
 
+        public static bool operator <(ValidatorIndex left, ValidatorIndex right)
+        {
+            return left.CompareTo(right) < 0;
+        }
+
+        public static bool operator <=(ValidatorIndex left, ValidatorIndex right)
+        {
+            return left.CompareTo(right) <= 0;
+        }
+
         public static bool operator ==(ValidatorIndex left, ValidatorIndex right)
         {
             return left.Equals(right);
+        }
+
+        public static bool operator >(ValidatorIndex left, ValidatorIndex right)
+        {
+            return left.CompareTo(right) > 0;
+        }
+
+        public static bool operator >=(ValidatorIndex left, ValidatorIndex right)
+        {
+            return left.CompareTo(right) >= 0;
+        }
+
+        public int CompareTo(ValidatorIndex other)
+        {
+            return _value.CompareTo(other._value);
         }
 
         public override bool Equals(object obj)

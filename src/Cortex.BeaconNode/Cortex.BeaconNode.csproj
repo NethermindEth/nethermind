@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cortex.Cryptography.Bls" Version="0.1.50" />
+    <PackageReference Include="Cortex.Cryptography.Bls" Version="0.2.2" />
     <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.0" />

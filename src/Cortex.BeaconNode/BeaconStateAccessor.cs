@@ -33,6 +33,29 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Return the indexed attestation corresponding to ``attestation``.
+        /// </summary>
+        public IndexedAttestation GetIndexedAttestation(BeaconState state, Attestation attestation)
+        {
+            var attestingIndices = GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
+            var custodyBit1Indices = GetAttestingIndices(state, attestation.Data, attestation.CustodyBits);
+
+            var isSubset = custodyBit1Indices.All(x => attestingIndices.Contains(x));
+            if (!isSubset)
+            {
+                throw new Exception("Custody bit indices must be a subset of attesting indices");
+            }
+
+            var custodyBit0Indices = attestingIndices.Except(custodyBit1Indices);
+
+            var sortedCustodyBit0Indices = custodyBit0Indices.OrderBy(x => x);
+            var sortedCustodyBit1Indices = custodyBit1Indices.OrderBy(x => x);
+
+            var indexedAttestation = new IndexedAttestation(sortedCustodyBit0Indices, sortedCustodyBit1Indices, attestation.Data, attestation.Signature);
+            return indexedAttestation;
+        }
+
+        /// <summary>
         /// Return the sequence of active validator indices at ``epoch``.
         /// </summary>
         public IList<ValidatorIndex> GetActiveValidatorIndices(BeaconState state, Epoch epoch)

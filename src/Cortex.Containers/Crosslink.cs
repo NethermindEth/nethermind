@@ -28,26 +28,6 @@ namespace Cortex.Containers
         public Shard Shard { get; }
         public Epoch StartEpoch { get; }
 
-        public override bool Equals(object obj)
-        {
-            return Equals(obj as Crosslink);
-        }
-
-        public bool Equals(Crosslink? other)
-        {
-            return other != null &&
-                   Shard == other.Shard &&
-                   StartEpoch == other.StartEpoch &&
-                   EndEpoch == other.EndEpoch &&
-                   DataRoot.Equals(other.DataRoot) &&
-                   ParentRoot.Equals(other.ParentRoot);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(DataRoot, EndEpoch, ParentRoot, Shard, StartEpoch);
-        }
-
         /// <summary>
         /// Creates a deep copy of the object.
         /// </summary>
@@ -61,6 +41,26 @@ namespace Cortex.Containers
                 Hash32.Clone(other.DataRoot)
                 );
             return clone;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as Crosslink);
+        }
+
+        public bool Equals(Crosslink? other)
+        {
+            return !(other is null)
+                && Shard == other.Shard
+                && StartEpoch == other.StartEpoch
+                && EndEpoch == other.EndEpoch
+                && DataRoot.Equals(other.DataRoot)
+                && ParentRoot.Equals(other.ParentRoot);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(DataRoot, EndEpoch, ParentRoot, Shard, StartEpoch);
         }
     }
 }

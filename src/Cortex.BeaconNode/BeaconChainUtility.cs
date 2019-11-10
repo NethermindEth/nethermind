@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode
@@ -11,18 +13,29 @@ namespace Cortex.BeaconNode
     {
         private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
+        private readonly ILogger _logger;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public BeaconChainUtility(IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+        public BeaconChainUtility(ILogger<BeaconChainUtility> logger,
+            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             ICryptographyService cryptographyService)
         {
             _cryptographyService = cryptographyService;
+            _logger = logger;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
             _timeParameterOptions = timeParameterOptions;
+        }
+
+        /// <summary>
+        /// Return the epoch during which validator activations and exits initiated in ``epoch`` take effect.
+        /// </summary>
+        public Epoch ComputeActivationExitEpoch(Epoch epoch)
+        {
+            return epoch + new Epoch(1) + _timeParameterOptions.CurrentValue.MaximumSeedLookahead;
         }
 
         /// <summary>
@@ -101,14 +114,6 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
-        /// Return the epoch during which validator activations and exits initiated in ``epoch`` take effect.
-        /// </summary>
-        public Epoch ComputeActivationExitEpoch(Epoch epoch)
-        {
-            return epoch + new Epoch(1) + _timeParameterOptions.CurrentValue.MaximumSeedLookahead;
-        }
-
-        /// <summary>
         /// Return the shuffled validator index corresponding to ``seed`` (and ``index_count``).
         /// </summary>
         public ValidatorIndex ComputeShuffledIndex(ValidatorIndex index, ulong indexCount, Hash32 seed)
@@ -181,6 +186,19 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Check if ``data_1`` and ``data_2`` are slashable according to Casper FFG rules.
+        /// </summary>
+        public bool IsSlashableAttestationData(AttestationData data1, AttestationData data2)
+        {
+            var isSlashable =
+                // Double vote
+                (data1.Target.Epoch == data2.Target.Epoch && !data1.Equals(data2))
+                // Surround vote
+                || (data1.Source.Epoch < data2.Source.Epoch && data2.Target.Epoch < data1.Target.Epoch);
+            return isSlashable;
+        }
+
+        /// <summary>
         /// Check if ``validator`` is slashable.
         /// </summary>
         public bool IsSlashableValidator(Validator validator, Epoch epoch)
@@ -188,6 +206,99 @@ namespace Cortex.BeaconNode
             return (!validator.IsSlashed)
                 && (validator.ActivationEpoch <= epoch)
                 && (epoch < validator.WithdrawableEpoch);
+        }
+
+        /// <summary>
+        /// Check if ``indexed_attestation`` has valid indices and signature.
+        /// </summary>
+        public bool IsValidIndexedAttestation(BeaconState state, IndexedAttestation indexedAttestation, Domain domain)
+        {
+            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+            var bit0Indices = indexedAttestation.CustodyBit0Indices;
+            var bit1Indices = indexedAttestation.CustodyBit1Indices;
+
+            // Verify no index has custody bit equal to 1 [to be removed in phase 1]
+            if (bit1Indices.Count() != 0) // [to be removed in phase 1]
+            {
+                _logger.LogWarning(Event.InvalidIndexedAttestation, 
+                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has {BitIndicesCount} bit 1 indices.",
+                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot, bit1Indices.Count());
+                return false; //[to be removed in phase 1]
+            }
+
+            // Verify max number of indices
+            var totalIndices = bit0Indices.Count() + bit1Indices.Count();
+            if ((ulong)totalIndices > miscellaneousParameters.MaximumValidatorsPerCommittee)
+            {
+                _logger.LogWarning(Event.InvalidIndexedAttestation,
+                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has total indices {TotalIndices}, more than the maximum validators per committe {MaximumValidatorsPerCommittee}.",
+                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot, totalIndices, miscellaneousParameters.MaximumValidatorsPerCommittee);
+                return false;
+            }
+
+            // Verify index sets are disjoint
+            var intersect = bit0Indices.Intersect(bit1Indices);
+            if (intersect.Count() != 0)
+            {
+                _logger.LogWarning(Event.InvalidIndexedAttestation,
+                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has {IntersectingValidatorCount} validator indexes in common between custody bit 0 and custody bit 1.",
+                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot, intersect.Count());
+                return false;
+            }
+
+            // Verify indices are sorted
+            if (bit0Indices.Count() > 1)
+            {
+                for (var index = 0; index < bit0Indices.Count() - 1; index++)
+                {
+                    if (!(bit0Indices[index] < bit0Indices[index + 1]))
+                    {
+                        _logger.LogWarning(Event.InvalidIndexedAttestation,
+                            "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because custody bit 0 index {IndexNumber} is not sorted.",
+                            indexedAttestation.Data.Index, indexedAttestation.Data.Slot, index);
+                        return false;
+                    }
+                }
+            }
+            if (bit1Indices.Count() > 1)
+            {
+                for (var index = 0; index < bit1Indices.Count() - 1; index++)
+                {
+                    if (!(bit1Indices[index] < bit1Indices[index + 1]))
+                    {
+                        _logger.LogWarning(Event.InvalidIndexedAttestation,
+                            "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because custody bit 1 index {IndexNumber} is not sorted.",
+                            indexedAttestation.Data.Index, indexedAttestation.Data.Slot, index);
+                        return false;
+                    }
+                }
+            }
+
+            // Verify aggregate signature
+            var bit0PublicKeys = bit0Indices.Select(x => state.Validators[(int)(ulong)x].PublicKey);
+            var bit0AggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(bit0PublicKeys);
+            var bit1PublicKeys = bit1Indices.Select(x => state.Validators[(int)(ulong)x].PublicKey);
+            var bit1AggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(bit1PublicKeys);
+            var publicKeys = new BlsPublicKey[] { bit0AggregatePublicKey, bit1AggregatePublicKey };
+
+            var attestationDataAndCustodyBit0 = new AttestationDataAndCustodyBit(indexedAttestation.Data, false);
+            var messageHashBit0 = attestationDataAndCustodyBit0.HashTreeRoot();
+            var attestationDataAndCustodyBit1 = new AttestationDataAndCustodyBit(indexedAttestation.Data, true);
+            var messageHashBit1 = attestationDataAndCustodyBit1.HashTreeRoot();
+            var messageHashes = new Hash32[] { messageHashBit0, messageHashBit1 };
+
+            var signature = indexedAttestation.Signature;
+
+            var isValid = _cryptographyService.BlsVerifyMultiple(publicKeys, messageHashes, signature, domain);
+            if (!isValid)
+            {
+                _logger.LogWarning(Event.InvalidIndexedAttestation,
+                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because the aggregate signature does not match.",
+                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot);
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>

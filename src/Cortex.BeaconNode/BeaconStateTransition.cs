@@ -87,11 +87,58 @@ namespace Cortex.BeaconNode
 
         public void ProcessAttesterSlashing(BeaconState state, AttesterSlashing attesterSlashing)
         {
-            throw new NotImplementedException();
+            _logger.LogInformation(Event.ProcessAttesterSlashing, "Process attester slashing {AttesterSlashing}", attesterSlashing);
+            var attestation1 = attesterSlashing.Attestation1;
+            var attestation2 = attesterSlashing.Attestation2;
+
+            var isSlashableAttestationData = _beaconChainUtility.IsSlashableAttestationData(attestation1.Data, attestation2.Data);
+            if (!isSlashableAttestationData)
+            {
+                throw new Exception("Attestation data must be slashable.");
+            }
+
+            var epoch1 = attestation1.Data.Target.Epoch;
+            var domain1 = _beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, epoch1);
+            var attestation1Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation1, domain1);
+            if (!attestation1Valid)
+            {
+                throw new Exception("Attestation 1 must be valid.");
+            }
+
+            var epoch2 = attestation2.Data.Target.Epoch;
+            var domain2 = _beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, epoch2);
+            var attestation2Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation2, domain2);
+            if (!attestation2Valid)
+            {
+                throw new Exception("Attestation 2 must be valid.");
+            }
+
+            var slashedAny = false;
+            var attestingIndices1 = attestation1.CustodyBit0Indices.Union(attestation1.CustodyBit1Indices);
+            var attestingIndices2 = attestation2.CustodyBit0Indices.Union(attestation2.CustodyBit1Indices);
+
+            var intersection = attestingIndices1.Intersect(attestingIndices2);
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            foreach (var index in intersection.OrderBy(x => x))
+            {
+                var validator = state.Validators[(int)(ulong)index];
+                var isSlashableValidator = _beaconChainUtility.IsSlashableValidator(validator, currentEpoch);
+                if (isSlashableValidator)
+                {
+                    _beaconStateMutator.SlashValidator(state, index, ValidatorIndex.None);
+                    slashedAny = true;
+                }
+            }
+
+            if (!slashedAny)
+            {
+                throw new Exception("Attester slashing should have slashable at least one validator.");
+            }
         }
 
         public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
+            _logger.LogInformation(Event.ProcessBlock, "Process block {BeaconBlock}", block);
             ProcessBlockHeader(state, block);
             ProcessRandao(state, block.Body);
             ProcessEth1Data(state, block.Body);
@@ -100,6 +147,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
         {
+            _logger.LogInformation(Event.ProcessBlock, "Process block header for block {BeaconBlock}", block);
             // Verify that the slots match
             if (block.Slot != state.Slot)
             {
@@ -141,7 +189,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessEpoch(BeaconState state)
         {
-            _logger.LogDebug(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
+            _logger.LogInformation(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
             ProcessJustificationAndFinalization(state);
 
             // Did this change ???
@@ -158,6 +206,8 @@ namespace Cortex.BeaconNode
 
         public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
         {
+            _logger.LogInformation(Event.ProcessEth1Data, "Process ETH1 data for block body {BeaconBlockBody}", body);
+
             state.AppendEth1DataVotes(body.Eth1Data);
             var eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
             if (eth1DataVoteCount * 2 > (int)(ulong)_timeParameterOptions.CurrentValue.SlotsPerEth1VotingPeriod)
@@ -168,7 +218,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessJustificationAndFinalization(BeaconState state)
         {
-            _logger.LogDebug(Event.ProcessJustificationAndFinalization, "Process justification and finalization state {BeaconState}", state);
+            _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process justification and finalization state {BeaconState}", state);
             var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch <= _initialValueOptions.CurrentValue.GenesisEpoch + new Epoch(1))
             {
@@ -238,6 +288,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessOperations(BeaconState state, BeaconBlockBody body)
         {
+            _logger.LogInformation(Event.ProcessOperations, "Process operations for block body {BeaconBlockBody}", body);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
             var outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
             var expectedDeposits = Math.Min(_maxOperationsPerBlock.CurrentValue.MaximumDeposits, outstandingDeposits);
@@ -262,6 +313,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
         {
+            _logger.LogInformation(Event.ProcessProposerSlashing, "Process proposer slashing {ProposerSlashing}", proposerSlashing);
             var proposer = state.Validators[(int)(ulong)proposerSlashing.ProposerIndex];
             // Verify slots match
             if (proposerSlashing.Header1.Slot != proposerSlashing.Header2.Slot)
@@ -305,6 +357,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessRandao(BeaconState state, BeaconBlockBody body)
         {
+            _logger.LogInformation(Event.ProcessRandao, "Process randao for block body {BeaconBlockBody}", body);
             var epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             // Verify RANDAO reveal
             var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
@@ -326,7 +379,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessSlot(BeaconState state)
         {
-            _logger.LogDebug(Event.ProcessSlot, "Process current slot for state {BeaconState}", state);
+            _logger.LogInformation(Event.ProcessSlot, "Process current slot for state {BeaconState}", state);
             // Cache state root
             var previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
                 _stateListLengthOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
@@ -344,7 +397,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessSlots(BeaconState state, Slot slot)
         {
-            _logger.LogDebug(Event.ProcessSlots, "Process slots to {Slot} for state {BeaconState}", slot, state);
+            _logger.LogInformation(Event.ProcessSlots, "Process slots to {Slot} for state {BeaconState}", slot, state);
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");

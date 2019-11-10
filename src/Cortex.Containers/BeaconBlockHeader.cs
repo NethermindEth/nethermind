@@ -78,7 +78,7 @@ namespace Cortex.Containers
 
         public override string ToString()
         {
-            return base.ToString();
+            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 12)} St:{StateRoot.ToString().Substring(0, 12)} Bd:{BodyRoot.ToString().Substring(0, 12)}";
         }
     }
 }

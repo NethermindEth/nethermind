@@ -34,6 +34,11 @@
             Signature = signature;
         }
 
+        public override string ToString()
+        {
+            return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 16)} St:{StateRoot.ToString().Substring(0, 16)}";
+        }
+
         public void SetSlot(Slot slot)
         {
             Slot = slot;

@@ -50,6 +50,11 @@ namespace Cortex.Containers
 
         public void SetRandaoReveal(BlsSignature randaoReveal) => RandaoReveal = randaoReveal;
 
+        public override string ToString()
+        {
+            return $"R:{RandaoReveal.ToString().Substring(0, 12)} A[{Attestations.Count}] AS[{AttesterSlashings.Count}] D[{Deposits.Count}] PS[{ProposerSlashings.Count}]";
+        }
+
         /*
         public IList<VoluntaryExit> VoluntaryExits { get; }
 

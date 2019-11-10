@@ -25,7 +25,7 @@
 
         public override string ToString()
         {
-            return $"P:{PublicKey.ToString().Substring(0, 16)} A:{Amount}";
+            return $"P:{PublicKey.ToString().Substring(0, 12)} A:{Amount}";
         }
     }
 }
