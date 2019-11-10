@@ -35,6 +35,30 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 beaconStateAccessor, beaconStateTransition);
         }
 
+        [TestMethod]
+        public void InvalidSignature1()
+        {
+            // Arrange
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
+                out var maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+
+            var attesterSlashing = TestAttesterSlashing.GetValidAttesterSlashing(state, signed1: false, signed2: true,
+                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+
+            RunAttesterSlashingProcessing(state, attesterSlashing, expectValid: false,
+                chainConstants, stateListLengthOptions.CurrentValue, rewardsAndPenaltiesOptions.CurrentValue,
+                beaconStateAccessor, beaconStateTransition);
+        }
+
         //    Run ``process_attester_slashing``, yielding:
         //  - pre-state('pre')
         //  - attester_slashing('attester_slashing')
