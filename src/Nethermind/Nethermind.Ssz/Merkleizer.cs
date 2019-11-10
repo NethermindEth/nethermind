@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
@@ -109,7 +111,31 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
+        public void Feed(CommitteeIndex value)
+        {
+            Merkle.Ize(out _chunks[^1], value.Number);
+            Feed(_chunks[^1]);
+        }
+        
         public void Feed(Epoch value)
+        {
+            Merkle.Ize(out _chunks[^1], value.Number);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(Checkpoint value)
+        {
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(BeaconBlockHeader value)
+        {
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(ForkVersion value)
         {
             Merkle.Ize(out _chunks[^1], value.Number);
             Feed(_chunks[^1]);
@@ -121,9 +147,27 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
+        public void Feed(Slot value)
+        {
+            Merkle.Ize(out _chunks[^1], value.Number);
+            Feed(_chunks[^1]);
+        }
+        
         public void Feed(Sha256 value)
         {
             Feed(MemoryMarshal.Cast<byte, UInt256>(value.Bytes)[0]);
+        }
+        
+        public void Feed(Span<Sha256> value)
+        {
+            UInt256[] input = new UInt256[value.Length];
+            for (int i = 0; i < value.Length; i++)
+            {
+                UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes);
+            }
+            
+            Merkle.Ize(out _chunks[^1], input);
+            Feed(_chunks[^1]);
         }
         
         private void FeedAtLevel(UInt256 chunk, int level)
