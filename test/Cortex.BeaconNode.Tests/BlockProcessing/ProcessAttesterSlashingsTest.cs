@@ -93,7 +93,7 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
 
             foreach (var slashedIndex in slashedIndices)
             {
-                Console.Write($"Checking index {slashedIndex}");
+                Console.WriteLine($"Checking index {slashedIndex}");
                 var preWithdrawableEpoch = preWithdrawableEpochs[slashedIndex];
                 var slashedValidator = state.Validators[(int)(ulong)slashedIndex];
 

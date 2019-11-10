@@ -138,7 +138,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
-            _logger.LogInformation(Event.ProcessBlock, "Process block {BeaconBlock}", block);
+            _logger.LogInformation(Event.ProcessBlock, "Process block {BeaconBlock} for state {BeaconState}", block, state);
             ProcessBlockHeader(state, block);
             ProcessRandao(state, block.Body);
             ProcessEth1Data(state, block.Body);
