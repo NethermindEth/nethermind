@@ -132,7 +132,7 @@ namespace Cortex.BeaconNode
 
             if (!slashedAny)
             {
-                throw new Exception("Attester slashing should have slashable at least one validator.");
+                throw new Exception("Attester slashing should have slashed at least one validator.");
             }
         }
 

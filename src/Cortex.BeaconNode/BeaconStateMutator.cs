@@ -121,7 +121,7 @@ namespace Cortex.BeaconNode
             var proposerReward = whistleblowerReward / rewardsAndPenalties.ProposerRewardQuotient;
 
             IncreaseBalance(state, proposerIndex, proposerReward);
-            IncreaseBalance(state, whistleblowerIndex, whistleblowerReward);
+            IncreaseBalance(state, whistleblowerIndex, whistleblowerReward - proposerReward);
         }
     }
 }
