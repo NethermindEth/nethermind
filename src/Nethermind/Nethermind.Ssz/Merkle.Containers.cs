@@ -30,87 +30,79 @@ namespace Nethermind.Ssz
 {
     public static partial class Merkle
     {
-        public static void Ize(Span<byte> root, BlsPublicKey container)
+        public static void Ize(out UInt256 root, BlsPublicKey container)
         {
-            Ize(root, container.Bytes);
+            Ize(out root, container.Bytes);
         }
         
-        public static void Ize(Span<byte> root, BlsSignature container)
+        public static void Ize(out UInt256 root, BlsSignature container)
         {
-            Ize(root, container.Bytes);
+            Ize(out root, container.Bytes);
         }
 
-        public static void Ize(Span<byte> root, Gwei container)
+        public static void Ize(out UInt256 root, Gwei container)
         {
-            Ize(root, container.Amount);
+            Ize(out root, container.Amount);
         }
         
-        public static void Ize(Span<byte> root, Slot container)
+        public static void Ize(out UInt256 root, Slot container)
         {
-            Ize(root, container.Number);
+            Ize(out root, container.Number);
         }
         
-        public static void Ize(Span<byte> root, Epoch container)
+        public static void Ize(out UInt256 root, Epoch container)
         {
-            Ize(root, container.Number);
+            Ize(out root, container.Number);
         }
         
-        public static void Ize(Span<byte> root, ValidatorIndex container)
+        public static void Ize(out UInt256 root, ValidatorIndex container)
         {
-            Ize(root, container.Number);
+            Ize(out root, container.Number);
         }
         
-        public static void Ize(Span<byte> root, CommitteeIndex container)
+        public static void Ize(out UInt256 root, CommitteeIndex container)
         {
-            Ize(root, container.Number);
+            Ize(out root, container.Number);
         }
         
-        public static void Ize(Span<byte> root, Eth1Data container)
+        public static void Ize(out UInt256 root, Eth1Data container)
         {
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.DepositRoot);
             merkleizer.Feed(container.DepositCount);
             merkleizer.Feed(container.BlockHash);
-            merkleizer.CalculateRoot(root);
+            merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(Span<byte> root, VoluntaryExit container)
+        public static void Ize(out UInt256 root, Checkpoint container)
+        {
+            Merkleizer merkleizer = new Merkleizer(1);
+            merkleizer.Feed(container.Epoch);
+            merkleizer.Feed(container.Root);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, VoluntaryExit container)
         {
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.Epoch);
             merkleizer.Feed(container.ValidatorIndex);
             merkleizer.Feed(container.Signature);
-            merkleizer.CalculateRoot(root);
+            merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(Span<byte> root, Validator container)
+        public static void Ize(out UInt256 root, Validator container)
         {
-            Span<Chunk> chunks = new Chunk[8];
-            Span<byte> partRoot = new byte[32];
-            Ize(partRoot, container.PublicKey);
-            chunks[0] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.WithdrawalCredentials);
-            chunks[1] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.EffectiveBalance);
-            chunks[2] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.Slashed);
-            chunks[3] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.ActivationEligibilityEpoch);
-            chunks[4] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.ActivationEpoch);
-            chunks[5] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.ExitEpoch);
-            chunks[6] = MemoryMarshal.Read<Chunk>(partRoot);
-            partRoot = new byte[32];
-            Ize(partRoot, container.WithdrawableEpoch);
-            chunks[7] = MemoryMarshal.Read<Chunk>(partRoot);
-            Ize(root, chunks, Span<Chunk>.Empty);
+            Merkleizer merkleizer = new Merkleizer(3);
+            merkleizer.Feed(container.PublicKey);
+            merkleizer.Feed(container.WithdrawalCredentials);
+            merkleizer.Feed(container.EffectiveBalance);
+            merkleizer.Feed(container.Slashed);
+            merkleizer.Feed(container.ActivationEligibilityEpoch);
+            merkleizer.Feed(container.ActivationEpoch);
+            merkleizer.Feed(container.ExitEpoch);
+            merkleizer.Feed(container.WithdrawableEpoch);
+            merkleizer.CalculateRoot(out root);
         }
     }
 }

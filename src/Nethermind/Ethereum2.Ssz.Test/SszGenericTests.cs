@@ -30,7 +30,7 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum2.Ssz.Test
 {
-    public class SszStaticTests
+    public class SszGenericTests
     {
         [SetUp]
         public void Setup()
@@ -85,7 +85,7 @@ namespace Ethereum2.Ssz.Test
                 string[] files = Directory.GetFiles(validDir);
                 (YamlNode valueNode, YamlNodeType valueType) = LoadValue(files[2]); // value.yaml
                 (YamlNode merkleRootYaml, _) = LoadValue(files[0]); // meta.yaml
-                string expectedMerkleRoot = ((YamlScalarNode) merkleRootYaml["root"]).Value;
+                UInt256.CreateFromLittleEndian(out UInt256 expectedMerkleRoot, Bytes.FromHexString(((YamlScalarNode) merkleRootYaml["root"]).Value));
 
                 Span<byte> output = null;
                 Span<byte> ssz = File.ReadAllBytes(files[1]);
@@ -102,10 +102,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint256"))
                     {
@@ -116,9 +115,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint128"))
                     {
@@ -129,9 +128,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint64"))
                     {
@@ -142,9 +141,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint32"))
                     {
@@ -155,9 +154,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint16"))
                     {
@@ -168,9 +167,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint8"))
                     {
@@ -181,9 +180,9 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                 }
                 else if (valueType == YamlNodeType.Scalar)
@@ -204,17 +203,19 @@ namespace Ethereum2.Ssz.Test
                         byte[] clone = output.ToArray();
                         Nethermind.Ssz.Ssz.Encode(output, valueFromSsz);
                         Assert.AreEqual(clone.ToHexString(), output.ToHexString(), "ssz");
-                        Span<byte> root = new byte[32];
+
+
+                        UInt256 root;
                         if (validDir.Contains("bitvec"))
                         {
-                            Merkle.Ize(root, valueFromSsz);
+                            Merkle.Ize(out root, valueFromSsz);
                         }
                         else
                         {
-                            Merkle.IzeBits(root, valueFromSsz, limit);
+                            Merkle.IzeBits(out root, valueFromSsz, limit);
                         }
 
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("boolean"))
                     {
@@ -224,9 +225,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[1];
                         output[0] = Nethermind.Ssz.Ssz.Encode(value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_256"))
                     {
@@ -237,9 +237,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[32];
                         Nethermind.Ssz.Ssz.Encode(output, value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_128"))
                     {
@@ -250,9 +249,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[16];
                         Nethermind.Ssz.Ssz.Encode(output, value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_64"))
                     {
@@ -263,9 +261,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[8];
                         Nethermind.Ssz.Ssz.Encode(output, value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_32"))
                     {
@@ -276,9 +273,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[4];
                         Nethermind.Ssz.Ssz.Encode(output, value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_16"))
                     {
@@ -289,9 +285,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[2];
                         Nethermind.Ssz.Ssz.Encode(output, value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_8"))
                     {
@@ -302,9 +297,8 @@ namespace Ethereum2.Ssz.Test
                         output = new byte[1];
                         Nethermind.Ssz.Ssz.Encode(output, value);
 
-                        Span<byte> root = new byte[32];
-                        Merkle.Ize(root, valueFromSsz);
-                        Assert.AreEqual(expectedMerkleRoot, root.ToHexString(true));
+                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Assert.AreEqual(expectedMerkleRoot, root);
                     }
                 }
                 else if (valueType == YamlNodeType.Mapping)

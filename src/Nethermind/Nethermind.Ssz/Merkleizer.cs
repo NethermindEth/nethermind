@@ -73,52 +73,52 @@ namespace Nethermind.Ssz
             FeedAtLevel(MemoryMarshal.Cast<byte, UInt256>(bytes)[0], 0);
         }
         
+        public void Feed(bool value)
+        {
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+        
         public void Feed(uint value)
         {
-            Span<byte> partRoot = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref _chunks[^1], 1));
-            partRoot.Clear();
-            Merkle.Ize(partRoot, value);
-            Feed(MemoryMarshal.Cast<byte, UInt256>(partRoot)[0]);
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
         }
         
         public void Feed(ulong value)
         {
-            Span<byte> partRoot = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref _chunks[^1], 1));
-            partRoot.Clear();
-            Merkle.Ize(partRoot, value);
-            Feed(MemoryMarshal.Cast<byte, UInt256>(partRoot)[0]);
+            Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
         }
         
         public void Feed(BlsPublicKey value)
         {
-            Span<byte> partRoot = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref _chunks[^1], 1));
-            partRoot.Clear();
-            Merkle.Ize(partRoot, value);
-            Feed(MemoryMarshal.Cast<byte, UInt256>(partRoot)[0]);
+            Merkle.Ize(out _chunks[^1], value.Bytes);
+            Feed(_chunks[^1]);
         }
         
         public void Feed(BlsSignature value)
         {
-            Span<byte> partRoot = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref _chunks[^1], 1));
-            partRoot.Clear();
-            Merkle.Ize(partRoot, value);
-            Feed(MemoryMarshal.Cast<byte, UInt256>(partRoot)[0]);
+            Merkle.Ize(out _chunks[^1], value.Bytes);
+            Feed(_chunks[^1]);
         }
         
         public void Feed(ValidatorIndex value)
         {
-            Span<byte> partRoot = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref _chunks[^1], 1));
-            partRoot.Clear();
-            Merkle.Ize(partRoot, value);
-            Feed(MemoryMarshal.Cast<byte, UInt256>(partRoot)[0]);
+            Merkle.Ize(out _chunks[^1], value.Number);
+            Feed(_chunks[^1]);
         }
         
         public void Feed(Epoch value)
         {
-            Span<byte> partRoot = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref _chunks[^1], 1));
-            partRoot.Clear();
-            Merkle.Ize(partRoot, value);
-            Feed(MemoryMarshal.Cast<byte, UInt256>(partRoot)[0]);
+            Merkle.Ize(out _chunks[^1], value.Number);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(Gwei value)
+        {
+            Merkle.Ize(out _chunks[^1], value.Amount);
+            Feed(_chunks[^1]);
         }
         
         public void Feed(Sha256 value)
@@ -147,6 +147,11 @@ namespace Nethermind.Ssz
         public void CalculateRoot(Span<byte> root)
         {
             CalculateRoot().ToLittleEndian(root);
+        }
+        
+        public void CalculateRoot(out UInt256 root)
+        {
+            root = CalculateRoot();
         }
         
         public UInt256 CalculateRoot()
