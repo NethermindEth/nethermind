@@ -41,6 +41,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return signature;
         }
 
+        // def get_valid_attestation(spec, state, slot=None, index=None, signed=False):
         public static Attestation GetValidAttestation(BeaconState state, Slot slot, CommitteeIndex index, bool signed,
                     MiscellaneousParameters miscellaneousParameters,
             TimeParameters timeParameters,

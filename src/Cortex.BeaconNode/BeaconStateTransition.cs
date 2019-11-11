@@ -85,6 +85,74 @@ namespace Cortex.BeaconNode
             return output.Where(x => !state.Validators[(int)(ulong)x].IsSlashed);
         }
 
+        public void ProcessAttestation(BeaconState state, Attestation attestation)
+        {
+            var timeParameters = _timeParameterOptions.CurrentValue;
+            var data = attestation.Data;
+
+            var committeeCount = _beaconStateAccessor.GetCommitteeCountAtSlot(state, data.Slot);
+            if ((ulong)data.Index >= committeeCount)
+            {
+                throw new ArgumentOutOfRangeException("attestation.Data.Index", data.Index, $"Attestation data committee index must be less that the committee count {committeeCount}.");
+            }
+            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            if (data.Target.Epoch != previousEpoch && data.Target.Epoch != currentEpoch)
+            {
+                throw new ArgumentOutOfRangeException("attestation.Data.Target.Epoch", data.Target.Epoch, $"Attestation data target epoch must be either the previous epoch {previousEpoch} or the current epoch {currentEpoch}.");
+            }
+            var minimumSlot = data.Slot + timeParameters.MinimumAttestationInclusionDelay;
+            var maximumSlot = data.Slot + timeParameters.SlotsPerEpoch;
+            if (state.Slot < minimumSlot)
+            {
+                throw new Exception($"Current state slot {state.Slot} must be equal or greater than the attestion slot {data.Slot} plus minimum delay {timeParameters.MinimumAttestationInclusionDelay}.");
+            }
+            if (state.Slot > maximumSlot)
+            {
+                throw new Exception($"Current state slot {state.Slot} must be equal or less than the attestation slot {data.Slot} plus slots per epoch {timeParameters.SlotsPerEpoch}.");
+            }
+
+            var committee = _beaconStateAccessor.GetBeaconCommittee(state, data.Slot, data.Index);
+            if (attestation.AggregationBits.Count != attestation.CustodyBits.Count)
+            {
+                throw new Exception($"The attestation aggregation bit length {attestation.AggregationBits.Count} must be the same as the custody bit length {attestation.CustodyBits.Count}.");
+            }
+            if (attestation.AggregationBits.Count != committee.Count)
+            {
+                throw new Exception($"The attestation aggregation bit (and custody bit) length {attestation.AggregationBits.Count} must be the same as the committee length {committee.Count}.");
+            }
+
+            var inclusionDelay = state.Slot - data.Slot;
+            var proposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            var pendingAttestation = new PendingAttestation(attestation.AggregationBits, data, inclusionDelay, proposerIndex);
+
+            if (data.Target.Epoch == currentEpoch)
+            {
+                if (!data.Source.Equals(state.CurrentJustifiedCheckpoint))
+                {
+                    throw new Exception($"For a current epoch target attestation the data source checkpoint {data.Source} must be the same as the current justified checkpoint {state.CurrentJustifiedCheckpoint}.");
+                }
+                state.AddCurrentAttestation(pendingAttestation);
+            }
+            else
+            {
+                if (!data.Source.Equals(state.PreviousJustifiedCheckpoint))
+                {
+                    throw new Exception($"For a previous epoch target attestation the data source checkpoint {data.Source} must be the same as the previous justified checkpoint {state.PreviousJustifiedCheckpoint}.");
+                }
+                state.AddPreviousAttestation(pendingAttestation);
+            }
+
+            // Check signature
+            var indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(state, attestation);
+            var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, data.Target.Epoch);
+            var isValid = _beaconChainUtility.IsValidIndexedAttestation(state, indexedAttestation, domain);
+            if (!isValid)
+            {
+                throw new Exception($"Indexed attestation {indexedAttestation} is not valid.");
+            }
+        }
+
         public void ProcessAttesterSlashing(BeaconState state, AttesterSlashing attesterSlashing)
         {
             _logger.LogInformation(Event.ProcessAttesterSlashing, "Process attester slashing {AttesterSlashing}", attesterSlashing);
@@ -305,7 +373,10 @@ namespace Cortex.BeaconNode
             {
                 ProcessAttesterSlashing(state, attesterSlashing);
             }
-            //ProcessAttestation();
+            foreach (var attestation in body.Attestations)
+            {
+                ProcessAttestation(state, attestation);
+            }
             //ProcessDeposit();
             //ProcessVoluntaryExit();
             //ProcessShareReceiptProof();
