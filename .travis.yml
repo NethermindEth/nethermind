@@ -150,6 +150,14 @@ jobs:
     - script: 
       - git submodule update --init src/Dirichlet src/rocksdb-sharp
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Ssz.Test;
+        else 
+          dotnet test -c Release src/Nethermind/Nethermind.Ssz.Test;
+        fi
+      name: "Nethermind.Ssz.Test"
+    - script: 
+      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test;
         else 
           dotnet test -c Release src/Nethermind/Nethermind.Store.Test;
