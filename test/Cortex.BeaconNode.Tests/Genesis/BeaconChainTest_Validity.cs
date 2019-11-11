@@ -14,12 +14,14 @@ namespace Cortex.BeaconNode.Tests.Genesis
     [TestClass]
     public class BeaconChainTest_Validity
     {
-        public BeaconState CreateValidBeaconState(BeaconChain beaconChain, BeaconChainUtility beaconChainUtility,
+        public BeaconState CreateValidBeaconState(BeaconChain beaconChain, BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor,
             ChainConstants chainConstants, InitialValues initialValues, MiscellaneousParameters miscellaneousParameters, GweiValues gweiValues,
             TimeParameters timeParameters, ulong? eth1TimestampOverride = null)
         {
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
-            (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValues, timeParameters, beaconChainUtility, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
+            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValues.MaximumEffectiveBalance, signed: true,
+                chainConstants, initialValues, timeParameters, 
+                beaconChainUtility, beaconStateAccessor);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = eth1TimestampOverride ?? miscellaneousParameters.MinimumGenesisTime;
             var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
@@ -45,10 +47,10 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // Act
-            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
+            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, beaconStateAccessor, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
 
             // Assert
             IsValidGenesisState(beaconChain, state, true);
@@ -67,10 +69,10 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // Act
-            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
+            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, beaconStateAccessor, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
                 gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, eth1TimestampOverride: (miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime - 3 * chainConstants.SecondsPerDay));
 
             // Assert
@@ -90,10 +92,10 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // Act
-            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
+            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, beaconStateAccessor, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
                 gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
             state.Validators[0].SetEffectiveBalance(gweiValueOptions.CurrentValue.MaximumEffectiveBalance + (Gwei)1);
 
@@ -114,10 +116,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount + 1;
-            (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true);
+            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true,
+                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue,
+                beaconChainUtility, beaconStateAccessor);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
 
@@ -141,10 +145,12 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount - 1;
-            (var deposits, _) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true);
+            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true,
+                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, 
+                beaconChainUtility, beaconStateAccessor);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
 
@@ -155,14 +161,14 @@ namespace Cortex.BeaconNode.Tests.Genesis
             IsValidGenesisState(beaconChain, state, false);
         }
 
-        private static (BeaconChainUtility, BeaconChain) PrepareComponents(ChainConstants chainConstants,
-    IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
-    IOptionsMonitor<GweiValues> gweiValueOptions,
-    IOptionsMonitor<InitialValues> initialValueOptions,
-    IOptionsMonitor<TimeParameters> timeParameterOptions,
-    IOptionsMonitor<StateListLengths> stateListLengthOptions,
-    IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
-    IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
+        private static (BeaconChainUtility, BeaconStateAccessor, BeaconChain) PrepareComponents(ChainConstants chainConstants,
+            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+            IOptionsMonitor<GweiValues> gweiValueOptions,
+            IOptionsMonitor<InitialValues> initialValueOptions,
+            IOptionsMonitor<TimeParameters> timeParameterOptions,
+            IOptionsMonitor<StateListLengths> stateListLengthOptions,
+            IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
+            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
         {
             var loggerFactory = new LoggerFactory(new[] {
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
@@ -176,12 +182,15 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService, beaconChainUtility);
             var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                  beaconChainUtility, beaconStateAccessor);
-
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
-            return (beaconChainUtility, beaconChain);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition);
+
+            return (beaconChainUtility, beaconStateAccessor, beaconChain);
         }
     }
 }

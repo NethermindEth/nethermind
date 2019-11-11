@@ -54,10 +54,13 @@ namespace Cortex.BeaconNode.Tests
                 cryptographyService, beaconChainUtility);
             var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                 beaconChainUtility, beaconStateAccessor);
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
                 chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, 
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition);
 
             // Act
             var eth1BlockHash = Hash32.Zero;

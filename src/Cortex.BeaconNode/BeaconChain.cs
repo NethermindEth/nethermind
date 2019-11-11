@@ -14,8 +14,9 @@ namespace Cortex.BeaconNode
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
+        private readonly BeaconStateTransition _beaconStateTransition;
         private readonly BeaconStateMutator _beaconStateMutator;
-        private readonly ICryptographyService _blsSignatureService;
+        private readonly ICryptographyService _cryptographyService;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
@@ -36,12 +37,14 @@ namespace Cortex.BeaconNode
             ICryptographyService blsSignatureService,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
-            BeaconStateMutator beaconStateMutator)
+            BeaconStateMutator beaconStateMutator,
+            BeaconStateTransition beaconStateTransition)
         {
             _logger = logger;
-            _blsSignatureService = blsSignatureService;
+            _cryptographyService = blsSignatureService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
+            _beaconStateTransition = beaconStateTransition;
             _beaconStateMutator = beaconStateMutator;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
@@ -78,7 +81,7 @@ namespace Cortex.BeaconNode
                 depositDataList.Add(deposit.Data);
                 var depositRoot = depositDataList.HashTreeRoot(_chainConstants.MaximumDepositContracts);
                 state.Eth1Data.SetDepositRoot(depositRoot);
-                ProcessDeposit(state, deposit);
+                _beaconStateTransition.ProcessDeposit(state, deposit);
             }
 
             // Process activations
@@ -113,62 +116,6 @@ namespace Cortex.BeaconNode
                 return false;
             }
             return true;
-        }
-
-        public void ProcessDeposit(BeaconState state, Deposit deposit)
-        {
-            _logger.LogDebug(Event.ProcessDeposit, "Process deposit {Deposit} for state {BeaconState}.", deposit, state);
-
-            var gweiValues = _gweiValueOptions.CurrentValue;
-
-            // Verify the Merkle branch
-            var isValid = _beaconChainUtility.IsValidMerkleBranch(
-                deposit.Data.HashTreeRoot(),
-                deposit.Proof,
-                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
-                state.Eth1DepositIndex,
-                state.Eth1Data.DepositRoot);
-            if (!isValid)
-            {
-                throw new Exception($"Invalid Merle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
-            }
-
-            // Deposits must be processed in order
-            state.IncreaseEth1DepositIndex();
-
-            var publicKey = deposit.Data.PublicKey;
-            var amount = deposit.Data.Amount;
-            var validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
-
-            if (!validatorPublicKeys.Contains(publicKey))
-            {
-                // Verify the deposit signature (proof of possession) for new validators
-                // Note: The deposit contract does not check signatures.
-                // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
-
-                var domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
-                if (!_blsSignatureService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
-                {
-                    return;
-                }
-
-                var effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
-                var newValidator = new Validator(
-                    publicKey,
-                    deposit.Data.WithdrawalCredentials,
-                    effectiveBalance
-,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch);
-                state.AddValidatorWithBalance(newValidator, amount);
-            }
-            else
-            {
-                var index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
-                _beaconStateMutator.IncreaseBalance(state, index, amount);
-            }
         }
 
         public async Task<bool> TryGenesisAsync(Hash32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)

@@ -57,15 +57,19 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 cryptographyService, beaconChainUtility);
             var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                  beaconChainUtility, beaconStateAccessor);
+            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount;
-            (var deposits, var depositRoot) = TestData.PrepareGenesisDeposits(chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: useBls);
+            (var deposits, var depositRoot) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: useBls,
+                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, beaconStateAccessor);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), chainConstants, miscellaneousParameterOptions,
-                gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
+            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition);
 
             // Act
             //# initialize beacon_state

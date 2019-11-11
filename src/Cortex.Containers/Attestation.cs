@@ -24,5 +24,10 @@ namespace Cortex.Containers
         {
             Signature = signature;
         }
+
+        public override string ToString()
+        {
+            return $"C:{Data.Index} S:{Data.Slot} Sig:{Signature.ToString().Substring(0, 12)}";
+        }
     }
 }

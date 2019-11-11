@@ -224,6 +224,8 @@ namespace Cortex.Containers
             Eth1Data = eth1Data;
         }
 
+        public void SetEth1DepositIndex(ulong value) => Eth1DepositIndex = value;
+
         public void SetFinalizedCheckpoint(Checkpoint checkpoint)
         {
             FinalizedCheckpoint = checkpoint;

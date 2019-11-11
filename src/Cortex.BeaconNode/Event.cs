@@ -24,6 +24,7 @@ namespace Cortex.BeaconNode
         public static readonly EventId ProcessOperations = new EventId(2009, nameof(ProcessOperations));
         public static readonly EventId ProcessProposerSlashing = new EventId(2010, nameof(ProcessProposerSlashing));
         public static readonly EventId ProcessAttesterSlashing = new EventId(2011, nameof(ProcessAttesterSlashing));
+        public static readonly EventId ProcessAttestation = new EventId(2012, nameof(ProcessAttestation));
 
         // 4bxx warning
         public static readonly EventId InvalidIndexedAttestation = new EventId(4100, nameof(InvalidIndexedAttestation));

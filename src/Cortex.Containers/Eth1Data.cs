@@ -18,7 +18,7 @@ namespace Cortex.Containers
         }
 
         public Hash32 BlockHash { get; }
-        public ulong DepositCount { get; }
+        public ulong DepositCount { get; private set; }
         public Hash32 DepositRoot { get; private set; }
 
         public static Eth1Data Clone(Eth1Data other)
@@ -56,6 +56,11 @@ namespace Cortex.Containers
         public override int GetHashCode()
         {
             return HashCode.Combine(BlockHash, DepositCount, DepositRoot);
+        }
+
+        public void SetDepositCount(ulong depositCount)
+        {
+            DepositCount = depositCount;
         }
 
         public void SetDepositRoot(Hash32 depositRoot)
