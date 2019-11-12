@@ -244,7 +244,8 @@ namespace Nethermind.JsonRpc
                         CreateNewRecorderFile();
                     }
 
-                    File.AppendAllText(_currentRecorderFilePath, request);
+                    var singleLineRequest = request.Replace(Environment.NewLine, "");
+                    File.AppendAllText(_currentRecorderFilePath, singleLineRequest + Environment.NewLine);
                 }
             }
         }
