@@ -284,7 +284,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (_logger.IsInfo) _logger.Info("Enabled JSON RPC Proxy for NDM.");
                 var proxyFactory = new EthModuleProxyFactory(ndmConfig.JsonRpcUrlProxies, _ethereumJsonSerializer,
-                    _logManager);
+                    _wallet, _logManager);
                 _rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
             }
             else

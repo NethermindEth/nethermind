@@ -97,8 +97,6 @@ namespace Nethermind.Facade.Test.Proxy
         }
 
         [Test]
-        
-        
         public async Task eth_getCode_should_invoke_client_method()
         {
             var address = TestItem.AddressA;

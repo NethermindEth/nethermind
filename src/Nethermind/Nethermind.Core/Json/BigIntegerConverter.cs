@@ -41,23 +41,17 @@ namespace Nethermind.Core.Json
         {
             if (value.IsZero)
             {
-                writer.WriteRawValue("\"0x0\"");
+                writer.WriteValue("0x0");
                 return;
             }
 
             switch (_conversion)
             {
                 case NumberConversion.PaddedHex:
-                    writer.WriteRaw("\"0x");
-                    writer.WriteRaw(value.ToString("x64").TrimStart('0'));
-                    writer.WriteRaw("\"");
-                    writer.WriteRawValue("");
+                    writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
                     break;
                 case NumberConversion.Hex:
-                    writer.WriteRaw("\"0x");
-                    writer.WriteRaw(value.ToString("x").TrimStart('0'));
-                    writer.WriteRaw("\"");
-                    writer.WriteRawValue("");
+                    writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
                     break;
                 case NumberConversion.Decimal:
                     writer.WriteValue(value.ToString());

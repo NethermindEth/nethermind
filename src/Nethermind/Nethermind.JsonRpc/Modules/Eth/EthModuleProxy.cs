@@ -15,26 +15,32 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Eip1186;
+using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class EthModuleProxy : IEthModule
     {
         private readonly IEthJsonRpcClientProxy _proxy;
+        private readonly IWallet _wallet;
 
-        public EthModuleProxy(IEthJsonRpcClientProxy proxy)
+        public EthModuleProxy(IEthJsonRpcClientProxy proxy, IWallet wallet)
         {
             _proxy = proxy;
+            _wallet = wallet;
         }
 
         public ResultWrapper<long> eth_chainId()
@@ -129,15 +135,25 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc)
+        public async Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
-            throw new NotSupportedException();
+            var transaction = transactionForRpc.ToTransaction();
+            if (transaction.Signature is null)
+            {
+                var chainIdResult = await _proxy.eth_chainId();
+                var chainId = chainIdResult?.IsValid == true ? (int) chainIdResult.Result : 0;
+                var nonceResult =
+                    await _proxy.eth_getTransactionCount(transaction.SenderAddress, BlockParameterModel.Pending);
+                transaction.Nonce = nonceResult?.IsValid == true ? nonceResult.Result ?? UInt256.Zero : UInt256.Zero;
+                _wallet.Sign(transaction, chainId);
+            }
+
+            return ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
         }
 
-        public ResultWrapper<Keccak> eth_sendRawTransaction(byte[] transaction)
-        {
-            throw new NotSupportedException();
-        }
+        public async Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
+            => ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
+
 
         public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
@@ -177,9 +193,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<ReceiptForRpc> eth_getTransactionReceipt(Keccak txHashData)
+        public async Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHashData)
         {
-            throw new NotSupportedException();
+            var result = await _proxy.eth_getTransactionReceipt(txHashData);
+            var receipt = MapReceipt(result.Result);
+
+            return receipt is null
+                ? ResultWrapper<ReceiptForRpc>.Fail("Receipt was not found.")
+                : ResultWrapper<ReceiptForRpc>.Success(receipt);
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex)
@@ -248,6 +269,44 @@ namespace Nethermind.JsonRpc.Modules.Eth
         {
             throw new NotSupportedException();
         }
+
+        private static ReceiptForRpc MapReceipt(ReceiptModel receipt)
+        {
+            if (receipt is null)
+            {
+                return null;
+            }
+
+            return new ReceiptForRpc
+            {
+                BlockHash = receipt.BlockHash,
+                BlockNumber = receipt.BlockNumber,
+                ContractAddress = receipt.ContractAddress,
+                CumulativeGasUsed = receipt.CumulativeGasUsed,
+                From = receipt.From,
+                GasUsed = receipt.GasUsed,
+                Logs = receipt.Logs?.Select(MapLogEntry).ToArray() ?? Array.Empty<LogEntryForRpc>(),
+                Status = receipt.Status,
+                To = receipt.To,
+                TransactionHash = receipt.TransactionHash,
+                TransactionIndex = receipt.TransactionIndex,
+                LogsBloom = receipt.LogsBloom is null ? null : new Bloom(new BitArray(receipt.LogsBloom))
+            };
+        }
+
+        private static LogEntryForRpc MapLogEntry(LogModel log)
+            => new LogEntryForRpc
+            {
+                Address = log.Address,
+                Data = log.Data,
+                Removed = log.Removed,
+                Topics = log.Topics,
+                BlockHash = log.BlockHash,
+                BlockNumber = log.BlockNumber,
+                LogIndex = log.LogIndex,
+                TransactionHash = log.TransactionHash,
+                TransactionIndex = log.TransactionIndex
+            };
 
         private static BlockParameterModel MapBlockParameter(BlockParameter blockParameter)
         {

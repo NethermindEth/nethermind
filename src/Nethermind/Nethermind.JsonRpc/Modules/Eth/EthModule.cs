@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
@@ -258,7 +257,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<byte[]>.Success(sig.Bytes);
         }
 
-        public ResultWrapper<Keccak> eth_sendTransaction(TransactionForRpc transactionForRpc)
+        public Task<ResultWrapper<Keccak>> eth_sendTransaction(TransactionForRpc transactionForRpc)
         {
             Transaction tx = transactionForRpc.ToTransaction();
             if (tx.Signature == null)
@@ -268,14 +267,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
 
             Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
-            return ResultWrapper<Keccak>.Success(txHash);
+            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public ResultWrapper<Keccak> eth_sendRawTransaction(byte[] transaction)
+        public Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction)
         {
             Transaction tx = Rlp.Decode<Transaction>(transaction);
             Keccak txHash = _blockchainBridge.SendTransaction(tx, true);
-            return ResultWrapper<Keccak>.Success(txHash);
+            return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
         public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
@@ -286,7 +285,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             tx.GasPrice = 0;
             if (tx.GasLimit < 21000)
             {
-                tx.GasLimit = 10000000;    
+                tx.GasLimit = 10000000;
             }
 
             if (tx.To == null)
@@ -419,17 +418,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return ResultWrapper<TransactionForRpc>.Success(transactionModel);
         }
 
-        public ResultWrapper<ReceiptForRpc> eth_getTransactionReceipt(Keccak txHash)
+        public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Keccak txHash)
         {
             var receipt = _blockchainBridge.GetReceipt(txHash);
             if (receipt == null)
             {
-                return ResultWrapper<ReceiptForRpc>.Success(null);
+                return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(null));
             }
 
             var receiptModel = new ReceiptForRpc(txHash, receipt);
             if (_logger.IsTrace) _logger.Trace($"eth_getTransactionReceipt request {txHash}, result: {txHash}");
-            return ResultWrapper<ReceiptForRpc>.Success(receiptModel);
+            return Task.FromResult(ResultWrapper<ReceiptForRpc>.Success(receiptModel));
         }
 
         public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Keccak blockHashData, UInt256 positionIndex)

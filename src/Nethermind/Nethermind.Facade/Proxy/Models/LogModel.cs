@@ -29,8 +29,8 @@ namespace Nethermind.Facade.Proxy.Models
         public byte[] Data { get; set; }
         public UInt256 LogIndex { get; set; }
         public bool Removed { get; set; }
-        public List<Keccak> Topics { get; set; }
+        public Keccak[] Topics { get; set; }
         public Keccak TransactionHash { get; set; }
-        public Keccak TransactionIndex { get; set; }
+        public UInt256 TransactionIndex { get; set; }
     }
 }
