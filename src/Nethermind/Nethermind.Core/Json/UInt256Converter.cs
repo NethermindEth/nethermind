@@ -18,6 +18,7 @@
 
 using System;
 using System.Globalization;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Core.Json
         {
             if (value.IsZero)
             {
-                writer.WriteRawValue("\"0x0\"");
+                writer.WriteValue("0x0");
                 return;
             }
 
@@ -51,17 +52,8 @@ namespace Nethermind.Core.Json
 
             switch (usedConversion)
             {
-                case NumberConversion.PaddedHex:
-                    writer.WriteRaw("\"0x");
-                    writer.WriteRaw(value.ToString("x64").TrimStart('0'));
-                    writer.WriteRaw("\"");
-                    writer.WriteRawValue("");
-                    break;
                 case NumberConversion.Hex:
-                    writer.WriteRaw("\"0x");
-                    writer.WriteRaw(value.ToString("x").TrimStart('0'));
-                    writer.WriteRaw("\"");
-                    writer.WriteRawValue("");
+                    writer.WriteValue(value.ToHexString(true));
                     break;
                 case NumberConversion.Decimal:
                     writer.WriteRawValue(value.ToString());

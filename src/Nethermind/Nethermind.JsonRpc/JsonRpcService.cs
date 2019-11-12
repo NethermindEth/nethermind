@@ -91,12 +91,12 @@ namespace Nethermind.JsonRpc
                 catch (TargetInvocationException ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException.ToString(), rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException?.ToString(), rpcRequest.Id, rpcRequest.Method);
                 }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException.ToString(), rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException?.ToString(), rpcRequest.Id, rpcRequest.Method);
                 }
             }
             catch (Exception ex)

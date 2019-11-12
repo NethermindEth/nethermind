@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Tracing
             Entries = new List<GethTxTraceEntry>();
         }
         
-        public BigInteger Gas { get; set; }
+        public long Gas { get; set; }
 
         public bool Failed { get; set; }
 

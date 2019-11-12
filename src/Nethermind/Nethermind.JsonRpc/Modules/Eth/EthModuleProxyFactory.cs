@@ -17,8 +17,10 @@
 using System;
 using System.Net.Http;
 using Nethermind.Core;
+using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
+using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
@@ -26,17 +28,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
     {
         private readonly string[] _urlProxies;
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IWallet _wallet;
         private readonly ILogManager _logManager;
 
-        public EthModuleProxyFactory(string[] urlProxies, IJsonSerializer jsonSerializer, ILogManager logManager)
+        public EthModuleProxyFactory(string[] urlProxies, IJsonSerializer jsonSerializer,
+            IWallet wallet, ILogManager logManager)
         {
             _urlProxies = urlProxies;
             _jsonSerializer = jsonSerializer;
+            _wallet = wallet;
             _logManager = logManager;
         }
 
         public override IEthModule Create()
             => new EthModuleProxy(new EthJsonRpcClientProxy(new JsonRpcClientProxy(new DefaultHttpClient(
-                new HttpClient(), _jsonSerializer, _logManager), _urlProxies)));
+                new HttpClient(), _jsonSerializer, _logManager), _urlProxies)), _wallet);
     }
 }

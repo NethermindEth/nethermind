@@ -19,6 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -50,11 +51,11 @@ namespace Nethermind.JsonRpc.Data
         }
         
         public bool? Removed { get; set; }
-        public BigInteger? LogIndex { get; set; }
-        public BigInteger? TransactionIndex { get; set; }
+        public long? LogIndex { get; set; }
+        public long? TransactionIndex { get; set; }
         public Keccak TransactionHash { get; set; }
         public Keccak BlockHash { get; set; }
-        public BigInteger? BlockNumber { get; set; }
+        public long? BlockNumber { get; set; }
         public Address Address { get; set; }
         public byte[] Data { get; set; }
         public Keccak[] Topics { get; set; }

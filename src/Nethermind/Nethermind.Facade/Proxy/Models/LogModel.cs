@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -29,8 +28,8 @@ namespace Nethermind.Facade.Proxy.Models
         public byte[] Data { get; set; }
         public UInt256 LogIndex { get; set; }
         public bool Removed { get; set; }
-        public List<Keccak> Topics { get; set; }
+        public Keccak[] Topics { get; set; }
         public Keccak TransactionHash { get; set; }
-        public Keccak TransactionIndex { get; set; }
+        public UInt256 TransactionIndex { get; set; }
     }
 }

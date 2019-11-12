@@ -16,20 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using System.Net.Http;
 using System.Security;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
-using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
-using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Wallet;
 
