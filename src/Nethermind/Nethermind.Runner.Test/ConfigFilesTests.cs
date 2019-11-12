@@ -56,6 +56,7 @@ namespace Nethermind.Runner.Test
         [TestCase("xdai.cfg", true)]
         [TestCase("xdai_archive.cfg", false)]
         [TestCase("spaceneth.cfg", false)]
+        [TestCase("volta.cfg", false)]
         public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -72,6 +73,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
         [TestCase("mainnet.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
         [TestCase("sokol.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        [TestCase("volta.cfg", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
         public void Genesis_hash_is_correct(string configFile, string genesisHash)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -90,6 +92,7 @@ namespace Nethermind.Runner.Test
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
         [TestCase("spaceneth.cfg", true)]
+        [TestCase("volta.cfg")]
         public void Mining_defaults_are_correct(string configFile, bool defaultValue = false)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -110,6 +113,7 @@ namespace Nethermind.Runner.Test
         [TestCase("spaceneth.cfg")]
         [TestCase("ndm_consumer_goerli.cfg")]
         [TestCase("ndm_consumer_local.cfg")]
+        [TestCase("volta.cfg")]
         public void Required_config_files_exist(string configFile)
         {
             var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
@@ -126,6 +130,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Eth_stats_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -143,6 +148,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Grpc_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -179,6 +185,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Ndm_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -196,6 +203,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Metrics_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -213,6 +221,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Network_defaults_are_correct(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -234,6 +243,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Json_default_are_correct(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -253,6 +263,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("volta.cfg")]
         public void Kafka_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -270,6 +281,7 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet.cfg", true)]
         [TestCase("sokol.cfg")]
         [TestCase("poacore.cfg", true)]
+        [TestCase("volta.cfg")]
         public void Basic_configs_are_as_expected(string configFile, bool isProduction = false)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);

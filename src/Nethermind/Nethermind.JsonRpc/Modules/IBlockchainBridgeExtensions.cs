@@ -66,5 +66,41 @@ namespace Nethermind.JsonRpc.Modules
 
             return block;
         }
+        
+        public static BlockHeader GetHeader(this IBlockchainBridge blockchainBridge, BlockParameter blockParameter, bool allowNulls = false)
+        {
+            BlockHeader header;
+            switch (blockParameter.Type)
+            {
+                case BlockParameterType.BlockNumber:
+                {
+                    if (blockParameter.BlockNumber == null)
+                    {
+                        throw new JsonRpcException(ErrorType.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
+                    }
+
+                    header = blockchainBridge.GetHeader(blockParameter.ToFilterBlock());
+                    break;
+                }
+
+                case BlockParameterType.Pending:
+                case BlockParameterType.Latest:
+                case BlockParameterType.Earliest:
+                {
+                    header = blockchainBridge.GetHeader(blockParameter.ToFilterBlock());
+                    break;
+                }
+
+                default:
+                    throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}");
+            }
+
+            if (header == null && !allowNulls)
+            {
+                throw new JsonRpcException(ErrorType.NotFound, $"Cannot find block {blockParameter}");
+            }
+            
+            return header;
+        }
     }
 }

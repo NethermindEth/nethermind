@@ -41,7 +41,7 @@ namespace Nethermind.Core.Json
         {
             if (value.IsZero)
             {
-                writer.WriteValue("0x0");
+                writer.WriteRawValue("\"0x0\"");
                 return;
             }
 
@@ -52,13 +52,19 @@ namespace Nethermind.Core.Json
             switch (usedConversion)
             {
                 case NumberConversion.PaddedHex:
-                    writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
+                    writer.WriteRaw("\"0x");
+                    writer.WriteRaw(value.ToString("x64").TrimStart('0'));
+                    writer.WriteRaw("\"");
+                    writer.WriteRawValue("");
                     break;
                 case NumberConversion.Hex:
-                    writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
+                    writer.WriteRaw("\"0x");
+                    writer.WriteRaw(value.ToString("x").TrimStart('0'));
+                    writer.WriteRaw("\"");
+                    writer.WriteRawValue("");
                     break;
                 case NumberConversion.Decimal:
-                    writer.WriteValue((int) value);
+                    writer.WriteRawValue(value.ToString());
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();

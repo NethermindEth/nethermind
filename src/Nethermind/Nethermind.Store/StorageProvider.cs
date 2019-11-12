@@ -43,8 +43,9 @@ namespace Nethermind.Store
 
         private ResettableDictionary<Address, StorageTree> _storages = new ResettableDictionary<Address, StorageTree>();
 
-        private int _capacity = Resettable.StartCapacity;
-        private Change[] _changes = new Change[Resettable.StartCapacity];
+        private const int StartCapacity = Resettable.StartCapacity;
+        private int _capacity = StartCapacity;
+        private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
         public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
@@ -208,6 +209,11 @@ namespace Nethermind.Store
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
+                if (!isTracing && change.ChangeType == ChangeType.JustCache)
+                {
+                    continue;
+                }
+                
                 if (_committedThisRound.Contains(change.StorageAddress))
                 {
                     if (isTracing && change.ChangeType == ChangeType.JustCache)
@@ -275,8 +281,7 @@ namespace Nethermind.Store
                 }
             }
             
-            _currentPosition = -1;
-            Resettable.Reset(ref _changes, ref _capacity);
+            Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
             _intraBlockCache.Reset();
             _originalValues.Reset();
@@ -384,7 +389,7 @@ namespace Nethermind.Store
         private void PushToRegistryOnly(StorageAddress address, byte[] value)
         {
             SetupRegistry(address);
-            IncrementPosition();
+            IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _originalValues[address] = value;
             _changes[_currentPosition] = new Change(ChangeType.JustCache, address, value);
@@ -393,19 +398,14 @@ namespace Nethermind.Store
         private void PushUpdate(StorageAddress address, byte[] value)
         {
             SetupRegistry(address);
-            IncrementPosition();
+            IncrementChangePosition();
             _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.Update, address, value);
         }
 
-        private void IncrementPosition()
+        private void IncrementChangePosition()
         {
-            _currentPosition++;
-            if (_currentPosition >= _capacity - 1) // sometimes we ask about the _currentPosition + 1;
-            {
-                _capacity *= 2;
-                Array.Resize(ref _changes, _capacity);
-            }
+            Resettable<Change>.IncrementPosition(ref _changes, ref _capacity, ref _currentPosition);
         }
 
         private void SetupRegistry(StorageAddress address)

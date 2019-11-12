@@ -60,7 +60,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         public ResultWrapper<ParityLikeTxTrace> trace_rawTransaction(byte[] data, string[] traceTypes)
         {
-            throw new NotImplementedException();
+            ParityLikeTxTrace result = _tracer.ParityTraceRawTransaction(data, GetParityTypes(traceTypes));
+            return ResultWrapper<ParityLikeTxTrace>.Success(result);
         }
 
         public ResultWrapper<ParityLikeTxTrace> trace_replayTransaction(Keccak txHash, string[] traceTypes)
@@ -74,6 +75,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 block = _blockchainBridge.GetBlock(blockParameter, true, true);
+                if (block is null)
+                {
+                    return ResultWrapper<ParityLikeTxTrace[]>.Success(null);
+                }
             }
             catch (JsonRpcException ex)
             {
@@ -95,13 +100,18 @@ namespace Nethermind.JsonRpc.Modules.Trace
             try
             {
                 block = _blockchainBridge.GetBlock(blockParameter, true, true);
+                if (block is null)
+                {
+                    return ResultWrapper<ParityLikeTxTrace[]>.Success(null);
+                }
             }
             catch (JsonRpcException ex)
             {
                 return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorType, null);
             }
-            
-            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(block.Hash, ParityTraceTypes.Trace));
+
+            return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(block.Hash,
+                ParityTraceTypes.Trace));
         }
 
         public ResultWrapper<ParityLikeTxTrace> trace_get(Keccak txHash, int[] positions)

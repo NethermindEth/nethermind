@@ -25,5 +25,7 @@ namespace Nethermind.JsonRpc.Modules
         public string Description { get; set; }
 
         public bool IsImplemented { get; set; } = true;
+
+        public bool IsReadOnly { get; set; } = true;
     }
 }

@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace Nethermind.Core.Json
@@ -25,12 +26,19 @@ namespace Nethermind.Core.Json
     {
         public override void WriteJson(JsonWriter writer, Address value, JsonSerializer serializer)
         {
-            writer.WriteValue(value.ToString());
+            if (value == null)
+            {
+                writer.WriteNull();
+            }
+            else
+            {
+                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
+            }
         }
 
         public override Address ReadJson(JsonReader reader, Type objectType, Address existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
-            string s = (string)reader.Value;
+            string s = (string) reader.Value;
             return string.IsNullOrEmpty(s) ? null : new Address(s);
         }
     }

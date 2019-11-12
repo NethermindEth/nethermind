@@ -38,5 +38,6 @@ namespace Nethermind.Blockchain
         ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes traceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes traceTypes);
+        ParityLikeTxTrace ParityTraceRawTransaction(byte[] txRlp, ParityTraceTypes traceTypes);
     }
 }

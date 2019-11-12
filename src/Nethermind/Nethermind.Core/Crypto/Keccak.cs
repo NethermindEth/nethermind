@@ -189,20 +189,6 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            unchecked
-            {
-                const int p = 16777619;
-                int hash = (int) 2166136261;
-
-                hash = hash ^ Bytes[0] * p;
-                hash = hash ^ Bytes[Size / 2] * p;
-                hash = hash ^ Bytes[Size - 1] * p;
-                return hash;
-            }
-        }
-        
-        public int GetHashCode2()
-        {
             return MemoryMarshal.Read<int>(Bytes);
         }
 
@@ -224,18 +210,6 @@ namespace Nethermind.Core.Crypto
         public static bool operator !=(Keccak a, Keccak b)
         {
             return !(a == b);
-        }
-        
-        public static Keccak TryParse(string hexString)
-        {
-            try
-            {
-                return new Keccak(hexString);
-            }
-            catch
-            {
-                return null;
-            }
         }
     }
 }

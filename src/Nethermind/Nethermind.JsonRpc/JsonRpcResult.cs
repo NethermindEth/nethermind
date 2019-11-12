@@ -20,21 +20,30 @@ using System.Collections.Generic;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcResult
+    public struct JsonRpcResult
     {
         public bool IsCollection { get; }
         public IReadOnlyList<JsonRpcResponse> Responses { get; }
+        public JsonRpcResponse Response { get; }
 
-        private JsonRpcResult(bool isCollection, IReadOnlyList<JsonRpcResponse> responses)
+        private JsonRpcResult(IReadOnlyList<JsonRpcResponse> responses)
         {
-            IsCollection = isCollection;
+            IsCollection = true;
             Responses = responses;
+            Response = null;
+        }
+        
+        private JsonRpcResult(JsonRpcResponse response)
+        {
+            IsCollection = false;
+            Responses = null;
+            Response = response;
         }
 
         public static JsonRpcResult Single(JsonRpcResponse response)
-            => new JsonRpcResult(false, new[] {response});
+            => new JsonRpcResult(response);
 
         public static JsonRpcResult Collection(IReadOnlyList<JsonRpcResponse> responses)
-            => new JsonRpcResult(true, responses);
+            => new JsonRpcResult(responses);
     }
 }

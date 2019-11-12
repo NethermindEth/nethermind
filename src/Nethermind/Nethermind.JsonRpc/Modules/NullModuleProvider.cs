@@ -46,12 +46,12 @@ namespace Nethermind.JsonRpc.Modules
             return ModuleResolution.Unknown;
         }
 
-        public MethodInfo Resolve(string methodName)
+        public (MethodInfo, bool) Resolve(string methodName)
         {
-            return null;
+            return (null, false);
         }
 
-        public IModule Rent(string methodName)
+        public IModule Rent(string methodName, bool canBeShared)
         {
             return null;
         }

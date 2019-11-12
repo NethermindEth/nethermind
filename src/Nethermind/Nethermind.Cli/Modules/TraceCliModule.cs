@@ -46,6 +46,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("trace_block", blockNumber).Result;
         }
+        
+        [CliFunction("trace", "rawTransaction", Description = "Traces a call to eth_sendRawTransaction without making the call, returning the traces")]
+        public JsValue TraceRawTransaction(string txData, string[] traceTypes)
+        {
+            return NodeManager.PostJint("trace_rawTransaction", txData, traceTypes).Result;
+        }
 
         public TraceCliModule(ICliEngine cliEngine, INodeManager nodeManager) : base(cliEngine, nodeManager)
         {

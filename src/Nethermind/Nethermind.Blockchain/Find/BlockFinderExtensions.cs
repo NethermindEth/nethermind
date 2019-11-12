@@ -42,5 +42,26 @@ namespace Nethermind.Blockchain.Find
                     throw new ArgumentException($"{nameof(FilterBlockType)} not supported: {blockFilter.Type}");
             }
         }
+        
+        public static BlockHeader GetHeader(this IBlockFinder blockFinder, FilterBlock blockFilter)
+        {
+            switch (blockFilter.Type)
+            {
+                case FilterBlockType.Pending:
+                    return blockFinder.FindPendingHeader();
+
+                case FilterBlockType.Latest:
+                    return blockFinder.FindLatestHeader();
+
+                case FilterBlockType.Earliest:
+                    return blockFinder.FindEarliestHeader();
+
+                case FilterBlockType.BlockNumber:
+                    return blockFinder.FindHeader(blockFilter.BlockNumber);
+
+                default:
+                    throw new ArgumentException($"{nameof(FilterBlockType)} not supported: {blockFilter.Type}");
+            }
+        }
     }
 }

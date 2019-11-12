@@ -39,10 +39,27 @@ namespace Nethermind.Blockchain.Find
         public Block FindEarliestBlock() => FindGenesisBlock();
         
         public Block FindLatestBlock() => FindHeadBlock();
+        
+        public BlockHeader FindHeader(Keccak blockHash) => _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
+        
+        public BlockHeader FindHeader(long blockNumber) => _blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
+        
+        public BlockHeader FindGenesisHeader() => _blockTree.Genesis;
+        
+        public BlockHeader FindHeadHeader() => _blockTree.Head;
+        
+        public BlockHeader FindEarliestHeader() => FindGenesisHeader();
+        
+        public BlockHeader FindLatestHeader() => FindHeadHeader();
 
         public Block FindPendingBlock()
         {
             return _blockTree.FindBlock(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
+        }
+        
+        public BlockHeader FindPendingHeader()
+        {
+            return _blockTree.FindHeader(_blockTree.BestSuggestedHeader?.Hash, BlockTreeLookupOptions.None);
         }
     }
 }

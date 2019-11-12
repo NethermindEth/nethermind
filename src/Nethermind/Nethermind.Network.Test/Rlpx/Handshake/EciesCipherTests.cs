@@ -60,7 +60,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "d490");
 
             Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
-            int size = sizeBytes.ToInt32();
+            int size = sizeBytes.ReadEthInt32();
 
             (_, byte[] deciphered) = _eciesCipher.Decrypt(NetTestVectors.StaticKeyB, allBytes.Slice(2, size), sizeBytes.ToArray());
 
@@ -114,7 +114,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "3bf7678318e2d5b5340c9e488eefea198576344afbdf66db5f51204a6961a63ce072c8926c");
 
             Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
-            int size = sizeBytes.ToInt32();
+            int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
             EciesCipher cipher = new EciesCipher(cryptoRandom);
@@ -173,7 +173,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "5833c2464c805246155289f4");
 
             Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
-            int size = sizeBytes.ToInt32();
+            int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
             EciesCipher cipher = new EciesCipher(cryptoRandom);
@@ -209,7 +209,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                       "35b9593b48b9d3ca4c13d245d5f04169b0b1");
 
             Span<byte> sizeBytes = allBytes.AsSpan().Slice(0, 2);
-            int size = sizeBytes.ToInt32();
+            int size = sizeBytes.ReadEthInt32();
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
             EciesCipher cipher = new EciesCipher(cryptoRandom);

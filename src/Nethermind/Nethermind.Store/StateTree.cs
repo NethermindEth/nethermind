@@ -44,9 +44,9 @@ namespace Nethermind.Store
         }
 
         [DebuggerStepThrough]
-        public Account Get(Address address)
+        public Account Get(Address address, Keccak rootHash = null)
         {
-            byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan);
+            byte[] bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             if (bytes == null)
             {
                 return null;

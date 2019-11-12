@@ -215,6 +215,41 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
+            public BlockHeader FindHeader(Keccak blockHash)
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindHeader(long blockNumber)
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindGenesisHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindHeadHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindEarliestHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindLatestHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindPendingHeader()
+            {
+                throw new NotImplementedException();
+            }
+
             public Block FindEarliestBlock()
             {
                 throw new NotImplementedException();

@@ -18,7 +18,7 @@
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterBlock
+    public struct FilterBlock
     {
         public long BlockNumber { get; }
         public FilterBlockType Type { get; }
@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain.Filters
         
         public FilterBlock(FilterBlockType type)
         {
+            BlockNumber = 0;
             Type = type;
         }
     }

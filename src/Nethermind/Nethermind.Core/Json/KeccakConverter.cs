@@ -27,12 +27,19 @@ namespace Nethermind.Core.Json
     {
         public override void WriteJson(JsonWriter writer, Keccak value, Newtonsoft.Json.JsonSerializer serializer)
         {
-            writer.WriteValue(value.Bytes.ToHexString(true));
+            if (value == null)
+            {
+                writer.WriteNull();
+            }
+            else
+            {
+                writer.WriteValue(Bytes.ByteArrayToHexViaLookup32Safe(value.Bytes, true));
+            }
         }
 
         public override Keccak ReadJson(JsonReader reader, Type objectType, Keccak existingValue, bool hasExistingValue, Newtonsoft.Json.JsonSerializer serializer)
         {
-            string s = (string)reader.Value;
+            string s = (string) reader.Value;
             return s == null ? null : new Keccak(Bytes.FromHexString(s));
         }
     }

@@ -1,0 +1,13 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
+      <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
+      <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+    </ItemGroup>
+
+</Project>

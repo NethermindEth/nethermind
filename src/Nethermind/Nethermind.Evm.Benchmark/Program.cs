@@ -20,11 +20,11 @@ using BenchmarkDotNet.Running;
 
 namespace Nethermind.Evm.Benchmark
 {
-    class Program
+    static class Program
     {
         static void Main(string[] args)
         {
-            BenchmarkRunner.Run<EvmBenchmark>(
+            BenchmarkRunner.Run<EvmBenchmarks>(
                 DefaultConfig.Instance.With(
                     Job.Core.With(
                         new[] {new EnvironmentVariable("NETH.BENCHMARK.BYTECODE", args[0])})));

@@ -26,6 +26,6 @@ namespace Nethermind.Network.Rlpx
         public KeccakDigest IngressMac { get; set; }
         public byte[] AesSecret { get; set; }
         public byte[] MacSecret { get; set; }
-        public byte[] Token { get; set; }
+//        public byte[] Token { get; set; }
     }
 }

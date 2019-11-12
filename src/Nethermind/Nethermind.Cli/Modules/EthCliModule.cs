@@ -50,7 +50,7 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("eth_call", tx, blockParameter ?? "latest").Result;
         }
-
+        
         [CliFunction("eth", "getBlockByHash")]
         public JsValue GetBlockByHash(string hash, bool returnFullTransactionObjects)
         {
@@ -60,13 +60,13 @@ namespace Nethermind.Cli.Modules
         [CliFunction("eth", "getTransactionCount")]
         public string GetTransactionCount(string address, string blockParameter = null)
         {
-            return NodeManager.Post<string>("eth_getTransactionCount", CliParseAddress(address), blockParameter).Result;
+            return NodeManager.Post<string>("eth_getTransactionCount", CliParseAddress(address), blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getStorageAt")]
         public string GetStorageAt(string address, string positionIndex, string blockParameter = null)
         {
-            return NodeManager.Post<string>("eth_getStorageAt", CliParseAddress(address), positionIndex, blockParameter).Result;
+            return NodeManager.Post<string>("eth_getStorageAt", CliParseAddress(address), positionIndex, blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getBlockByNumber")]
@@ -100,9 +100,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getCode")]
-        public string GetCode(string address, string blockParameter)
+        public string GetCode(string address, string blockParameter = null)
         {
-            return NodeManager.Post<string>("eth_getCode", address, blockParameter).Result;
+            return NodeManager.Post<string>("eth_getCode", address, blockParameter ?? "latest").Result;
         }
 
         [CliFunction("eth", "getBlockTransactionCountByNumber")]
@@ -136,9 +136,9 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBalance")]
-        public BigInteger GetBalance(string address, string blockParameter)
+        public BigInteger GetBalance(string address, string blockParameter = null)
         {
-            return NodeManager.Post<BigInteger>("eth_getBalance", CliParseAddress(address), blockParameter).Result;
+            return NodeManager.Post<BigInteger>("eth_getBalance", CliParseAddress(address), blockParameter ?? "latest").Result;
         }
 
         [CliProperty("eth", "chainId")]

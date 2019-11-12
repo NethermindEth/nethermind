@@ -285,7 +285,7 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsInfo) _logger.Info("Enabled JSON RPC Proxy for NDM.");
                 var proxyFactory = new EthModuleProxyFactory(ndmConfig.JsonRpcUrlProxies, _ethereumJsonSerializer,
                     _logManager);
-                _rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory));
+                _rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
             }
             else
             {
@@ -303,27 +303,27 @@ namespace Nethermind.Runner.Runners
             if (_sealValidator is CliqueSealValidator)
             {
                 CliqueModule cliqueModule = new CliqueModule(_logManager, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
-                _rpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule));
+                _rpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             }
 
             if (_initConfig.EnableUnsecuredDevWallet)
             {
                 PersonalBridge personalBridge = new PersonalBridge(_ethereumEcdsa, _wallet);
                 PersonalModule personalModule = new PersonalModule(personalBridge, _logManager);
-                _rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule));
+                _rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
             }
 
             AdminModule adminModule = new AdminModule(_logManager, _peerManager, _staticNodesManager);
-            _rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule));
+            _rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
             
             TxPoolModule txPoolModule = new TxPoolModule(_logManager, _txPoolInfoProvider);
-            _rpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule));
+            _rpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
 
             NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
-            _rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule));
+            _rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
             ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _blockTree, _receiptStorage, _logManager);
-            _rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule));
+            _rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
         }
 
         private void UpdateDiscoveryConfig()
@@ -883,7 +883,7 @@ namespace Nethermind.Runner.Runners
 
             _blockTree.NewHeadBlock += GenesisProcessed;
             _blockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(5));
+            genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
             if (!genesisLoaded)
             {
                 throw new BlockchainException("Genesis block processing failure");
