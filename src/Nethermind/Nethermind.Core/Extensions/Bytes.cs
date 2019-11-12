@@ -337,51 +337,75 @@ namespace Nethermind.Core.Extensions
 
         public static uint ReadEthUInt32(this Span<byte> bytes)
         {
-            if (bytes.Length != 4)
+            if (bytes.Length > 4)
             {
-                Span<byte> fourBytes = stackalloc byte[4];
-                bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-                return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
+                bytes = bytes.Slice(bytes.Length - 4, 4);
             }
 
-            return BinaryPrimitives.ReadUInt32BigEndian(bytes);
+            if (bytes.Length == 4)
+            {
+                return BinaryPrimitives.ReadUInt32BigEndian(bytes);
+            }
+            
+            Span<byte> fourBytes = stackalloc byte[4];
+            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            return BinaryPrimitives.ReadUInt32BigEndian(fourBytes);
+
         }
 
         public static uint ReadEthUInt32LittleEndian(this Span<byte> bytes)
         {
-            if (bytes.Length != 4)
+            if (bytes.Length > 4)
             {
-                Span<byte> fourBytes = stackalloc byte[4];
-                bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-                return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
+                bytes = bytes.Slice(bytes.Length - 4, 4);
             }
 
-            return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+            if (bytes.Length == 4)
+            {
+                return BinaryPrimitives.ReadUInt32LittleEndian(bytes);
+            }
+            
+            Span<byte> fourBytes = stackalloc byte[4];
+            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            return BinaryPrimitives.ReadUInt32LittleEndian(fourBytes);
+
         }
 
 
         public static int ReadEthInt32(this Span<byte> bytes)
         {
-            if (bytes.Length != 4)
+            if (bytes.Length > 4)
             {
-                Span<byte> fourBytes = stackalloc byte[4];
-                bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
-                return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
+                bytes = bytes.Slice(bytes.Length - 4, 4);
             }
 
-            return BinaryPrimitives.ReadInt32BigEndian(bytes);
+            if (bytes.Length == 4)
+            {
+                return BinaryPrimitives.ReadInt32BigEndian(bytes);
+            }
+            
+            Span<byte> fourBytes = stackalloc byte[4];
+            bytes.CopyTo(fourBytes.Slice(4 - bytes.Length));
+            return BinaryPrimitives.ReadInt32BigEndian(fourBytes);
+
         }
 
         public static ulong ReadEthUInt64(this Span<byte> bytes)
         {
-            if (bytes.Length != 8)
+            if (bytes.Length > 8)
             {
-                Span<byte> eightBytes = stackalloc byte[8];
-                bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
-                return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
+                bytes = bytes.Slice(bytes.Length - 8, 8);
             }
 
-            return BinaryPrimitives.ReadUInt64BigEndian(bytes);
+            if (bytes.Length == 8)
+            {
+                return BinaryPrimitives.ReadUInt64BigEndian(bytes);
+            }
+            
+            Span<byte> eightBytes = stackalloc byte[8];
+            bytes.CopyTo(eightBytes.Slice(8 - bytes.Length));
+            return BinaryPrimitives.ReadUInt64BigEndian(eightBytes);
+
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength,

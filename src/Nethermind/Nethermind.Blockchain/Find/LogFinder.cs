@@ -39,6 +39,11 @@ namespace Nethermind.Blockchain.Find
         public FilterLog[] FindLogs(LogFilter filter)
         {
             var toBlock = _blockFinder.GetBlock(filter.ToBlock);
+            if (toBlock is null)
+            {
+                return Array.Empty<FilterLog>();
+            }
+            
             var fromBlock = _blockFinder.GetBlock(filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
 

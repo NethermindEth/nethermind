@@ -16,15 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.JsonRpc.Modules.Eth
+using Nethermind.Core.Json;
+using Nethermind.Logging;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.JsonRpc.Test
 {
-    public class State : IJsonRpcResult
+    [TestFixture]
+    public class JsonRpcProcessorTests
     {
-        public object ToJson()
+        [SetUp]
+        public void Initialize()
         {
-            return new
-            {
-            };
+            _jsonRpcProcessor = new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),  new EthereumJsonSerializer(), new JsonRpcConfig(), LimboLogs.Instance);
+        }
+
+        private JsonRpcProcessor _jsonRpcProcessor;
+        
+        [Test]
+        public void Can_process_guid_ids()
+        {
+            _jsonRpcProcessor.ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         }
     }
 }

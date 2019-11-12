@@ -92,7 +92,7 @@ namespace Nethermind.Runner
                 var result = await jsonRpcProcessor.ProcessAsync(request);
                 await ctx.Response.WriteAsync(result.IsCollection
                     ? JsonConvert.SerializeObject(result.Responses, JsonSettings)
-                    : JsonConvert.SerializeObject(result.Responses[0], JsonSettings));
+                    : JsonConvert.SerializeObject(result.Response, JsonSettings));
             });
         }
     }

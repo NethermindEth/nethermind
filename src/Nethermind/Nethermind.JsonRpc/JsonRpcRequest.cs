@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc
         public string Method { get; set; }
         
         [JsonProperty(Required = Required.Default)]
-        public string[] Params { get; set; } = new string[0];
+        public string[] Params { get; set; }
         public UInt256 Id { get; set; }
 
         public override string ToString()

@@ -146,6 +146,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0100", 256U)]
         [TestCase("0x010000", 256U * 256U)]
         [TestCase("0xffffffff", 4294967295U)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000001000", 4096U)]
         public void ToUInt32(string hexString, uint expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
@@ -161,6 +162,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0100", 256)]
         [TestCase("0x010000", 256 * 256)]
         [TestCase("0xffffffff", -1)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000000001000", 4096)]
         public void ToInt32(string hexString, int expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
@@ -176,6 +178,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x0100", 256U)]
         [TestCase("0x010000", 256U * 256U)]
         [TestCase("0xffffffff", 4294967295U)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000010000000", 268435456U)]
         public void ToUInt64(string hexString, uint expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
@@ -199,6 +202,7 @@ namespace Nethermind.Core.Test
         [TestCase("0x010000000000", 256UL * 256UL * 256UL * 256UL * 256UL)]
         [TestCase("0x01000000000000", 256UL * 256UL * 256UL * 256UL * 256UL * 256UL)]
         [TestCase("0xffffffffffffffff", 18446744073709551615UL)]
+        [TestCase("0x0000000000000000000000000000000000000000000000000000000010000000", 268435456UL)]
         public void ToInt64(string hexString, ulong expectedResult)
         {
             byte[] bytes = Bytes.FromHexString(hexString);
