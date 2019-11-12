@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -40,7 +41,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlock(byte[] blockRlp, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsReadOnly = false)]
-        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(BigInteger number, GethTraceOptions options = null);
+        ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByNumber(UInt256 number, GethTraceOptions options = null);
         
         [JsonRpcMethod(Description = "", IsReadOnly = false)]
         ResultWrapper<GethLikeTxTrace[]> debug_traceBlockByHash(Keccak blockHash, GethTraceOptions options = null);

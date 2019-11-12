@@ -280,16 +280,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return new ReceiptForRpc
             {
                 BlockHash = receipt.BlockHash,
-                BlockNumber = receipt.BlockNumber,
+                BlockNumber = (long)receipt.BlockNumber,
                 ContractAddress = receipt.ContractAddress,
-                CumulativeGasUsed = receipt.CumulativeGasUsed,
+                CumulativeGasUsed = (long)receipt.CumulativeGasUsed,
                 From = receipt.From,
-                GasUsed = receipt.GasUsed,
+                GasUsed = (long)receipt.GasUsed,
                 Logs = receipt.Logs?.Select(MapLogEntry).ToArray() ?? Array.Empty<LogEntryForRpc>(),
-                Status = receipt.Status,
+                Status = (long)receipt.Status,
                 To = receipt.To,
                 TransactionHash = receipt.TransactionHash,
-                TransactionIndex = receipt.TransactionIndex,
+                TransactionIndex = (long)receipt.TransactionIndex,
                 LogsBloom = receipt.LogsBloom is null ? null : new Bloom(new BitArray(receipt.LogsBloom))
             };
         }
@@ -302,10 +302,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 Removed = log.Removed,
                 Topics = log.Topics,
                 BlockHash = log.BlockHash,
-                BlockNumber = log.BlockNumber,
-                LogIndex = log.LogIndex,
+                BlockNumber = (long)log.BlockNumber,
+                LogIndex = (long)log.LogIndex,
                 TransactionHash = log.TransactionHash,
-                TransactionIndex = log.TransactionIndex
+                TransactionIndex = (long)log.TransactionIndex
             };
 
         private static BlockParameterModel MapBlockParameter(BlockParameter blockParameter)

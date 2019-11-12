@@ -47,9 +47,6 @@ namespace Nethermind.Core.Json
 
             switch (_conversion)
             {
-                case NumberConversion.PaddedHex:
-                    writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
-                    break;
                 case NumberConversion.Hex:
                     writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
                     break;

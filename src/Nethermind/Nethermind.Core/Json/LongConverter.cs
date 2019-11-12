@@ -18,6 +18,7 @@
 
 using System;
 using System.Globalization;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace Nethermind.Core.Json
@@ -46,11 +47,8 @@ namespace Nethermind.Core.Json
             
             switch (_conversion)
             {
-                case NumberConversion.PaddedHex:
-                    writer.WriteValue(string.Concat("0x", value.ToString("x64").TrimStart('0')));
-                    break;
                 case NumberConversion.Hex:
-                    writer.WriteValue(string.Concat("0x", value.ToString("x").TrimStart('0')));
+                    writer.WriteValue(value.ToHexString(true));
                     break;
                 case NumberConversion.Decimal:
                     writer.WriteValue(value.ToString());
