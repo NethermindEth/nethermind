@@ -22,6 +22,7 @@ using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.AuRa.Config;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
@@ -46,6 +47,7 @@ namespace Nethermind.AuRa
         private readonly Address _nodeAddress;
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
+        private readonly IAuraConfig _config;
         private readonly ILogger _logger;
 
         private readonly IBlockchainProcessor _processor;
@@ -66,6 +68,7 @@ namespace Nethermind.AuRa
             Address nodeAddress,
             ISealer sealer,
             IStateProvider stateProvider,
+            IAuraConfig config,
             ILogManager logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -76,6 +79,7 @@ namespace Nethermind.AuRa
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             _stateProvider = stateProvider  ?? throw new ArgumentNullException(nameof(stateProvider));
+            _config = config;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -194,6 +198,21 @@ namespace Nethermind.AuRa
             {
                 if (_logger.IsError) _logger.Error("Failed to prepare block for mining.");
                 return;
+            }
+            
+            if (block.Transactions.Length == 0)
+            {
+                if (_config.ForceSealing)
+                {
+                    //if (_logger.IsDebug)
+                        _logger.Info($"Force sealing block {block.Number} without transactions.");                    
+                }
+                else
+                {
+                    //if (_logger.IsDebug) 
+                        _logger.Info($"Skip seal block {block.Number}, no transactions pending.");
+                    return;
+                }
             }
 
             Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
