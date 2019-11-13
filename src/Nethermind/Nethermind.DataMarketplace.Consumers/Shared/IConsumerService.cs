@@ -26,6 +26,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Consumers.Shared
@@ -109,6 +110,13 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         Task<Keccak> SendFinishSessionAsync(Keccak depositId);
         Task FinishSessionAsync(Session session, INdmPeer provider, bool removePeer = true);
         Task FinishSessionsAsync(INdmPeer provider, bool removePeer = true);
+        
+        #endregion
+
+        #region Proxy
+        
+        Task<NdmProxy> GetProxyAsync();
+        Task SetProxyAsync(IEnumerable<string> urls);
         
         #endregion
     }

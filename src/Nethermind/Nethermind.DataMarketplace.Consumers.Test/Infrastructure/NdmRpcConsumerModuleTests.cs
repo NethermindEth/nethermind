@@ -39,6 +39,7 @@ using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
@@ -419,6 +420,26 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var result = _rpc.ndm_pullData(depositId);
             _jsonRpcNdmConsumerChannel.Received().Pull(depositId);
             result.Data.Should().Be(data);
+        }
+        
+        [Test]
+        public async Task get_proxy_should_return_proxy_info()
+        {
+            var ndmProxy = new NdmProxy(true, new[] {"http://localhost:8545"});
+            _consumerService.GetProxyAsync().Returns(ndmProxy);
+            var result = await _rpc.ndm_getProxy();
+            result.Data.Enabled.Should().Be(ndmProxy.Enabled);
+            result.Data.Urls.Should().BeSameAs(ndmProxy.Urls);
+            await _consumerService.Received().GetProxyAsync();
+        }
+        
+        [Test]
+        public async Task set_proxy_should_return_true()
+        {
+            var urls = new[] {"http://localhost:8545"};
+            var result = await _rpc.ndm_setProxy(urls);
+            result.Data.Should().BeTrue();
+            await _consumerService.Received().SetProxyAsync(urls);
         }
 
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)

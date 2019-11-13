@@ -203,12 +203,30 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
             return ResultWrapper<FaucetResponseForRpc>.Success(new FaucetResponseForRpc(response));
         }
-
+        
         public ResultWrapper<string> ndm_pullData(Keccak depositId)
         {
             var data = _jsonRpcNdmConsumerChannel.Pull(depositId);
 
             return ResultWrapper<string>.Success(data);
+        }
+        
+        public async Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy()
+        {
+            var proxy = await _consumerService.GetProxyAsync();
+
+            return ResultWrapper<NdmProxyResponseForRpc>.Success(new NdmProxyResponseForRpc
+            {
+                Enabled = proxy.Enabled,
+                Urls = proxy.Urls
+            });
+        }
+
+        public async Task<ResultWrapper<bool>> ndm_setProxy(string[] urls)
+        {
+            await _consumerService.SetProxyAsync(urls);
+            
+            return ResultWrapper<bool>.Success(true);
         }
     }
 }

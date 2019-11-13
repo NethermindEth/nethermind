@@ -18,7 +18,6 @@
 
 using System;
 using Nethermind.Blockchain.TxPools;
-using Nethermind.Facade;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.TxPool

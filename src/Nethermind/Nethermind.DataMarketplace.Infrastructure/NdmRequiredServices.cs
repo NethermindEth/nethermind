@@ -29,6 +29,7 @@ using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -69,6 +70,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public INdmNotifier Notifier { get; }
         public bool EnableUnsecuredDevWallet { get; }
         public IBlockProcessor BlockProcessor { get; }
+        public IJsonRpcClientProxy JsonRpcClientProxy { get; }
+        public IEthJsonRpcClientProxy EthJsonRpcClientProxy { get; }
 
         public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
             string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
@@ -78,7 +81,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             IJsonSerializer jsonSerializer, ICryptoRandom cryptoRandom, IEnode enode,
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
             IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier,
-            bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor)
+            bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -108,6 +112,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             Notifier = notifier;
             EnableUnsecuredDevWallet = enableUnsecuredDevWallet;
             BlockProcessor = blockProcessor;
+            JsonRpcClientProxy = jsonRpcClientProxy;
+            EthJsonRpcClientProxy = ethJsonRpcClientProxy;
         }
     }
 }

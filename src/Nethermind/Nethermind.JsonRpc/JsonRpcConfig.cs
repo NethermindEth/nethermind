@@ -17,9 +17,7 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Config;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc

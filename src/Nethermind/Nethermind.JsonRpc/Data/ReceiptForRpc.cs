@@ -17,10 +17,8 @@
  */
 
 using System.Linq;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Data
 {

@@ -17,10 +17,7 @@
  */
 
 using System;
-using System.Linq;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Newtonsoft.Json;
 
