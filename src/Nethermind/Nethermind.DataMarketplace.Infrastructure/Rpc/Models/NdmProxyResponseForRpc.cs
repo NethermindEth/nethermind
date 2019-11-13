@@ -14,14 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
+using System.Collections.Generic;
 
-namespace Nethermind.Facade.Proxy
+namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
-    public interface IJsonRpcClientProxy
+    public class NdmProxyResponseForRpc
     {
-        Task<RpcResult<T>> SendAsync<T>(string method, params object[] @params);
-        Task<RpcResult<T>> SendAsync<T>(string method, long id, params object[] @params);
-        void SetUrls(params string[] urls);
+        public bool Enabled { get; set; }
+        public IEnumerable<string> Urls { get; set; }
     }
 }

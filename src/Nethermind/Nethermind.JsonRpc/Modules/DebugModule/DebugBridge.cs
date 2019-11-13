@@ -21,12 +21,9 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Network;
 using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule

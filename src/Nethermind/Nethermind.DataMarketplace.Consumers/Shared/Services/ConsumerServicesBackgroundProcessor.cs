@@ -100,7 +100,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                         return;
                     }
 
-                    var block = t.Result.IsValid ? t.Result.Result : null;
+                    var block = t.Result?.IsValid == true ? t.Result.Result : null;
                     if (block is null)
                     {
                         _logger.Error("Latest block fetched via proxy is null.", t.Exception);

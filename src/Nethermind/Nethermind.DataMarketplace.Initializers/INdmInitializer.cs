@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -29,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -51,6 +51,7 @@ namespace Nethermind.DataMarketplace.Initializers
             IGrpcServer grpcServer, INodeStatsManager nodeStatsManager, IProtocolsManager protocolsManager,
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
-            IBlockProcessor blockProcessor);
+            IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy);
     }
 }

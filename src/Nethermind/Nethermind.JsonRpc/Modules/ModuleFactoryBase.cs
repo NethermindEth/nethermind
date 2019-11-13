@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Nethermind.JsonRpc.Modules.Net;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules

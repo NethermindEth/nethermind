@@ -19,16 +19,13 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {

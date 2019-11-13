@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Http;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -62,6 +63,7 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.JsonRpc;
@@ -176,6 +178,8 @@ namespace Nethermind.Runner.Runners
         private INetworkConfig _networkConfig;
         private ChainLevelInfoRepository _chainLevelInfoRepository;
         private IBlockFinalizationManager _finalizationManager;
+        private IJsonRpcClientProxy _jsonRpcClientProxy;
+        private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -282,10 +286,9 @@ namespace Nethermind.Runner.Runners
             var ndmConfig = _configProvider.GetConfig<INdmConfig>();
             if (ndmConfig.Enabled && !(_ndmInitializer is null) && ndmConfig.ProxyEnabled)
             {
-                if (_logger.IsInfo) _logger.Info("Enabled JSON RPC Proxy for NDM.");
-                var proxyFactory = new EthModuleProxyFactory(ndmConfig.JsonRpcUrlProxies, _ethereumJsonSerializer,
-                    _wallet, _logManager);
+                var proxyFactory = new EthModuleProxyFactory(_ethJsonRpcClientProxy, _wallet);
                 _rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
+                if (_logger.IsInfo) _logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
             else
             {
@@ -958,6 +961,15 @@ namespace Nethermind.Runner.Runners
             if (!(_ndmInitializer is null))
             {
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
+                var ndmConfig = _configProvider.GetConfig<INdmConfig>();
+                if (ndmConfig.ProxyEnabled)
+                {
+                    _jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(
+                            new HttpClient(), _ethereumJsonSerializer, _logManager), ndmConfig.JsonRpcUrlProxies,
+                        _logManager);
+                    _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(_jsonRpcClientProxy);
+                }
+
                 var filterStore = new FilterStore();
                 var filterManager = new FilterManager(filterStore, _blockProcessor, _txPool, _logManager);
                 var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
@@ -965,7 +977,8 @@ namespace Nethermind.Runner.Runners
                     filterManager, _timestamper, _ethereumEcdsa, _rpcModuleProvider, _keyStore, _ethereumJsonSerializer,
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer,
                     _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
-                    _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager, _blockProcessor);
+                    _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager, _blockProcessor,
+                    _jsonRpcClientProxy, _ethJsonRpcClientProxy);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }

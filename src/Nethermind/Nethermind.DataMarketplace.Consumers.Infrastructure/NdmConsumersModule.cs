@@ -111,8 +111,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var ndmNotifier = services.RequiredServices.Notifier;
             var nodePublicKey = services.RequiredServices.Enode.PublicKey;
             var timestamper = services.RequiredServices.Timestamper;
-            var txPool = services.RequiredServices.TransactionPool;
             var wallet = services.RequiredServices.Wallet;
+            var jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
+            var ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
 
             var dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
             var transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
@@ -125,8 +126,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var providerService = new ProviderService(providerRepository, consumerNotifier, logManager);
             var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider, kycVerifier, wallet,
                 providerService, timestamper, sessionRepository, consumerNotifier, logManager);
-            var depositService = new DepositService(blockchainBridge, txPool, abiEncoder, wallet, contractAddress,
-                logManager);
+            var depositService = new DepositService(blockchainBridge, abiEncoder, wallet, contractAddress);
             var sessionService = new SessionService(providerService, depositProvider, dataAssetService,
                 sessionRepository, timestamper, consumerNotifier, logManager);
             var dataConsumerService = new DataConsumerService(depositProvider, sessionService,
@@ -151,9 +151,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 transactionVerifier, timestamper, logManager);
             var accountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, ndmConfig.Id, consumerAddress, logManager);
+            var proxyService = new ProxyService(jsonRpcClientProxy, configManager, ndmConfig.Id, logManager);
             var consumerService = new ConsumerService(accountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
-                receiptService, refundService, sessionService);
+                receiptService, refundService, sessionService, proxyService);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
                 ? new PersonalBridge(ecdsa, wallet)
@@ -162,8 +163,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, personalBridge, timestamper), true));
 
-            var useDepositTimer = blockchainBridge is NdmBlockchainBridgeProxy;
-            var ethJsonRpcClientProxy = services.CreatedServices.EthJsonRpcClientProxy;
+            var useDepositTimer = ndmConfig.ProxyEnabled;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
                 refundClaimant, depositConfirmationService, blockProcessor, depositRepository, consumerNotifier,
                 logManager, useDepositTimer: useDepositTimer, ethJsonRpcClientProxy: ethJsonRpcClientProxy);

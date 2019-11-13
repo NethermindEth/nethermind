@@ -17,12 +17,10 @@
  */
 
 using System;
-using System.Linq;
 using System.Security;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;

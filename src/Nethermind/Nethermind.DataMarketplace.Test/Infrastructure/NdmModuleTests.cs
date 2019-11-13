@@ -32,6 +32,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure.Modules;
 using Nethermind.DataMarketplace.Infrastructure.Persistence.Mongo;
+using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
@@ -75,6 +76,8 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private bool _enableUnsecuredDevWallet;
         private IBlockProcessor _blockProcessor;
         private INdmModule _ndmModule;
+        private IJsonRpcClientProxy _jsonRpcClientProxy;
+        private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
 
         [SetUp]
         public void Setup()
@@ -107,6 +110,8 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _notifier = Substitute.For<INdmNotifier>();
             _enableUnsecuredDevWallet = false;
             _blockProcessor = Substitute.For<IBlockProcessor>();
+            _jsonRpcClientProxy = Substitute.For<IJsonRpcClientProxy>();
+            _ethJsonRpcClientProxy = Substitute.For<IEthJsonRpcClientProxy>();
             _ndmModule = new NdmModule();
         }
 
@@ -118,7 +123,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
                 _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
                 _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
                 _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,
-                _blockProcessor));
+                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();
             services.RequiredServices.Should().NotBeNull();
