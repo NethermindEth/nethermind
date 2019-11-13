@@ -18,6 +18,7 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test
@@ -39,7 +40,7 @@ namespace Nethermind.AuRa.Test
         public async Task after_waiting_for_next_step_timeToNextStep_should_be_close_to_stepDuration_in_seconds(int stepDuration)
         {
             var calculator = new AuRaStepCalculator(stepDuration, new Timestamper());
-            await Task.Delay(calculator.TimeToNextStep);
+            await TaskExt.DelayAtLeast(calculator.TimeToNextStep);
             calculator.TimeToNextStep.Should().BeCloseTo(TimeSpan.FromSeconds(stepDuration), TimeSpan.FromMilliseconds(100));
         }
         

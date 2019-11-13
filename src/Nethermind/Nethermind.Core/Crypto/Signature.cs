@@ -104,6 +104,7 @@ namespace Nethermind.Core.Crypto
         public byte[] S => Bytes.Slice(32, 32);
         public Span<byte> SAsSpan => Bytes.AsSpan().Slice(32, 32);
 
+        [Todo("Change signature to store 65 bytes and just slice it for normal Bytes.")]
         public byte[] BytesWithRecovery
         {
             get

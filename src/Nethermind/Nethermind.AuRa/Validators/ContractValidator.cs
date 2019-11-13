@@ -153,6 +153,8 @@ namespace Nethermind.AuRa.Validators
                 }
                 else
                 {
+                    // if we are not processing blocks we are not on consecutive blocks.
+                    // We need to initialize pending validators from db on each block being produced.  
                     SetPendingValidators(LoadPendingValidators());
                 }
             }
@@ -192,14 +194,14 @@ namespace Nethermind.AuRa.Validators
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
             if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
-                SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators) { AreFinalized = initiateChangeIsImmediatelyFinalized }, !initiateChangeIsImmediatelyFinalized && isProcessingBlock);
+                SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators) { AreFinalized = initiateChangeIsImmediatelyFinalized },
+                    !initiateChangeIsImmediatelyFinalized && isProcessingBlock);
             }
         }
 
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
-            CreateSystemAccount();
-            
+            ValidatorContract.EnsureSystemAccount(_stateProvider);
             ValidatorContract.InvokeTransaction(blockHeader, _transactionProcessor, ValidatorContract.GetValidators(), Output);
 
             if (Output.ReturnValue.Length == 0)
@@ -218,21 +220,17 @@ namespace Nethermind.AuRa.Validators
             return validators;
         }
 
-
-        private void CreateSystemAccount()
-        {
-            if (!_stateProvider.AccountExists(Address.SystemUser))
-            {
-                _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                _stateProvider.Commit(Homestead.Instance);
-            }
-        }
-        
         private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
         {
             if (CurrentPendingValidators != null)
             {
-                var currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks.Any(b => b.Hash == CurrentPendingValidators.BlockHash);
+                // .Any equivalent with for
+                var currentPendingValidatorsBlockGotFinalized = false;
+                for (int i = 0; i < e.FinalizedBlocks.Count && !currentPendingValidatorsBlockGotFinalized; i++)
+                {
+                    currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks[i].Hash == CurrentPendingValidators.BlockHash;
+                }
+                
                 if (currentPendingValidatorsBlockGotFinalized)
                 {
                     CurrentPendingValidators.AreFinalized = true;
@@ -252,6 +250,11 @@ namespace Nethermind.AuRa.Validators
         private void SetPendingValidators(PendingValidators validators, bool canSave = false)
         {
             _currentPendingValidators = validators;
+            
+            // We don't want to save to db when:
+            // * We are producing block
+            // * We will save later on processing same block (stateDb ignores consecutive calls with same key!)
+            // * We are loading validators from db.
             if (canSave)
             {
                 _stateDb.Set(PendingValidatorsKey, _pendingValidatorsDecoder.Encode(CurrentPendingValidators).Bytes);

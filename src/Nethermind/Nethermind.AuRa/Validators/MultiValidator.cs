@@ -49,6 +49,22 @@ namespace Nethermind.AuRa.Validators
 
         private void InitCurrentValidator(long blockNumber)
         {
+            bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator>? val)
+            {
+                val = null;
+            
+                foreach (var kvp in _validators)
+                {
+                    if (kvp.Key <= blockNum)
+                    {
+                        val = kvp;
+                    }
+                }
+            
+                return val != null;
+            }
+
+            
             if (TryGetLastValidator(blockNumber, out var validator))
             {
                 SetCurrentValidator(validator.Value.Key, validator.Value.Value);
@@ -95,21 +111,6 @@ namespace Nethermind.AuRa.Validators
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
         
-        private bool TryGetLastValidator(long blockNumber, out KeyValuePair<long, AuRaParameters.Validator>? validator)
-        {
-            validator = null;
-            
-            foreach (var kvp in _validators)
-            {
-                if (kvp.Key <= blockNumber)
-                {
-                    validator = kvp;
-                }
-            }
-            
-            return validator != null;
-        }
-
         public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             _currentValidator?.PostProcess(block, receipts, options);

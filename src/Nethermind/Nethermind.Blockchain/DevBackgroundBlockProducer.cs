@@ -32,6 +32,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
+    /// <summary>
+    /// This is developer only producer. Differs from <see cref="DevBlockProducer"/> that it uses background thread for block production instead of just listening on txPool. 
+    /// </summary>
     [Todo("Introduce strategy for collecting Transactions for the block?")]
     public class DevBackgroundBlockProducer : IBlockProducer
     {
@@ -62,11 +65,7 @@ namespace Nethermind.Blockchain
 
         public void Start()
         {
-            _producerTask = Task.Factory.StartNew(
-                ProducerLoop,
-                _cancellationTokenSource.Token,
-                TaskCreationOptions.LongRunning,
-                TaskScheduler.Default).ContinueWith(t =>
+            _producerTask = Task.Run(ProducerLoop, _cancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -83,7 +82,7 @@ namespace Nethermind.Blockchain
             });
         }
 
-        private async void ProducerLoop()
+        private async Task ProducerLoop()
         {
             while (!_cancellationTokenSource.IsCancellationRequested)
             {

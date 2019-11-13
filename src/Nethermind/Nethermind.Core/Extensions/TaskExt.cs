@@ -14,25 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
+using System;
+using System.Threading.Tasks;
 
-namespace Nethermind.Store.Repositories
+namespace Nethermind.Core.Extensions
 {
-    public class ReadOnlyChainLevelInfoRepository : IChainLevelInfoRepository
+    public static class TaskExt
     {
-        private readonly IChainLevelInfoRepository _innerRepository;
-
-        public ReadOnlyChainLevelInfoRepository(IChainLevelInfoRepository innerRepository)
+        /// <summary>
+        /// Guarantees to delay at least the specified delay. 
+        ///  </summary>
+        /// <param name="delay"></param>
+        /// <remarks>Due to different resolution of timers on different systems, Task.Delay can return before specified delay.</remarks>
+        /// <returns></returns>
+        public static async Task DelayAtLeast(TimeSpan delay)
         {
-            _innerRepository = innerRepository;
+            var before = DateTimeOffset.Now;
+            await Task.Delay(delay);
+            var reminder = delay - (DateTimeOffset.Now - before);
+            if (reminder > TimeSpan.Zero)
+            {
+                await Task.Delay(reminder);
+            }
         }
-        
-        public void Delete(long number, BatchWrite batch = null) { }
-
-        public void PersistLevel(long number, ChainLevelInfo level, BatchWrite batch = null) { }
-
-        public BatchWrite StartBatch() => new BatchWrite();
-
-        public ChainLevelInfo LoadLevel(long number) => _innerRepository.LoadLevel(number);
     }
 }

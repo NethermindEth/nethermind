@@ -19,9 +19,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Store;
 
 namespace Nethermind.AuRa.Contracts
 {
@@ -62,6 +64,15 @@ namespace Nethermind.AuRa.Contracts
                 {
                     throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
                 }
+            }
+        }
+
+        public void EnsureSystemAccount(IStateProvider stateProvider)
+        {
+            if (!stateProvider.AccountExists(Address.SystemUser))
+            {
+                stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
+                stateProvider.Commit(Homestead.Instance);
             }
         }
     }

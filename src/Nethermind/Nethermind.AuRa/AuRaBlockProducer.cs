@@ -26,6 +26,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -38,7 +39,6 @@ namespace Nethermind.AuRa
     {
         private static readonly UInt256 UInt128MaxValue;
         private static readonly BigInteger MinGasPriceForMining = 1;
-        private static readonly TimeSpan Threshold = TimeSpan.FromMilliseconds(100);
         
         private readonly IBlockTree _blockTree;
         private readonly ITimestamper _timestamper;
@@ -114,7 +114,7 @@ namespace Nethermind.AuRa
 
                 var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
                 if (_logger.IsDebug) _logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
-                await Task.Delay(timeToNextStep + Threshold);
+                await TaskExt.DelayAtLeast(timeToNextStep);
             }
         }
 
@@ -187,7 +187,6 @@ namespace Nethermind.AuRa
 
         private void ProduceNewBlock(BlockHeader parentHeader)
         {
-            // need to set state for AuRa contract
             _stateProvider.StateRoot = parentHeader.StateRoot;
             
             Block block = PrepareBlock(parentHeader);

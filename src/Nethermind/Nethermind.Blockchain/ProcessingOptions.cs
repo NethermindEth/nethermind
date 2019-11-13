@@ -36,8 +36,8 @@ namespace Nethermind.Blockchain
 
     public static class ProcessingOptionsExtensions
     {
-        public static bool IsReadOnly(this ProcessingOptions processingOptions) => processingOptions.HasFlag(ProcessingOptions.ReadOnlyChain);
-        public static bool IsNotReadOnly(this ProcessingOptions processingOptions) => !processingOptions.HasFlag(ProcessingOptions.ReadOnlyChain);
-        public static bool IsProducingBlock(this ProcessingOptions processingOptions) => processingOptions.HasFlag(ProcessingOptions.ProducingBlock);
+        public static bool IsReadOnly(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
+        public static bool IsNotReadOnly(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ReadOnlyChain) != ProcessingOptions.ReadOnlyChain;
+        public static bool IsProducingBlock(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ProducingBlock) == ProcessingOptions.ProducingBlock;
     }
 }

@@ -99,16 +99,14 @@ namespace Nethermind.Core.Test
             new PublicKey(bytes);
         }
         
-        
         [Test]
-        public void X()
+        [Explicit]
+        public void Generate_Keys()
         {
             var key = new PrivateKey(new CryptoRandom().GenerateRandomBytes(32));
             TestContext.Out.WriteLine(key);
             TestContext.Out.WriteLine(key.PublicKey);
             TestContext.Out.WriteLine(key.Address);
-
-            // TestContext.Out.WriteLine(new PublicKey("61db6ecea259c581fd1cf08f9268c867c5d0d3c60d2b8567bfd3a34d4d1fa6d7dfe44dc5427db53c1d55ec32a921fc11bc552ebb362949084271bd3570e1ce8d").Address);
         }
     }
 }

@@ -24,11 +24,6 @@ namespace Nethermind.Store.Repositories
         private readonly object _lockObject;
         private bool _lockTaken;
 
-        internal BatchWrite()
-        {
-            
-        }
-        
         public BatchWrite(object lockObject)
         {
             _lockObject = lockObject;
