@@ -123,6 +123,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private void RefundClaimTimerOnElapsed(object sender, ElapsedEventArgs e)
         {
             _ethPriceService.UpdateAsync();
+            _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice);
             _depositRepository.BrowseAsync(new GetDeposits
                 {
                     Results = int.MaxValue,

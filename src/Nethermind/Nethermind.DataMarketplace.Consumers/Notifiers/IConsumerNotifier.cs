@@ -50,5 +50,7 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers
 
         Task SendGraceUnitsExceeded(Keccak depositId, string dataAssetName, uint consumedUnitsFromProvider,
             uint consumedUnits, uint graceUnits);
+
+        void SendEthUsdPriceAsync(decimal price);
     }
 }
