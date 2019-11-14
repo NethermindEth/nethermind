@@ -42,10 +42,13 @@ namespace Nethermind.Facade.Proxy
             _retryDelayMilliseconds = retryDelayMilliseconds;
         }
 
-        public  Task<T> PostJsonAsync<T>(string endpoint, object payload = null)
-            => TrySendJsonAsync<T>(Method.Post, endpoint, payload);
+        public Task<T> GetAsync<T>(string endpoint)
+            => ExecuteAsync<T>(Method.Get, endpoint);
 
-        private async Task<T> TrySendJsonAsync<T>(Method method, string endpoint, object payload = null)
+        public  Task<T> PostJsonAsync<T>(string endpoint, object payload = null)
+            => ExecuteAsync<T>(Method.Post, endpoint, payload);
+
+        private async Task<T> ExecuteAsync<T>(Method method, string endpoint, object payload = null)
         {
             var requestId = Guid.NewGuid().ToString("N");
             var methodType = method.ToString();
@@ -78,7 +81,6 @@ namespace Nethermind.Facade.Proxy
 
             return default;
         }
-
 
         private async Task<T> ProcessRequestAsync<T>(Method method, string endpoint, string requestId,
             object payload = null)

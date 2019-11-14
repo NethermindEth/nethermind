@@ -78,6 +78,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
         private INdmModule _ndmModule;
         private IJsonRpcClientProxy _jsonRpcClientProxy;
         private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
+        private IHttpClient _httpClient;
 
         [SetUp]
         public void Setup()
@@ -112,6 +113,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
             _blockProcessor = Substitute.For<IBlockProcessor>();
             _jsonRpcClientProxy = Substitute.For<IJsonRpcClientProxy>();
             _ethJsonRpcClientProxy = Substitute.For<IEthJsonRpcClientProxy>();
+            _httpClient = Substitute.For<IHttpClient>();
             _ndmModule = new NdmModule();
         }
 
@@ -123,7 +125,7 @@ namespace Nethermind.DataMarketplace.Test.Infrastructure
                 _receiptStorage, _filterStore, _filterManager, _wallet, _timestamper, _ecdsa, _keyStore,
                 _rpcModuleProvider, _jsonSerializer, _cryptoRandom, _enode, _ndmConsumerChannelManager,
                 _ndmDataPublisher, _grpcServer, _ethRequestService, _notifier, _enableUnsecuredDevWallet,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy));
+                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient));
             services.Should().NotBeNull();
             services.CreatedServices.Should().NotBeNull();
             services.RequiredServices.Should().NotBeNull();

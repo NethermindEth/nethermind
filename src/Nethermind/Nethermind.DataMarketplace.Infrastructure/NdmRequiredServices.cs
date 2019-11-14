@@ -72,6 +72,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IBlockProcessor BlockProcessor { get; }
         public IJsonRpcClientProxy JsonRpcClientProxy { get; }
         public IEthJsonRpcClientProxy EthJsonRpcClientProxy { get; }
+        public IHttpClient HttpClient { get; }
 
         public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
             string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
@@ -82,7 +83,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
             IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier,
             bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy)
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -114,6 +115,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             BlockProcessor = blockProcessor;
             JsonRpcClientProxy = jsonRpcClientProxy;
             EthJsonRpcClientProxy = ethJsonRpcClientProxy;
+            HttpClient = httpClient;
         }
     }
 }

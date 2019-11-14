@@ -43,17 +43,19 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IDepositReportService _depositReportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
+        private readonly IEthPriceService _ethPriceService;
         private readonly IPersonalBridge _personalBridge;
         private readonly ITimestamper _timestamper;
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IPersonalBridge personalBridge, ITimestamper timestamper)
+            IEthPriceService ethPriceService, IPersonalBridge personalBridge, ITimestamper timestamper)
         {
             _consumerService = consumerService;
             _depositReportService = depositReportService;
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             _ethRequestService = ethRequestService;
+            _ethPriceService = ethPriceService;
             _personalBridge = personalBridge;
             _timestamper = timestamper;
         }
@@ -155,12 +157,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string client, string[] args)
             => await _consumerService.EnableDataStreamAsync(depositId, client, args) is null
-                ? ResultWrapper<Keccak>.Fail($"Couldn't enable data stream for deposit: '{depositId}', client: {client}.")
+                ? ResultWrapper<Keccak>.Fail(
+                    $"Couldn't enable data stream for deposit: '{depositId}', client: {client}.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
         public async Task<ResultWrapper<Keccak>> ndm_disableDataStream(Keccak depositId, string client)
             => await _consumerService.DisableDataStreamAsync(depositId, client) is null
-                ? ResultWrapper<Keccak>.Fail($"Couldn't disable data stream for deposit: '{depositId}', client: {client}.")
+                ? ResultWrapper<Keccak>.Fail(
+                    $"Couldn't disable data stream for deposit: '{depositId}', client: {client}.")
                 : ResultWrapper<Keccak>.Success(depositId);
 
         public async Task<ResultWrapper<Keccak>> ndm_disableDataStreams(Keccak depositId)
@@ -203,14 +207,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
             return ResultWrapper<FaucetResponseForRpc>.Success(new FaucetResponseForRpc(response));
         }
-        
+
         public ResultWrapper<string> ndm_pullData(Keccak depositId)
         {
             var data = _jsonRpcNdmConsumerChannel.Pull(depositId);
 
             return ResultWrapper<string>.Success(data);
         }
-        
+
         public async Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy()
         {
             var proxy = await _consumerService.GetProxyAsync();
@@ -225,8 +229,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         public async Task<ResultWrapper<bool>> ndm_setProxy(string[] urls)
         {
             await _consumerService.SetProxyAsync(urls);
-            
+
             return ResultWrapper<bool>.Success(true);
         }
+
+        public ResultWrapper<decimal> ndm_getEthUsdPrice() => ResultWrapper<decimal>.Success(_ethPriceService.UsdPrice);
     }
 }

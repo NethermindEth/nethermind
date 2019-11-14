@@ -16,11 +16,11 @@
 
 using System.Threading.Tasks;
 
-namespace Nethermind.Facade.Proxy
+namespace Nethermind.DataMarketplace.Core.Services
 {
-    public interface IHttpClient
+    public interface IEthPriceService
     {
-        Task<T> GetAsync<T>(string endpoint);
-        Task<T> PostJsonAsync<T>(string endpoint, object payload = null);
+        Task UpdateAsync();
+        decimal UsdPrice { get; }
     }
 }

@@ -28,6 +28,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Refunds;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Logging;
@@ -44,6 +45,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IAccountService _accountService;
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
+        private readonly IEthPriceService _ethPriceService;
         private readonly IBlockProcessor _blockProcessor;
         private readonly Timer _refundClaimTimer;
         private readonly Timer _depositTimer;
@@ -52,14 +54,16 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private long _currentBlockNumber;
 
         public ConsumerServicesBackgroundProcessor(IAccountService accountService, IRefundClaimant refundClaimant,
-            IDepositConfirmationService depositConfirmationService, IBlockProcessor blockProcessor,
-            IDepositDetailsRepository depositRepository, IConsumerNotifier consumerNotifier, ILogManager logManager,
+            IDepositConfirmationService depositConfirmationService, IEthPriceService ethPriceService,
+            IBlockProcessor blockProcessor, IDepositDetailsRepository depositRepository,
+            IConsumerNotifier consumerNotifier, ILogManager logManager,
             uint tryClaimRefundsIntervalMilliseconds = 60000, bool useDepositTimer = false, 
             IEthJsonRpcClientProxy ethJsonRpcClientProxy = null, uint depositTimer = 10000)
         {
             _accountService = accountService;
             _refundClaimant = refundClaimant;
             _depositConfirmationService = depositConfirmationService;
+            _ethPriceService = ethPriceService;
             _blockProcessor = blockProcessor;
             _depositRepository = depositRepository;
             _consumerNotifier = consumerNotifier;
@@ -71,6 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 _depositTimer = new Timer(depositTimer);
             }
+            _ethPriceService.UpdateAsync();
         }
 
         public void Init()
@@ -117,6 +122,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         private void RefundClaimTimerOnElapsed(object sender, ElapsedEventArgs e)
         {
+            _ethPriceService.UpdateAsync();
             _depositRepository.BrowseAsync(new GetDeposits
                 {
                     Results = int.MaxValue,
