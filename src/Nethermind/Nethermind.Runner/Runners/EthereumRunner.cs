@@ -180,6 +180,7 @@ namespace Nethermind.Runner.Runners
         private IBlockFinalizationManager _finalizationManager;
         private IJsonRpcClientProxy _jsonRpcClientProxy;
         private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
+        private IHttpClient _httpClient;
         public const string DiscoveryNodesDbPath = "discoveryNodes";
         public const string PeersDbPath = "peers";
 
@@ -961,11 +962,11 @@ namespace Nethermind.Runner.Runners
             if (!(_ndmInitializer is null))
             {
                 if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
+                _httpClient = new DefaultHttpClient(new HttpClient(), _ethereumJsonSerializer, _logManager);
                 var ndmConfig = _configProvider.GetConfig<INdmConfig>();
                 if (ndmConfig.ProxyEnabled)
                 {
-                    _jsonRpcClientProxy = new JsonRpcClientProxy(new DefaultHttpClient(
-                            new HttpClient(), _ethereumJsonSerializer, _logManager), ndmConfig.JsonRpcUrlProxies,
+                    _jsonRpcClientProxy = new JsonRpcClientProxy(_httpClient, ndmConfig.JsonRpcUrlProxies,
                         _logManager);
                     _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(_jsonRpcClientProxy);
                 }
@@ -978,7 +979,7 @@ namespace Nethermind.Runner.Runners
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer,
                     _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
                     _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager, _blockProcessor,
-                    _jsonRpcClientProxy, _ethJsonRpcClientProxy);
+                    _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }

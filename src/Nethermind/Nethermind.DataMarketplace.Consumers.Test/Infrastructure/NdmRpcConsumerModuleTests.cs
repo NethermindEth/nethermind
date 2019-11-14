@@ -55,6 +55,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IDepositReportService _depositReportService;
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
+        private IEthPriceService _ethPriceService;
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
@@ -68,10 +69,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _depositReportService = Substitute.For<IDepositReportService>();
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
+            _ethPriceService = Substitute.For<IEthPriceService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge, _timestamper);
+                _ethRequestService, _ethPriceService, _personalBridge, _timestamper);
         }
 
         [Test]
@@ -98,7 +100,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _personalBridge, _timestamper);
+                _ethRequestService, _ethPriceService, _personalBridge, _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -440,6 +442,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var result = await _rpc.ndm_setProxy(urls);
             result.Data.Should().BeTrue();
             await _consumerService.Received().SetProxyAsync(urls);
+        }
+
+        [Test]
+        public void get_eth_usd_price_should_return_amount()
+        {
+            const decimal price = 187;
+            _ethPriceService.UsdPrice.Returns(price);
+            var result = _rpc.ndm_getEthUsdPrice();
+            result.Data.Should().Be(price);
         }
 
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)

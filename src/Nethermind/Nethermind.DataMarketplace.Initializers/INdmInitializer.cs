@@ -52,6 +52,6 @@ namespace Nethermind.DataMarketplace.Initializers
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
             IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy);
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient);
     }
 }

@@ -176,7 +176,7 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     dataAssetName,
                     transactionHash
                 }));
-        
+
         public Task SendClaimedRefundAsync(Keccak depositId, string dataAssetName, Keccak transactionHash)
             => _notifier.NotifyAsync(new Notification("claimed_refund",
                 new
@@ -204,5 +204,13 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     consumedUnits,
                     graceUnits
                 }));
+
+        public void SendEthUsdPriceAsync(decimal price)
+            => _notifier.NotifyAsync(new Notification("eth_usd_price",
+                new
+                {
+                    price
+                }));
+
     }
 }

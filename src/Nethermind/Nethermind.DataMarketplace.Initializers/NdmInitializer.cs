@@ -79,14 +79,14 @@ namespace Nethermind.DataMarketplace.Initializers
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
             IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy)
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient)
         {
             var (config, services, faucet, accountService, consumerService, consumerAddress, providerAddress) =
                 await PreInitAsync(configProvider, dbProvider, baseDbPath, blockTree, txPool, specProvider,
                     receiptStorage, wallet, filterStore, filterManager, timestamper, ecdsa, rpcModuleProvider, keyStore,
                     jsonSerializer, cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer,
                     enableUnsecuredDevWallet, webSocketsManager, logManager, blockProcessor, jsonRpcClientProxy,
-                    ethJsonRpcClientProxy);
+                    ethJsonRpcClientProxy, httpClient);
             if (!config.Enabled)
             {
                 return default;
@@ -113,7 +113,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 INdmConsumerChannelManager consumerChannelManager, INdmDataPublisher dataPublisher,
                 IGrpcServer grpcServer, bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager,
                 ILogManager logManager, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-                IEthJsonRpcClientProxy ethJsonRpcClientProxy)
+                IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient)
         {
             if (!(configProvider.GetConfig<INdmConfig>() is NdmConfig defaultConfig))
             {
@@ -166,7 +166,7 @@ namespace Nethermind.DataMarketplace.Initializers
                 baseDbPath, dbProvider, mongoProvider, logManager, blockTree, txPool, specProvider, receiptStorage,
                 filterStore, filterManager, wallet, timestamper, ecdsa, keyStore, rpcModuleProvider, jsonSerializer,
                 cryptoRandom, enode, consumerChannelManager, dataPublisher, grpcServer, ethRequestService, notifier,
-                enableUnsecuredDevWallet, blockProcessor, jsonRpcClientProxy, ethJsonRpcClientProxy));
+                enableUnsecuredDevWallet, blockProcessor, jsonRpcClientProxy, ethJsonRpcClientProxy, httpClient));
 
             var faucetAddress = string.IsNullOrWhiteSpace(ndmConfig.FaucetAddress)
                 ? null
