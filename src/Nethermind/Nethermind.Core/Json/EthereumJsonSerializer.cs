@@ -86,7 +86,6 @@ namespace Nethermind.Core.Json
             return _internalSerializer.Deserialize<T>(jsonReader);
         }
 
-        [Todo(Improve.Performance, "Seems that we create new JsonSerializer each time unnecessrily")]
         public string Serialize<T>(T value, bool indented = false)
         {
             StringWriter stringWriter = new StringWriter(new StringBuilder(256), CultureInfo.InvariantCulture);
