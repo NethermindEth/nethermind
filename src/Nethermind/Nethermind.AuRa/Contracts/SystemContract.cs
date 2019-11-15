@@ -56,15 +56,21 @@ namespace Nethermind.AuRa.Contracts
         
         public void InvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
         {
+            if (transaction != null && !TryInvokeTransaction(header, transactionProcessor, transaction, tracer))
+            {
+                throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
+            }
+        }
+
+        public bool TryInvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
+        {
             if (transaction != null)
             {
                 transactionProcessor.Execute(transaction, header, tracer);
-                
-                if (tracer.StatusCode != StatusCode.Success)
-                {
-                    throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
-                }
+                return tracer.StatusCode == StatusCode.Success;
             }
+
+            return false;
         }
 
         public void EnsureSystemAccount(IStateProvider stateProvider)

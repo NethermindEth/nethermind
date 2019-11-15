@@ -178,7 +178,10 @@ namespace Nethermind.AuRa.Validators
             if (CurrentPendingValidators?.AreFinalized == true)
             {
                 if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.Number}.");
-                ValidatorContract.InvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                if (!ValidatorContract.TryInvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output))
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Finalized pending failed in contract at block {block.Number}.");
+                }
                 SetPendingValidators(null, isProcessingBlock);
             }
         }
