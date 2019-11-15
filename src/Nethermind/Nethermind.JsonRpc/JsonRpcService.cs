@@ -258,7 +258,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, UInt256 id)
+        private JsonRpcResponse GetSuccessResponse(object result, object id)
         {
             var response = new JsonRpcResponse
             {
@@ -277,7 +277,7 @@ namespace Nethermind.JsonRpc
 
         public IList<JsonConverter> Converters { get; } = new List<JsonConverter>();
 
-        private JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message, UInt256 id, string methodName, object result = null)
+        private JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message, object id, string methodName, object result = null)
         {
             if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcErrorResponse
