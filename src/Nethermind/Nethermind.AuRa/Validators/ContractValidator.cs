@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
@@ -119,13 +120,14 @@ namespace Nethermind.AuRa.Validators
 
         public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            if (_validators == null)
+            var isProducingBlock = options.IsProducingBlock();
+            var isProcessingBlock = !isProducingBlock;
+            
+            if (_validators == null || isProducingBlock)
             {
                 Validators = LoadValidatorsFromContract(block.Header);
             }
-            
-            var isProcessingBlock = !options.IsProducingBlock();
-           
+
             if (InitBlockNumber == block.Number)
             {
                 InitiateChange(block, Validators.ToArray(), isProcessingBlock, true);
@@ -243,7 +245,7 @@ namespace Nethermind.AuRa.Validators
                     CurrentPendingValidators.AreFinalized = true;
                     Validators = CurrentPendingValidators.Addresses;
                     SetPendingValidators(CurrentPendingValidators, true);
-                    if (_logger.IsInfo) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.Number}.");
+                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.Number}.");
                 }
             }
         }
