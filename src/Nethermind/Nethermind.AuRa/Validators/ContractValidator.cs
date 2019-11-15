@@ -124,8 +124,6 @@ namespace Nethermind.AuRa.Validators
                 Validators = LoadValidatorsFromContract(block.Header);
             }
             
-            base.PreProcess(block, options);
-            
             var isProcessingBlock = !options.IsProducingBlock();
            
             if (InitBlockNumber == block.Number)
@@ -155,6 +153,8 @@ namespace Nethermind.AuRa.Validators
                     SetPendingValidators(LoadPendingValidators());
                 }
             }
+            
+            base.PreProcess(block, options);
 
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
 
@@ -197,7 +197,11 @@ namespace Nethermind.AuRa.Validators
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
             if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
-                SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators) { AreFinalized = initiateChangeIsImmediatelyFinalized },
+                SetPendingValidators(
+                    new PendingValidators(block.Number, block.Hash, potentialValidators)
+                    {
+                        AreFinalized = initiateChangeIsImmediatelyFinalized
+                    },
                     !initiateChangeIsImmediatelyFinalized && isProcessingBlock);
             }
         }
