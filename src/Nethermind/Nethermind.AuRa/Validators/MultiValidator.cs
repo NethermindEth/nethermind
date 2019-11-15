@@ -49,26 +49,25 @@ namespace Nethermind.AuRa.Validators
 
         private void InitCurrentValidator(long blockNumber)
         {
-            bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator>? val)
-            {
-                val = null;
-            
-                foreach (var kvp in _validators)
-                {
-                    if (kvp.Key <= blockNum)
-                    {
-                        val = kvp;
-                    }
-                }
-            
-                return val != null;
-            }
-
-            
             if (TryGetLastValidator(blockNumber, out var validator))
             {
                 SetCurrentValidator(validator.Value.Key, validator.Value.Value);
             }
+        }
+        
+        private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator>? val)
+        {
+            val = null;
+            
+            foreach (var kvp in _validators)
+            {
+                if (kvp.Key <= blockNum)
+                {
+                    val = kvp;
+                }
+            }
+            
+            return val != null;
         }
 
         private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
@@ -86,14 +85,15 @@ namespace Nethermind.AuRa.Validators
         
         public void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            if (TryGetValidator(block.Number, out var validator))
+            bool isProducingBlock = options.IsProducingBlock();
+
+            if (isProducingBlock && TryGetLastValidator(block.Number - 1, out var validatorInfo))
             {
+                AuRaParameters.Validator validator = validatorInfo?.Value;
                 if (CanChangeImmediately(validator.ValidatorType))
                 {
                     SetCurrentValidator(block.Number, validator);
-                    if (_logger.IsInfo) _logger.Info($"Immediately applying chainspec validator change signalled at block at block {block.Number} to {validator.ValidatorType}.");
                 }
-                else if (_logger.IsInfo) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.Number}.");
             }
 
             _currentValidator?.PreProcess(block, options);
@@ -114,6 +114,18 @@ namespace Nethermind.AuRa.Validators
         public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             _currentValidator?.PostProcess(block, receipts, options);
+
+            var notProducing = !options.IsProducingBlock();
+
+            if (TryGetValidator(block.Number, out var validator))
+            {
+                if (CanChangeImmediately(validator.ValidatorType))
+                {
+                    SetCurrentValidator(block.Number, validator);
+                    if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block at block {block.Number} to {validator.ValidatorType}.");
+                }
+                else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.Number}.");
+            }
         }
         
         public bool IsValidSealer(Address address, long step) => _currentValidator?.IsValidSealer(address, step) == true;
