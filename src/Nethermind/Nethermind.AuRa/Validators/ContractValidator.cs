@@ -39,7 +39,7 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ContractValidator : IAuRaValidatorProcessor
+    public class ContractValidator : AuRaValidatorProcessorBase
     {
         internal static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
         private static readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
@@ -62,7 +62,7 @@ namespace Nethermind.AuRa.Validators
         protected CallOutputTracer Output { get; } = new CallOutputTracer();
         protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
 
-        private Address[] Validators
+        protected override Address[] Validators
         {
             get
             {
@@ -86,11 +86,8 @@ namespace Nethermind.AuRa.Validators
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             ILogManager logManager,            
-            long startBlockNumber)
+            long startBlockNumber) : base(validator, logManager)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
-            if (validator.ValidatorType != Type) 
-                throw new ArgumentException("Wrong validator type.", nameof(validator));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -102,12 +99,10 @@ namespace Nethermind.AuRa.Validators
             SetPendingValidators(LoadPendingValidators());
         }
 
-        public bool IsValidSealer(Address address, long step) => Validators.GetItemRoundRobin(step) == address;
-        
-        public int MinSealersForFinalization => Validators.MinSealersForFinalization();
-
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
+        protected override void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forProducing)
         {
+            base.SetFinalizationManagerInternal(finalizationManager, in forProducing);
+            
             if (_blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
@@ -122,14 +117,16 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            var isProcessingBlock = !options.IsProducingBlock();
-
             if (_validators == null)
             {
                 Validators = LoadValidatorsFromContract(block.Header);
             }
+            
+            base.PreProcess(block, options);
+            
+            var isProcessingBlock = !options.IsProducingBlock();
            
             if (InitBlockNumber == block.Number)
             {
@@ -164,8 +161,10 @@ namespace Nethermind.AuRa.Validators
             _lastProcessedBlockNumber = block.Number;
         }
         
-        public virtual void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
+            base.PostProcess(block, receipts, options);
+            
             if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, block.Header, receipts, out var potentialValidators))
             {
                 var isProcessingBlock = !options.IsProducingBlock();
@@ -184,10 +183,7 @@ namespace Nethermind.AuRa.Validators
             }
         }
         
-        public virtual AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Contract;
-        
-        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => 
-            new ValidatorContract(AbiEncoder, contractAddress);
+        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => new ValidatorContract(AbiEncoder, contractAddress);
         
         private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {

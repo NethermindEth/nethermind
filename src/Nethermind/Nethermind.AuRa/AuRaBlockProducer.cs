@@ -38,7 +38,6 @@ namespace Nethermind.AuRa
 {
     public class AuRaBlockProducer : IBlockProducer
     {
-        private static readonly UInt256 UInt128MaxValue;
         private static readonly BigInteger MinGasPriceForMining = 1;
         
         private readonly IBlockTree _blockTree;
@@ -54,11 +53,7 @@ namespace Nethermind.AuRa
         private readonly ITxPool _txPool;
         private Task _producerTask;
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-
-        static AuRaBlockProducer()
-        {
-            UInt256.Create(out UInt128MaxValue, UInt128.MaxValue, UInt128.Zero);
-        }
+        private readonly AuraDifficultyCalculator _difficultyCalculator;
 
         public AuRaBlockProducer(ITxPool txPool,
             IBlockchainProcessor blockchainProcessor,
@@ -79,8 +74,9 @@ namespace Nethermind.AuRa
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             _stateProvider = stateProvider  ?? throw new ArgumentNullException(nameof(stateProvider));
-            _config = config;
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _difficultyCalculator = new AuraDifficultyCalculator(_auRaStepCalculator);
         }
 
         public void Start()
@@ -137,7 +133,7 @@ namespace Nethermind.AuRa
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 _nodeAddress,
-                CalculateDifficulty(parent.Header),
+                _difficultyCalculator.CalculateDifficulty(parent.Header),
                 parent.Number + 1,
                 parent.GasLimit,
                 timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
@@ -185,9 +181,6 @@ namespace Nethermind.AuRa
             header.TxRoot = block.CalculateTxRoot();
             return block;
         }
-
-        private UInt256 CalculateDifficulty(BlockHeader parent) =>
-            UInt128MaxValue + (UInt256)parent.AuRaStep.Value - (UInt256)_auRaStepCalculator.CurrentStep; // TODO: + empty_steps
 
         private void ProduceNewBlock(BlockHeader parentHeader)
         {

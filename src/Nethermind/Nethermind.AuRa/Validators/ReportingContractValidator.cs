@@ -19,7 +19,5 @@ namespace Nethermind.AuRa.Validators
             long startBlockNumber) : base(validator, stateDb, stateProvider, abiEncoder, transactionProcessor, blockTree, logManager, startBlockNumber)
         {
         }
-
-        public override AuRaParameters.ValidatorType Type { get; } = AuRaParameters.ValidatorType.ReportingContract;
     }
 }

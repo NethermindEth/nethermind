@@ -119,6 +119,7 @@ namespace Nethermind.AuRa.Validators
         public bool IsValidSealer(Address address, long step) => _currentValidator?.IsValidSealer(address, step) == true;
 
         public int MinSealersForFinalization => _currentValidator.MinSealersForFinalization;
+        public int CurrentSealersCount => _currentValidator.CurrentSealersCount;
 
         void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
         {
