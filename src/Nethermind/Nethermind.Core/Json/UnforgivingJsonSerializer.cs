@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -37,6 +38,11 @@ namespace Nethermind.Core.Json
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = indented ? Formatting.Indented : Formatting.None
             });
+        }
+
+        public void Serialize<T>(Stream stream, T value, bool indented = false)
+        {
+            throw new NotSupportedException();
         }
 
         public void RegisterConverter(JsonConverter converter)

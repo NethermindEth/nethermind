@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using Newtonsoft.Json;
 
 namespace Nethermind.Core
@@ -23,7 +24,8 @@ namespace Nethermind.Core
     public interface IJsonSerializer
     {
         T Deserialize<T>(string json);
-        string Serialize<T>(T value, bool indented = false); // TODO: support serializing to stream
+        string Serialize<T>(T value, bool indented = false);
+        void Serialize<T>(Stream stream, T value, bool indented = false);
         void RegisterConverter(JsonConverter converter);
     }
 }

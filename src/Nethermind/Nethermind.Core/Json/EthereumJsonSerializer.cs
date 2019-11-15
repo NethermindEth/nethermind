@@ -21,6 +21,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Core.Json
 {
@@ -67,6 +68,7 @@ namespace Nethermind.Core.Json
 
         private static JsonSerializerSettings _settings = new JsonSerializerSettings
         {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.None,
             Converters = BasicConverters
@@ -74,6 +76,7 @@ namespace Nethermind.Core.Json
 
         private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
         {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.Indented,
             Converters = ReadableConverters
@@ -104,6 +107,22 @@ namespace Nethermind.Core.Json
             }
             
             return stringWriter.ToString();
+        }
+        
+        public void Serialize<T>(Stream stream, T value, bool indented = false)
+        {
+            StreamWriter streamWriter = new StreamWriter(stream);
+            using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
+            if (indented)
+            {
+                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
+            }
+            else
+            {
+                jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+            }
         }
 
         public void RegisterConverter(JsonConverter converter)
