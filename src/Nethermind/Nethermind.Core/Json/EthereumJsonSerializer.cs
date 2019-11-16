@@ -16,19 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Core.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        private JsonSerializer _internalSerializer;
+        private JsonSerializer _internalReadableSerializer;
+
         public EthereumJsonSerializer()
         {
-            _serializer = JsonSerializer.Create(_settings);
+            _internalSerializer = JsonSerializer.Create(_settings);
+            _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
         }
 
         public static IList<JsonConverter> BasicConverters { get; } = new List<JsonConverter>
@@ -63,6 +68,7 @@ namespace Nethermind.Core.Json
 
         private static JsonSerializerSettings _settings = new JsonSerializerSettings
         {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.None,
             Converters = BasicConverters
@@ -70,70 +76,53 @@ namespace Nethermind.Core.Json
 
         private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
         {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.Indented,
             Converters = ReadableConverters
         };
-
-        public T DeserializeAnonymousType<T>(string json, T definition)
-        {
-            throw new NotSupportedException();
-        }
-
+        
         public T Deserialize<T>(string json)
         {
-            return JsonConvert.DeserializeObject<T>(json, _settings);
-        }
-
-        private JsonSerializer _serializer;
-
-        public (T Model, List<T> Collection) DeserializeObjectOrArray<T>(string json)
-        {
-            var token = JToken.Parse(json);
-            if (token is JArray array)
-            {
-                foreach (var tokenElement in array)
-                {
-                    UpdateParams(tokenElement);
-                }
-
-                return (default, array.ToObject<List<T>>(_serializer));
-            }
-
-            UpdateParams(token);
-            return (token.ToObject<T>(_serializer), null);
-        }
-
-        private void UpdateParams(JToken token)
-        {
-            var paramsToken = token.SelectToken("params");
-            if (paramsToken == null)
-            {
-                paramsToken = token.SelectToken("Params");
-                if (paramsToken == null)
-                {
-                    return;
-                }
-
-//                if (paramsToken == null)
-//                {
-//                    throw new FormatException("Missing 'params' token");
-//                }
-            }
-            
-            JArray arrayToken = (JArray)paramsToken;
-            for (int i = 0; i < arrayToken.Count; i++)
-            {
-                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
-                {
-                    arrayToken[i].Replace(JToken.Parse(Serialize(arrayToken[i].Value<object>().ToString())));
-                }
-            }
+            using StringReader reader = new StringReader(json);
+            using JsonReader jsonReader = new JsonTextReader(reader);
+            return _internalSerializer.Deserialize<T>(jsonReader);
         }
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            return JsonConvert.SerializeObject(value, indented ? _readableSettings : _settings);
+            StringWriter stringWriter = new StringWriter(new StringBuilder(256), CultureInfo.InvariantCulture);
+            using (JsonTextWriter jsonTextWriter = new JsonTextWriter(stringWriter))
+            {
+                if (indented)
+                {
+                    jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                    _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
+                }
+                else
+                {
+                    jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                    _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+                }
+            }
+            
+            return stringWriter.ToString();
+        }
+        
+        public void Serialize<T>(Stream stream, T value, bool indented = false)
+        {
+            StreamWriter streamWriter = new StreamWriter(stream);
+            using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
+            if (indented)
+            {
+                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
+            }
+            else
+            {
+                jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+            }
         }
 
         public void RegisterConverter(JsonConverter converter)
@@ -154,6 +143,9 @@ namespace Nethermind.Core.Json
                 Formatting = Formatting.None,
                 Converters = BasicConverters
             };
+
+            _internalSerializer = JsonSerializer.Create(_settings);
+            _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
         }
     }
 }

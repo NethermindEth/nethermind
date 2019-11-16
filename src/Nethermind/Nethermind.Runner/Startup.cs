@@ -26,6 +26,8 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.JsonRpc;
 using Nethermind.Runner.Config;
 using Nethermind.WebSockets;
@@ -40,6 +42,8 @@ namespace Nethermind.Runner
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver()
         };
+        
+        private IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
         public void ConfigureServices(IServiceCollection services)
         {
@@ -50,12 +54,14 @@ namespace Nethermind.Runner
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
 
+        [Todo(Improve.Performance, "Can we write immediatelly to the stream instead of calling ToString on the entire JSON content?")]
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor,
             IJsonRpcService jsonRpcService)
         {
+            _jsonSerializer = new EthereumJsonSerializer();
             foreach (var converter in jsonRpcService.Converters)
             {
-                JsonSettings.Converters.Add(converter);
+                _jsonSerializer.RegisterConverter(converter);
             }
 
             if (env.IsDevelopment())
@@ -90,9 +96,17 @@ namespace Nethermind.Runner
                 using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
                 var request = await reader.ReadToEndAsync();
                 var result = await jsonRpcProcessor.ProcessAsync(request);
-                await ctx.Response.WriteAsync(result.IsCollection
-                    ? JsonConvert.SerializeObject(result.Responses, JsonSettings)
-                    : JsonConvert.SerializeObject(result.Response, JsonSettings));
+
+                if (result.IsCollection)
+                {
+                    _jsonSerializer.Serialize(ctx.Response.Body, result.Responses);
+                }
+                else
+                {
+                    _jsonSerializer.Serialize(ctx.Response.Body, result.Response);
+                }
+
+                await ctx.Response.CompleteAsync();
             });
         }
     }

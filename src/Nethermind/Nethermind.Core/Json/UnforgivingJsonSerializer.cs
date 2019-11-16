@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -25,70 +26,9 @@ namespace Nethermind.Core.Json
 {
     public class UnforgivingJsonSerializer : IJsonSerializer
     {
-        public T DeserializeAnonymousType<T>(string json, T definition)
-        {
-            return JsonConvert.DeserializeAnonymousType(json, definition);
-        }
-
         public T Deserialize<T>(string json)
         {
             return JsonConvert.DeserializeObject<T>(json);
-        }
-
-        public (T Model, List<T> Collection) DeserializeObjectOrArray<T>(string json)
-        {
-            var token = JToken.Parse(json);
-            if (token is JArray array)
-            {
-                foreach (var tokenElement in array)
-                {
-                    UpdateParams(tokenElement);
-                }
-
-                return (default, array.ToObject<List<T>>());
-            }
-            UpdateParams(token);
-
-            return (token.ToObject<T>(), null);
-        }
-        
-        private void UpdateParams(JToken token)
-        {
-            var paramsToken = token.SelectToken("params");
-            if (paramsToken == null)
-            {
-                paramsToken = token.SelectToken("Params");
-                if (paramsToken == null)
-                {
-                    return;
-                }
-
-//                if (paramsToken == null)
-//                {
-//                    throw new FormatException("Missing 'params' token");
-//                }
-            }
-            
-            var values = new List<string>();
-            foreach (var value in paramsToken.Value<IEnumerable<object>>())
-            {
-                var valueString = value?.ToString();
-                if (valueString == null)
-                {
-                    values.Add($"\"null\"");
-                    continue;
-                }
-                
-                if (valueString.StartsWith("{") || valueString.StartsWith("["))
-                {
-                    values.Add(Serialize(valueString));
-                    continue;
-                }
-                values.Add($"\"{valueString}\"");
-            }
-
-            var json = $"[{string.Join(",", values)}]";
-            paramsToken.Replace(JToken.Parse(json));
         }
 
         public string Serialize<T>(T value, bool indented = false)
@@ -98,6 +38,11 @@ namespace Nethermind.Core.Json
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = indented ? Formatting.Indented : Formatting.None
             });
+        }
+
+        public void Serialize<T>(Stream stream, T value, bool indented = false)
+        {
+            throw new NotSupportedException();
         }
 
         public void RegisterConverter(JsonConverter converter)

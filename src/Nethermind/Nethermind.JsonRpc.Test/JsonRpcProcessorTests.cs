@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core.Json;
 using Nethermind.Logging;
 using NSubstitute;
@@ -29,15 +30,39 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _jsonRpcProcessor = new JsonRpcProcessor(Substitute.For<IJsonRpcService>(),  new EthereumJsonSerializer(), new JsonRpcConfig(), LimboLogs.Instance);
+            IJsonRpcService service = Substitute.For<IJsonRpcService>();
+            service.SendRequestAsync(Arg.Any<JsonRpcRequest>()).Returns(ci => new JsonRpcResponse {Id = ci.Arg<JsonRpcRequest>().Id, Result = null, JsonRpc = ci.Arg<JsonRpcRequest>().JsonRpc});
+            _jsonRpcProcessor = new JsonRpcProcessor(service, new EthereumJsonSerializer(), new JsonRpcConfig(), LimboLogs.Instance);
         }
 
         private JsonRpcProcessor _jsonRpcProcessor;
+
+        [Test]
+        public async Task Can_process_guid_ids()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            Assert.NotNull(result.Response.Id);
+        }
+
+        [Test]
+        public async Task Can_process_non_hex_ids()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":12345678901234567890,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            Assert.NotNull(result.Response.Id);
+        }
+
+        [Test]
+        public async Task Can_process_hex_ids()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":\"0xa1aa12434\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            Assert.NotNull(result.Response.Id);
+        }
         
         [Test]
-        public void Can_process_guid_ids()
+        public async Task Can_process_int()
         {
-            _jsonRpcProcessor.ProcessAsync("{\"id\":\"840b55c4-18b0-431c-be1d-6d22198b53f2\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            Assert.NotNull(result.Response.Id);
         }
     }
 }
