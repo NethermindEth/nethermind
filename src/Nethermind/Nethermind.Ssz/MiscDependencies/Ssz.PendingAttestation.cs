@@ -69,8 +69,7 @@ namespace Nethermind.Ssz
             }
 
             int offset = 0;
-            int dynamicOffset = BinaryPrimitives.ReadInt32LittleEndian(span.Slice(0, VarOffsetSize));
-            offset += VarOffsetSize;
+            DecodeDynamicOffset(span, ref offset, out int dynamicOffset);
 
             int itemsCount = dynamicOffset / VarOffsetSize;
             PendingAttestation[] containers = new PendingAttestation[itemsCount];
@@ -86,6 +85,5 @@ namespace Nethermind.Ssz
 
             return containers;
         }
-
     }
 }

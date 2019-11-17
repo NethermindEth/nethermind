@@ -14,16 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Buffers.Binary;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics.X86;
-using Nethermind.Core;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
-using NLog.StructuredLogging.Json.Helpers;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
 
 namespace Nethermind.Ssz
@@ -95,13 +90,98 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(out UInt256 root, Attestation container)
+        public static void Ize(out UInt256 root, BeaconBlockBody container)
         {
             Merkleizer merkleizer = new Merkleizer(3);
-            merkleizer.Feed(container.AggregationBits);
-            merkleizer.Feed(container.Data);
-            merkleizer.Feed(container.CustodyBits);
+            merkleizer.Feed(container.RandaoReversal);
+            merkleizer.Feed(container.Eth1Data);
+            merkleizer.Feed(container.Graffiti);
+            merkleizer.Feed(container.ProposerSlashings, BeaconBlock.MaxProposerSlashings);
+            merkleizer.Feed(container.AttesterSlashings, BeaconBlock.MaxAttesterSlashings);
+            merkleizer.Feed(container.Attestations, BeaconBlock.MaxAttestations);
+            merkleizer.Feed(container.Deposits, BeaconBlock.MaxDeposits);
+            merkleizer.Feed(container.VoluntaryExits, BeaconBlock.MaxVoluntaryExits);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, BeaconState container)
+        {
+            Merkleizer merkleizer = new Merkleizer(5);
+            merkleizer.Feed(container.GenesisTime);
+            merkleizer.Feed(container.Slot);
+            merkleizer.Feed(container.Fork);
+            merkleizer.Feed(container.LatestBlockHeader);
+            merkleizer.Feed(container.BlockRoots);
+            merkleizer.Feed(container.StateRoots);
+            merkleizer.Feed(container.HistoricalRoots, BeaconState.HistoricalRootsLimit);
+            merkleizer.Feed(container.Eth1Data);
+            merkleizer.Feed(container.Eth1DataVotes, (uint)Time.SlotsPerEth1VotingPeriod);
+            merkleizer.Feed(container.Eth1DepositIndex);
+            merkleizer.Feed(container.Validators, Validator.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Balances, Validator.ValidatorRegistryLimit);
+            merkleizer.Feed(container.RandaoMixes);
+            merkleizer.Feed(container.Slashings);
+            merkleizer.Feed(container.PreviousEpochAttestations, BeaconBlock.MaxAttestations * Time.SlotsPerEpoch);
+            merkleizer.Feed(container.CurrentEpochAttestations, BeaconBlock.MaxAttestations * Time.SlotsPerEpoch);
+            merkleizer.Feed(container.JustificationBits);
+            merkleizer.Feed(container.PreviousJustifiedCheckpoint);
+            merkleizer.Feed(container.CurrentJustifiedCheckpoint);
+            merkleizer.Feed(container.FinalizedCheckpoint);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, BeaconBlock container)
+        {
+            Merkleizer merkleizer = new Merkleizer(3);
+            merkleizer.Feed(container.Slot);
+            merkleizer.Feed(container.ParentRoot);
+            merkleizer.Feed(container.StateRoot);
+            merkleizer.Feed(container.Body);
             merkleizer.Feed(container.Signature);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, Attestation container)
+        {
+            Merkleizer merkleizer = new Merkleizer(2);
+            merkleizer.FeedBits(container.AggregationBits, (Attestation.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.Feed(container.Data);
+            merkleizer.Feed(container.Signature);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, IndexedAttestation container)
+        {
+            Merkleizer merkleizer = new Merkleizer(2);
+            merkleizer.Feed(container.AttestingIndices, Attestation.MaxValidatorsPerCommittee);
+            merkleizer.Feed(container.Data);
+            merkleizer.Feed(container.Signature);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, PendingAttestation container)
+        {
+            Merkleizer merkleizer = new Merkleizer(2);
+            merkleizer.FeedBits(container.AggregationBits, (Attestation.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.Feed(container.Data);
+            merkleizer.Feed(container.InclusionDelay);
+            merkleizer.Feed(container.ProposerIndex);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, AttesterSlashing container)
+        {
+            Merkleizer merkleizer = new Merkleizer(1);
+            merkleizer.Feed(container.Attestation1);
+            merkleizer.Feed(container.Attestation2);
+            merkleizer.CalculateRoot(out root);
+        }
+        
+        public static void Ize(out UInt256 root, Deposit container)
+        {
+            Merkleizer merkleizer = new Merkleizer(1);
+            merkleizer.Feed(container.Proof);
+            merkleizer.Feed(container.Data);
             merkleizer.CalculateRoot(out root);
         }
         

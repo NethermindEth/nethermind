@@ -67,11 +67,11 @@ namespace Nethermind.Ssz
             return v;
         }
 
-        private static int NextPowerOfTwoExponent(uint v)
+        public static int NextPowerOfTwoExponent(ulong v)
         {
             if (Lzcnt.IsSupported)
             {
-                return 32 - (int)Lzcnt.LeadingZeroCount(--v);
+                return 64 - (int)Lzcnt.X64.LeadingZeroCount(--v);
             }
 
             throw new NotImplementedException();
@@ -120,7 +120,7 @@ namespace Nethermind.Ssz
             return span.Equals(ZeroHashes[level]);
         }
 
-        private static void MixIn(ref UInt256 root, int value)
+        public static void MixIn(ref UInt256 root, int value)
         {
             UInt256.Create(out UInt256 lengthPart, value);
             root = HashConcatenation(root, lengthPart, 0);
@@ -319,8 +319,9 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static void Ize(out UInt256 root, Span<ulong> value)
+        public static void Ize(out UInt256 root, Span<ulong> value, ulong limit = 0U)
         {
+            limit = (limit * 8 + 31) / 32;
             const int typeSize = 8;
             int partialChunkLength = value.Length % (32 / typeSize);
             if (partialChunkLength > 0)
@@ -328,11 +329,11 @@ namespace Nethermind.Ssz
                 Span<ulong> fullChunks = value.Slice(0, value.Length - partialChunkLength);
                 Span<ulong> lastChunk = stackalloc ulong[32 / typeSize];
                 value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
-                Ize(out root, MemoryMarshal.Cast<ulong, Chunk>(fullChunks), MemoryMarshal.Cast<ulong, Chunk>(lastChunk));
+                Ize(out root, MemoryMarshal.Cast<ulong, Chunk>(fullChunks), MemoryMarshal.Cast<ulong, Chunk>(lastChunk), limit);
             }
             else
             {
-                Ize(out root, MemoryMarshal.Cast<ulong, Chunk>(value));
+                Ize(out root, MemoryMarshal.Cast<ulong, Chunk>(value), limit);
             }
         }
 
@@ -353,7 +354,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static void Ize(out UInt256 root, Span<UInt256> value, Span<UInt256> lastChunk, uint limit = 0)
+        public static void Ize(out UInt256 root, Span<UInt256> value, Span<UInt256> lastChunk, ulong limit = 0)
         {
             if (limit == 0 && (value.Length + lastChunk.Length == 1))
             {
@@ -361,7 +362,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            int depth = NextPowerOfTwoExponent(limit == 0U ? (uint)(value.Length + lastChunk.Length) : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)
@@ -377,7 +378,7 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
         
-        public static void Ize(out UInt256 root, Span<UInt256> value, uint limit = 0)
+        public static void Ize(out UInt256 root, Span<UInt256> value, ulong limit = 0UL)
         {
             if (limit == 0 && value.Length == 1)
             {
@@ -385,7 +386,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            int depth = NextPowerOfTwoExponent(limit == 0U ? (uint)value.Length : limit);
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)

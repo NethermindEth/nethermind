@@ -21,6 +21,10 @@ namespace Nethermind.Core2
         // choose the best type or create one per type
         public const uint SecondsPerDay = 86400;
         
+        public const uint SlotsPerEpoch = 32;
+        
+        public static int SlotsPerEth1VotingPeriod = 1024;
+        
         public static int SlotsPerHistoricalRoot = 8192;
         
         public static int EpochsPerHistoricalVector = 65536;

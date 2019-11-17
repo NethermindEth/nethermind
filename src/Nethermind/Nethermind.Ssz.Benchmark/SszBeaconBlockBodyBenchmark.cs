@@ -57,15 +57,13 @@ namespace Nethermind.Ssz.Benchmarks
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;
             indexedAttestation1.Signature = BlsSignature.TestSig1;
-            indexedAttestation1.CustodyBit0Indices = new ValidatorIndex[8];
-            indexedAttestation1.CustodyBit1Indices = new ValidatorIndex[8];
-            
+            indexedAttestation1.AttestingIndices = new ValidatorIndex[8];
+
             IndexedAttestation indexedAttestation2 = new IndexedAttestation();
             indexedAttestation2.Data = data;
             indexedAttestation2.Signature = BlsSignature.TestSig1;
-            indexedAttestation2.CustodyBit0Indices = new ValidatorIndex[8];
-            indexedAttestation2.CustodyBit1Indices = new ValidatorIndex[8];
-            
+            indexedAttestation2.AttestingIndices = new ValidatorIndex[8];
+
             AttesterSlashing slashing = new AttesterSlashing();
             slashing.Attestation1 = indexedAttestation1;
             slashing.Attestation2 = indexedAttestation2;
