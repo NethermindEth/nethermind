@@ -120,7 +120,7 @@ namespace Nethermind.Core2.Containers
 
         public BlsSignature RandaoReversal { get; set; }
         public Eth1Data Eth1Data { get; set; }
-        public byte[] Graffiti { get; set; }
+        public byte[] Graffiti { get; set; } = new byte[32];
         public ProposerSlashing[] ProposerSlashings { get; set; }
         public AttesterSlashing[] AttesterSlashings { get; set; }
         public Attestation[] Attestations { get; set; }

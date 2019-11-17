@@ -30,7 +30,6 @@ namespace Nethermind.Ssz
             int dynamicOffset = Attestation.SszDynamicOffset;
             Encode(span, container.AggregationBits, ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
-            Encode(span, container.CustodyBits, ref offset, ref dynamicOffset);
             Encode(span, container.Signature, ref offset);
         }
 
@@ -83,12 +82,10 @@ namespace Nethermind.Ssz
             // static part
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
             container.Data = DecodeAttestationData(span, ref offset);
-            DecodeDynamicOffset(span, ref offset, out int dynamicOffset2);
             container.Signature = DecodeBlsSignature(span, ref offset);
 
             // var part
-            container.AggregationBits = span.Slice(dynamicOffset1, dynamicOffset2 - dynamicOffset1).ToArray();
-            container.CustodyBits = span.Slice(dynamicOffset2, span.Length - dynamicOffset2).ToArray();
+            container.AggregationBits = span.Slice(dynamicOffset1, span.Length - dynamicOffset1).ToArray();
 
             return container;
         }

@@ -23,16 +23,17 @@ namespace Nethermind.Core2.Containers
 {
     public class IndexedAttestation
     {
+        public const int SszDynamicOffset = sizeof(uint) +
+                                            AttestationData.SszLength +
+                                            BlsSignature.SszLength;
+        
         public static int SszLength(IndexedAttestation value)
         {
-            return 2 * sizeof(uint) +
-                   (value.CustodyBit0Indices.Length + value.CustodyBit1Indices.Length) * ValidatorIndex.SszLength +
-                   AttestationData.SszLength +
-                   BlsSignature.SszLength;
+            return SszDynamicOffset +
+                   value.AttestingIndices.Length * ValidatorIndex.SszLength;
         }
 
-        public ValidatorIndex[] CustodyBit0Indices { get; set; }
-        public ValidatorIndex[] CustodyBit1Indices { get; set; }
+        public ValidatorIndex[] AttestingIndices { get; set; }
         public AttestationData Data { get; set; }
         public BlsSignature Signature { get; set; }
         
@@ -40,23 +41,14 @@ namespace Nethermind.Core2.Containers
         {
             if (!Equals(Data, other.Data) ||
                 !Equals(Signature, other.Signature) ||
-                CustodyBit0Indices.Length != other.CustodyBit0Indices.Length ||
-                CustodyBit1Indices.Length != other.CustodyBit1Indices.Length)
+                AttestingIndices.Length != other.AttestingIndices.Length)
             {
                 return false;
             }
 
-            for (int i = 0; i < CustodyBit0Indices.Length; i++)
+            for (int i = 0; i < AttestingIndices.Length; i++)
             {
-                if (CustodyBit0Indices[i] != other.CustodyBit0Indices[i])
-                {
-                    return false;
-                }
-            }
-            
-            for (int i = 0; i < CustodyBit1Indices.Length; i++)
-            {
-                if (CustodyBit1Indices[i] != other.CustodyBit1Indices[i])
+                if (AttestingIndices[i] != other.AttestingIndices[i])
                 {
                     return false;
                 }

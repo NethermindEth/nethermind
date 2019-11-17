@@ -117,8 +117,7 @@ namespace Nethermind.Ssz.Test
             data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
 
             IndexedAttestation container = new IndexedAttestation();
-            container.CustodyBit0Indices = new ValidatorIndex[3];
-            container.CustodyBit1Indices = new ValidatorIndex[7];
+            container.AttestingIndices = new ValidatorIndex[3];
             container.Data = data;
             container.Signature = BlsSignature.TestSig1;
 
@@ -243,14 +242,12 @@ namespace Nethermind.Ssz.Test
             data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
-            indexedAttestation1.CustodyBit0Indices = new ValidatorIndex[3];
-            indexedAttestation1.CustodyBit1Indices = new ValidatorIndex[7];
+            indexedAttestation1.AttestingIndices = new ValidatorIndex[3];
             indexedAttestation1.Data = data;
             indexedAttestation1.Signature = BlsSignature.TestSig1;
 
             IndexedAttestation indexedAttestation2 = new IndexedAttestation();
-            indexedAttestation2.CustodyBit0Indices = new ValidatorIndex[5];
-            indexedAttestation2.CustodyBit1Indices = new ValidatorIndex[11];
+            indexedAttestation2.AttestingIndices = new ValidatorIndex[5];
             indexedAttestation2.Data = data;
             indexedAttestation2.Signature = BlsSignature.TestSig1;
 
@@ -277,7 +274,6 @@ namespace Nethermind.Ssz.Test
             Attestation container = new Attestation();
             container.AggregationBits = new byte[] {1, 2, 3};
             container.Data = data;
-            container.CustodyBits = new byte[] {1, 2, 3, 4, 5, 6, 7};
             container.Signature = BlsSignature.TestSig1;
 
             Span<byte> encoded = new byte[Attestation.SszLength(container)];
@@ -359,7 +355,6 @@ namespace Nethermind.Ssz.Test
             attestation.Data = data;
             attestation.Signature = BlsSignature.TestSig1;
             attestation.AggregationBits = new byte[5];
-            attestation.CustodyBits = new byte[6];
 
             DepositData depositData = new DepositData();
             depositData.Amount = new Gwei(7);
@@ -374,14 +369,12 @@ namespace Nethermind.Ssz.Test
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;
             indexedAttestation1.Signature = BlsSignature.TestSig1;
-            indexedAttestation1.CustodyBit0Indices = new ValidatorIndex[8];
-            indexedAttestation1.CustodyBit1Indices = new ValidatorIndex[8];
+            indexedAttestation1.AttestingIndices = new ValidatorIndex[8];
 
             IndexedAttestation indexedAttestation2 = new IndexedAttestation();
             indexedAttestation2.Data = data;
             indexedAttestation2.Signature = BlsSignature.TestSig1;
-            indexedAttestation2.CustodyBit0Indices = new ValidatorIndex[8];
-            indexedAttestation2.CustodyBit1Indices = new ValidatorIndex[8];
+            indexedAttestation2.AttestingIndices = new ValidatorIndex[8];
 
             AttesterSlashing slashing = new AttesterSlashing();
             slashing.Attestation1 = indexedAttestation1;
