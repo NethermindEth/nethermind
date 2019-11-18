@@ -65,7 +65,7 @@ namespace Nethermind.Clique
 
             var signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new Signature(signatureBytes);
-            signature.V += 27;
+            signature.V += Signature.VOffset;
             Keccak message = CalculateCliqueHeaderHash(header);
             Address address = _ecdsa.RecoverAddress(signature, message);
             _signatures.Set(header.Hash, address);

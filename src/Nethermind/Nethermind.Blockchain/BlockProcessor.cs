@@ -205,20 +205,17 @@ namespace Nethermind.Blockchain
                 }
 
                 block = PrepareBlockForProcessing(suggestedBlock);
-                var additionalBlockProcessor = GetAdditionalBlockProcessor(options);
-                
-                additionalBlockProcessor?.PreProcess(block);
+                _additionalBlockProcessor?.PreProcess(block, options);
                 
                 var receipts = ProcessTransactions(block, options, blockTracer);
                 SetReceiptsRoot(block, receipts);
                 ApplyMinerRewards(block, blockTracer);
                 
-                additionalBlockProcessor?.PostProcess(block, receipts);
-                
                 _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-
                 block.Header.StateRoot = _stateProvider.StateRoot;
                 block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+                
+                _additionalBlockProcessor?.PostProcess(block, receipts, options);
 
                 if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
                 {
@@ -245,9 +242,6 @@ namespace Nethermind.Blockchain
 
             return block;
         }
-
-        private IAdditionalBlockProcessor GetAdditionalBlockProcessor(ProcessingOptions options) => 
-            options.HasFlag(ProcessingOptions.ReadOnlyChain) ? null : _additionalBlockProcessor;
 
         private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
         {
@@ -392,19 +386,19 @@ namespace Nethermind.Blockchain
                 _additionalBlockProcessors = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
             }
             
-            public void PreProcess(Block block)
+            public void PreProcess(Block block, ProcessingOptions options)
             {
                 for (int i = 0; i < _additionalBlockProcessors.Length; i++)
                 {
-                    _additionalBlockProcessors[i].PreProcess(block);
+                    _additionalBlockProcessors[i].PreProcess(block, options);
                 }
             }
 
-            public void PostProcess(Block block, TxReceipt[] receipts)
+            public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options)
             {
                 for (int i = 0; i < _additionalBlockProcessors.Length; i++)
                 {
-                    _additionalBlockProcessors[i].PostProcess(block, receipts);
+                    _additionalBlockProcessors[i].PostProcess(block, receipts, options);
                 }
             }
         }

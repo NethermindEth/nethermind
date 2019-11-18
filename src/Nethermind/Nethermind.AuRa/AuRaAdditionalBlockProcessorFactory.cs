@@ -40,7 +40,7 @@ namespace Nethermind.AuRa
 {
     public class AuRaAdditionalBlockProcessorFactory : IAuRaAdditionalBlockProcessorFactory
     {
-        private const long DefaultStartBlockNumber = 0;
+        private const long DefaultStartBlockNumber = 1;
         
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
@@ -71,7 +71,7 @@ namespace Nethermind.AuRa
             switch (validator.ValidatorType)
             {
                 case AuRaParameters.ValidatorType.List:
-                    return new ListValidator(validator);
+                    return new ListValidator(validator, _logManager);
                 case AuRaParameters.ValidatorType.Contract:
                     return new ContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.ReportingContract:

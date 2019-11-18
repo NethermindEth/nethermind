@@ -22,6 +22,7 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
@@ -36,7 +37,7 @@ namespace Nethermind.AuRa
         private readonly IAuRaValidator _auRaValidator;
         private readonly ILogger _logger;
         private readonly IBlockProcessor _blockProcessor;
-        private long _lastFinalizedBlockLevel = -1L;
+        private long _lastFinalizedBlockLevel;
         private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
@@ -86,8 +87,8 @@ namespace Nethermind.AuRa
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
-                        ? $"Finalizing block {finalizedBlocks[0].Number} by block {finalizingBlock.Number}."
-                        : $"Finalizing blocks {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} by block {finalizingBlock.Number}.");
+                        ? $"Finalizing block {finalizedBlocks[0].Number} ({finalizedBlocks[0].Hash}) by block {finalizingBlock.Number} ({finalizingBlock.Hash})."
+                        : $"Finalizing blocks {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} ({string.Join(",", finalizedBlocks.Select(b => b.Hash))}) by block {finalizingBlock.Number} ({finalizingBlock.Hash}).");
                 
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
                 LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
@@ -154,6 +155,7 @@ namespace Nethermind.AuRa
                         {
                             blockInfo.IsFinalized = true;
                             _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+
                             finalizedBlocks.Add(block);
                             _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
                         }

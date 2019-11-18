@@ -28,6 +28,8 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
@@ -38,7 +40,7 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ContractValidator : IAuRaValidatorProcessor
+    public class ContractValidator : AuRaValidatorProcessorBase
     {
         internal static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
         private static readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
@@ -51,22 +53,23 @@ namespace Nethermind.AuRa.Validators
         private PendingValidators _currentPendingValidators;
         private long _lastProcessedBlockNumber = -1;
         private IBlockFinalizationManager _blockFinalizationManager;
-        private IBlockTree _blockTree;
-        private HashSet<Address> _validators;
+        private readonly IBlockTree _blockTree;
+        private Address[] _validators;
+        private bool _isProducing;
 
         protected Address ContractAddress { get; }
         protected IAbiEncoder AbiEncoder { get; }
         protected long InitBlockNumber { get; }
         protected CallOutputTracer Output { get; } = new CallOutputTracer();
-        protected ValidatorContract ValidatorContract => _validatorContract ?? (_validatorContract = CreateValidatorContract(ContractAddress));
+        protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
 
-        private HashSet<Address> Validators
+        protected override Address[] Validators
         {
             get
             {
-                if (_validators == null && _blockTree.Head?.Number >= InitBlockNumber)
+                if (_validators == null && _blockTree.Head?.Number >= InitBlockNumber - 1)
                 {
-                    _validators = LoadValidatorsFromContract(_blockTree.Head).ToHashSet();
+                    _validators = LoadValidatorsFromContract(_blockTree.Head);
                 }
 
                 return _validators;
@@ -74,15 +77,7 @@ namespace Nethermind.AuRa.Validators
             set => _validators = value;
         }
         
-        private PendingValidators CurrentPendingValidators
-        {
-            get => _currentPendingValidators;
-            set
-            {
-                _currentPendingValidators = value;
-                SavePendingValidators();
-            }
-        }
+        private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
         public ContractValidator(
             AuRaParameters.Validator validator,
@@ -92,11 +87,8 @@ namespace Nethermind.AuRa.Validators
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             ILogManager logManager,            
-            long startBlockNumber)
+            long startBlockNumber) : base(validator, logManager)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
-            if (validator.ValidatorType != Type) 
-                throw new ArgumentException("Wrong validator type.", nameof(validator));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -105,107 +97,120 @@ namespace Nethermind.AuRa.Validators
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             InitBlockNumber = startBlockNumber;
-            LoadPendingValidators();
+            SetPendingValidators(LoadPendingValidators());
         }
 
-        public bool IsValidSealer(Address address) => Validators.Contains(address);
-        
-        public int MinSealersForFinalization => Validators.MinSealersForFinalization();
-
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager)
+        protected override void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forProducing)
         {
+            base.SetFinalizationManagerInternal(finalizationManager, in forProducing);
+            
             if (_blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized -= OnBlocksFinalized;
             }
 
             _blockFinalizationManager = finalizationManager;
+            _isProducing = forProducing;
             
-            if (_blockFinalizationManager != null)
+            if (!forProducing && _blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
             }
         }
 
-        public virtual void PreProcess(Block block)
+        public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
+            var isProducingBlock = options.IsProducingBlock();
+            var isProcessingBlock = !isProducingBlock;
+            
+            if (_validators == null || isProducingBlock)
+            {
+                Validators = LoadValidatorsFromContract(block.Header);
+            }
+
             if (InitBlockNumber == block.Number)
             {
-                Initialize(block);
+                InitiateChange(block, Validators.ToArray(), isProcessingBlock, true);
             }
             else
             {
-                bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
-                if (reorganisationHappened)
+                if (isProcessingBlock)
                 {
-                    if (block.Number <= CurrentPendingValidators?.BlockNumber)
+                    bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
+                    if (reorganisationHappened)
                     {
-                        CurrentPendingValidators = null;
-                    }
-                    else
-                    {
-                        LoadPendingValidators();
+                        PendingValidators pendingValidators = null;
+                        if (!(block.Number <= CurrentPendingValidators?.BlockNumber))
+                        {
+                            pendingValidators = LoadPendingValidators();
+                        }
+
+                        SetPendingValidators(pendingValidators);
                     }
                 }
+                else
+                {
+                    // if we are not processing blocks we are not on consecutive blocks.
+                    // We need to initialize pending validators from db on each block being produced.  
+                    SetPendingValidators(LoadPendingValidators());
+                }
             }
-
-            FinalizePendingValidatorsIfNeeded(block);
-
+            
+            base.PreProcess(block, options);
+            
+            FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
+            
             _lastProcessedBlockNumber = block.Number;
         }
         
-        public virtual void PostProcess(Block block, TxReceipt[] receipts)
+        public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
-            if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, block, receipts, out var potentialValidators))
+            base.PostProcess(block, receipts, options);
+            
+            if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, block.Header, receipts, out var potentialValidators))
             {
-                InitiateChange(block, potentialValidators);
-                if (_logger.IsInfo) _logger.Info($"Signal for transition within contract at block {block.Number}. New list: [{string.Join<Address>(", ", potentialValidators)}].");
+                var isProcessingBlock = !options.IsProducingBlock();
+                InitiateChange(block, potentialValidators, isProcessingBlock, Validators.Length == 1);
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.Number} ({block.Hash}). New list: [{string.Join<Address>(", ", potentialValidators)}].");
             }
         }
 
-        private void FinalizePendingValidatorsIfNeeded(Block block)
+        private void FinalizePendingValidatorsIfNeeded(BlockHeader block, bool isProcessingBlock)
         {
             if (CurrentPendingValidators?.AreFinalized == true)
             {
-                if (_logger.IsInfo) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} at block {block.Number}.");
-                ValidatorContract.InvokeTransaction(block.Header, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
-                CurrentPendingValidators = null;
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.Number} ({block.Hash}).");
+                if (block.Number == InitBlockNumber)
+                {
+                    ValidatorContract.TryInvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                }
+                else
+                {
+                    ValidatorContract.InvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
+                }
+                SetPendingValidators(null, isProcessingBlock);
             }
         }
-
-        public virtual AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Contract;
         
-        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => 
-            new ValidatorContract(AbiEncoder, contractAddress);
-
-        private void Initialize(Block block)
-        {
-            CreateSystemAccount();
-            
-            if (_validators == null)
-            {
-                Validators = LoadValidatorsFromContract(block.Header).ToHashSet();
-            }
-           
-            if(_logger.IsInfo) _logger.Info($"Signal for switch to contract based validator set at block {block.Number}. Initial contract validators: [{string.Join<Address>(", ", Validators)}].");
-            InitiateChange(block, Validators.ToArray(), true);
-
-        }
-
-        private void InitiateChange(Block block, Address[] potentialValidators, bool areFinalized = false)
+        protected virtual ValidatorContract CreateValidatorContract(Address contractAddress) => new ValidatorContract(AbiEncoder, contractAddress);
+        
+        private void InitiateChange(Block block, Address[] potentialValidators, bool isProcessingBlock, bool initiateChangeIsImmediatelyFinalized = false)
         {
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
             if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
-                CurrentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators)
-                {
-                    AreFinalized = areFinalized
-                };
+                SetPendingValidators(
+                    new PendingValidators(block.Number, block.Hash, potentialValidators)
+                    {
+                        AreFinalized = initiateChangeIsImmediatelyFinalized
+                    },
+                    !initiateChangeIsImmediatelyFinalized && isProcessingBlock);
             }
         }
 
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
+            ValidatorContract.EnsureSystemAccount(_stateProvider);
             ValidatorContract.InvokeTransaction(blockHeader, _transactionProcessor, ValidatorContract.GetValidators(), Output);
 
             if (Output.ReturnValue.Length == 0)
@@ -218,43 +223,51 @@ namespace Nethermind.AuRa.Validators
             {
                 throw new AuRaException("Failed to initialize validators list.");
             }
+            
+            if(_logger.IsInfo && !_isProducing) _logger.Info($"Initial contract validators: [{string.Join<Address>(", ", validators)}].");
            
             return validators;
         }
 
-
-        private void CreateSystemAccount()
-        {
-            if (!_stateProvider.AccountExists(Address.SystemUser))
-            {
-                _stateProvider.CreateAccount(Address.SystemUser, UInt256.Zero);
-                _stateProvider.Commit(Homestead.Instance);
-            }
-        }
-        
         private void OnBlocksFinalized(object sender, FinalizeEventArgs e)
         {
             if (CurrentPendingValidators != null)
             {
-                var currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks.Any(b => b.Hash == CurrentPendingValidators.BlockHash);
+                // .Any equivalent with for
+                var currentPendingValidatorsBlockGotFinalized = false;
+                for (int i = 0; i < e.FinalizedBlocks.Count && !currentPendingValidatorsBlockGotFinalized; i++)
+                {
+                    currentPendingValidatorsBlockGotFinalized = e.FinalizedBlocks[i].Hash == CurrentPendingValidators.BlockHash;
+                }
+                
                 if (currentPendingValidatorsBlockGotFinalized)
                 {
                     CurrentPendingValidators.AreFinalized = true;
-                    Validators = CurrentPendingValidators.Addresses.ToHashSet();
-                    SavePendingValidators();
+                    Validators = CurrentPendingValidators.Addresses;
+                    SetPendingValidators(CurrentPendingValidators, true);
+                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.Number} ({e.FinalizingBlock.Hash}).");
                 }
             }
         }
 
-        private void SavePendingValidators()
-        {
-            _stateDb.Set(PendingValidatorsKey, _pendingValidatorsDecoder.Encode(CurrentPendingValidators).Bytes);
-        }
-        
-        private void LoadPendingValidators()
+        private PendingValidators LoadPendingValidators()
         {
             var rlpStream = new RlpStream(_stateDb.Get(PendingValidatorsKey) ?? Rlp.OfEmptySequence.Bytes);
-            _currentPendingValidators = _pendingValidatorsDecoder.Decode(rlpStream);
+            return _pendingValidatorsDecoder.Decode(rlpStream);
+        }
+
+        private void SetPendingValidators(PendingValidators validators, bool canSave = false)
+        {
+            _currentPendingValidators = validators;
+            
+            // We don't want to save to db when:
+            // * We are producing block
+            // * We will save later on processing same block (stateDb ignores consecutive calls with same key!)
+            // * We are loading validators from db.
+            if (canSave)
+            {
+                _stateDb.Set(PendingValidatorsKey, _pendingValidatorsDecoder.Encode(CurrentPendingValidators).Bytes);
+            }
         }
 
         internal class PendingValidators

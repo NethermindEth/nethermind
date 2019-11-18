@@ -30,6 +30,14 @@ namespace Nethermind.Blockchain
         NoValidation = 8,
         WithRollback = 16,
         StoreTraces = 32,
-        All = 63
+        All = 63,
+        ProducingBlock = NoValidation | ReadOnlyChain | WithRollback,
+    }
+
+    public static class ProcessingOptionsExtensions
+    {
+        public static bool IsReadOnly(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ReadOnlyChain) == ProcessingOptions.ReadOnlyChain;
+        public static bool IsNotReadOnly(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ReadOnlyChain) != ProcessingOptions.ReadOnlyChain;
+        public static bool IsProducingBlock(this ProcessingOptions processingOptions) => (processingOptions & ProcessingOptions.ProducingBlock) == ProcessingOptions.ProducingBlock;
     }
 }

@@ -24,6 +24,8 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Logging;
+using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
@@ -31,42 +33,33 @@ namespace Nethermind.AuRa.Test.Validators
 {
     public class ListValidatorTests
     {
+        private ILogManager _logManager;
         private const string Include1 = "0xffffffffffffffffffffffffffffffffffffffff";
         private const string Include2 = "0xfffffffffffffffffffffffffffffffffffffffe";
         
-        [TestCase(Include1, ExpectedResult = true)]
-        [TestCase(Include2, ExpectedResult = true)]
-        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", ExpectedResult = false)]
-        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", ExpectedResult = false)]
-        public bool should_validate_correctly(string address)
+        [TestCase(Include1, 0L, ExpectedResult = true)]
+        [TestCase(Include1, 1L, ExpectedResult = false)]
+        [TestCase(Include2, 1L, ExpectedResult = true)]
+        [TestCase(Include2, 0L, ExpectedResult = false)]
+        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", 0L, ExpectedResult = false)]
+        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", 1L, ExpectedResult = false)]
+        public bool should_validate_correctly(string address, long index)
         {
+            _logManager = Substitute.For<ILogManager>();
             var validator = new ListValidator(
                 new AuRaParameters.Validator()
                 {
                     Addresses = new[] {new Address(Include1), new Address(Include2), }
-                });
+                }, _logManager);
 
-            return validator.IsValidSealer(new Address(address));
+            return validator.IsValidSealer(new Address(address), index);
         }
 
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
-            Action act = () => new ListValidator(null);
+            Action act = () => new ListValidator(null, _logManager);
             act.Should().Throw<ArgumentNullException>();
-        }
-        
-        [Test]
-        public void throws_ArgumentException_on_wrong_validator_type()
-        {
-            Action act = () => new ListValidator(
-                new AuRaParameters.Validator()
-                {
-                    ValidatorType = AuRaParameters.ValidatorType.Contract,
-                    Addresses = new[] {Address.Zero}
-                });
-            
-            act.Should().Throw<ArgumentException>();
         }
         
         [Test]
@@ -76,7 +69,7 @@ namespace Nethermind.AuRa.Test.Validators
                 new AuRaParameters.Validator()
                 {
                     ValidatorType = AuRaParameters.ValidatorType.List
-                });
+                }, _logManager);
             
             act.Should().Throw<ArgumentException>();
         }

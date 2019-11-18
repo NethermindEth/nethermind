@@ -17,6 +17,8 @@
  */
 
 using NUnit.Framework;
+using System.Collections.Generic;
+using FluentAssertions;
 
 namespace Nethermind.AuRa.Test
 {

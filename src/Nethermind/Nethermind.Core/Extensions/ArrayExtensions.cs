@@ -14,25 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Collections.Generic;
-using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core.Extensions
 {
-    public class FinalizeEventArgs : EventArgs
+    public static class ArrayExtensions
     {
-        public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks) 
-            : this(finalizingBlock, (IReadOnlyList<BlockHeader>)finalizedBlocks) { }
-        
-        public FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
-        {
-            FinalizingBlock = finalizingBlock;
-            FinalizedBlocks = finalizedBlocks;
-        }
-
-        public BlockHeader FinalizingBlock { get; }
-        public IReadOnlyList<BlockHeader> FinalizedBlocks { get; }
-
+        public static T GetItemRoundRobin<T>(this T[] array, long index) => array[index % array.Length];
     }
 }

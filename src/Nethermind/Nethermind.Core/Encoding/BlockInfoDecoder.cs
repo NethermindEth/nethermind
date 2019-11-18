@@ -53,7 +53,7 @@ namespace Nethermind.Core.Encoding
                 blockInfo.IsFinalized = rlpStream.DecodeBool();
             }
 
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(lastCheck);
             }
