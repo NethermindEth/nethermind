@@ -102,14 +102,14 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             var privateKey = privateKeys[(int)(ulong)proposerIndex];
 
-            var domain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, blockEpoch);
-
+            var randaoDomain = beaconStateAccessor.GetDomain(state, DomainType.Randao, blockEpoch);
             var randaoRevealHash = blockEpoch.HashTreeRoot();
-            var randaoReveal = TestUtility.BlsSign(randaoRevealHash, privateKey, domain);
+            var randaoReveal = TestUtility.BlsSign(randaoRevealHash, privateKey, randaoDomain);
             block.Body.SetRandaoReveal(randaoReveal);
 
+            var signatureDomain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, blockEpoch);
             var signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            var signature = TestUtility.BlsSign(signingRoot, privateKey, domain);
+            var signature = TestUtility.BlsSign(signingRoot, privateKey, signatureDomain);
             block.SetSignature(signature);
         }
     }

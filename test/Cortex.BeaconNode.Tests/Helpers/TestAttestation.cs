@@ -133,7 +133,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
             else
             {
-                throw new NotImplementedException();
+                blockRoot = beaconStateAccessor.GetBlockRootAtSlot(state, slot);
             }
 
             Hash32 epochBoundaryRoot;
@@ -141,7 +141,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var currentEpochStartSlot = beaconChainUtility.ComputeStartSlotOfEpoch(currentEpoch);
             if (slot < currentEpochStartSlot)
             {
-                throw new NotImplementedException();
+                var previousEpoch = beaconStateAccessor.GetPreviousEpoch(state);
+                epochBoundaryRoot = beaconStateAccessor.GetBlockRoot(state, previousEpoch);
             }
             else if (slot == currentEpochStartSlot)
             {
@@ -149,14 +150,15 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
             else
             {
-                throw new NotImplementedException();
+                epochBoundaryRoot = beaconStateAccessor.GetBlockRoot(state, currentEpoch);
             }
 
             Epoch sourceEpoch;
             Hash32 sourceRoot;
             if (slot < currentEpochStartSlot)
             {
-                throw new NotImplementedException();
+                sourceEpoch = state.PreviousJustifiedCheckpoint.Epoch;
+                sourceRoot = state.PreviousJustifiedCheckpoint.Root;
             }
             else
             {

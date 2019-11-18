@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
@@ -45,41 +46,66 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
         }
 
-        //        [TestMethod]
-        //        public void SingleCrosslinkUpdateFromCurrentEpoch()
-        //        {
-        //            // Arrange
-        //            TestConfiguration.GetMinimalConfiguration(
-        //                out var chainConstants,
-        //                out var miscellaneousParameterOptions,
-        //                out var gweiValueOptions,
-        //                out var initialValueOptions,
-        //                out var timeParameterOptions,
-        //                out var stateListLengthOptions,
-        //                out var maxOperationsPerBlockOptions);
-        //            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
+        [TestMethod]
+        public void GenesisEpochFullAttestationsNoRewards()
+        {
+            // Arrange
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
+                out var maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
-        //            TestState.NextEpoch(state, beaconStateTransition, timeParameterOptions.CurrentValue);
-        //            var attestation = TestAttestation.GetValidAttestation(state, state.Slot, signed: true,
-        //                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-        //                beaconChainUtility, beaconStateAccessor);
-        //            //TestAttestation.FillAggregateAttestation(state, attestation);
-        //            TestAttestation.AddAttestationToState(state, attestation, state.Slot + timeParameterOptions.CurrentValue.MinimumAttestationInclusionDelay,
-        //                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-        //                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var miscellaneousParameters = miscellaneousParameterOptions.CurrentValue;
+            var timeParameters = timeParameterOptions.CurrentValue;
+            var stateListLengths = stateListLengthOptions.CurrentValue;
+            var maxOperationsPerBlock = maxOperationsPerBlockOptions.CurrentValue;
 
-        //            state.CurrentEpochAttestations.Count.ShouldBe(1);
-        //            var shard = attestation.Data.Crosslink.Shard;
-        //            var preCrosslink = Crosslink.Clone(state.CurrentCrosslinks[(int)(ulong)shard]);
+            var attestations = new List<Attestation>();
+            for (var slot = Slot.Zero; slot < timeParameters.SlotsPerEpoch - new Slot(1); slot += new Slot(1))
+            {
+                // create an attestation for each slot
+                if (slot < timeParameters.SlotsPerEpoch)
+                {
+                    var attestation = TestAttestation.GetValidAttestation(state, slot, CommitteeIndex.None, signed: true,
+                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                    attestations.Add(attestation);
+                }
 
-        //            // Act
-        //            RunProcessCrosslinks(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+                // fill each created slot in state after inclusion delay
+                if (slot >= timeParameters.MinimumAttestationInclusionDelay)
+                {
+                    var index = slot - timeParameters.MinimumAttestationInclusionDelay;
+                    var includeAttestation = attestations[(int)(ulong)index];
+                    TestAttestation.AddAttestationToState(state, includeAttestation, state.Slot,
+                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                }
 
-        //            // Assert
-        //            var crosslinkIndex = (int)(ulong)shard;
-        //            state.PreviousCrosslinks[crosslinkIndex].ShouldNotBe(state.CurrentCrosslinks[crosslinkIndex]);
-        //            preCrosslink.ShouldNotBe(state.CurrentCrosslinks[crosslinkIndex]);
-        //        }
+                TestState.NextSlot(state, beaconStateTransition);
+            }
+
+            // ensure has not cross the epoch boundary
+            var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+            stateEpoch.ShouldBe(initialValueOptions.CurrentValue.GenesisEpoch);
+
+            var preState = BeaconState.Clone(state);
+
+            // Act
+            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+            for (var index = 0; index < preState.Validators.Count; index++)
+            {
+                state.Balances[index].ShouldBe(preState.Balances[index], $"Balance {index}");
+            }
+        }
 
         private void RunProcessRewardsAndPenalties(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
         {

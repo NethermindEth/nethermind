@@ -516,7 +516,7 @@ namespace Cortex.BeaconNode
             var validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
             if (!validRandaoReveal)
             {
-                throw new Exception($"Randao reveal must match proposer public key ${proposer.PublicKey}");
+                throw new Exception($"Randao reveal {body.RandaoReveal} must match proposer public key {proposer.PublicKey}");
             }
             // Mix in RANDAO reveal
             var randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
