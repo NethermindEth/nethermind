@@ -36,6 +36,7 @@ namespace Nethermind.Core.Extensions
                     var receipt = receipts[i];
                     if (receipt.Bloom.Matches(matchEntry))
                     {
+                        // tracing forwards, parity inconsistency 
                         for (int j = 0; j < receipt.Logs.Length; j++)
                         {
                             var receiptLog = receipt.Logs[j];

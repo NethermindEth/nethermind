@@ -150,7 +150,9 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void creates_system_account_on_start_block()
         {
-            SetupInitialValidators(Address.FromNumber(2000));
+            var initialValidator = Address.FromNumber(2000);
+            SetupInitialValidators(initialValidator);
+            _block.Beneficiary = initialValidator;
             var validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
             
             validator.PreProcess(_block);
@@ -264,7 +266,8 @@ namespace Nethermind.AuRa.Test.Validators
                                 }
                             }
                         }
-                    }
+                    },
+                    TestName = "consecutive_initiate_change_gets_finalized_and_switch_validators"
                 })
                 {
                     TestName = "consecutive_initiate_change_gets_finalized_and_switch_validators"
@@ -316,7 +319,8 @@ namespace Nethermind.AuRa.Test.Validators
                                 }
                             }
                         }
-                    }
+                    },
+                    TestName = "consecutive_initiate_change_gets_finalized_ignoring_duplicate_initiate_change"
                 })
                 {
                     TestName = "consecutive_initiate_change_gets_finalized_ignoring_duplicate_initiate_change"
@@ -365,7 +369,8 @@ namespace Nethermind.AuRa.Test.Validators
                                 NumberOfSteps = 10,
                             }
                         }
-                    }
+                    },
+                    TestName = "consecutive_initiate_change_reorganisation_ignores_reorganised_initiate_change"
                 })
                 {
                     TestName = "consecutive_initiate_change_reorganisation_ignores_reorganised_initiate_change"
@@ -416,7 +421,8 @@ namespace Nethermind.AuRa.Test.Validators
                                 },
                             }
                         }
-                    }
+                    },
+                    TestName = "consecutive_initiate_change_reorganisation_finalizes_after_reorganisation"
                 })
                 {
                     TestName = "consecutive_initiate_change_reorganisation_finalizes_after_reorganisation"
@@ -474,7 +480,8 @@ namespace Nethermind.AuRa.Test.Validators
                                 },
                             }
                         }
-                    }
+                    },
+                    TestName = "consecutive_initiate_change_reorganisation_finalizes_not_reorganised_initiate_change",
                 })
                 {
                     TestName = "consecutive_initiate_change_reorganisation_finalizes_not_reorganised_initiate_change",
@@ -504,12 +511,14 @@ namespace Nethermind.AuRa.Test.Validators
                 }
                 
                 _block.Number = blockNumber;
-                _block.Beneficiary = currentValidators[i % currentValidators.Length];
+                _block.Beneficiary = currentValidators[blockNumber % currentValidators.Length];
+                _block.Header.AuRaStep = blockNumber;
                 _block.Hash = Keccak.Compute(blockNumber.ToString());
                 var txReceipts = test.GetReceipts(_block, _contractAddress, _abiEncoder, SetupAbiAddresses);
                 _block.Bloom = new Bloom(txReceipts.SelectMany(r => r.Logs).ToArray());
                 
-                validator.PreProcess(_block);
+                Action preProcess = () => validator.PreProcess(_block);
+                preProcess.Should().NotThrow<InvalidOperationException>(test.TestName);
                 validator.PostProcess(_block, txReceipts);
                 var finalizedNumber = blockNumber - validator.MinSealersForFinalization + 1;
                 _blockFinalizationManager.BlocksFinalized += Raise.EventWith(
@@ -581,6 +590,8 @@ namespace Nethermind.AuRa.Test.Validators
             
             public IDictionary<long, ChainInfo> Reorganisations { get; set; }
             
+            public string TestName { get; set; }
+
             public override string ToString() => JsonConvert.SerializeObject(this);
 
             public bool TryDoReorganisations(int blockNumber, out ChainInfo last)
