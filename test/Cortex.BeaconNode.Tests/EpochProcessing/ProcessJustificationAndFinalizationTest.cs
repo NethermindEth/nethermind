@@ -318,7 +318,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
 
         private void RunProcessJustificationAndFinalization(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
         {
-            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, "process_justification_and_finalization");
+            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, TestProcessStep.ProcessJustificationAndFinalization);
         }
 
         private void AddMockAttestations(BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, BeaconState state, Epoch epoch, Checkpoint source, Checkpoint target, 

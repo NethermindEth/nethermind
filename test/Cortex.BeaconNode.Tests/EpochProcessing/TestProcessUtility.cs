@@ -11,20 +11,20 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         /// - pre-state('pre'), state before calling ``process_name``
         /// - post-state('post'), state after calling ``process_name``
         /// </summary>
-        public static void RunEpochProcessingWith(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, string processName)
+        public static void RunEpochProcessingWith(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
         {
-            RunEpochProcessingTo(beaconStateTransition, timeParameters, state, processName);
+            RunEpochProcessingTo(beaconStateTransition, timeParameters, state, step);
 
-            if (processName == "process_justification_and_finalization")
+            if (step == TestProcessStep.ProcessJustificationAndFinalization)
             {
                 beaconStateTransition.ProcessJustificationAndFinalization(state);
                 return;
             }
-            //if (processName == "process_crosslinks")
-            //{
-            //    beaconStateTransition.ProcessCrosslinks(state);
-            //    return;
-            //}
+            if (step == TestProcessStep.ProcessRewardsAndPenalties)
+            {
+                beaconStateTransition.ProcessRewardsAndPenalties(state);
+                return;
+            }
 
             throw new NotImplementedException();
         }
@@ -32,7 +32,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         /// <summary>
         /// Processes to the next epoch transition, up to, but not including, the sub-transition named ``process_name``
         /// </summary>
-        private static void RunEpochProcessingTo(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, string processName)
+        private static void RunEpochProcessingTo(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
         {
             var slot = state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
 
@@ -43,14 +43,14 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             beaconStateTransition.ProcessSlot(state);
 
             // process components of epoch transition before final-updates
-            if (processName == "process_justification_and_finalization")
+            if (step == TestProcessStep.ProcessJustificationAndFinalization)
             {
                 return;
             }
             // Note: only run when present. Later phases introduce more to the epoch-processing.
             beaconStateTransition.ProcessJustificationAndFinalization(state);
 
-            if (processName == "process_crosslinks")
+            if (step == TestProcessStep.ProcessRewardsAndPenalties)
             {
                 return;
             }

@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Microsoft.Extensions.Logging;
+﻿using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode
 {
@@ -25,6 +22,8 @@ namespace Cortex.BeaconNode
         public static readonly EventId ProcessProposerSlashing = new EventId(2010, nameof(ProcessProposerSlashing));
         public static readonly EventId ProcessAttesterSlashing = new EventId(2011, nameof(ProcessAttesterSlashing));
         public static readonly EventId ProcessAttestation = new EventId(2012, nameof(ProcessAttestation));
+        public static readonly EventId ProcessVoluntaryExit = new EventId(2013, nameof(ProcessVoluntaryExit));
+        public static readonly EventId ProcessRewardsAndPenalties = new EventId(2014, nameof(ProcessRewardsAndPenalties));
 
         // 4bxx warning
         public static readonly EventId InvalidIndexedAttestation = new EventId(4100, nameof(InvalidIndexedAttestation));

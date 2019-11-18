@@ -93,7 +93,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessAttestation(BeaconState state, Attestation attestation)
         {
-            _logger.LogInformation(Event.ProcessAttestation, "Process attestation {Attestation} for state {BeaconState}.", attestation, state);
+            _logger.LogInformation(Event.ProcessAttestation, "Process block operation attestation {Attestation} for state {BeaconState}.", attestation, state);
 
             var timeParameters = _timeParameterOptions.CurrentValue;
             var data = attestation.Data;
@@ -163,7 +163,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessAttesterSlashing(BeaconState state, AttesterSlashing attesterSlashing)
         {
-            _logger.LogInformation(Event.ProcessAttesterSlashing, "Process attester slashing {AttesterSlashing}", attesterSlashing);
+            _logger.LogInformation(Event.ProcessAttesterSlashing, "Process block operation attester slashing {AttesterSlashing}", attesterSlashing);
             var attestation1 = attesterSlashing.Attestation1;
             var attestation2 = attesterSlashing.Attestation2;
 
@@ -265,7 +265,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessDeposit(BeaconState state, Deposit deposit)
         {
-            _logger.LogInformation(Event.ProcessDeposit, "Process deposit {Deposit} for state {BeaconState}.", deposit, state);
+            _logger.LogInformation(Event.ProcessDeposit, "Process block operation deposit {Deposit} for state {BeaconState}.", deposit, state);
 
             var gweiValues = _gweiValueOptions.CurrentValue;
 
@@ -324,21 +324,29 @@ namespace Cortex.BeaconNode
             _logger.LogInformation(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
             ProcessJustificationAndFinalization(state);
 
-            // Did this change ???
+            // Was removed from phase 0 spec
             //ProcessCrosslinks(state);
 
-            // TODO:
-            // ProcessRewardsAndPenalties(state);
+            ProcessRewardsAndPenalties(state);
             // ProcessRegistryUpdates(state);
+
+            //# @process_reveal_deadlines
+            //# @process_challenge_deadlines
+
             // ProcessSlashings(state);
+
+            //# @update_period_committee
+
             // ProcessFinalUpdates(state);
+
+            //# @after_process_final_updates
 
             // throw new NotImplementedException();
         }
 
         public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
         {
-            _logger.LogInformation(Event.ProcessEth1Data, "Process ETH1 data for block body {BeaconBlockBody}", body);
+            _logger.LogInformation(Event.ProcessEth1Data, "Process block ETH1 data for block body {BeaconBlockBody}", body);
 
             state.AppendEth1DataVotes(body.Eth1Data);
             var eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
@@ -350,7 +358,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessJustificationAndFinalization(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process justification and finalization state {BeaconState}", state);
+            _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch justification and finalization state {BeaconState}", state);
             var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch <= _initialValueOptions.CurrentValue.GenesisEpoch + new Epoch(1))
             {
@@ -420,7 +428,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessOperations(BeaconState state, BeaconBlockBody body)
         {
-            _logger.LogInformation(Event.ProcessOperations, "Process operations for block body {BeaconBlockBody}", body);
+            _logger.LogInformation(Event.ProcessOperations, "Process block operations for block body {BeaconBlockBody}", body);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
             var outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
             var expectedDeposits = Math.Min(_maxOperationsPerBlock.CurrentValue.MaximumDeposits, outstandingDeposits);
@@ -454,7 +462,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
         {
-            _logger.LogInformation(Event.ProcessProposerSlashing, "Process proposer slashing {ProposerSlashing}", proposerSlashing);
+            _logger.LogInformation(Event.ProcessProposerSlashing, "Process block operation proposer slashing {ProposerSlashing}", proposerSlashing);
             var proposer = state.Validators[(int)(ulong)proposerSlashing.ProposerIndex];
             // Verify slots match
             if (proposerSlashing.Header1.Slot != proposerSlashing.Header2.Slot)
@@ -498,7 +506,7 @@ namespace Cortex.BeaconNode
 
         public void ProcessRandao(BeaconState state, BeaconBlockBody body)
         {
-            _logger.LogInformation(Event.ProcessRandao, "Process randao for block body {BeaconBlockBody}", body);
+            _logger.LogInformation(Event.ProcessRandao, "Process block randao for block body {BeaconBlockBody}", body);
             var epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             // Verify RANDAO reveal
             var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
@@ -516,6 +524,19 @@ namespace Cortex.BeaconNode
             var mix = randaoMix.Xor(randaoHash);
             var randaoIndex = epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector;
             state.SetRandaoMix(randaoIndex, mix);
+        }
+
+        public void ProcessRewardsAndPenalties(BeaconState state)
+        {
+            _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch rewards and penalties state {BeaconState}", state);
+
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
+            {
+                return;
+            }
+
+            throw new NotImplementedException();
         }
 
         public void ProcessSlot(BeaconState state)
@@ -558,8 +579,10 @@ namespace Cortex.BeaconNode
 
         public void ProcessVoluntaryExit(BeaconState state, VoluntaryExit exit)
         {
+            _logger.LogInformation(Event.ProcessVoluntaryExit, "Process block operation voluntary exit {VoluntaryExit} for state {BeaconState}.", exit, state);
+
             var validator = state.Validators[(int)(ulong)exit.ValidatorIndex];
-            
+
             //#Verify the validator is active
             var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             var isActiveValidator = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
@@ -606,6 +629,9 @@ namespace Cortex.BeaconNode
 
         public BeaconState StateTransition(BeaconState state, BeaconBlock block, bool validateStateRoot)
         {
+            _logger.LogInformation(Event.ProcessSlots, "State transition for state {BeaconState} with block {BeaconBlock}; validating {ValidateStateRoot}.",
+                state, block, validateStateRoot);
+
             // Process slots (including those with no blocks) since block
             ProcessSlots(state, block.Slot);
             // Process block

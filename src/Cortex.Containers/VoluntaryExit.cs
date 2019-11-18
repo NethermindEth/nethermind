@@ -22,5 +22,10 @@
         {
             Signature = signature;
         }
+
+        public override string ToString()
+        {
+            return $"V:{ValidatorIndex} E:{Epoch}";
+        }
     }
 }
