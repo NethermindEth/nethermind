@@ -157,9 +157,9 @@ namespace Nethermind.AuRa.Validators
             }
             
             base.PreProcess(block, options);
-
+            
             FinalizePendingValidatorsIfNeeded(block.Header, isProcessingBlock);
-
+            
             _lastProcessedBlockNumber = block.Number;
         }
         
@@ -171,7 +171,7 @@ namespace Nethermind.AuRa.Validators
             {
                 var isProcessingBlock = !options.IsProducingBlock();
                 InitiateChange(block, potentialValidators, isProcessingBlock, Validators.Length == 1);
-                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.Number}. New list: [{string.Join<Address>(", ", potentialValidators)}].");
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.Number} ({block.Hash}). New list: [{string.Join<Address>(", ", potentialValidators)}].");
             }
         }
 
@@ -179,7 +179,7 @@ namespace Nethermind.AuRa.Validators
         {
             if (CurrentPendingValidators?.AreFinalized == true)
             {
-                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.Number}.");
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.Number} ({block.Hash}).");
                 if (block.Number == InitBlockNumber)
                 {
                     ValidatorContract.TryInvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
@@ -245,7 +245,7 @@ namespace Nethermind.AuRa.Validators
                     CurrentPendingValidators.AreFinalized = true;
                     Validators = CurrentPendingValidators.Addresses;
                     SetPendingValidators(CurrentPendingValidators, true);
-                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.Number}.");
+                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.Number} ({e.FinalizingBlock.Hash}).");
                 }
             }
         }
