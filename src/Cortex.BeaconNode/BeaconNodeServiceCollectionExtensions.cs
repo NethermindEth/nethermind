@@ -57,6 +57,7 @@ namespace Cortex.BeaconNode
                 x.SlotsPerEth1VotingPeriod = new Slot(configuration.GetValue<ulong>("SLOTS_PER_ETH1_VOTING_PERIOD"));
                 x.SlotsPerHistoricalRoot = new Slot(configuration.GetValue<ulong>("SLOTS_PER_HISTORICAL_ROOT"));
                 x.MinimumValidatorWithdrawabilityDelay = new Epoch(configuration.GetValue<ulong>("MIN_VALIDATOR_WITHDRAWABILITY_DELAY"));
+                x.PersistentCommitteePeriod = new Epoch(configuration.GetValue<ulong>("PERSISTENT_COMMITTEE_PERIOD"));
                 //x.MaximumEpochsPerCrosslink = new Epoch(configuration.GetValue<ulong>("MAX_EPOCHS_PER_CROSSLINK"));
             });
             services.Configure<StateListLengths>(x =>
@@ -77,6 +78,7 @@ namespace Cortex.BeaconNode
                 x.MaximumAttesterSlashings = configuration.GetValue<ulong>("MAX_ATTESTER_SLASHINGS");
                 x.MaximumAttestations = configuration.GetValue<ulong>("MAX_ATTESTATIONS");
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
+                x.MaximumVoluntaryExits = configuration.GetValue<ulong>("MAX_VOLUNTARY_EXITS");
             });
         }
     }

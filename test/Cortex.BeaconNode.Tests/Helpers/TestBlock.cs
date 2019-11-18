@@ -39,7 +39,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
                     Array.Empty<ProposerSlashing>(),
                     Array.Empty<AttesterSlashing>(),
                     Array.Empty<Attestation>(),
-                    Array.Empty<Deposit>()
+                    Array.Empty<Deposit>(),
+                    Array.Empty<VoluntaryExit>()
                 ),
                 new BlsSignature());
 

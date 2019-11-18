@@ -47,6 +47,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 SlotsPerEth1VotingPeriod = new Slot(16),
                 SlotsPerHistoricalRoot = new Slot(64),
                 MinimumValidatorWithdrawabilityDelay = new Epoch(256),
+                PersistentCommitteePeriod = new Epoch(2048),
                 //MaximumEpochsPerCrosslink = new Epoch(4),
             });
             stateListLengthOptions = TestOptionsMonitor.Create(new StateListLengths()
@@ -66,6 +67,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 MaximumAttesterSlashings = 1,
                 MaximumAttestations = 128,
                 MaximumDeposits = 16,
+                MaximumVoluntaryExits = 16,
             });
         }
     }

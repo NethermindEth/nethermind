@@ -29,7 +29,8 @@ namespace Cortex.BeaconNode
                 Array.Empty<ProposerSlashing>(),
                 Array.Empty<AttesterSlashing>(),
                 Array.Empty<Attestation>(),
-                Array.Empty<Deposit>());
+                Array.Empty<Deposit>(),
+                Array.Empty<VoluntaryExit>());
             var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, new BlsSignature());
 
             // new block = slot, parent root,

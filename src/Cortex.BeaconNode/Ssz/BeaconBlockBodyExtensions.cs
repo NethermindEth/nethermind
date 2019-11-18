@@ -29,7 +29,7 @@ namespace Cortex.BeaconNode.Ssz
             yield return item.AttesterSlashings.ToSszList(maxOperationsPerBlock.MaximumAttesterSlashings, miscellaneousParameters);
             yield return item.Attestations.ToSszList(maxOperationsPerBlock.MaximumAttestations, miscellaneousParameters);
             yield return item.Deposits.ToSszList(maxOperationsPerBlock.MaximumDeposits);
-            //yield return item.VoluntaryExits.ToSszList(MAX_VOLUNTARY_EXITS);
+            yield return item.VoluntaryExits.ToSszList(maxOperationsPerBlock.MaximumVoluntaryExits);
             //yield return item.Transfers.ToSszList(MAX_TRANSFERS);
         }
     }

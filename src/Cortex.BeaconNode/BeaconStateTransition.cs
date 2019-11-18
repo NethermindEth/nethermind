@@ -14,13 +14,13 @@ namespace Cortex.BeaconNode
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateMutator _beaconStateMutator;
+        private readonly ChainConstants _chainConstants;
         private readonly ICryptographyService _cryptographyService;
+        private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
-        private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
-        private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
@@ -263,6 +263,62 @@ namespace Cortex.BeaconNode
             }
         }
 
+        public void ProcessDeposit(BeaconState state, Deposit deposit)
+        {
+            _logger.LogInformation(Event.ProcessDeposit, "Process deposit {Deposit} for state {BeaconState}.", deposit, state);
+
+            var gweiValues = _gweiValueOptions.CurrentValue;
+
+            // Verify the Merkle branch
+            var isValid = _beaconChainUtility.IsValidMerkleBranch(
+                deposit.Data.HashTreeRoot(),
+                deposit.Proof,
+                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
+                state.Eth1DepositIndex,
+                state.Eth1Data.DepositRoot);
+            if (!isValid)
+            {
+                throw new Exception($"Invalid Merle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
+            }
+
+            // Deposits must be processed in order
+            state.IncreaseEth1DepositIndex();
+
+            var publicKey = deposit.Data.PublicKey;
+            var amount = deposit.Data.Amount;
+            var validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
+
+            if (!validatorPublicKeys.Contains(publicKey))
+            {
+                // Verify the deposit signature (proof of possession) for new validators
+                // Note: The deposit contract does not check signatures.
+                // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
+
+                var domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
+                if (!_cryptographyService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
+                {
+                    return;
+                }
+
+                var effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
+                var newValidator = new Validator(
+                    publicKey,
+                    deposit.Data.WithdrawalCredentials,
+                    effectiveBalance
+,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch,
+                    _chainConstants.FarFutureEpoch);
+                state.AddValidatorWithBalance(newValidator, amount);
+            }
+            else
+            {
+                var index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
+                _beaconStateMutator.IncreaseBalance(state, index, amount);
+            }
+        }
+
         public void ProcessEpoch(BeaconState state)
         {
             _logger.LogInformation(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
@@ -389,64 +445,11 @@ namespace Cortex.BeaconNode
             {
                 ProcessDeposit(state, deposit);
             }
-            //ProcessVoluntaryExit();
+            foreach (var voluntaryExit in body.VoluntaryExits)
+            {
+                ProcessVoluntaryExit(state, voluntaryExit);
+            }
             //ProcessShareReceiptProof();
-        }
-
-        public void ProcessDeposit(BeaconState state, Deposit deposit)
-        {
-            _logger.LogInformation(Event.ProcessDeposit, "Process deposit {Deposit} for state {BeaconState}.", deposit, state);
-
-            var gweiValues = _gweiValueOptions.CurrentValue;
-
-            // Verify the Merkle branch
-            var isValid = _beaconChainUtility.IsValidMerkleBranch(
-                deposit.Data.HashTreeRoot(),
-                deposit.Proof,
-                _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
-                state.Eth1DepositIndex,
-                state.Eth1Data.DepositRoot);
-            if (!isValid)
-            {
-                throw new Exception($"Invalid Merle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
-            }
-
-            // Deposits must be processed in order
-            state.IncreaseEth1DepositIndex();
-
-            var publicKey = deposit.Data.PublicKey;
-            var amount = deposit.Data.Amount;
-            var validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
-
-            if (!validatorPublicKeys.Contains(publicKey))
-            {
-                // Verify the deposit signature (proof of possession) for new validators
-                // Note: The deposit contract does not check signatures.
-                // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
-
-                var domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
-                if (!_cryptographyService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
-                {
-                    return;
-                }
-
-                var effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
-                var newValidator = new Validator(
-                    publicKey,
-                    deposit.Data.WithdrawalCredentials,
-                    effectiveBalance
-,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch,
-                    _chainConstants.FarFutureEpoch);
-                state.AddValidatorWithBalance(newValidator, amount);
-            }
-            else
-            {
-                var index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
-                _beaconStateMutator.IncreaseBalance(state, index, amount);
-            }
         }
 
         public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
@@ -551,6 +554,54 @@ namespace Cortex.BeaconNode
                 }
                 state.IncreaseSlot();
             }
+        }
+
+        public void ProcessVoluntaryExit(BeaconState state, VoluntaryExit exit)
+        {
+            var validator = state.Validators[(int)(ulong)exit.ValidatorIndex];
+            
+            //#Verify the validator is active
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            var isActiveValidator = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            if (!isActiveValidator)
+            {
+                throw new Exception($"Validator {exit.ValidatorIndex} must be active in order to exit.");
+            }
+
+            //# Verify the validator has not yet exited
+            var hasExited = validator.ExitEpoch != _chainConstants.FarFutureEpoch;
+            if (hasExited)
+            {
+                throw new Exception($"Validator {exit.ValidatorIndex} already has exit epoch {validator.ExitEpoch}.");
+            }
+
+            //# Exits must specify an epoch when they become valid; they are not valid before then
+            var isCurrentAtOrAfterExit = currentEpoch >= exit.Epoch;
+            if (!isCurrentAtOrAfterExit)
+            {
+                throw new Exception($"Validator {exit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached their exit epoch {validator.ExitEpoch}.");
+            }
+
+            //# Verify the validator has been active long enough
+            var timeParameters = _timeParameterOptions.CurrentValue;
+            var minimumActiveEpoch = validator.ActivationEpoch + timeParameters.PersistentCommitteePeriod;
+            var isCurrentAtOrAfterMinimum = currentEpoch >= minimumActiveEpoch;
+            if (!isCurrentAtOrAfterMinimum)
+            {
+                throw new Exception($"Validator {exit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached the minimum active epoch of {timeParameters.PersistentCommitteePeriod} after their activation epoch {validator.ActivationEpoch}.");
+            }
+
+            //# Verify signature
+            var domain = _beaconStateAccessor.GetDomain(state, DomainType.VoluntaryExit, exit.Epoch);
+            var signingRoot = exit.SigningRoot();
+            var validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, exit.Signature, domain);
+            if (!validSignature)
+            {
+                throw new Exception("Voluntary exit signature is not valid.");
+            }
+
+            //# Initiate exit
+            _beaconStateMutator.InitiateValidatorExit(state, exit.ValidatorIndex);
         }
 
         public BeaconState StateTransition(BeaconState state, BeaconBlock block, bool validateStateRoot)

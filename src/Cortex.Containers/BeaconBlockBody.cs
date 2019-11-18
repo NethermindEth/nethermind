@@ -8,6 +8,7 @@ namespace Cortex.Containers
         private readonly List<AttesterSlashing> _attesterSlashings;
         private readonly List<Deposit> _deposits;
         private readonly List<ProposerSlashing> _proposerSlashings;
+        private readonly List<VoluntaryExit> _voluntaryExits;
 
         public BeaconBlockBody(
             BlsSignature randaoReveal,
@@ -16,7 +17,8 @@ namespace Cortex.Containers
             IEnumerable<ProposerSlashing> proposerSlashings,
             IEnumerable<AttesterSlashing> attesterSlashings,
             IEnumerable<Attestation> attestations,
-            IEnumerable<Deposit> deposits)
+            IEnumerable<Deposit> deposits,
+            IEnumerable<VoluntaryExit> voluntaryExits)
         {
             RandaoReveal = randaoReveal;
             Eth1Data = eth1Data;
@@ -25,6 +27,7 @@ namespace Cortex.Containers
             _attesterSlashings = new List<AttesterSlashing>(attesterSlashings);
             _attestations = new List<Attestation>(attestations);
             _deposits = new List<Deposit>(deposits);
+            _voluntaryExits = new List<VoluntaryExit>(voluntaryExits);
         }
 
         public BeaconBlockBody()
@@ -36,6 +39,7 @@ namespace Cortex.Containers
             _attesterSlashings = new List<AttesterSlashing>();
             _attestations = new List<Attestation>();
             _deposits = new List<Deposit>();
+            _voluntaryExits = new List<VoluntaryExit>();
         }
 
         public IReadOnlyList<Attestation> Attestations { get { return _attestations; } }
@@ -45,6 +49,8 @@ namespace Cortex.Containers
         public Bytes32 Graffiti { get; }
         public IReadOnlyList<ProposerSlashing> ProposerSlashings { get { return _proposerSlashings; } }
         public BlsSignature RandaoReveal { get; private set; }
+
+        public IReadOnlyList<VoluntaryExit> VoluntaryExits { get { return _voluntaryExits; } }
 
         public void AddAttestations(Attestation attestation) => _attestations.Add(attestation);
 
@@ -56,8 +62,6 @@ namespace Cortex.Containers
         }
 
         /*
-        public IList<VoluntaryExit> VoluntaryExits { get; }
-
         public IList<Transfer> Transfers { get; }
         */
     }

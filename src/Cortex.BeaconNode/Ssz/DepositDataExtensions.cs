@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Cortex.Containers;
 using Cortex.SimpleSerialize;
@@ -43,7 +42,7 @@ namespace Cortex.BeaconNode.Ssz
             yield return new SszBasicElement((ulong)item.Amount);
             if (!forSigning)
             {
-                yield return new SszBasicVector(item.Signature.AsSpan());
+                yield return item.Signature.ToSszBasicVector();
             }
         }
     }
