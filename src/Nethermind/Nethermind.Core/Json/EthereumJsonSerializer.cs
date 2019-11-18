@@ -132,6 +132,7 @@ namespace Nethermind.Core.Json
 
             _readableSettings = new JsonSerializerSettings
             {
+                ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.Indented,
                 Converters = ReadableConverters
@@ -139,6 +140,7 @@ namespace Nethermind.Core.Json
 
             _settings = new JsonSerializerSettings
             {
+                ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.None,
                 Converters = BasicConverters
