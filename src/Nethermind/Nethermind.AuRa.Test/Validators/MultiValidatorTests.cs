@@ -135,10 +135,7 @@ namespace Nethermind.AuRa.Test.Validators
             var callCountPerValidator = innerValidatorsFirstBlockCalls.Zip(
                 innerValidatorsFirstBlockCalls.Skip(1).Union(new[] {maxCalls}), (b0, b1) => (int)(b1 - b0))
                 .ToArray();
-            
-            callCountPerValidator[0] -= 1;
-            callCountPerValidator[^1] += 1;
-            
+
             EnsureInnerValidatorsCalled(i => (_innerValidators[innerValidatorsFirstBlockCalls[i]], callCountPerValidator[i]));
         }
 
@@ -171,8 +168,8 @@ namespace Nethermind.AuRa.Test.Validators
             {
                 _block.Number = i;
                 validator.PreProcess(_block);
-                validator.PostProcess(_block, Array.Empty<TxReceipt>());
                 validator.IsValidSealer(Address.Zero, i);
+                validator.PostProcess(_block, Array.Empty<TxReceipt>());
             }
         }
         
