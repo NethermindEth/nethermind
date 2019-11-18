@@ -197,13 +197,11 @@ namespace Nethermind.AuRa
             {
                 if (_config.ForceSealing)
                 {
-                    //if (_logger.IsDebug)
-                        _logger.Info($"Force sealing block {block.Number} without transactions.");                    
+                    if (_logger.IsDebug) _logger.Debug($"Force sealing block {block.Number} without transactions.");                    
                 }
                 else
                 {
-                    //if (_logger.IsDebug) 
-                        _logger.Info($"Skip seal block {block.Number}, no transactions pending.");
+                    if (_logger.IsDebug) _logger.Debug($"Skip seal block {block.Number}, no transactions pending.");
                     return;
                 }
             }
