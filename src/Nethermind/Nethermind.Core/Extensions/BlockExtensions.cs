@@ -36,7 +36,7 @@ namespace Nethermind.Core.Extensions
                     var receipt = receipts[i];
                     if (receipt.Bloom.Matches(matchEntry))
                     {
-                        for (int j = receipt.Logs.Length - 1; j >= 0; j--)
+                        for (int j = 0; j < receipt.Logs.Length; j++)
                         {
                             var receiptLog = receipt.Logs[j];
                             if (comparer.Equals(matchEntry, receiptLog))
