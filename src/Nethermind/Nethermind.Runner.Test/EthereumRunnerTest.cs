@@ -70,13 +70,18 @@ namespace Nethermind.Runner.Test
             Type type4 = typeof(IDbConfig);
             Type type5 = typeof(IStatsConfig);
             Type type6 = typeof(IKafkaConfig);
-            Type type = typeof(IEthStatsConfig);
+            Type type7 = typeof(IEthStatsConfig);
 
             var configProvider = new ConfigProvider();
             configProvider.AddSource(new ConfigSource());
             
             Console.WriteLine(type1.Name);
             Console.WriteLine(type2.Name);
+            Console.WriteLine(type3.Name);
+            Console.WriteLine(type4.Name);
+            Console.WriteLine(type5.Name);
+            Console.WriteLine(type6.Name);
+            Console.WriteLine(type7.Name);
             
             EthereumRunner runner = new EthereumRunner(
                 new RpcModuleProvider(new JsonRpcConfig(), LimboLogs.Instance),
