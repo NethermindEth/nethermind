@@ -99,36 +99,28 @@ namespace Nethermind.JsonRpc
 
         private void UpdateParams(JToken token)
         {
-            try
+            var paramsToken = token.SelectToken("params");
+            if (paramsToken == null)
             {
-                var paramsToken = token.SelectToken("params");
+                paramsToken = token.SelectToken("Params");
                 if (paramsToken == null)
                 {
-                    paramsToken = token.SelectToken("Params");
-                    if (paramsToken == null)
-                    {
-                        return;
-                    }
-                }
-
-                if (paramsToken is JValue)
-                {
-                    return; // null
-                }
-
-                JArray arrayToken = (JArray) paramsToken;
-                for (int i = 0; i < arrayToken.Count; i++)
-                {
-                    if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
-                    {
-                        arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
-                    }
+                    return;
                 }
             }
-            catch (Exception e)
+
+            if (paramsToken is JValue)
             {
-                Console.WriteLine(e);
-                throw;
+                return; // null
+            }
+
+            JArray arrayToken = (JArray) paramsToken;
+            for (int i = 0; i < arrayToken.Count; i++)
+            {
+                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
+                {
+                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
+                }
             }
         }
 
