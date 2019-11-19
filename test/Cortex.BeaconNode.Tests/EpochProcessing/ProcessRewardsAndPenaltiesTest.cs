@@ -187,13 +187,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
             stateEpoch.ShouldBe(initialValues.GenesisEpoch + new Epoch(1));
 
-            // slots per epoch is 8, delay is 1; 7 were added while the epoch was current;
-            // 1 was added after rollover, i.e. to previous;
-            // appears the rollover may not be moving current to previous; may not be implemented yet
-            //state.PreviousEpochAttestations.Count.ShouldBe((int)(ulong)timeParameters.SlotsPerEpoch);
-            // HACK: Add check for when this is fixed
-            var incorrectCount = 1;
-            state.PreviousEpochAttestations.Count.ShouldBe(incorrectCount);
+            state.PreviousEpochAttestations.Count.ShouldBe((int)(ulong)timeParameters.SlotsPerEpoch);
 
             return attestations;
         }

@@ -214,6 +214,12 @@ namespace Cortex.Containers
             _blockRoots[(int)(ulong)index] = blockRoot;
         }
 
+        public void SetCurrentEpochAttestations(IReadOnlyList<PendingAttestation> attestations)
+        {
+            _currentEpochAttestations.Clear();
+            _currentEpochAttestations.AddRange(attestations);
+        }
+
         public void SetCurrentJustifiedCheckpoint(Checkpoint checkpoint)
         {
             CurrentJustifiedCheckpoint = checkpoint;
@@ -235,6 +241,12 @@ namespace Cortex.Containers
         {
             JustificationBits.SetAll(false);
             JustificationBits.Or(justificationBits);
+        }
+
+        public void SetPreviousEpochAttestations(IReadOnlyList<PendingAttestation> attestations)
+        {
+            _previousEpochAttestations.Clear();
+            _previousEpochAttestations.AddRange(attestations);
         }
 
         public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint)

@@ -458,7 +458,7 @@ namespace Cortex.BeaconNode
 
             //# @update_period_committee
 
-            // ProcessFinalUpdates(state);
+            ProcessFinalUpdates(state);
 
             //# @after_process_final_updates
 
@@ -475,6 +475,27 @@ namespace Cortex.BeaconNode
             {
                 state.SetEth1Data(body.Eth1Data);
             }
+        }
+
+        public void ProcessFinalUpdates(BeaconState state)
+        {
+            _logger.LogInformation(Event.ProcessFinalUpdates, "Process epoch final updates state {BeaconState}", state);
+
+            // TODO: Implement these
+
+            // Reset eth1 data votes
+
+            // Update effective balances with hysteresis
+
+            // Reset slashings
+
+            // Set randao mix
+
+            // Set historical root accumulator
+
+            // Rotate current/previous epoch attestations
+            state.SetPreviousEpochAttestations(state.CurrentEpochAttestations);
+            state.SetCurrentEpochAttestations(new PendingAttestation[0]);
         }
 
         public void ProcessJustificationAndFinalization(BeaconState state)
