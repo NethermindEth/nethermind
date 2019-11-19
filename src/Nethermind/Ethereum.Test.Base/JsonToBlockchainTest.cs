@@ -215,7 +215,8 @@ namespace Ethereum.Test.Base
             }
             else
             {
-                test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                test.PostState = testJson.PostState?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                test.PostStateRoot = testJson.PostStateHash;
             }
             
             return test;

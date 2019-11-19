@@ -42,6 +42,8 @@ namespace Ethereum.Test.Base
         public Dictionary<string, AccountStateJson> Pre { get; set; }
         public Dictionary<string, AccountStateJson> PostState { get; set; }
         
+        public Keccak PostStateHash { get; set; }
+        
         public string SealEngine { get; set; }
         public string LoadFailure { get; set; }
     }
