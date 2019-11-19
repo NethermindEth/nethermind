@@ -27,6 +27,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AuRa;
+using Nethermind.AuRa.Config;
 using Nethermind.AuRa.Rewards;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
@@ -176,7 +177,7 @@ namespace Nethermind.Runner.Runners
         private ITransactionProcessor _transactionProcessor;
         private ITxPoolInfoProvider _txPoolInfoProvider;
         private INetworkConfig _networkConfig;
-        private ChainLevelInfoRepository _chainLevelInfoRepository;
+        private IChainLevelInfoRepository _chainLevelInfoRepository;
         private IBlockFinalizationManager _finalizationManager;
         private IJsonRpcClientProxy _jsonRpcClientProxy;
         private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
@@ -477,7 +478,7 @@ namespace Nethermind.Runner.Runners
                 _stateProvider,
                 _logManager);
             
-            IList<IAdditionalBlockProcessor> blockPreProcessors = new List<IAdditionalBlockProcessor>();
+            IList<IAdditionalBlockProcessor> additionalBlockProcessors = new List<IAdditionalBlockProcessor>();
             // blockchain processing
             var blockhashProvider = new BlockhashProvider(
                 _blockTree, _logManager);
@@ -496,7 +497,7 @@ namespace Nethermind.Runner.Runners
                 virtualMachine,
                 _logManager);
             
-            InitSealEngine(blockPreProcessors);
+            InitSealEngine(additionalBlockProcessors);
 
             /* validation */
             _headerValidator = new HeaderValidator(
@@ -534,7 +535,7 @@ namespace Nethermind.Runner.Runners
                 _txPool,
                 _receiptStorage,
                 _logManager,
-                blockPreProcessors);
+                additionalBlockProcessors);
 
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
@@ -544,16 +545,17 @@ namespace Nethermind.Runner.Runners
                 _initConfig.StoreReceipts,
                 _initConfig.StoreTraces);
 
-            _finalizationManager = InitFinalizationManager(blockPreProcessors);
+            _finalizationManager = InitFinalizationManager(additionalBlockProcessors);
 
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
 
-            InitBlockProducers();
-
             _blockchainProcessor.Start();
             LoadGenesisBlock(string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash));
+            
+            InitBlockProducers();
+            
             if (_initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
@@ -616,17 +618,25 @@ namespace Nethermind.Runner.Runners
 
         private void InitBlockProducers()
         {
-            if (_initConfig.IsMining)
+            ReadOnlyChain GetProducerChain(
+                Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
+                bool allowStateModification = false)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, allowStateModification);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
                 ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage);
+                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage,
+                    createAdditionalBlockProcessors);
+                return producerChain;
+            }
 
+            if (_initConfig.IsMining)
+            {
                 switch (_chainSpec.SealEngineType)
                 {
                     case SealEngineType.Clique:
                     {
+                        var producerChain = GetProducerChain();
                         if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
                         CliqueConfig cliqueConfig = new CliqueConfig();
                         cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
@@ -638,9 +648,19 @@ namespace Nethermind.Runner.Runners
 
                     case SealEngineType.NethDev:
                     {
+                        var producerChain = GetProducerChain();
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree,
-                            _timestamper, _logManager);
+                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, _logManager);
+                        break;
+                    }
+                    
+                    case SealEngineType.AuRa:
+                    {
+                        IAuRaValidatorProcessor validator = null;
+                        var producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
+                        if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
+                        _blockProducer = new AuRaBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _nodeKey.Address, _sealer, producerChain.ReadOnlyStateProvider, _configProvider.GetConfig<IAuraConfig>(), _logManager);
+                        validator.SetFinalizationManager(_finalizationManager, true);
                         break;
                     }
 
@@ -702,10 +722,11 @@ namespace Nethermind.Runner.Runners
                     var abiEncoder = new AbiEncoder();
                     var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _blockTree, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
-                        
-                    _sealer = new AuRaSealer();
-                    _sealValidator = new AuRaSealValidator(validatorProcessor, _ethereumEcdsa, _logManager);
+                    
+                    var auRaStepCalculator = new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper);    
+                    _sealValidator = new AuRaSealValidator(_chainSpec.AuRa, auRaStepCalculator, validatorProcessor, _ethereumEcdsa, _logManager);
                     _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder, _transactionProcessor);
+                    _sealer = new AuRaSealer(_blockTree, validatorProcessor, auRaStepCalculator, _nodeKey.Address, new BasicWallet(_nodeKey), _logManager);
                     blockPreProcessors.Add(validatorProcessor);
                     break;
                 default:

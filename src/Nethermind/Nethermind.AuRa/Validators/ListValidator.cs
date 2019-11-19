@@ -21,36 +21,20 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Evm;
+using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ListValidator : IAuRaValidatorProcessor
+    public sealed class ListValidator : AuRaValidatorProcessorBase
     {
-        private readonly ISet<Address> _validators;
-
-        public ListValidator(AuRaParameters.Validator validator)
+        public ListValidator(AuRaParameters.Validator validator, ILogManager logManager) : base(validator, logManager)
         {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
-            if (validator.ValidatorType != AuRaParameters.ValidatorType.List) 
-                throw new ArgumentException("Wrong validator type.", nameof(validator));
-            
-            _validators = validator.Addresses?.Length > 0
-                ? validator.Addresses.ToHashSet()
+            Validators = validator.Addresses?.Length > 0
+                ? validator.Addresses
                 : throw new ArgumentException("Empty validator Addresses.", nameof(validator.Addresses));
         }
-        
-        public void PreProcess(Block block) { }
-
-        public void PostProcess(Block block, TxReceipt[] receipts) { }
-
-        public void Initialize(Block block, TransactionProcessor transactionProcessor) { }
-
-        public bool IsValidSealer(Address address) => _validators.Contains(address);
-        public int MinSealersForFinalization => _validators.MinSealersForFinalization();
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager) { } // ListValidator doesn't change its behaviour/state based on Finalization of blocks, only Multi and Contract validators do.
-
-        public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.List;
     }
 }

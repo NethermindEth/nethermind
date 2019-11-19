@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,25 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
-using Nethermind.Core;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.AuRa.Config
 {
-    public class FinalizeEventArgs : EventArgs
+    public class AuRaConfig : IAuraConfig
     {
-        public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks) 
-            : this(finalizingBlock, (IReadOnlyList<BlockHeader>)finalizedBlocks) { }
-        
-        public FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
-        {
-            FinalizingBlock = finalizingBlock;
-            FinalizedBlocks = finalizedBlocks;
-        }
-
-        public BlockHeader FinalizingBlock { get; }
-        public IReadOnlyList<BlockHeader> FinalizedBlocks { get; }
-
+        public bool ForceSealing { get; set; }
     }
 }

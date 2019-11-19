@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain
 {
     public interface IAdditionalBlockProcessor
     {
-        void PreProcess(Block block);
-        void PostProcess(Block block, TxReceipt[] receipts);
+        void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None);
+        void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None);
     }
 }

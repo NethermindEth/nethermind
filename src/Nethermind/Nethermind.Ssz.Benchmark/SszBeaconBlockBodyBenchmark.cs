@@ -42,8 +42,7 @@ namespace Nethermind.Ssz.Benchmarks
             attestation.Data = data;
             attestation.Signature = BlsSignature.TestSig1;
             attestation.AggregationBits = new byte[5];
-            attestation.CustodyBits = new byte[6];
-            
+
             DepositData depositData = new DepositData();
             depositData.Amount = new Gwei(7);
             depositData.Signature = BlsSignature.TestSig1;

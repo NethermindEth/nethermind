@@ -31,7 +31,6 @@ namespace Nethermind.AuRa.Test
 {
     public class AuRaBlockFinalizationManagerTests
     {
-        private IBlockTree _blockTree;
         private IChainLevelInfoRepository _chainLevelInfoRepository;
         private IBlockProcessor _blockProcessor;
         private IAuRaValidator _auraValidator;

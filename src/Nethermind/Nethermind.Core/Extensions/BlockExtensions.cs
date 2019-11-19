@@ -26,7 +26,7 @@ namespace Nethermind.Core.Extensions
         public static bool TryFindLog(this Block block, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer, out LogEntry foundEntry)
             => block.Header.TryFindLog(receipts, matchEntry, comparer, out foundEntry);
 
-        private static bool TryFindLog(this BlockHeader blockHeader, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer, out LogEntry foundEntry)
+        public static bool TryFindLog(this BlockHeader blockHeader, TxReceipt[] receipts, LogEntry matchEntry, IEqualityComparer<LogEntry> comparer, out LogEntry foundEntry)
         {
             if (blockHeader.Bloom.Matches(matchEntry))
             {
@@ -36,7 +36,8 @@ namespace Nethermind.Core.Extensions
                     var receipt = receipts[i];
                     if (receipt.Bloom.Matches(matchEntry))
                     {
-                        for (int j = receipt.Logs.Length - 1; j >= 0; j--)
+                        // tracing forwards, parity inconsistency 
+                        for (int j = 0; j < receipt.Logs.Length; j++)
                         {
                             var receiptLog = receipt.Logs[j];
                             if (comparer.Equals(matchEntry, receiptLog))

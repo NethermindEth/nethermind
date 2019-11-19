@@ -86,7 +86,7 @@ namespace Nethermind.Core.Encoding
             if (isStorage)
             {
                 return Rlp.Encode(
-                    rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
+                    (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
                     Rlp.Encode(item.BlockHash),
                     Rlp.Encode(item.BlockNumber),
                     Rlp.Encode(item.Index),
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Encoding
             }
 
             return Rlp.Encode(
-                rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
+                (rlpBehaviors & RlpBehaviors.Eip658Receipts) == RlpBehaviors.Eip658Receipts ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
                 Rlp.Encode(item.GasUsedTotal),
                 Rlp.Encode(item.Bloom),
                 Rlp.Encode(item.Logs));

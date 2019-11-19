@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,24 +15,27 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using Nethermind.Core;
+using System.Threading.Tasks;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core.Extensions
 {
-    public class FinalizeEventArgs : EventArgs
+    public static class TaskExt
     {
-        public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks) 
-            : this(finalizingBlock, (IReadOnlyList<BlockHeader>)finalizedBlocks) { }
-        
-        public FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
+        /// <summary>
+        /// Guarantees to delay at least the specified delay. 
+        ///  </summary>
+        /// <param name="delay"></param>
+        /// <remarks>Due to different resolution of timers on different systems, Task.Delay can return before specified delay.</remarks>
+        /// <returns></returns>
+        public static async Task DelayAtLeast(TimeSpan delay)
         {
-            FinalizingBlock = finalizingBlock;
-            FinalizedBlocks = finalizedBlocks;
+            var before = DateTimeOffset.Now;
+            await Task.Delay(delay);
+            var reminder = delay - (DateTimeOffset.Now - before);
+            if (reminder > TimeSpan.Zero)
+            {
+                await Task.Delay(reminder);
+            }
         }
-
-        public BlockHeader FinalizingBlock { get; }
-        public IReadOnlyList<BlockHeader> FinalizedBlocks { get; }
-
     }
 }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,25 +14,30 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.AuRa
 {
-    public class FinalizeEventArgs : EventArgs
+    public class AuraDifficultyCalculator
     {
-        public FinalizeEventArgs(BlockHeader finalizingBlock, params BlockHeader[] finalizedBlocks) 
-            : this(finalizingBlock, (IReadOnlyList<BlockHeader>)finalizedBlocks) { }
+        private readonly IAuRaStepCalculator _auRaStepCalculator;
+        private static readonly UInt256 maxDifficulty;
         
-        public FinalizeEventArgs(BlockHeader finalizingBlock, IReadOnlyList<BlockHeader> finalizedBlocks)
+        static AuraDifficultyCalculator()
         {
-            FinalizingBlock = finalizingBlock;
-            FinalizedBlocks = finalizedBlocks;
+            UInt256.Create(out maxDifficulty, UInt128.MaxValue, UInt128.Zero);
         }
 
-        public BlockHeader FinalizingBlock { get; }
-        public IReadOnlyList<BlockHeader> FinalizedBlocks { get; }
+        public AuraDifficultyCalculator(IAuRaStepCalculator auRaStepCalculator)
+        {
+            _auRaStepCalculator = auRaStepCalculator;
+        }
 
+        public UInt256 CalculateDifficulty(BlockHeader parent) =>
+            maxDifficulty + (UInt256)parent.AuRaStep.Value - (UInt256)_auRaStepCalculator.CurrentStep; // TODO: + empty_steps
+        
+
+        public UInt256 MaxDifficulty => maxDifficulty;
     }
 }

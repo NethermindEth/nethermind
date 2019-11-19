@@ -92,7 +92,7 @@ namespace Nethermind.Core.Encoding
                 transaction.Hash = Keccak.Compute(transactionSequence);
             }
 
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(lastCheck);
             }
