@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core;
-using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.Logging;
 using Nethermind.Network;
