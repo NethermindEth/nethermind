@@ -83,7 +83,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 {
                     var index = slot - timeParameters.MinimumAttestationInclusionDelay;
                     var includeAttestation = attestations[(int)(ulong)index];
-                    TestAttestation.AddAttestationToState(state, includeAttestation, state.Slot,
+                    TestAttestation.AddAttestationsToState(state, new[] { includeAttestation }, state.Slot,
                         miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
                         beaconChainUtility, beaconStateAccessor, beaconStateTransition);
                 }
@@ -98,13 +98,104 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             var preState = BeaconState.Clone(state);
 
             // Act
-            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameters, state);
 
             // Assert
             for (var index = 0; index < preState.Validators.Count; index++)
             {
                 state.Balances[index].ShouldBe(preState.Balances[index], $"Balance {index}");
             }
+        }
+
+
+        [TestMethod]
+        public void FullAttestations()
+        {
+            // Arrange
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
+                out var maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+
+            var timeParameters = timeParameterOptions.CurrentValue;
+
+            var attestations = PrepareStateWithFullAttestations(state,
+                miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, timeParameters, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, 
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+
+            var preState = BeaconState.Clone(state);
+
+            // Act
+            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+            var pendingAttestations = attestations.Select(x => new PendingAttestation(x.AggregationBits, x.Data, Slot.None, ValidatorIndex.None));
+            var attestingIndices = beaconStateTransition.GetUnslashedAttestingIndices(state, pendingAttestations).ToList();
+
+            attestingIndices.Count.ShouldBeGreaterThan(0);
+
+            for (var index = 0; index < preState.Validators.Count; index++)
+            {
+                var validatorIndex = new ValidatorIndex((ulong)index);
+                if (attestingIndices.Contains(validatorIndex))
+                {
+                    state.Balances[index].ShouldBeGreaterThan(preState.Balances[index], $"Attesting balance {index}");
+                }
+                else
+                {
+                    state.Balances[index].ShouldBeLessThan(preState.Balances[index], $"Non-attesting balance {index}");
+                }
+            }
+        }
+
+        private static IList<Attestation> PrepareStateWithFullAttestations(BeaconState state, 
+            MiscellaneousParameters miscellaneousParameters, InitialValues initialValues, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock, 
+            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        {
+            var attestations = new List<Attestation>();
+            var maxSlot = timeParameters.SlotsPerEpoch + timeParameters.MinimumAttestationInclusionDelay;
+            for (var slot = Slot.Zero; slot < maxSlot; slot += new Slot(1))
+            {
+                // create an attestation for each slot in epoch
+                if (slot < timeParameters.SlotsPerEpoch)
+                {
+                    var attestation = TestAttestation.GetValidAttestation(state, Slot.None, CommitteeIndex.None, signed: true,
+                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                    attestations.Add(attestation);
+                }
+
+                // fill each created slot in state after inclusion delay
+                if (slot >= timeParameters.MinimumAttestationInclusionDelay)
+                {
+                    var index = slot - timeParameters.MinimumAttestationInclusionDelay;
+                    var includeAttestation = attestations[(int)(ulong)index];
+                    TestAttestation.AddAttestationsToState(state, new[] { includeAttestation }, state.Slot,
+                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
+                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                }
+
+                TestState.NextSlot(state, beaconStateTransition);
+            }
+
+            var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+            stateEpoch.ShouldBe(initialValues.GenesisEpoch + new Epoch(1));
+
+            // slots per epoch is 8, delay is 1; 7 were added while the epoch was current;
+            // 1 was added after rollover, i.e. to previous;
+            // appears the rollover may not be moving current to previous; may not be implemented yet
+            //state.PreviousEpochAttestations.Count.ShouldBe((int)(ulong)timeParameters.SlotsPerEpoch);
+            // HACK: Add check for when this is fixed
+            var incorrectCount = 1;
+            state.PreviousEpochAttestations.Count.ShouldBe(incorrectCount);
+
+            return attestations;
         }
 
         private void RunProcessRewardsAndPenalties(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)

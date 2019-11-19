@@ -49,6 +49,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 MinimumValidatorWithdrawabilityDelay = new Epoch(256),
                 PersistentCommitteePeriod = new Epoch(2048),
                 //MaximumEpochsPerCrosslink = new Epoch(4),
+                MinimumEpochsToInactivityPenalty = new Epoch(4),
             });
             stateListLengthOptions = TestOptionsMonitor.Create(new StateListLengths()
             {
@@ -57,8 +58,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 ValidatorRegistryLimit = (ulong)1 << 40,
             });
             rewardsAndPenaltiesOptions = TestOptionsMonitor.Create(new RewardsAndPenalties() { 
+                BaseRewardFactor = 64,
                 WhistleblowerRewardQuotient = 512,
                 ProposerRewardQuotient = 8,
+                InactivityPenaltyQuotient = 33554432,
                 MinimumSlashingPenaltyQuotient = 32,
             });
             maxOperationsPerBlockOptions = TestOptionsMonitor.Create(new MaxOperationsPerBlock()

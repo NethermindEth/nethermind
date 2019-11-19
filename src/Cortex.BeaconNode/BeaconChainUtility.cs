@@ -177,6 +177,21 @@ namespace Cortex.BeaconNode
         }
 
         /// <summary>
+        /// Return the largest integer ``x`` such that ``x**2 <= n``.
+        /// </summary>
+        public ulong IntegerSquareRoot(ulong value)
+        {
+            var x = value;
+            var y = (x + 1) / 2;
+            while (y < x)
+            {
+                x = y;
+                y = (x + (value / x)) / 2;
+            }
+            return x;
+        }
+
+        /// <summary>
         /// Check if ``validator`` is active.
         /// </summary>
         public bool IsActiveValidator(Validator validator, Epoch epoch)
@@ -220,7 +235,7 @@ namespace Cortex.BeaconNode
             // Verify no index has custody bit equal to 1 [to be removed in phase 1]
             if (bit1Indices.Count() != 0) // [to be removed in phase 1]
             {
-                _logger.LogWarning(Event.InvalidIndexedAttestation, 
+                _logger.LogWarning(Event.InvalidIndexedAttestation,
                     "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has {BitIndicesCount} bit 1 indices.",
                     indexedAttestation.Data.Index, indexedAttestation.Data.Slot, bit1Indices.Count());
                 return false; //[to be removed in phase 1]

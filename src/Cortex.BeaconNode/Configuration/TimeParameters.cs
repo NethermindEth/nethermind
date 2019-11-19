@@ -8,6 +8,7 @@ namespace Cortex.BeaconNode.Configuration
         public Epoch MaximumSeedLookahead { get; set; }
 
         public Slot MinimumAttestationInclusionDelay { get; set; }
+        public Epoch MinimumEpochsToInactivityPenalty { get; set; }
         public Epoch MinimumSeedLookahead { get; set; }
         public Epoch MinimumValidatorWithdrawabilityDelay { get; set; }
         public Epoch PersistentCommitteePeriod { get; set; }

@@ -4,6 +4,8 @@ namespace Cortex.BeaconNode.Configuration
 {
     public class ChainConstants
     {
+        public ulong BaseRewardsPerEpoch { get; } = 4;
+
         public int DepositContractTreeDepth { get; } = 1 << 5;
 
         public Epoch FarFutureEpoch { get; } = new Epoch((ulong)1 << 64 - 1);

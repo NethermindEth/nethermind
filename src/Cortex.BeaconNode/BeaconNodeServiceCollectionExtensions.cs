@@ -59,6 +59,7 @@ namespace Cortex.BeaconNode
                 x.MinimumValidatorWithdrawabilityDelay = new Epoch(configuration.GetValue<ulong>("MIN_VALIDATOR_WITHDRAWABILITY_DELAY"));
                 x.PersistentCommitteePeriod = new Epoch(configuration.GetValue<ulong>("PERSISTENT_COMMITTEE_PERIOD"));
                 //x.MaximumEpochsPerCrosslink = new Epoch(configuration.GetValue<ulong>("MAX_EPOCHS_PER_CROSSLINK"));
+                x.MinimumEpochsToInactivityPenalty = new Epoch(configuration.GetValue<ulong>("MIN_EPOCHS_TO_INACTIVITY_PENALTY"));
             });
             services.Configure<StateListLengths>(x =>
             {
@@ -68,8 +69,10 @@ namespace Cortex.BeaconNode
             });
             services.Configure<RewardsAndPenalties>(x =>
             {
+                x.BaseRewardFactor = configuration.GetValue<ulong>("BASE_REWARD_FACTOR");
                 x.WhistleblowerRewardQuotient = configuration.GetValue<ulong>("WHISTLEBLOWER_REWARD_QUOTIENT");
                 x.ProposerRewardQuotient = configuration.GetValue<ulong>("PROPOSER_REWARD_QUOTIENT");
+                x.InactivityPenaltyQuotient = configuration.GetValue<ulong>("INACTIVITY_PENALTY_QUOTIENT");
                 x.MinimumSlashingPenaltyQuotient = configuration.GetValue<ulong>("MIN_SLASHING_PENALTY_QUOTIENT");
             });
             services.Configure<MaxOperationsPerBlock>(x =>

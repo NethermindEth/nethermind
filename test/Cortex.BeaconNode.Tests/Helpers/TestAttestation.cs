@@ -10,7 +10,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestAttestation
     {
-        public static void AddAttestationToState(BeaconState state, Attestation attestation, Slot slot,
+        public static void AddAttestationsToState(BeaconState state, IEnumerable<Attestation> attestations, Slot slot,
             MiscellaneousParameters miscellaneousParameters,
             TimeParameters timeParameters,
             StateListLengths stateListLengths,
@@ -23,7 +23,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             block.SetSlot(slot);
-            block.Body.AddAttestations(attestation);
+            foreach (var attestation in attestations) 
+            {
+                block.Body.AddAttestations(attestation);
+            }
             beaconStateTransition.ProcessSlots(state, block.Slot);
             TestBlock.SignBlock(state, block, ValidatorIndex.None,
                 miscellaneousParameters, timeParameters, maxOperationsPerBlock,

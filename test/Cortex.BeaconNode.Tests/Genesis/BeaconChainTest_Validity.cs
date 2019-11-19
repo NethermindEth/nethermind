@@ -183,7 +183,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
                  beaconChainUtility, beaconStateAccessor);
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
+                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
             var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 

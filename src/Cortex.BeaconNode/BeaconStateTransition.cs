@@ -19,8 +19,9 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlock;
+        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
+        private readonly IOptionsMonitor<RewardsAndPenalties> _rewardsAndPenaltiesOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
@@ -31,7 +32,8 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlock,
+            IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
+            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
@@ -44,17 +46,136 @@ namespace Cortex.BeaconNode
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
-            _maxOperationsPerBlock = maxOperationsPerBlock;
+            _rewardsAndPenaltiesOptions = rewardsAndPenaltiesOptions;
+            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateMutator = beaconStateMutator;
         }
 
+        public (IList<Gwei> rewards, IList<Gwei> penalties) GetAttestationDeltas(BeaconState state)
+        {
+            var rewardsAndPenalties = _rewardsAndPenaltiesOptions.CurrentValue;
+
+            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            var totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+            var validatorCount = state.Validators.Count;
+            var rewards = Enumerable.Repeat(Gwei.Zero, validatorCount).ToList();
+            var penalties = Enumerable.Repeat(Gwei.Zero, validatorCount).ToList();
+            var eligibleValidatorIndices = new List<ValidatorIndex>();
+            for (var index = 0; index < validatorCount; index++)
+            {
+                var validator = state.Validators[index];
+                var isActive = _beaconChainUtility.IsActiveValidator(validator, previousEpoch);
+                if (isActive
+                    || (validator.IsSlashed && previousEpoch + new Epoch(1) < validator.WithdrawableEpoch))
+                {
+                    eligibleValidatorIndices.Add(new ValidatorIndex((ulong)index));
+                }
+            }
+
+            // Micro-incentives for matching FFG source, FFG target, and head
+            var matchingSourceAttestations = GetMatchingSourceAttestations(state, previousEpoch);
+            var matchingTargetAttestations = GetMatchingTargetAttestations(state, previousEpoch);
+            var matchingHeadAttestations = GetMatchingHeadAttestations(state, previousEpoch);
+            var attestationSets = new[] { matchingSourceAttestations, matchingTargetAttestations, matchingHeadAttestations };
+            var setNames = new[] { "Source", "Target", "Head" };
+            var setIndex = 0;
+            foreach (var attestationSet in attestationSets)
+            {
+                var unslashedAttestingIndices = GetUnslashedAttestingIndices(state, attestationSet);
+                var attestingBalance = _beaconStateAccessor.GetTotalBalance(state, unslashedAttestingIndices);
+                foreach (var index in eligibleValidatorIndices)
+                {
+                    if (unslashedAttestingIndices.Contains(index))
+                    {
+                        var reward = (GetBaseReward(state, index) * (ulong)attestingBalance) / (ulong)totalBalance;
+                        _logger.LogDebug(0, "Reward validator {ValidatorIndex} matching {SetName} +{Reward}", index, setNames[setIndex], reward);
+                        rewards[(int)(ulong)index] += reward;
+                    }
+                    else
+                    {
+                        var penalty = GetBaseReward(state, index);
+                        _logger.LogDebug(0, "Penalty validator {ValidatorIndex} non-matching {SetName} -{Penalty}", index, setNames[setIndex], penalty);
+                        penalties[(int)(ulong)index] += penalty;
+                    }
+                }
+                setIndex++;
+            }
+
+            // Proposer and inclusion delay micro-rewards
+            var unslashedSourceAttestingIndices = GetUnslashedAttestingIndices(state, matchingSourceAttestations);
+            foreach (var index in unslashedSourceAttestingIndices)
+            {
+                var attestation = matchingSourceAttestations
+                    .Where(x =>
+                    {
+                        var attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, x.Data, x.AggregationBits);
+                        return attestingIndices.Contains(index);
+                    })
+                    .OrderBy(x => x.InclusionDelay)
+                    .First();
+
+                var baseReward = GetBaseReward(state, index);
+                var proposerReward = baseReward / rewardsAndPenalties.ProposerRewardQuotient;
+                _logger.LogDebug(0, "Reward validator {ValidatorIndex} proposer +{Reward}", attestation.ProposerIndex, proposerReward);
+                rewards[(int)(ulong)attestation.ProposerIndex] += proposerReward;
+
+                var maxAttesterReward = baseReward - proposerReward;
+                var attesterReward = maxAttesterReward / (ulong)attestation.InclusionDelay;
+                _logger.LogDebug(0, "Reward validator {ValidatorIndex} attester inclusion delay +{Reward}", index, attesterReward);
+                rewards[(int)(ulong)index] += attesterReward;
+            }
+
+            // Inactivity penalty
+            var finalityDelay = previousEpoch - state.FinalizedCheckpoint.Epoch;
+            if (finalityDelay > _timeParameterOptions.CurrentValue.MinimumEpochsToInactivityPenalty)
+            {
+                var matchingTargetAttestingIndices = GetUnslashedAttestingIndices(state, matchingTargetAttestations);
+                foreach (var index in eligibleValidatorIndices)
+                {
+                    var delayPenalty = GetBaseReward(state, index) * _chainConstants.BaseRewardsPerEpoch;
+                    _logger.LogDebug(0, "Penalty validator {ValidatorIndex} finality delay -{Penalty}", index, setNames[setIndex], delayPenalty);
+                    penalties[(int)(ulong)index] += delayPenalty;
+
+                    if (!matchingTargetAttestingIndices.Contains(index))
+                    {
+                        var effectiveBalance = state.Validators[(int)(ulong)index].EffectiveBalance;
+                        var additionalInactivityPenalty = (effectiveBalance * (ulong)finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
+                        _logger.LogDebug(0, "Penalty validator {ValidatorIndex} inactivity -{Penalty}", index, setNames[setIndex], additionalInactivityPenalty);
+                        penalties[(int)(ulong)index] += additionalInactivityPenalty;
+                    }
+                }
+            }
+
+            return (rewards, penalties);
+        }
+
         public Gwei GetAttestingBalance(BeaconState state, IEnumerable<PendingAttestation> attestations)
         {
             var unslashed = GetUnslashedAttestingIndices(state, attestations);
             return _beaconStateAccessor.GetTotalBalance(state, unslashed);
+        }
+
+        public Gwei GetBaseReward(BeaconState state, ValidatorIndex index)
+        {
+            var totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+            var effectiveBalance = state.Validators[(int)(ulong)index].EffectiveBalance;
+            var squareRootBalance = _beaconChainUtility.IntegerSquareRoot((ulong)totalBalance);
+            var baseReward = ((effectiveBalance * _rewardsAndPenaltiesOptions.CurrentValue.BaseRewardFactor)
+                / squareRootBalance) / _chainConstants.BaseRewardsPerEpoch;
+            return baseReward;
+        }
+
+        public IEnumerable<PendingAttestation> GetMatchingHeadAttestations(BeaconState state, Epoch epoch)
+        {
+            var sourceAttestations = GetMatchingSourceAttestations(state, epoch);
+            return sourceAttestations.Where(x =>
+            {
+                var blockRootAtSlot = _beaconStateAccessor.GetBlockRootAtSlot(state, x.Data.Slot);
+                return x.Data.BeaconBlockRoot == blockRootAtSlot;
+            });
         }
 
         public IEnumerable<PendingAttestation> GetMatchingSourceAttestations(BeaconState state, Epoch epoch)
@@ -237,7 +358,7 @@ namespace Cortex.BeaconNode
             }
 
             // Save current block as the new latest block
-            var bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+            var bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
             var newBlockHeader = new BeaconBlockHeader(block.Slot,
                 block.ParentRoot,
                 Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
@@ -254,7 +375,7 @@ namespace Cortex.BeaconNode
             }
 
             // Verify proposer signature
-            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
             var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, Epoch.None);
             var validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
             if (!validSignature)
@@ -431,7 +552,7 @@ namespace Cortex.BeaconNode
             _logger.LogInformation(Event.ProcessOperations, "Process block operations for block body {BeaconBlockBody}", body);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
             var outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
-            var expectedDeposits = Math.Min(_maxOperationsPerBlock.CurrentValue.MaximumDeposits, outstandingDeposits);
+            var expectedDeposits = Math.Min(_maxOperationsPerBlockOptions.CurrentValue.MaximumDeposits, outstandingDeposits);
             if (body.Deposits.Count != (int)expectedDeposits)
             {
                 throw new ArgumentOutOfRangeException("body.Deposits.Count", body.Deposits.Count, $"Block body does not have the expected number of outstanding deposits {expectedDeposits}.");
@@ -536,15 +657,21 @@ namespace Cortex.BeaconNode
                 return;
             }
 
-            throw new NotImplementedException();
+            (var rewards, var penalties) = GetAttestationDeltas(state);
+            for (var index = 0; index < state.Validators.Count; index++)
+            {
+                var validatorIndex = new ValidatorIndex((ulong)index);
+                _beaconStateMutator.IncreaseBalance(state, validatorIndex, rewards[index]);
+                _beaconStateMutator.DecreaseBalance(state, validatorIndex, penalties[index]);
+            }
         }
 
         public void ProcessSlot(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessSlot, "Process current slot for state {BeaconState}", state);
+            _logger.LogInformation(Event.ProcessSlot, "Process current slot {Slot} for state {BeaconState}", state.Slot, state);
             // Cache state root
             var previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
-                _stateListLengthOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+                _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
             var previousRootIndex = state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot;
             state.SetStateRoot(previousRootIndex, previousStateRoot);
             // Cache latest block header state root
@@ -639,7 +766,7 @@ namespace Cortex.BeaconNode
             // Validate state root (True in production)
             if (validateStateRoot)
             {
-                var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlock.CurrentValue);
+                var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
                 if (block.StateRoot != checkStateRoot)
                 {
                     throw new Exception("Mismatch between calculated state root and block state root.");
