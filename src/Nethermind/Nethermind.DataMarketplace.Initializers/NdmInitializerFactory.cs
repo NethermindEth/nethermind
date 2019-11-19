@@ -17,8 +17,6 @@
  */
 
 using System;
-using System.Linq;
-using System.Reflection;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
 using Nethermind.DataMarketplace.Infrastructure;
 using Nethermind.Logging;

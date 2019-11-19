@@ -73,6 +73,8 @@ namespace Nethermind.DataMarketplace.Core.Configs
         UInt256 FaucetEthDailyRequestsTotalValue { get; }
         [ConfigItem(Description = "An arbitrary path to the plugins directory that should be loaded as external assemblies", DefaultValue = "ndm/plugins")]
         string PluginsPath { get; }
+        [ConfigItem(Description = "Path to the directory, where NDM databases will be kept, when using RocksDB provider", DefaultValue = "ndm")]
+        string DatabasePath { get; }
         
         [ConfigItem(Description = "If 'true' then JSON RPC calls will be redirected to the specified proxies.", DefaultValue = "false")]
         bool ProxyEnabled { get; }
