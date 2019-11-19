@@ -161,20 +161,11 @@ namespace Cortex.Containers
             return clone;
         }
 
-        public void AddCurrentAttestation(PendingAttestation attestation)
-        {
-            _currentEpochAttestations.Add(attestation);
-        }
+        public void AddCurrentAttestation(PendingAttestation attestation) => _currentEpochAttestations.Add(attestation);
 
-        public void AddPreviousAttestation(PendingAttestation attestation)
-        {
-            _previousEpochAttestations.Add(attestation);
-        }
+        public void AddPreviousAttestation(PendingAttestation attestation) => _previousEpochAttestations.Add(attestation);
 
-        public void AddSlashings(Epoch slashingsIndex, Gwei amount)
-        {
-            _slashings[(int)(ulong)slashingsIndex] += amount;
-        }
+        public void AddSlashings(Epoch slashingsIndex, Gwei amount) => _slashings[(int)(ulong)slashingsIndex] += amount;
 
         public void AddValidatorWithBalance(Validator validator, Gwei amount)
         {
@@ -182,20 +173,11 @@ namespace Cortex.Containers
             _balances.Add(amount);
         }
 
-        public void AppendEth1DataVotes(Eth1Data eth1Data)
-        {
-            _eth1DataVotes.Add(eth1Data);
-        }
+        public void AppendEth1DataVotes(Eth1Data eth1Data) => _eth1DataVotes.Add(eth1Data);
 
-        public void IncreaseEth1DepositIndex()
-        {
-            Eth1DepositIndex++;
-        }
+        public void IncreaseEth1DepositIndex() => Eth1DepositIndex++;
 
-        public void IncreaseSlot()
-        {
-            Slot = new Slot((ulong)Slot + 1);
-        }
+        public void IncreaseSlot() => Slot = new Slot((ulong)Slot + 1);
 
         public void JustificationBitsShift()
         {
@@ -204,15 +186,9 @@ namespace Cortex.Containers
             JustificationBits.LeftShift(1);
         }
 
-        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance)
-        {
-            _balances[(int)(ulong)validatorIndex] = balance;
-        }
+        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)(ulong)validatorIndex] = balance;
 
-        public void SetBlockRoot(Slot index, Hash32 blockRoot)
-        {
-            _blockRoots[(int)(ulong)index] = blockRoot;
-        }
+        public void SetBlockRoot(Slot index, Hash32 blockRoot) => _blockRoots[(int)(ulong)index] = blockRoot;
 
         public void SetCurrentEpochAttestations(IReadOnlyList<PendingAttestation> attestations)
         {
@@ -220,22 +196,13 @@ namespace Cortex.Containers
             _currentEpochAttestations.AddRange(attestations);
         }
 
-        public void SetCurrentJustifiedCheckpoint(Checkpoint checkpoint)
-        {
-            CurrentJustifiedCheckpoint = checkpoint;
-        }
+        public void SetCurrentJustifiedCheckpoint(Checkpoint checkpoint) => CurrentJustifiedCheckpoint = checkpoint;
 
-        public void SetEth1Data(Eth1Data eth1Data)
-        {
-            Eth1Data = eth1Data;
-        }
+        public void SetEth1Data(Eth1Data eth1Data) => Eth1Data = eth1Data;
 
         public void SetEth1DepositIndex(ulong value) => Eth1DepositIndex = value;
 
-        public void SetFinalizedCheckpoint(Checkpoint checkpoint)
-        {
-            FinalizedCheckpoint = checkpoint;
-        }
+        public void SetFinalizedCheckpoint(Checkpoint checkpoint) => FinalizedCheckpoint = checkpoint;
 
         public void SetJustificationBits(BitArray justificationBits)
         {
@@ -249,29 +216,14 @@ namespace Cortex.Containers
             _previousEpochAttestations.AddRange(attestations);
         }
 
-        public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint)
-        {
-            PreviousJustifiedCheckpoint = checkpoint;
-        }
+        public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint) => PreviousJustifiedCheckpoint = checkpoint;
 
-        public void SetRandaoMix(Epoch randaoIndex, Hash32 mix)
-        {
-            _randaoMixes[(int)(ulong)randaoIndex] = mix;
-        }
+        public void SetRandaoMix(Epoch randaoIndex, Hash32 mix) => _randaoMixes[(int)(ulong)randaoIndex] = mix;
 
-        public void SetSlot(Slot slot)
-        {
-            Slot = slot;
-        }
+        public void SetSlot(Slot slot) => Slot = slot;
 
-        public void SetStateRoot(Slot index, Hash32 stateRoot)
-        {
-            _stateRoots[(int)(ulong)index] = stateRoot;
-        }
+        public void SetStateRoot(Slot index, Hash32 stateRoot) => _stateRoots[(int)(ulong)index] = stateRoot;
 
-        public override string ToString()
-        {
-            return $"G:{GenesisTime} S:{Slot} F:({Fork})";
-        }
+        public override string ToString() => $"G:{GenesisTime} S:{Slot} F:({Fork})";
     }
 }
