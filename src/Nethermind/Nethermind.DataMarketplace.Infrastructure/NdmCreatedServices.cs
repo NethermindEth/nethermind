@@ -23,8 +23,6 @@ using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
-using Nethermind.Facade;
-using Nethermind.Facade.Proxy;
 
 namespace Nethermind.DataMarketplace.Infrastructure
 {

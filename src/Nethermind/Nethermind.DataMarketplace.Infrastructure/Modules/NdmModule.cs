@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Net.Http;
-using System.Security;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -25,9 +23,7 @@ using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Facade;
-using Nethermind.Facade.Proxy;
 using Nethermind.Store;
-using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
 {
@@ -45,7 +41,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 : new Address(config.ContractAddress);
 
             var logManager = services.LogManager;
-            var jsonSerializer = services.JsonSerializer;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
