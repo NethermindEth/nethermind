@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -80,7 +81,7 @@ namespace Nethermind.JsonRpc
         private JsonSerializer _obsoleteBasicJsonSerializer = new JsonSerializer();
 
         private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
-        {  
+        {
             var token = JToken.Parse(json);
             if (token is JArray array)
             {
@@ -106,6 +107,11 @@ namespace Nethermind.JsonRpc
                 {
                     return;
                 }
+            }
+
+            if (paramsToken is JValue)
+            {
+                return; // null
             }
 
             JArray arrayToken = (JArray) paramsToken;
