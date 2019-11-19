@@ -23,7 +23,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("Main: {HasBlockOnMainChain}, Blocks: {BlockInfos.Length}")]
     public class ChainLevelInfo // TODO: move to blockchain namespace
     {
-        public ChainLevelInfo(bool hasBlockInMainChain,  BlockInfo[] blockInfos)
+        public ChainLevelInfo(bool hasBlockInMainChain, params BlockInfo[] blockInfos)
         {
             HasBlockOnMainChain = hasBlockInMainChain;
             BlockInfos = blockInfos;
@@ -31,5 +31,6 @@ namespace Nethermind.Core
         
         public bool HasBlockOnMainChain { get; set; }
         public BlockInfo[] BlockInfos { get; set; }
+        public BlockInfo MainChainBlock => HasBlockOnMainChain ? BlockInfos[0] : null;
     }
 }

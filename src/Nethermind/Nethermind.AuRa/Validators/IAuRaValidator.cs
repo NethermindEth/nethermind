@@ -16,12 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 
 namespace Nethermind.AuRa.Validators
 {
     public interface IAuRaValidator
     {
-        bool IsValidSealer(Address address);
+        int MinSealersForFinalization { get; }
+        int CurrentSealersCount { get; }
+        bool IsValidSealer(Address address, long step);
+        void SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing = false);
     }
 }

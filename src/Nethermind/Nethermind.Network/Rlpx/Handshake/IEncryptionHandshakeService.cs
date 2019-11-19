@@ -22,7 +22,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public interface IHandshakeService
     {
-        Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake);
+        Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake, bool preEip8Format = false);
         Packet Ack(EncryptionHandshake handshake, Packet auth);
         void Agree(EncryptionHandshake handshake, Packet ack);
     }

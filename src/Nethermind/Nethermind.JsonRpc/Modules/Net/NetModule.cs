@@ -17,8 +17,6 @@
  */
 
 using System;
-using System.Numerics;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -27,10 +25,12 @@ namespace Nethermind.JsonRpc.Modules.Net
     public class NetModule : INetModule
     {
         private readonly INetBridge _netBridge;
+        private string _netVersionString;
 
         public NetModule(ILogManager logManager, INetBridge netBridge)
         {
             _netBridge = netBridge ?? throw new ArgumentNullException(nameof(netBridge));
+            _netVersionString = _netBridge.NetworkId.ToString();
         }
 
         public ResultWrapper<Address> net_localAddress()
@@ -45,7 +45,7 @@ namespace Nethermind.JsonRpc.Modules.Net
 
         public ResultWrapper<string> net_version()
         {
-            return ResultWrapper<string>.Success(_netBridge.NetworkId.ToString());
+            return ResultWrapper<string>.Success(_netVersionString);
         }
 
         [Todo(Improve.MissingFunctionality, "Implement net_listening")]
@@ -54,9 +54,9 @@ namespace Nethermind.JsonRpc.Modules.Net
             return ResultWrapper<bool>.Success(false);
         }
 
-        public ResultWrapper<BigInteger> net_peerCount()
+        public ResultWrapper<int> net_peerCount()
         {
-            return ResultWrapper<BigInteger>.Success(_netBridge.PeerCount);
+            return ResultWrapper<int>.Success(_netBridge.PeerCount);
         }
         
         public ResultWrapper<bool> net_dumpPeerConnectionDetails()

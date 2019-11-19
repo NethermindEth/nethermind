@@ -9,16 +9,16 @@ RUN apt update -y && apt install -y git jq && \
     | jq ".+ {\"commit\":\"$(git rev-parse HEAD)\"}"               \
 	    > /version.json)
 
-FROM microsoft/dotnet:2.2-sdk AS build
+FROM mcr.microsoft.com/dotnet/core/sdk:3.0 AS build
 COPY --from=clone /src .
 COPY --from=clone /version.json .
 RUN cd nethermind/src/Nethermind/Nethermind.Runner && \
     dotnet publish -c release -o out
 
-FROM microsoft/dotnet:2.2-aspnetcore-runtime
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.0
 RUN apt update -y && apt install -y libsnappy-dev libc6-dev libc6 unzip jq
 
-COPY --from=build /nethermind/src/Nethermind/Nethermind.Runner/out .
+COPY --from=build /out .
 COPY --from=build /version.json .
 
 ADD enode.sh /enode.sh
@@ -34,7 +34,5 @@ ENV NETHERMIND_INITCONFIG_JSONRPCENABLED true
 ENV NETHERMIND_INITCONFIG_P2PPORT 30303
 ENV NETHERMIND_INITCONFIG_DISCOVERYPORT 30303
 ENV NETHERMIND_URL http://*:8545
-
-EXPOSE 8545 30303
 
 ENTRYPOINT ["/nethermind.sh"]

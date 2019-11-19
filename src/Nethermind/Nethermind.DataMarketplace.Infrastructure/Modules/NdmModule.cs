@@ -16,17 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Net.Http;
 using System.Security;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
-using Nethermind.Evm;
 using Nethermind.Facade;
-using Nethermind.Logging;
+using Nethermind.Facade.Proxy;
 using Nethermind.Store;
 using Nethermind.Wallet;
 
@@ -38,18 +37,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
         {
             AddDecoders();
             var config = services.NdmConfig;
-            var providerAddress = string.IsNullOrWhiteSpace(config.ProviderAddress)
-                ? Address.Zero
-                : new Address(config.ProviderAddress);
             var consumerAddress = string.IsNullOrWhiteSpace(config.ConsumerAddress)
                 ? Address.Zero
                 : new Address(config.ConsumerAddress);
             var contractAddress = string.IsNullOrWhiteSpace(config.ContractAddress)
                 ? Address.Zero
                 : new Address(config.ContractAddress);
-            UnlockHardcodedAccounts(providerAddress, consumerAddress, services.Wallet);
-            
+
             var logManager = services.LogManager;
+            var jsonSerializer = services.JsonSerializer;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
@@ -68,8 +64,19 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
-            var depositService = new DepositService(blockchainBridge, services.TransactionPool, encoder,
-                services.Wallet, contractAddress, logManager);
+
+            INdmBlockchainBridge ndmBlockchainBridge;
+            if (config.ProxyEnabled)
+            {
+                services.JsonRpcClientProxy.SetUrls(config.JsonRpcUrlProxies);
+                ndmBlockchainBridge = new NdmBlockchainBridgeProxy(services.EthJsonRpcClientProxy);
+            }
+            else
+            {
+                ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
+            }
+            
+            var depositService = new DepositService(ndmBlockchainBridge, encoder, services.Wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
@@ -77,7 +84,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
                 depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
-                blockchainBridge));
+                ndmBlockchainBridge));
         }
 
         private static void AddDecoders()
@@ -101,19 +108,6 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             UnitsRangeDecoder.Init();
         }
 
-        private static void UnlockHardcodedAccounts(Address providerAddress, Address consumerAddress, IWallet wallet)
-        {
-            // hardcoded passwords
-            var consumerPassphrase = new SecureString();
-            foreach (var c in "ndmConsumer")
-            {
-                consumerPassphrase.AppendChar(c);
-            }
-
-            consumerPassphrase.MakeReadOnly();
-            wallet.UnlockAccount(consumerAddress, consumerPassphrase);
-        }
-        
         private class Services : INdmServices
         {
             public NdmRequiredServices RequiredServices { get; }

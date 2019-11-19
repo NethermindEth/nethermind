@@ -79,7 +79,7 @@ namespace Nethermind.Network.Test
                 _pipeline = Substitute.For<IChannelPipeline>();
                 _channelHandlerContext.Channel.Returns(_channel);
                 _channel.Pipeline.Returns(_pipeline);
-                _pipeline.Get<NettyPacketSplitter>().Returns(new NettyPacketSplitter(LimboLogs.Instance));
+                _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter(LimboLogs.Instance));
                 _packetSender = Substitute.For<IPacketSender>();
                 _syncServer = Substitute.For<ISyncServer>();
                 _syncServer = Substitute.For<ISyncServer>();

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
 using Nethermind.Secp256k1;
@@ -89,7 +90,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return KeyBytes.GetSimplifiedHashCode();
+            return MemoryMarshal.Read<int>(KeyBytes);
         }
 
         private PublicKey ComputePublicKey()

@@ -1,0 +1,24 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="coverlet.msbuild" Version="2.7.0">
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+          <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="FluentAssertions" Version="5.9.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.3.0" />
+        <PackageReference Include="NSubstitute" Version="4.2.1" />
+        <PackageReference Include="NUnit" Version="3.12.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="3.15.1" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
+      <ProjectReference Include="..\Nethermind.Facade\Nethermind.Facade.csproj" />
+    </ItemGroup>
+
+</Project>

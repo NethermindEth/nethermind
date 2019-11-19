@@ -81,7 +81,7 @@ namespace Nethermind.Core.Encoding
                 blockHeader.AuRaSignature = decoderContext.DecodeByteArray();
             }
             
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 decoderContext.Check(headerCheck);
             }
@@ -144,7 +144,7 @@ namespace Nethermind.Core.Encoding
                 blockHeader.AuRaSignature = rlpStream.DecodeByteArray();
             }
 
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(headerCheck);
             }
@@ -160,7 +160,7 @@ namespace Nethermind.Core.Encoding
                 return;
             }
             
-            bool notForSealing = !rlpBehaviors.HasFlag(RlpBehaviors.ForSealing);
+            bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             rlpStream.StartSequence(GetContentLength(item, rlpBehaviors));
             rlpStream.Encode(item.ParentHash);
             rlpStream.Encode(item.OmmersHash);
@@ -213,7 +213,7 @@ namespace Nethermind.Core.Encoding
                 return;
             }
 
-            bool notForSealing = !rlpBehaviors.HasFlag(RlpBehaviors.ForSealing);
+            bool notForSealing = (rlpBehaviors & RlpBehaviors.ForSealing) != RlpBehaviors.ForSealing;
             Rlp.StartSequence(stream, GetContentLength(item, rlpBehaviors));
             Rlp.Encode(stream, item.ParentHash);
             Rlp.Encode(stream, item.OmmersHash);

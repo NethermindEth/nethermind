@@ -56,10 +56,15 @@ namespace Nethermind.Network.StaticNodes
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Loading static nodes from file: {_staticNodesPath}");
+            if (_logger.IsInfo) _logger.Info($"Loading static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             var data = await File.ReadAllTextAsync(_staticNodesPath);
-            var nodes = JsonConvert.DeserializeObject<string[]>(data);
-            if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes.{Environment.NewLine}{data}");
+            var nodes = JsonConvert.DeserializeObject<string[]>(data).Distinct().ToArray();
+            if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes.");
+            if (nodes.Length != 0)
+            {
+                if (_logger.IsInfo) _logger.Info($"Static nodes: {Environment.NewLine}{data}");
+            }
+            
             _nodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes.Select(n => new NetworkNode(n))
                 .ToDictionary(n => n.NodeId, n => n));
         }

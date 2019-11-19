@@ -96,6 +96,18 @@ namespace Nethermind.Blockchain.Test.Find
             logs.Length.Should().Be(0);
         }
         
+        [Test]
+        public void filter_all_logs_should_return_empty_array_when_to_block_is_null()
+        {
+            var blockFinder = Substitute.For<IBlockFinder>();
+            _logFinder = new LogFinder(blockFinder,_receiptStorage);
+            var logFilter = AllBlockFilter().Build();
+            var logs = _logFinder.FindLogs(logFilter);
+            logs.Should().BeEmpty();
+            blockFinder.Received().GetBlock(logFilter.ToBlock);
+            blockFinder.DidNotReceive().GetBlock(logFilter.FromBlock);
+        }
+        
         public static IEnumerable FilterByAddressTestsData
         {
             get
@@ -175,6 +187,10 @@ namespace Nethermind.Blockchain.Test.Find
                 yield return new TestCaseData(FilterBuilder.New().FromLatestBlock().ToLatestBlock()
                     .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
                     .WithAddresses(TestItem.AddressC).Build(), 1);
+                    
+                yield return new TestCaseData(FilterBuilder.New().FromFutureBlock().ToLatestBlock()
+                    .WithTopicExpressions(TestTopicExpressions.Or(TestItem.KeccakD, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))
+                    .WithAddresses(TestItem.AddressC).Build(), 0);
             }
         }
         

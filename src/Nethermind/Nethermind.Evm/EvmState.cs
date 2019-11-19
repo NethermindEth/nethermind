@@ -133,7 +133,7 @@ namespace Nethermind.Evm
         
         public ExecutionEnvironment Env { get; }
         public long GasAvailable { get; set; }
-        public UInt256 ProgramCounter { get; set; }
+        public int ProgramCounter { get; set; }
         internal ExecutionType ExecutionType { get; }
         internal bool IsPrecompile { get; }
         public bool IsTopLevel { get; }

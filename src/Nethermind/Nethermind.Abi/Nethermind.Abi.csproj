@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
         <LangVersion>7.3</LangVersion>
     </PropertyGroup>
 
@@ -10,7 +10,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="MathNet.Numerics.FSharp" Version="4.7.0" />
+      <PackageReference Include="MathNet.Numerics.FSharp" Version="4.9.0" />
     </ItemGroup>
 
 </Project>

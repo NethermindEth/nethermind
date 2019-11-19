@@ -37,6 +37,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using Nethermind.Wallet;
 using NUnit.Framework;
 
@@ -102,7 +103,7 @@ namespace Nethermind.Clique.Test
                 TxPool txPool = new TxPool(new InMemoryTxStorage(), _timestamper, _ethereumEcdsa, GoerliSpecProvider.Instance, new TxPoolConfig(), stateProvider, _logManager);
                 _pools[privateKey] = txPool;
 
-                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, GoerliSpecProvider.Instance, txPool, nodeLogManager);
+                BlockTree blockTree = new BlockTree(blocksDb, headersDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), GoerliSpecProvider.Instance, txPool, nodeLogManager);
                 blockTree.NewHeadBlock += (sender, args) => { _blockEvents[privateKey].Set(); };
 
                 BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -33,6 +34,7 @@ using NUnit.Framework;
 
 namespace Ethereum.PoW.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class EthashTests
     {
         [OneTimeSetUp]
@@ -51,7 +53,7 @@ namespace Ethereum.PoW.Test
         private static EthashTest Convert(string name, EthashTestJson testJson)
         {
             byte[] nonceBytes = Bytes.FromHexString(testJson.Nonce);
-            ulong nonceValue = nonceBytes.ToUInt64();
+            ulong nonceValue = nonceBytes.AsSpan().ReadEthUInt64();
 
             return new EthashTest(
                 name,
@@ -89,7 +91,9 @@ namespace Ethereum.PoW.Test
 
             // below we confirm that headerAndNonceHashed is calculated correctly
             // & that the method for calculating the result from mix hash is correct
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, test.Nonce.ToByteArray(Bytes.Endianness.Little))).Bytes;
+            byte[] nonceBytes = new byte[8];
+            BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, test.Nonce);
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes;
             byte[] resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
             Assert.AreEqual(resultHalfTest, test.Result.Bytes, "half test");
 

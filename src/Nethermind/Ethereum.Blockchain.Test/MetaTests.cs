@@ -25,7 +25,7 @@ using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
 {
-    [TestFixture]
+    [TestFixture][Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
         [Test]
@@ -40,10 +40,13 @@ namespace Ethereum.Blockchain.Test
             {
                 string expectedTypeName = ExpectedTypeName(directory);
                 Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
-                MethodInfo methodInfo = type?.GetMethod("Test");
-                TestCaseSourceAttribute attribute = methodInfo?.GetCustomAttribute<TestCaseSourceAttribute>();
-                if(attribute == null || !attribute.MethodParams.Contains(directory))
+                if(type == null && directory != "stEWASMTests")
                 {
+                    if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
+                    {
+                        continue;
+                    }
+                    
                     missingCategories.Add(directory);
                 }
             }

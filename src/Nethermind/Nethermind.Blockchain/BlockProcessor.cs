@@ -191,46 +191,55 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
-            if (suggestedBlock.IsGenesis) return suggestedBlock;
-
-            if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
+            Block block;
+            if (suggestedBlock.IsGenesis)
             {
-                if (_logger.IsInfo) _logger.Info("Applying DAO transition");
-                ApplyDaoTransition();
+                block = suggestedBlock;
+            }
+            else
+            {
+                if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
+                {
+                    if (_logger.IsInfo) _logger.Info("Applying DAO transition");
+                    ApplyDaoTransition();
+                }
+
+                block = PrepareBlockForProcessing(suggestedBlock);
+                _additionalBlockProcessor?.PreProcess(block, options);
+                
+                var receipts = ProcessTransactions(block, options, blockTracer);
+                SetReceiptsRoot(block, receipts);
+                ApplyMinerRewards(block, blockTracer);
+                
+                _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+                block.Header.StateRoot = _stateProvider.StateRoot;
+                block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+                
+                _additionalBlockProcessor?.PostProcess(block, receipts, options);
+
+                if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
+                {
+                    if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+                    // if (_logger.IsError) _logger.Error($"State: {_stateProvider.DumpState()}");
+                    throw new InvalidBlockException(suggestedBlock.Hash);
+                }
+
+                if ((options & ProcessingOptions.StoreReceipts) != 0)
+                {
+                    StoreTxReceipts(block, receipts);
+                }
+                
+                if ((options & ProcessingOptions.StoreTraces) != 0)
+                {
+                    StoreTraces(blockTracer as ParityLikeBlockTracer);
+                }
             }
 
-            Block block = PrepareBlockForProcessing(suggestedBlock);
-            _additionalBlockProcessor?.PreProcess(block);
-            
-            var receipts = ProcessTransactions(block, options, blockTracer);
-            SetReceiptsRoot(block, receipts);
-            ApplyMinerRewards(block, blockTracer);
-            
-            _additionalBlockProcessor?.PostProcess(block, receipts);
-            
-            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-
-            block.Header.StateRoot = _stateProvider.StateRoot;
-            block.Header.Hash = BlockHeader.CalculateHash(block.Header);
-
-            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0)
             {
-                if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
-                // if (_logger.IsError) _logger.Error($"State: {_stateProvider.DumpState()}");
-                throw new InvalidBlockException(suggestedBlock.Hash);
+                BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
             }
 
-            if ((options & ProcessingOptions.StoreReceipts) != 0)
-            {
-                StoreTxReceipts(block, receipts);
-            }
-            
-            if ((options & ProcessingOptions.StoreTraces) != 0)
-            {
-                StoreTraces(blockTracer as ParityLikeBlockTracer);
-            }
-
-            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
             return block;
         }
 
@@ -377,19 +386,19 @@ namespace Nethermind.Blockchain
                 _additionalBlockProcessors = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
             }
             
-            public void PreProcess(Block block)
+            public void PreProcess(Block block, ProcessingOptions options)
             {
                 for (int i = 0; i < _additionalBlockProcessors.Length; i++)
                 {
-                    _additionalBlockProcessors[i].PreProcess(block);
+                    _additionalBlockProcessors[i].PreProcess(block, options);
                 }
             }
 
-            public void PostProcess(Block block, TxReceipt[] receipts)
+            public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options)
             {
                 for (int i = 0; i < _additionalBlockProcessors.Length; i++)
                 {
-                    _additionalBlockProcessors[i].PostProcess(block, receipts);
+                    _additionalBlockProcessors[i].PostProcess(block, receipts, options);
                 }
             }
         }

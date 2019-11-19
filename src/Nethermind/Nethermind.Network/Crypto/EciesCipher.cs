@@ -17,6 +17,7 @@
  */
 
 using System.IO;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
@@ -97,6 +98,8 @@ namespace Nethermind.Network.Crypto
             return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
         }
 
+        private static IesParameters _iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
+        
         private IIesEngine MakeIesEngine(bool isEncrypt, PublicKey publicKey, PrivateKey privateKey, byte[] iv)
         {
             AesEngine aesFastEngine = new AesEngine();
@@ -106,8 +109,8 @@ namespace Nethermind.Network.Crypto
                 new Sha256Digest(),
                 new BufferedBlockCipher(new SicBlockCipher(aesFastEngine)));
 
-            IesParameters iesParameters = new IesWithCipherParameters(new byte[] { }, new byte[] { }, KeySize, KeySize);
-            ParametersWithIV parametersWithIV = new ParametersWithIV(iesParameters, iv);
+            
+            ParametersWithIV parametersWithIV = new ParametersWithIV(_iesParameters, iv);
             byte[] secret = Proxy.EcdhSerialized(publicKey.Bytes, privateKey.KeyBytes);
             iesEngine.Init(isEncrypt, _optimizedKdf.Derive(secret), parametersWithIV);
             return iesEngine;

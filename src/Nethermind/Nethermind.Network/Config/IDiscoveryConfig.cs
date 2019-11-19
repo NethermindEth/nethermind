@@ -43,21 +43,6 @@ namespace Nethermind.Network.Config
         int BitsPerHop { get; }
 
         /// <summary>
-        /// Current Node host
-        /// </summary>
-        string MasterHost { get; set; }
-
-        /// <summary>
-        /// Current Node external ip
-        /// </summary>
-        string MasterExternalIp { get; set; }
-
-        /// <summary>
-        /// Current Node port
-        /// </summary>
-        int MasterPort { get; set; }
-
-        /// <summary>
         /// Max Discovery Rounds
         /// </summary>
         int MaxDiscoveryRounds { get; }

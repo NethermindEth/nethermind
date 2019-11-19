@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -139,9 +138,15 @@ namespace Nethermind.Facade
         public TxReceipt GetReceipt(Keccak txHash)
         {
             var txReceipt = _receiptStorage.Find(txHash);
-            txReceipt.TxHash = txHash;
+            if (txReceipt != null)
+            {
+                txReceipt.TxHash = txHash;
+            }
+
             return txReceipt;
         }
+
+        public TxReceipt[] GetReceipts(Block block) => _receiptStorage.FindForBlock(block);
 
         public class CallOutput
         {
@@ -199,6 +204,11 @@ namespace Nethermind.Facade
             _stateProvider.Reset();
             _storageProvider.Reset();
             return callOutputTracer.GasSpent;
+        }
+
+        public long GetChainId()
+        {
+            return _blockTree.ChainId;
         }
 
         public byte[] GetCode(Address address)
@@ -319,5 +329,18 @@ namespace Nethermind.Facade
         public Block FindLatestBlock() => _blockFinder.FindLatestBlock();
 
         public Block FindPendingBlock() => _blockFinder.FindPendingBlock();
+        public BlockHeader FindHeader(Keccak blockHash) => _blockFinder.FindHeader(blockHash);
+
+        public BlockHeader FindHeader(long blockNumber) => _blockFinder.FindHeader(blockNumber);
+
+        public BlockHeader FindGenesisHeader() => _blockFinder.FindGenesisHeader();
+
+        public BlockHeader FindHeadHeader() => _blockFinder.FindHeadHeader();
+
+        public BlockHeader FindEarliestHeader() => _blockFinder.FindEarliestHeader();
+
+        public BlockHeader FindLatestHeader() => _blockFinder.FindLatestHeader();
+
+        public BlockHeader FindPendingHeader() => _blockFinder.FindPendingHeader();
     }
 }

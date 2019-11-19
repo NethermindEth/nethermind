@@ -26,9 +26,9 @@ namespace Nethermind.Core.Test.Builders
 {
     public class TransactionBuilder : BuilderBase<Transaction>
     {   
-        public TransactionBuilder()
+        public TransactionBuilder(bool isSystem = false)
         {   
-            TestObjectInternal = new Transaction();
+            TestObjectInternal = new Transaction(isSystem);
             TestObjectInternal.GasPrice = 1;
             TestObjectInternal.GasLimit = 21000;
             TestObjectInternal.To = Address.Zero;

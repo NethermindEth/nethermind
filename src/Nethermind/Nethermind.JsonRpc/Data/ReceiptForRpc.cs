@@ -17,7 +17,6 @@
  */
 
 using System.Linq;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -48,18 +47,18 @@ namespace Nethermind.JsonRpc.Data
         }
         
         public Keccak TransactionHash { get; set; }
-        public BigInteger TransactionIndex { get; set; }
+        public long TransactionIndex { get; set; }
         public Keccak BlockHash { get; set; }
-        public BigInteger BlockNumber { get; set; }
-        public BigInteger CumulativeGasUsed { get; set; }
-        public BigInteger GasUsed { get; set; }
+        public long BlockNumber { get; set; }
+        public long CumulativeGasUsed { get; set; }
+        public long GasUsed { get; set; }
         public Address From { get; set; }
         public Address To { get; set; }
         public Address ContractAddress { get; set; }
         public LogEntryForRpc[] Logs { get; set; }
         public Bloom LogsBloom { get; set; }
         public Keccak Root { get; set; }
-        public BigInteger Status { get; set; }
+        public long Status { get; set; }
         public string Error { get; set; }
     }
 }

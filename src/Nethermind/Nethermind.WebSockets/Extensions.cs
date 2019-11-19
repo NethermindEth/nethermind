@@ -39,13 +39,7 @@ namespace Nethermind.WebSockets
                 webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
                 logger = scope.ServiceProvider.GetService<ILogManager>().GetClassLogger();
             }
-
-            var webSocketOptions = new WebSocketOptions
-            {
-                KeepAliveInterval = TimeSpan.FromSeconds(120),
-                ReceiveBufferSize = 4 * 1024
-            };
-            app.UseWebSockets(webSocketOptions);
+            
             app.Use(async (context, next) =>
             {
                 var id = string.Empty;
@@ -53,25 +47,7 @@ namespace Nethermind.WebSockets
                 IWebSocketsModule module = null;
                 try
                 {
-                    if (!context.Request.Path.HasValue)
-                    {
-                        await next();
-                        return;
-                    }
-
                     var path = context.Request.Path.Value;
-                    if (!path.StartsWith("/ws"))
-                    {
-                        await next();
-                        return;
-                    }
-
-                    if (!context.WebSockets.IsWebSocketRequest)
-                    {
-                        context.Response.StatusCode = 400;
-                        return;
-                    }
-
                     var moduleName = path.Split("/").LastOrDefault();
                     module = webSocketsManager.GetModule(moduleName);
                     if (module is null)

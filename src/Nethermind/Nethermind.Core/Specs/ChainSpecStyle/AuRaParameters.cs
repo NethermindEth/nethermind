@@ -59,6 +59,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         
         public long BlockRewardContractTransition { get; set; }
         
+        public long ValidateScoreTransition { get; set; }
+
         public Validator Validators { get; set; }
         
         public enum ValidatorType

@@ -18,6 +18,7 @@
 
 using System;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.EthStats.Messages;
 using Nethermind.Logging;
@@ -28,7 +29,7 @@ namespace Nethermind.EthStats.Clients
     public class EthStatsClient : IEthStatsClient, IDisposable
     {
         private const string ServerPingMessage = "primus::ping::";
-        private readonly string _webSocketsUrl;
+        private string _webSocketsUrl;
         private readonly int _reconnectionInterval;
         private readonly IMessageSender _messageSender;
         private readonly ILogger _logger;
@@ -45,7 +46,27 @@ namespace Nethermind.EthStats.Clients
 
         public async Task<IWebsocketClient> InitAsync()
         {
-            if (_logger.IsInfo) _logger.Info($"Starting ETH stats...");
+            if (_logger.IsInfo) _logger.Info($"Starting ETH stats [{_webSocketsUrl}]...");
+            if (!_webSocketsUrl.StartsWith("wss"))
+            {
+                try
+                {
+                    using var httpClient = new HttpClient();
+                    var host = _webSocketsUrl.Split("://").Last();
+                    var response = await httpClient.GetAsync($"http://{host}");
+                    var requestedUrl = response.RequestMessage.RequestUri;
+                    if (requestedUrl.Scheme.Equals("https"))
+                    {
+                        _webSocketsUrl = $"wss://{host}";
+                        if (_logger.IsInfo) _logger.Info($"Moved ETH stats to: {_webSocketsUrl}");
+                    }
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
+
             var url = new Uri(_webSocketsUrl);
             _client = new WebsocketClient(url)
             {

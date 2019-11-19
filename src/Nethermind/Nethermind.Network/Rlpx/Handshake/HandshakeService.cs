@@ -60,7 +60,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
-        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake)
+        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake, bool preEip8Format = false)
         {
             handshake.RemoteNodeId = remoteNodeId;
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
@@ -69,21 +69,36 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] staticSharedSecret = Proxy.EcdhSerialized(remoteNodeId.Bytes, _privateKey.KeyBytes);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
-            AuthEip8Message authMessage = new AuthEip8Message();
-            authMessage.Nonce = handshake.InitiatorNonce;
-            authMessage.PublicKey = _privateKey.PublicKey;
-            authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
+            if (preEip8Format)
+            {
+                AuthMessage authMessage = new AuthMessage();
+                authMessage.Nonce = handshake.InitiatorNonce;
+                authMessage.PublicKey = _privateKey.PublicKey;
+                authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
+                authMessage.IsTokenUsed = false;
+                authMessage.EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes);
+                
+                byte[] authData = _messageSerializationService.Serialize(authMessage);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData, Array.Empty<byte>());
 
-            byte[] authData = _messageSerializationService.Serialize(authMessage);
-            int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
-            byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-            byte[] packetData = _eciesCipher.Encrypt(
-                remoteNodeId,
-                authData,
-                sizeBytes);
+                handshake.AuthPacket = new Packet(packetData);
+                return handshake.AuthPacket;
+            }
+            else
+            {
+                AuthEip8Message authMessage = new AuthEip8Message();
+                authMessage.Nonce = handshake.InitiatorNonce;
+                authMessage.PublicKey = _privateKey.PublicKey;
+                authMessage.Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
 
-            handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-            return handshake.AuthPacket;
+                byte[] authData = _messageSerializationService.Serialize(authMessage);
+                int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData,sizeBytes);
+
+                handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+                return handshake.AuthPacket;
+            }
         }
 
         public Packet Ack(EncryptionHandshake handshake, Packet auth)
@@ -91,28 +106,28 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.AuthPacket = auth;
 
             AuthMessageBase authMessage;
-            bool isOld = false;
+            bool preEip8Format = false;
             byte[] plainText = null;
             try
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt an old version of {nameof(AuthMessage)}");
-                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
+                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data);
             }
             catch (Exception ex)
             {
                 if (_logger.IsTrace) _logger.Trace($"Exception when decrypting ack {ex.Message}");
             }
 
-            if (!isOld)
+            if (preEip8Format)
+            {
+                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
+            }
+            else
             {
                 if (_logger.IsTrace) _logger.Trace($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
                 byte[] sizeData = auth.Data.Slice(0, 2);
                 (_, plainText) = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
-            }
-            else
-            {
-                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plainText);
             }
 
             var nodeId = authMessage.PublicKey;
@@ -128,14 +143,16 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             handshake.RemoteEphemeralPublicKey = _ecdsa.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
-            byte[] ackData;
-            if (isOld) // what was the difference? shall I really include ephemeral public key in v4?
+            byte[] data;
+            if (preEip8Format)
             {
                 if (_logger.IsTrace) _logger.Trace($"Building an {nameof(AckMessage)}");
                 AckMessage ackMessage = new AckMessage();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                ackData = _messageSerializationService.Serialize(ackMessage);
+                var ackData = _messageSerializationService.Serialize(ackMessage);
+                
+                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, Array.Empty<byte>());
             }
             else
             {
@@ -143,13 +160,14 @@ namespace Nethermind.Network.Rlpx.Handshake
                 AckEip8Message ackMessage = new AckEip8Message();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                ackData = _messageSerializationService.Serialize(ackMessage);
+                var ackData = _messageSerializationService.Serialize(ackMessage);
+                
+                int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes));
             }
-
-            int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
-            byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-            byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, sizeBytes);
-            handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+            
+            handshake.AckPacket = new Packet(data);
             SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;
         }
@@ -158,18 +176,18 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             handshake.AckPacket = ack;
 
-            bool isOld = false;
+            bool preEip8Format = false;
             byte[] plainText = null;
             try
             {
-                (isOld, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
+                (preEip8Format, plainText) = _eciesCipher.Decrypt(_privateKey, ack.Data);
             }
             catch (Exception ex)
             {
                 if (_logger.IsTrace) _logger.Trace($"Exception when decrypting agree {ex.Message}");
             }
 
-            if (isOld)
+            if (preEip8Format)
             {
                 AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plainText);
                 if (_logger.IsTrace) _logger.Trace("Received ACK old");
@@ -208,16 +226,23 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public static void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)
         {
-            byte[] ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
-            byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
-            byte[] sharedSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, nonceHash)).Bytes;
-            byte[] token = Keccak.Compute(sharedSecret).Bytes;
-            byte[] aesSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, sharedSecret)).Bytes;
-            Array.Clear(sharedSecret, 0, sharedSecret.Length); // TODO: it was passed in the concat for Keccak so not good enough
-            byte[] macSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, aesSecret)).Bytes;
-            Array.Clear(ephemeralSharedSecret, 0, ephemeralSharedSecret.Length); // TODO: it was passed in the concat for Keccak so not good enough
+            Span<byte> tempConcat = stackalloc byte[64];
+            Span<byte> ephemeralSharedSecret = Proxy.EcdhSerialized(handshake.RemoteEphemeralPublicKey.Bytes, handshake.EphemeralPrivateKey.KeyBytes);
+            Span<byte> nonceHash = ValueKeccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).BytesAsSpan;
+            ephemeralSharedSecret.CopyTo(tempConcat.Slice(0, 32));
+            nonceHash.CopyTo(tempConcat.Slice(32, 32));
+            Span<byte> sharedSecret = ValueKeccak.Compute(tempConcat).BytesAsSpan;
+//            byte[] token = Keccak.Compute(sharedSecret).Bytes;
+            sharedSecret.CopyTo(tempConcat.Slice(32, 32));
+            byte[] aesSecret = Keccak.Compute(tempConcat).Bytes;
+            
+            sharedSecret.Clear();
+            aesSecret.CopyTo(tempConcat.Slice(32, 32));
+            byte[] macSecret = Keccak.Compute(tempConcat).Bytes;
+            
+            ephemeralSharedSecret.Clear();
             handshake.Secrets = new EncryptionSecrets();
-            handshake.Secrets.Token = token;
+//            handshake.Secrets.Token = token;
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
 

@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.Rlpx.TestWrappers
             {
                 base.Decode(_context, input, result);
             }
-            catch (CorruptedFrameException e)
+            catch (CorruptedFrameException)
             {
                 if (throwOnCorruptedFrames)
                 {

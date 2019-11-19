@@ -36,17 +36,14 @@ namespace Nethermind.Core.Crypto
 
         public PrivateKey Generate()
         {
-            PrivateKey privateKey = null;
             do
             {
                 var bytes = _cryptoRandom.GenerateRandomBytes(32);
                 if (Proxy.VerifyPrivateKey(bytes))
                 {
-                    privateKey = new PrivateKey(bytes);
+                    return new PrivateKey(bytes);
                 }
-            } while (privateKey == null);
-
-            return privateKey;
+            } while (true);
         }
     }
 }

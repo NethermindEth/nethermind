@@ -17,8 +17,10 @@
  */
 
 using System;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
+using NUnit.Framework.Interfaces;
 
 namespace Nethermind.Core.Test
 {
@@ -95,6 +97,16 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[64];
             // ReSharper disable once ObjectCreationAsStatement
             new PublicKey(bytes);
+        }
+        
+        [Test]
+        [Explicit]
+        public void Generate_Keys()
+        {
+            var key = new PrivateKey(new CryptoRandom().GenerateRandomBytes(32));
+            TestContext.Out.WriteLine(key);
+            TestContext.Out.WriteLine(key.PublicKey);
+            TestContext.Out.WriteLine(key.Address);
         }
     }
 }

@@ -17,10 +17,8 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core.Json;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Data
 {
@@ -43,6 +41,12 @@ namespace Nethermind.JsonRpc.Data
         {
             Type = type;
             BlockNumber = null;
+        }
+        
+        public BlockParameter(long number)
+        {
+            Type = BlockParameterType.BlockNumber;
+            BlockNumber = number;
         }
 
         public void FromJson(string jsonValue)

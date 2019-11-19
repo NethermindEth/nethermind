@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
@@ -30,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
         public bool IsBootnode { get; set; }
         public bool IsTrusted { get; set; }
         public bool IsStatic { get; set; }
+        public string Enode { get; set; }
 
         public PeerInfo()
         {
@@ -44,6 +44,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
             IsBootnode = peer.Node.IsBootnode;
             IsTrusted = peer.Node.IsTrusted;
             IsStatic = peer.Node.IsStatic;
+            Enode = peer.Node.ToString("e");
         }
     }
 }

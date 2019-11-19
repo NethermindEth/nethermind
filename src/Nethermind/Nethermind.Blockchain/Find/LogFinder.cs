@@ -39,10 +39,15 @@ namespace Nethermind.Blockchain.Find
         public FilterLog[] FindLogs(LogFilter filter)
         {
             var toBlock = _blockFinder.GetBlock(filter.ToBlock);
+            if (toBlock is null)
+            {
+                return Array.Empty<FilterLog>();
+            }
+            
             var fromBlock = _blockFinder.GetBlock(filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
 
-            while (toBlock.Number >= fromBlock.Number)
+            while (toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
             {
                 if (filter.Matches(toBlock.Bloom))
                 {
@@ -60,7 +65,7 @@ namespace Nethermind.Blockchain.Find
 
         private void FindLogsInBlock(LogFilter filter, Block currentBlock, List<FilterLog> results)
         {
-            var receipts = GetReceiptsFromBlock(currentBlock);
+            var receipts = _receiptStorage.FindForBlock(currentBlock);
             long logIndexInBlock = 0;
             foreach (var receipt in receipts)
             {
@@ -87,18 +92,6 @@ namespace Nethermind.Blockchain.Find
                 }
             }
         }
-
-        private TxReceipt[] GetReceiptsFromBlock(Block block)
-        {
-            TxReceipt[] result = new TxReceipt[block.Body.Transactions.Length];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[i] = _receiptStorage.Find(block.Body.Transactions[i].Hash);
-            }
-
-            return result;
-        }
-
 
         private bool TryGetParentBlock(Block currentBlock, out Block parentBlock)
         {

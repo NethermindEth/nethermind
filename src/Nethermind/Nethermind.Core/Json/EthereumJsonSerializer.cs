@@ -16,18 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Core.Json
 {
     public class EthereumJsonSerializer : IJsonSerializer
     {
+        private JsonSerializer _internalSerializer;
+        private JsonSerializer _internalReadableSerializer;
+
         public EthereumJsonSerializer()
         {
-            _serializer = JsonSerializer.Create(_settings);
+            _internalSerializer = JsonSerializer.Create(_settings);
+            _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
         }
 
         public static IList<JsonConverter> BasicConverters { get; } = new List<JsonConverter>
@@ -44,7 +50,7 @@ namespace Nethermind.Core.Json
             new NullableBigIntegerConverter(),
             new PublicKeyConverter()
         };
-        
+
         private static IList<JsonConverter> ReadableConverters { get; } = new List<JsonConverter>
         {
             new AddressConverter(),
@@ -59,112 +65,89 @@ namespace Nethermind.Core.Json
             new NullableBigIntegerConverter(NumberConversion.Decimal),
             new PublicKeyConverter()
         };
-        
+
         private static JsonSerializerSettings _settings = new JsonSerializerSettings
         {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.None,
             Converters = BasicConverters
         };
-        
+
         private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
         {
+            ContractResolver = new CamelCasePropertyNamesContractResolver(),
             NullValueHandling = NullValueHandling.Ignore,
             Formatting = Formatting.Indented,
             Converters = ReadableConverters
         };
         
-        public T DeserializeAnonymousType<T>(string json, T definition)
-        {
-            throw new NotSupportedException();
-        }
-
         public T Deserialize<T>(string json)
         {
-            return JsonConvert.DeserializeObject<T>(json, _settings);
-        }
-
-        private JsonSerializer _serializer;
-
-        public (T Model, List<T> Collection) DeserializeObjectOrArray<T>(string json)
-        {
-            var token = JToken.Parse(json);
-            if (token is JArray array)
-            {
-                foreach (var tokenElement in array)
-                {
-                    UpdateParams(tokenElement);
-                }
-
-                return (default, array.ToObject<List<T>>(_serializer));
-            }
-            
-            UpdateParams(token);
-            return (token.ToObject<T>(_serializer), null);
-        }
-        
-        private void UpdateParams(JToken token)
-        {
-            var paramsToken = token.SelectToken("params");
-            if (paramsToken == null)
-            {
-                paramsToken = token.SelectToken("Params");
-                if (paramsToken == null)
-                {
-                    return;
-                }
-
-//                if (paramsToken == null)
-//                {
-//                    throw new FormatException("Missing 'params' token");
-//                }
-            }
-            
-            var values = new List<string>();
-            foreach (var value in paramsToken.Value<IEnumerable<object>>())
-            {
-                var valueString = value?.ToString();
-                if (valueString == null)
-                {
-                    values.Add($"\"null\"");
-                    continue;
-                }
-                
-                if (valueString.StartsWith("{") || valueString.StartsWith("["))
-                {
-                    values.Add(Serialize(valueString));
-                    continue;
-                }
-                values.Add($"\"{valueString}\"");
-            }
-
-            var json = $"[{string.Join(",", values)}]";
-            paramsToken.Replace(JToken.Parse(json));
+            using StringReader reader = new StringReader(json);
+            using JsonReader jsonReader = new JsonTextReader(reader);
+            return _internalSerializer.Deserialize<T>(jsonReader);
         }
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            return JsonConvert.SerializeObject(value, indented ? _readableSettings : _settings);
+            StringWriter stringWriter = new StringWriter(new StringBuilder(256), CultureInfo.InvariantCulture);
+            using (JsonTextWriter jsonTextWriter = new JsonTextWriter(stringWriter))
+            {
+                if (indented)
+                {
+                    jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                    _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
+                }
+                else
+                {
+                    jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                    _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+                }
+            }
+            
+            return stringWriter.ToString();
+        }
+        
+        public void Serialize<T>(Stream stream, T value, bool indented = false)
+        {
+            StreamWriter streamWriter = new StreamWriter(stream);
+            using JsonTextWriter jsonTextWriter = new JsonTextWriter(streamWriter);
+            if (indented)
+            {
+                jsonTextWriter.Formatting = _internalReadableSerializer.Formatting;
+                _internalReadableSerializer.Serialize(jsonTextWriter, value, typeof(T));
+            }
+            else
+            {
+                jsonTextWriter.Formatting = _internalSerializer.Formatting;
+                _internalSerializer.Serialize(jsonTextWriter, value, typeof(T));    
+            }
         }
 
         public void RegisterConverter(JsonConverter converter)
         {
             BasicConverters.Add(converter);
             ReadableConverters.Add(converter);
-            
+
             _readableSettings = new JsonSerializerSettings
             {
+                ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.Indented,
                 Converters = ReadableConverters
             };
-            
+
             _settings = new JsonSerializerSettings
             {
+                ContractResolver = new CamelCasePropertyNamesContractResolver(),
                 NullValueHandling = NullValueHandling.Ignore,
                 Formatting = Formatting.None,
                 Converters = BasicConverters
             };
+
+            _internalSerializer = JsonSerializer.Create(_settings);
+            _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
         }
     }
 }

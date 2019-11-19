@@ -91,5 +91,9 @@ namespace Nethermind.Db.Config
         uint EthRequestsDbWriteBufferNumber { get; set; }
         ulong EthRequestsDbBlockCacheSize { get; set; }
         bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; }
+        
+        uint RecycleLogFileNum { get; set; }
+        bool WriteAheadLogSync { get; set; }
+        
     }
 }

@@ -13,4 +13,4 @@ Generally the faster IO operations the better. For this reason Digital Ocean and
   20GB | 4GB RAM | 2 Cores CPU
    
  Mainnet Full Archive
-  3TB disk space | 20GB RAM | 4 Cores CPU
+  4TB disk space | 20GB RAM | 4 Cores CPU

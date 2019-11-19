@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
             AssertGas(result,
-                21000 + GasCostOf.VeryLow * 2 + GasCostOf.SStoreNetMetered + GasCostOf.ExtCodeHash);
+                21000 + GasCostOf.VeryLow * 2 + GasCostOf.SStoreNetMeteredEip1283 + GasCostOf.ExtCodeHash);
             AssertStorage(UInt256.Zero, Keccak.Zero);
         }
 

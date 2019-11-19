@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp2.2</TargetFramework>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
         <LangVersion>latest</LangVersion>
     </PropertyGroup>
 
@@ -13,9 +13,9 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
       <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
+      <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
     </ItemGroup>
 
 </Project>

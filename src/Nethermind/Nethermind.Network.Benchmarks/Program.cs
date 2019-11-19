@@ -23,11 +23,12 @@ namespace Nethermind.Network.Benchmarks
     public class Program
     {
         public static void Main(string[] args)
-        {   
+        {
+            BenchmarkRunner.Run<HandshakeBenchmarks>();
 //            BenchmarkRunner.Run<KdfDerivation>();
 //            BenchmarkRunner.Run<EcdhAgreement>();
-            BenchmarkRunner.Run<OutFlow>();
-            BenchmarkRunner.Run<InFlow>();
+//            BenchmarkRunner.Run<OutFlowBenchmark>();
+//            BenchmarkRunner.Run<InFlowBenchmark>();
 //            BenchmarkRunner.Run<NettyFrameEncoder>();
 //            BenchmarkRunner.Run<NettyFrameMerger>();
 //            BenchmarkRunner.Run<NettyPacketSplitter>();

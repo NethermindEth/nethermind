@@ -57,17 +57,11 @@ namespace Nethermind.JsonRpc.Test
         public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IModule
         {
             var moduleProvider = new TestRpcModuleProvider<T>(module);
-            moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module)));
+            moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
             IJsonRpcService service = new JsonRpcService(moduleProvider, NullLogManager.Instance);
             return service;
         }
-        
-        //{
-        //    "jsonrpc": "2.0",
-        //    "method": "eth_getBlockByNumber",
-        //    "params": [ "0x1b4", true ],
-        //    "id": 67
-        //}
+
         public static JsonRpcRequest GetJsonRequest(string method, params string[] parameters)
         {
             var request = new JsonRpcRequest()

@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Tracing
             trace.BlockNumber = (long)rlpStream.DecodeUInt256();
             trace.TransactionHash = rlpStream.DecodeKeccak();
             Span<byte> txPosBytes = rlpStream.DecodeByteArraySpan();
-            trace.TransactionPosition = txPosBytes.Length == 0 ? (int?) null : txPosBytes.ToInt32();
+            trace.TransactionPosition = txPosBytes.Length == 0 ? (int?) null : txPosBytes.ReadEthInt32();
             rlpStream.ReadSequenceLength();
             trace.Action = DecodeAction(rlpStream);
             trace.StateChanges = DecodeStateDiff(rlpStream);

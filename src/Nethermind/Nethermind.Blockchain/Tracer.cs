@@ -56,6 +56,11 @@ namespace Nethermind.Blockchain
             return Trace(block, block.Transactions[txIndex].Hash, options);
         }
 
+        public GethLikeTxTrace Trace(Rlp block, Keccak txHash, GethTraceOptions options)
+        {
+            return TraceBlock(GetBlockToTrace(block), options, txHash).FirstOrDefault();
+        }
+
         public GethLikeTxTrace Trace(Keccak txHash, GethTraceOptions traceOptions)
         {
             TxReceipt txReceipt = _receiptStorage.Find(txHash);
@@ -63,7 +68,7 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
-            
+
             Block block = _blockTree.FindBlock(txReceipt.BlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null)
             {
@@ -87,7 +92,7 @@ namespace Nethermind.Blockchain
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
-            block.Body = new BlockBody(new[] {tx}, new BlockHeader[]{});
+            block.Body = new BlockBody(new[] {tx}, new BlockHeader[] { });
             GethLikeBlockTracer blockTracer = new GethLikeBlockTracer(tx.Hash, options);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain, blockTracer);
             return blockTracer.BuildResult().SingleOrDefault();
@@ -104,26 +109,20 @@ namespace Nethermind.Blockchain
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             return TraceBlock(block, options);
         }
-        
+
         public GethLikeTxTrace[] TraceBlock(Rlp blockRlp, GethTraceOptions options)
         {
-            Block block = Rlp.Decode<Block>(blockRlp);
-            if (block.TotalDifficulty == null)
-            {
-                block.TotalDifficulty = 1;
-            }
-            
-            return TraceBlock(block, options);
+            return TraceBlock(GetBlockToTrace(blockRlp), options);
         }
 
         public ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes)
         {
-            byte[] traceBytes = _traceDb.Get(txHash); 
+            byte[] traceBytes = _traceDb.Get(txHash);
             if (traceBytes != null)
             {
                 return Rlp.Decode<ParityLikeTxTrace>(traceBytes);
             }
-            
+
             TxReceipt txReceipt = _receiptStorage.Find(txHash);
             Block block = _blockTree.FindBlock(txReceipt.BlockNumber, BlockTreeLookupOptions.RequireCanonical);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
@@ -135,14 +134,14 @@ namespace Nethermind.Blockchain
         {
             Block block = _blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
             bool loadedFromDb = true;
-            
+
             List<ParityLikeTxTrace> result = new List<ParityLikeTxTrace>();
             for (int i = 0; i < block.Transactions.Length; i++)
             {
-                byte[] traceBytes = _traceDb.Get(block.Transactions[i].Hash); 
+                byte[] traceBytes = _traceDb.Get(block.Transactions[i].Hash);
                 if (traceBytes != null)
                 {
-                     result.Add(Rlp.Decode<ParityLikeTxTrace>(traceBytes));
+                    result.Add(Rlp.Decode<ParityLikeTxTrace>(traceBytes));
                 }
                 else
                 {
@@ -164,8 +163,31 @@ namespace Nethermind.Blockchain
             {
                 return result.ToArray();
             }
-            
+
             return ParityTraceBlock(block, traceTypes);
+        }
+
+        private TransactionDecoder _transactionDecoder = new TransactionDecoder();
+
+        public ParityLikeTxTrace ParityTraceRawTransaction(byte[] txRlp, ParityTraceTypes traceTypes)
+        {
+            BlockHeader headBlockHeader = _blockTree.Head;
+            BlockHeader traceHeader = new BlockHeader(
+                headBlockHeader.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                headBlockHeader.Difficulty,
+                headBlockHeader.Number + 1,
+                headBlockHeader.GasLimit,
+                headBlockHeader.Timestamp + 1,
+                headBlockHeader.ExtraData);
+
+            Transaction tx = _transactionDecoder.Decode(new RlpStream(txRlp));
+            Block block = new Block(traceHeader, new[] {tx}, Enumerable.Empty<BlockHeader>());
+            block.Author = Address.Zero;
+            block.TotalDifficulty = headBlockHeader.TotalDifficulty + traceHeader.Difficulty;
+
+            return ParityTraceBlock(block, traceTypes)[0];
         }
 
         public ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes traceTypes)
@@ -188,7 +210,7 @@ namespace Nethermind.Blockchain
             return listener.BuildResult().SingleOrDefault();
         }
 
-        private GethLikeTxTrace[] TraceBlock(Block block, GethTraceOptions options)
+        private GethLikeTxTrace[] TraceBlock(Block block, GethTraceOptions options, Keccak txHash = null)
         {
             if (block == null) throw new InvalidOperationException("Only canonical, historical blocks supported");
 
@@ -198,7 +220,7 @@ namespace Nethermind.Blockchain
                 if (!_blockTree.IsMainChain(parent.Hash)) throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
 
-            GethLikeBlockTracer listener = new GethLikeBlockTracer(options);
+            GethLikeBlockTracer listener = txHash == null ? new GethLikeBlockTracer(options) : new GethLikeBlockTracer(txHash, options);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
         }
@@ -216,6 +238,17 @@ namespace Nethermind.Blockchain
             ParityLikeBlockTracer listener = new ParityLikeBlockTracer(traceTypes);
             _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.WithRollback | ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, listener);
             return listener.BuildResult().ToArray();
+        }
+
+        private static Block GetBlockToTrace(Rlp blockRlp)
+        {
+            Block block = Rlp.Decode<Block>(blockRlp);
+            if (block.TotalDifficulty == null)
+            {
+                block.TotalDifficulty = 1;
+            }
+
+            return block;
         }
     }
 }

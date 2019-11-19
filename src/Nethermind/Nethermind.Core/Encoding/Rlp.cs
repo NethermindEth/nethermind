@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -397,14 +398,19 @@ namespace Nethermind.Core.Encoding
         {
             return Encode((long) value);
         }
-
+        
         public static Rlp Encode(uint value)
         {
-            return Encode((long) value);
+            return value == 0U ? OfEmptyByteArray : Encode((long) value);
         }
 
         public static Rlp Encode(int value)
         {
+            if (value == 0)
+            {
+                return OfEmptyByteArray;
+            }
+
             return value < 0 ? Encode(new BigInteger(value), 4) : Encode((long) value);
         }
 
@@ -415,7 +421,9 @@ namespace Nethermind.Core.Encoding
         /// <returns></returns>
         public static Rlp Encode(ulong value)
         {
-            return Encode(value.ToBigEndianByteArray());
+            Span<byte> bytes = stackalloc byte[8];
+            BinaryPrimitives.WriteUInt64BigEndian(bytes, value);
+            return Encode(bytes);
         }
 
         public static Rlp Encode(long value)
@@ -1335,52 +1343,6 @@ namespace Nethermind.Core.Encoding
                 return result;
             }
 
-            public uint DecodeUInt()
-            {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0 : bytes.ToUInt32();
-            }
-
-            public long DecodeLong()
-            {
-                int prefix = ReadByte();
-                if (prefix < 128)
-                {
-                    return prefix;
-                }
-
-                if (prefix == 128)
-                {
-                    return 0;
-                }
-
-                int length = prefix - 128;
-                if (length > 8)
-                {
-                    throw new RlpException($"Unexpected length of long value: {length}");
-                }
-
-                long result = 0;
-                for (int i = 8; i > 0; i--)
-                {
-                    result = result << 8;
-                    if (i <= length)
-                    {
-                        result = result | Data[Position + length - i];
-                    }
-                }
-
-                Position += length;
-
-                return result;
-            }
-
-            public ulong DecodeUlong()
-            {
-                byte[] bytes = DecodeByteArray();
-                return bytes.Length == 0 ? 0L : bytes.ToUInt64();
-            }
-            
             public byte[] DecodeByteArray()
             {
                 return DecodeByteArraySpan().ToArray();
@@ -1637,6 +1599,11 @@ namespace Nethermind.Core.Encoding
         }
 
         public static int LengthOf(byte value)
+        {
+            return 1;
+        }
+        
+        public static int LengthOf(bool value)
         {
             return 1;
         }

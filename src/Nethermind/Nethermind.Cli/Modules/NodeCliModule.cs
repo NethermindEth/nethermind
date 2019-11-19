@@ -75,9 +75,9 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliProperty("node", "enode")]
-        public JsValue Enode()
+        public string Enode()
         {
-            return NodeManager.PostJint("net_localEnode").Result;
+            return NodeManager.Post<string>("net_localEnode").Result;
         }
         
         [CliProperty("node", "uri")]

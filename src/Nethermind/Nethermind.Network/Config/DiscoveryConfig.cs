@@ -24,9 +24,6 @@ namespace Nethermind.Network.Config
         public int BucketsCount { get; set; } = 256;
         public int Concurrency { get; set; } = 3;
         public int BitsPerHop { get; set; } = 8;
-        public string MasterHost { get; set; } = "127.0.0.1"; //=> "192.168.1.154";
-        public string MasterExternalIp { get; set; } = "127.0.0.1";
-        public int MasterPort { get; set; } = 30304;
         public int MaxDiscoveryRounds { get; set; } = 8;
         public int EvictionCheckInterval { get; set; } = 75;
         public int SendNodeTimeout { get; set; } = 500;

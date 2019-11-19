@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
@@ -250,12 +251,16 @@ namespace Nethermind.Mining
             return headerHashed;
         }
 
-        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+ public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
             const uint hashesInMix = MixBytes / HashBytes;
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonce.ToByteArray(Bytes.Endianness.Little))).Bytes; // this tests fine
+
+            byte[] nonceBytes = new byte[8];
+            BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, nonce);
+            
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 
             for (int i = 0; i < hashesInMix; i++)

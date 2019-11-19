@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcService
     {
         Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
-        JsonRpcResponse GetErrorResponse(ErrorType errorType, string message);
+        JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message);
         IList<JsonConverter> Converters { get; }
     }
 }

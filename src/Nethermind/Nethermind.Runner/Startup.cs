@@ -17,51 +17,97 @@
  */
 
 using System;
+using System.IO;
+using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Core.Json;
+using Nethermind.JsonRpc;
 using Nethermind.Runner.Config;
 using Nethermind.WebSockets;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace Nethermind.Runner
 {
     public class Startup
     {
-        public IConfiguration Configuration { get; }
-
-
-        public Startup(IConfiguration configuration)
+        private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
-            Configuration = configuration;
-        }
+            ContractResolver = new CamelCasePropertyNamesContractResolver()
+        };
+        
+        private IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
+            services.Configure<KestrelServerOptions>(options => { options.AllowSynchronousIO = true; });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
             var corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
         }
 
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env)
+        [Todo(Improve.Performance, "Can we write immediatelly to the stream instead of calling ToString on the entire JSON content?")]
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor,
+            IJsonRpcService jsonRpcService)
         {
-            var config = app.ApplicationServices.GetService<IConfigProvider>().GetConfig<IInitConfig>();
+            _jsonSerializer = new EthereumJsonSerializer();
+            foreach (var converter in jsonRpcService.Converters)
+            {
+                _jsonSerializer.RegisterConverter(converter);
+            }
+
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
             }
 
             app.UseCors("Cors");
-            if (config.WebSocketsEnabled)
+            
+            var initConfig = app.ApplicationServices.GetService<IConfigProvider>().GetConfig<IInitConfig>();
+            if (initConfig.WebSocketsEnabled)
             {
-                app.UseWebSocketsModules();
+                app.UseWebSockets();
+                app.UseWhen(ctx =>
+                    ctx.WebSockets.IsWebSocketRequest && ctx.Request.Path.HasValue &&
+                    ctx.Request.Path.Value.StartsWith("/ws"), builder => builder.UseWebSocketsModules());
             }
 
-            app.UseMvc();
+            app.Use(async (ctx, next) =>
+            {
+                if (ctx.Request.Method == "GET")
+                {
+                    await ctx.Response.WriteAsync("Nethermind JSON RPC");
+                    return;
+                }
+
+                if (ctx.Request.Method != "POST")
+                {
+                    return;
+                }
+
+                using var reader = new StreamReader(ctx.Request.Body, Encoding.UTF8);
+                var request = await reader.ReadToEndAsync();
+                var result = await jsonRpcProcessor.ProcessAsync(request);
+
+                if (result.IsCollection)
+                {
+                    _jsonSerializer.Serialize(ctx.Response.Body, result.Responses);
+                }
+                else
+                {
+                    _jsonSerializer.Serialize(ctx.Response.Body, result.Response);
+                }
+
+                await ctx.Response.CompleteAsync();
+            });
         }
     }
 }

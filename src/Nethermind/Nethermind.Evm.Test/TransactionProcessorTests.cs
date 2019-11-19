@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -131,6 +132,25 @@ namespace Nethermind.Evm.Test
             Execute(tracer, tx, block);
 
             Assert.AreEqual(StatusCode.Failure, tracer.TxReceipts[0].StatusCode);
+        }
+        
+        [Test]
+        public void Disables_Eip158_for_system_transactions()
+        {
+            _stateProvider.CreateAccount(TestItem.PrivateKeyA.Address, 0.Ether());
+            _stateProvider.Commit(_specProvider.GetSpec(1));
+
+            var blockNumber = MainNetSpecProvider.SpuriousDragonBlockNumber + 1;
+            Transaction tx = Build.A.SystemTransaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, blockNumber)
+                .WithGasPrice(0)
+                .WithValue(0)
+                .TestObject;
+
+            Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
+
+            BlockReceiptsTracer tracer = BuildTracer(block, tx, false, false);
+            Execute(tracer, tx, block);
+            _stateProvider.AccountExists(tx.SenderAddress).Should().BeTrue();
         }
         
         private BlockReceiptsTracer BuildTracer(Block block, Transaction tx, bool stateDiff, bool trace)

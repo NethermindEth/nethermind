@@ -1,7 +1,7 @@
 Security
 ********
 
-DO NOT treat Nethermind 0.9.9 as a secure way of handling your mainnet ETH funds!
+DO NOT use Nethermind wallet / signers for mainnet ETH handling!
 
 
 JSON RPC endpoint (port 8545) should not be exposed publicly (should be behind the firewall).

@@ -19,7 +19,6 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core;
-using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Events;
 using Nethermind.DataMarketplace.Initializers;

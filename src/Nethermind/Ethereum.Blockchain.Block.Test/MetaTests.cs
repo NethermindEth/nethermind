@@ -25,6 +25,7 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.All)]
     public class MetaTests
     {
         [Test]
@@ -41,6 +42,11 @@ namespace Ethereum.Blockchain.Block.Test
                 string expectedTypeName = ExpectedTypeName(directory);
                 if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
                 {
+                    if (new DirectoryInfo(directory).GetFiles().Any(f => f.Name.Contains(".resources.")))
+                    {
+                        continue;
+                    }
+                    
                     missingCategories.Add(directory);
                 }
             }

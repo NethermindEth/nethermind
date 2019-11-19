@@ -21,12 +21,9 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Network;
 using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
@@ -85,6 +82,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         public GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(blockHash, index, gethTraceOptions ?? GethTraceOptions.Default);
+        }
+
+        public GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
+        {
+            return _tracer.Trace(blockRlp, transactionHash, gethTraceOptions ?? GethTraceOptions.Default);
         }
 
         public GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null)

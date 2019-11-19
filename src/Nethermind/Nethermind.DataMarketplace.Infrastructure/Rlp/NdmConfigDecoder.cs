@@ -65,6 +65,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var fileMaxSize = rlpStream.DecodeUlong();
             var pluginsPath = rlpStream.DecodeString();
             var databasePath = rlpStream.DecodeString();
+            var proxyEnabled = rlpStream.DecodeBool();
+            var jsonRpcUrlProxies = rlpStream.DecodeArray(c => c.DecodeString());
 
             return new NdmConfig
             {
@@ -91,7 +93,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 FilesPath = filesPath,
                 FileMaxSize = fileMaxSize,
                 PluginsPath = pluginsPath,
-                DatabasePath = databasePath
+                DatabasePath = databasePath,
+                ProxyEnabled = proxyEnabled,
+                JsonRpcUrlProxies = jsonRpcUrlProxies
             };
         }
 
@@ -126,7 +130,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.FilesPath),
                 Nethermind.Core.Encoding.Rlp.Encode(item.FileMaxSize),
                 Nethermind.Core.Encoding.Rlp.Encode(item.PluginsPath),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DatabasePath));
+                Nethermind.Core.Encoding.Rlp.Encode(item.DatabasePath),
+                Nethermind.Core.Encoding.Rlp.Encode(item.ProxyEnabled),
+                Nethermind.Core.Encoding.Rlp.Encode(item.JsonRpcUrlProxies));
         }
 
         public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

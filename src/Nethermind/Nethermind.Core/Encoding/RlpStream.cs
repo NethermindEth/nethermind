@@ -212,6 +212,11 @@ namespace Nethermind.Core.Encoding
             }
         }
 
+        public void Encode(bool value)
+        {
+            Encode(value ? (byte) 1 : (byte) 0);
+        }
+
         public void Encode(int value)
         {
             Encode((long) value);
@@ -842,8 +847,8 @@ namespace Nethermind.Core.Encoding
 
         public uint DecodeUInt()
         {
-            byte[] bytes = DecodeByteArray();
-            return bytes.Length == 0 ? 0 : bytes.ToUInt32();
+            Span<byte> bytes = DecodeByteArraySpan();
+            return bytes.Length == 0 ? 0 : bytes.ReadEthUInt32();
         }
 
         public long DecodeLong()
@@ -882,8 +887,8 @@ namespace Nethermind.Core.Encoding
 
         public ulong DecodeUlong()
         {
-            byte[] bytes = DecodeByteArray();
-            return bytes.Length == 0 ? 0L : bytes.ToUInt64();
+            Span<byte> bytes = DecodeByteArraySpan();
+            return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
         public byte[] DecodeByteArray()
@@ -906,7 +911,7 @@ namespace Nethermind.Core.Encoding
 
             if (prefix == 128)
             {
-                return Extensions.Bytes.Empty;
+                return Bytes.Empty;
             }
 
             if (prefix <= 183)

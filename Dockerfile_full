@@ -4,12 +4,12 @@ RUN apt-get update -y && apt-get install -y git && \
     git clone https://github.com/NethermindEth/nethermind && \
     cd nethermind && git -c submodule."src/tests".update=none submodule update --init
     
-FROM microsoft/dotnet:2.2-sdk AS build
+FROM mcr.microsoft.com/dotnet/core/sdk:3.0 AS build
 COPY --from=clone /src .
 RUN cd nethermind/src/Nethermind/Nethermind.Runner && \
     dotnet publish -c release -o out
 
-FROM microsoft/dotnet:2.2-aspnetcore-runtime
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.0
 RUN apt-get update -y && apt-get install -y libsnappy-dev libc6-dev libc6 unzip
 
 COPY --from=build /nethermind/src/Nethermind/Nethermind.Runner/out .
@@ -17,9 +17,9 @@ COPY --from=build /nethermind/src/Nethermind/Nethermind.Runner/out .
 ENV ASPNETCORE_ENVIRONMENT docker
 ENV NETHERMIND_CONFIG mainnet
 ENV NETHERMIND_DETACHED_MODE true
-ENV NETHERMIND_INITCONFIG_JSONRPCENABLED false
-ENV NETHERMIND_URL http://*:8345
+ENV NETHERMIND_URL http://*:8545
 
-EXPOSE 8345 30312
+ARG GIT_COMMIT=unspecified
+LABEL git_commit=$GIT_COMMIT
 
 ENTRYPOINT dotnet Nethermind.Runner.dll

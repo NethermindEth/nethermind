@@ -51,6 +51,7 @@ namespace Nethermind.Network.Discovery
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly INetworkStorage _discoveryStorage;
+        private readonly INetworkConfig _networkConfig;
         private readonly IPerfService _perfService;
 
         private Timer _discoveryTimer;
@@ -68,6 +69,7 @@ namespace Nethermind.Network.Discovery
             IMessageSerializationService messageSerializationService,
             ICryptoRandom cryptoRandom,
             INetworkStorage discoveryStorage,
+            INetworkConfig networkConfig,
             IDiscoveryConfig discoveryConfig,
             ITimestamper timestamper,
             ILogManager logManager,
@@ -84,6 +86,7 @@ namespace Nethermind.Network.Discovery
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
             _discoveryStorage.StartBatch();
         }
 
@@ -140,7 +143,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_discoveryConfig.MasterHost}:{_discoveryConfig.MasterPort}");
+            if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
             _group = new MultithreadEventLoopGroup(1);
             var bootstrap = new Bootstrap();
             bootstrap
@@ -159,7 +162,7 @@ namespace Nethermind.Network.Discovery
                     .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
             }
 
-            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_discoveryConfig.MasterHost), _discoveryConfig.MasterPort)
+            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_networkConfig.LocalIp), _networkConfig.DiscoveryPort)
                 .ContinueWith(t => _channel = t.Result);
         }
 
@@ -390,9 +393,14 @@ namespace Nethermind.Network.Discovery
                     return;
                 }
                 var closeTask = _channel.CloseAsync();
-                if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout)) != closeTask)
+                CancellationTokenSource delayCancellation = new CancellationTokenSource();
+                if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
                 {
                     _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} miliseconds");
+                }
+                else
+                {
+                    delayCancellation.Cancel();
                 }
             }
             catch (Exception e)

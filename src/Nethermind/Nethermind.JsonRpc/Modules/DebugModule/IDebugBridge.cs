@@ -18,7 +18,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
@@ -28,6 +27,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace GetTransactionTrace(long blockNumber, int index, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace GetTransactionTrace(Keccak blockHash, int index, GethTraceOptions gethTraceOptions = null);
+        GethLikeTxTrace GetTransactionTrace(Rlp blockRlp, Keccak transactionHash, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace[] GetBlockTrace(Keccak blockHash, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace[] GetBlockTrace(long blockNumber, GethTraceOptions gethTraceOptions = null);
         GethLikeTxTrace[] GetBlockTrace(Rlp blockRlp, GethTraceOptions gethTraceOptions = null);

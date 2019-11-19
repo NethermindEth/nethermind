@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
+        <AssemblyName>nethtest</AssemblyName>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <PackageReference Include="CommandLineParser" Version="2.6.0" />
+      <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
+    </ItemGroup>
+
+</Project>

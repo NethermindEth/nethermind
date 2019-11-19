@@ -16,46 +16,52 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Facade;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
     public class TransactionVerifier : ITransactionVerifier
     {
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly uint _requiredBlockConfirmations;
 
-        public TransactionVerifier(IBlockchainBridge blockchainBridge, uint requiredBlockConfirmations)
+        public TransactionVerifier(INdmBlockchainBridge blockchainBridge, uint requiredBlockConfirmations)
         {
             _blockchainBridge = blockchainBridge;
             _requiredBlockConfirmations = requiredBlockConfirmations;
         }
         
-        public TransactionVerifierResult Verify(TxReceipt receipt)
+        public async Task<TransactionVerifierResult> VerifyAsync(NdmTransaction transaction)
         {
             var confirmations = 0;
-            var block = _blockchainBridge.FindBlock(_blockchainBridge.Head.Hash);
-            if (block is null)
+            var latestBlock = await _blockchainBridge.GetLatestBlockAsync();
+            if (latestBlock is null)
             {
                 return new TransactionVerifierResult(false, 0, _requiredBlockConfirmations);
             }
 
-            while (block.Number >= receipt.BlockNumber)
+            do
             {
                 confirmations++;
-                if (block.Hash == receipt.BlockHash)
+                if (latestBlock.Hash == transaction.BlockHash)
                 {
                     break;
                 }
 
-                block = _blockchainBridge.FindBlock(block.ParentHash);
-                if (block is null)
+                latestBlock = await _blockchainBridge.FindBlockAsync(latestBlock.ParentHash);
+                if (latestBlock is null)
+                {
+                    confirmations = 0;
+                    break;
+                }
+                
+                if (confirmations == _requiredBlockConfirmations)
                 {
                     break;
                 }
-            }
+                
+            } while (confirmations < _requiredBlockConfirmations);
             
             return new TransactionVerifierResult(true, confirmations, _requiredBlockConfirmations);
         }

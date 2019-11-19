@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -44,7 +45,7 @@ namespace Nethermind.Evm.Precompiles
                 return 0;
             }
             
-            var rounds = inputData.Slice(0, 4).ToUInt32();
+            var rounds = inputData.AsSpan().Slice(0, 4).ReadEthUInt32();
 
             return rounds;
         }
@@ -62,8 +63,9 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, false);
             }
             
-            var blake = new Blake2();
-            var result = blake.Compress(inputData);
+            var blake = new Blake2Compression();
+            var result = new byte[64];
+            blake.Compress(inputData, result);
 
             return (result, true);
         }

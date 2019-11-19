@@ -19,6 +19,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.PubSub;
 
 namespace Nethermind.Grpc.Producers
 {

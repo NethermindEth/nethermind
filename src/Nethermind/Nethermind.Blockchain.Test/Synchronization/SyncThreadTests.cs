@@ -41,6 +41,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Repositories;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization
@@ -258,7 +259,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             var ecdsa = new EthereumEcdsa(specProvider, logManager);
             var txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(), ecdsa, specProvider, new TxPoolConfig(), stateProvider, logManager);
-            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, specProvider, txPool, logManager);
+            var tree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), specProvider, txPool, logManager);
             var blockhashProvider = new BlockhashProvider(tree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
 

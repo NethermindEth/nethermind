@@ -44,17 +44,24 @@ namespace Nethermind.AuRa
         
         private readonly IStateProvider _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
+        private readonly IDb _stateDb;
         private readonly ITransactionProcessor _transactionProcessor;
+        private readonly IBlockTree _blockTree;
         private readonly ILogManager _logManager;
 
-        public AuRaAdditionalBlockProcessorFactory(IStateProvider stateProvider,
+        public AuRaAdditionalBlockProcessorFactory(
+            IDb stateDb,
+            IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
+            IBlockTree blockTree,
             ILogManager logManager)
         {
             _stateProvider = stateProvider;
             _abiEncoder = abiEncoder;
+            _stateDb = stateDb;
             _transactionProcessor = transactionProcessor;
+            _blockTree = blockTree;
             _logManager = logManager;
         }
 
@@ -64,11 +71,11 @@ namespace Nethermind.AuRa
             switch (validator.ValidatorType)
             {
                 case AuRaParameters.ValidatorType.List:
-                    return new ListValidator(validator);
+                    return new ListValidator(validator, _logManager);
                 case AuRaParameters.ValidatorType.Contract:
-                    return new ContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, startBlockNumber);
+                    return new ContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.ReportingContract:
-                    return new ReportingContractValidator(validator, _stateProvider, _abiEncoder, _transactionProcessor, _logManager, startBlockNumber);
+                    return new ReportingContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, startBlockNumber);
                 case AuRaParameters.ValidatorType.Multi:
                     return new MultiValidator(validator, this, _logManager);
                 default:

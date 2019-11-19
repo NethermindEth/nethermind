@@ -43,7 +43,7 @@ namespace Nethermind.Core.Encoding
                 blockInfos.Add(Rlp.Decode<BlockInfo>(rlpStream, RlpBehaviors.AllowExtraData));
             }
 
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraData) != RlpBehaviors.AllowExtraData)
             {
                 rlpStream.Check(lastCheck);
             }
@@ -65,7 +65,7 @@ namespace Nethermind.Core.Encoding
 
             if (item.BlockInfos.Any(bi => bi == null))
             {
-                throw new Exception();
+                throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
             }
             
             Rlp rlp = Rlp.Encode(elements);

@@ -25,7 +25,8 @@ namespace Ethereum.Test.Base
         public TestBlockHeaderJson BlockHeader { get; set; }
         public TestBlockHeaderJson[] UncleHeaders { get; set; }
         public string Rlp { get; set; }
-        public TransactionJson[] Transactions { get; set; }
+        public LegacyTransactionJson[] Transactions { get; set; }
+        
         [JsonProperty("expectExceptionALL")]
         public string ExpectedException { get; set; }
     }

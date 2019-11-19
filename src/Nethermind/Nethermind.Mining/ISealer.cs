@@ -26,6 +26,7 @@ namespace Nethermind.Mining
 {
     public interface ISealer
     {
+        // TODO: ValueTask?
         Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
         bool CanSeal(long blockNumber, Keccak parentHash);
     }

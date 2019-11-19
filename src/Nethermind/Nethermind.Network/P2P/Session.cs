@@ -122,11 +122,9 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsTrace) _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
             _context.Channel.Pipeline.Get<ZeroPacketSplitter>()?.DisableFraming();
-            _context.Channel.Pipeline.Get<NettyPacketSplitter>()?.DisableFraming();
             
             // since groups were used, we are on a different thread
             _context.Channel.Pipeline.Get<ZeroNettyP2PHandler>()?.EnableSnappy();
-            _context.Channel.Pipeline.Get<NettyP2PHandler>()?.EnableSnappy();
             // code in the next line does no longer work as if there is a packet waiting then it will skip the snappy decoder
             // _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new ZeroSnappyEncoder(_logManager));

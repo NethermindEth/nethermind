@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;
@@ -32,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Configs;
+using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
@@ -86,6 +86,7 @@ namespace Nethermind.DataMarketplace.Test
         protected Address _providerAccount;
         protected DevWallet _wallet;
         protected BlockchainBridge _bridge;
+        protected INdmBlockchainBridge _ndmBridge;
         protected IStateProvider _state;
         protected INdmConfig _ndmConfig;
         protected AbiEncoder _abiEncoder = new AbiEncoder();
@@ -115,12 +116,14 @@ namespace Nethermind.DataMarketplace.Test
                 specProvider, _logManager);
             TransactionProcessor processor = new TransactionProcessor(specProvider, _state, storageProvider, machine, _logManager);
             _bridge = new BlockchainBridge(processor, _releaseSpec);
-
+            
             TxReceipt receipt = DeployContract(Bytes.FromHexString(ContractData.GetInitCode(_feeAccount)));
             ((NdmConfig) _ndmConfig).ContractAddress = receipt.ContractAddress.ToString();
             _contractAddress = receipt.ContractAddress;
             _txPool = new TxPool(new InMemoryTxStorage(), new Timestamper(),
                 new EthereumEcdsa(specProvider, _logManager), specProvider, new TxPoolConfig(), _state, _logManager);
+            
+            _ndmBridge = new NdmBlockchainBridge(_bridge, _txPool);
         }
 
         protected TxReceipt DeployContract(byte[] initCode)
@@ -129,7 +132,7 @@ namespace Nethermind.DataMarketplace.Test
             deployContract.SenderAddress = _providerAccount;
             deployContract.GasLimit = 4000000;
             deployContract.Init = initCode;
-            deployContract.Nonce = (UInt256) _bridge.GetNonce(_providerAccount);
+            deployContract.Nonce = _bridge.GetNonce(_providerAccount);
             Keccak txHash = _bridge.SendTransaction(deployContract);
             TxReceipt receipt = _bridge.GetReceipt(txHash);
             Assert.AreEqual(StatusCode.Success, receipt.StatusCode, $"contract deployed {receipt.Error}");
@@ -151,22 +154,22 @@ namespace Nethermind.DataMarketplace.Test
 
             public IReadOnlyCollection<Address> GetWalletAccounts()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Signature Sign(Address address, Keccak message)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Signature Sign(Address address, byte[] message)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public void Sign(Transaction transaction)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int GetNetworkId()
@@ -201,22 +204,48 @@ namespace Nethermind.DataMarketplace.Test
                 throw new NotImplementedException();
             }
 
-            public Block FindBlock(Keccak blockHash)
-            {
-                throw new System.NotImplementedException();
-            }
+            public Block FindBlock(Keccak blockHash) => _headBlock.Hash == blockHash ? _headBlock : null;
 
-            public Block FindBlock(long blockNumber)
-            {
-                throw new System.NotImplementedException();
-            }
+            public Block FindBlock(long blockNumber) => _headBlock.Number == blockNumber ? _headBlock : null;
 
-            public Block FindLatestBlock()
+            public Block FindLatestBlock() => _headBlock;
+
+            public Block FindPendingBlock()
             {
                 throw new NotImplementedException();
             }
 
-            public Block FindPendingBlock()
+            public BlockHeader FindHeader(Keccak blockHash)
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindHeader(long blockNumber)
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindGenesisHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindHeadHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindEarliestHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindLatestHeader()
+            {
+                throw new NotImplementedException();
+            }
+
+            public BlockHeader FindPendingHeader()
             {
                 throw new NotImplementedException();
             }
@@ -228,12 +257,12 @@ namespace Nethermind.DataMarketplace.Test
 
             public Block FindHeadBlock()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Block FindGenesisBlock()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
@@ -246,7 +275,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public Keccak GetBlockHash(Keccak transactionHash)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             private BlockReceiptsTracer _receiptsTracer;
@@ -263,10 +292,9 @@ namespace Nethermind.DataMarketplace.Test
                 return Transaction.CalculateHash(transaction);
             }
 
-            public TxReceipt GetReceipt(Keccak txHash)
-            {
-                return _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
-            }
+            public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);
+
+            public TxReceipt[] GetReceipts(Block block) => block.Transactions.Select(t => GetReceipt(t.Hash)).ToArray();
 
             public Facade.BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction)
             {
@@ -277,17 +305,22 @@ namespace Nethermind.DataMarketplace.Test
 
             public long EstimateGas(Block block, Transaction transaction)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
+            }
+
+            public long GetChainId()
+            {
+                throw new NotImplementedException();
             }
 
             public byte[] GetCode(Address address)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public byte[] GetCode(Keccak codeHash)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             Dictionary<Address, UInt256> _nonces = new Dictionary<Address, UInt256>();
@@ -310,82 +343,82 @@ namespace Nethermind.DataMarketplace.Test
 
             public UInt256 GetBalance(Address address)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public byte[] GetStorage(Address address, UInt256 index)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Account GetAccount(Address address)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Account GetAccount(Address address, Keccak stateRoot)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int NewBlockFilter()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int NewPendingTransactionFilter()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public void UninstallFilter(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public bool FilterExists(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterLog[] GetLogFilterChanges(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Keccak[] GetBlockFilterChanges(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public Keccak[] GetPendingTransactionFilterChanges(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterType GetFilterType(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterLog[] GetFilterLogs(int filterId)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
 
             public void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot)
@@ -395,7 +428,7 @@ namespace Nethermind.DataMarketplace.Test
 
             public TxPoolInfo GetTxPoolInfo()
             {
-                throw new System.NotImplementedException();
+                throw new NotImplementedException();
             }
         }
     }

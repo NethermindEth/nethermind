@@ -56,5 +56,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         Task<ResultWrapper<Keccak>> ndm_requestDepositApproval(Keccak assetId, string kyc);
         Task<ResultWrapper<FaucetResponseForRpc>> ndm_requestEth(Address address);
+        Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy();
+        Task<ResultWrapper<bool>> ndm_setProxy(string[] urls);
+        ResultWrapper<decimal> ndm_getEthUsdPrice();
     }
 }

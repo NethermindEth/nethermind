@@ -22,7 +22,7 @@ namespace Nethermind.EvmPlayground
 
         private static string ToHexString(byte[] bytes, bool withZeroX, bool skipLeadingZeros)
         {
-            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int leadingZeros = skipLeadingZeros ? CountLeadingZeroNibbles(bytes) : 0;
             var result = new char[bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
 
             if (withZeroX)
@@ -59,7 +59,7 @@ namespace Nethermind.EvmPlayground
             return result;
         }
 
-        private static int CountLeadingZeros(byte[] bytes)
+        private static int CountLeadingZeroNibbles(byte[] bytes)
         {
             int leadingZeros = 0;
             for (int i = 0; i < bytes.Length; i++)

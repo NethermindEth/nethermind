@@ -31,6 +31,7 @@ using NUnit.Framework;
 
 namespace Ethereum.KeyAddress.Test
 {
+    [Parallelizable(ParallelScope.All)]
     public class KeyAddressTests
     {
         private IEthereumEcdsa _ecdsa;

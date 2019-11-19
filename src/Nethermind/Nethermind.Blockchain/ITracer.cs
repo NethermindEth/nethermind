@@ -30,6 +30,7 @@ namespace Nethermind.Blockchain
         GethLikeTxTrace Trace(long blockNumber, Transaction transaction, GethTraceOptions options);
         GethLikeTxTrace Trace(long blockNumber, int txIndex, GethTraceOptions options);
         GethLikeTxTrace Trace(Keccak blockHash, int txIndex, GethTraceOptions options);
+        GethLikeTxTrace Trace(Rlp blockRlp, Keccak txHash, GethTraceOptions options);
         GethLikeTxTrace[] TraceBlock(Keccak blockHash, GethTraceOptions options);
         GethLikeTxTrace[] TraceBlock(long blockNumber, GethTraceOptions options);
         
@@ -37,5 +38,6 @@ namespace Nethermind.Blockchain
         ParityLikeTxTrace ParityTrace(Keccak txHash, ParityTraceTypes traceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(Keccak blockHash, ParityTraceTypes traceTypes);
         ParityLikeTxTrace[] ParityTraceBlock(long blockNumber, ParityTraceTypes traceTypes);
+        ParityLikeTxTrace ParityTraceRawTransaction(byte[] txRlp, ParityTraceTypes traceTypes);
     }
 }

@@ -287,7 +287,7 @@ namespace Nethermind.KeyStore
 
         private string GetStoreDirectory()
         {
-            var directory = _config.KeyStoreDirectory;
+            var directory = _config.KeyStoreDirectory.GetApplicationResourcePath();
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);

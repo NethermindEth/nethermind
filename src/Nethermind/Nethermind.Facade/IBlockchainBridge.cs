@@ -17,11 +17,8 @@
  */
 
 using System.Collections.Generic;
-using System.Numerics;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -34,42 +31,34 @@ namespace Nethermind.Facade
     {
         IReadOnlyCollection<Address> GetWalletAccounts();
         Signature Sign(Address address, Keccak message);
-        
         void Sign(Transaction tx);
-
         int GetNetworkId();
         BlockHeader Head { get; }
         BlockHeader BestSuggested { get; }
         long BestKnown { get; }
         bool IsSyncing { get; }
-
         void RecoverTxSenders(Block block);
-
         void RecoverTxSender(Transaction tx, long blockNumber);
-        
         (TxReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction, bool isOwn = false);
         TxReceipt GetReceipt(Keccak txHash);
+        TxReceipt[] GetReceipts(Block block);
         BlockchainBridge.CallOutput Call(BlockHeader blockHeader, Transaction transaction);
         long EstimateGas(Block block, Transaction transaction);
-
+        long GetChainId();
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);
         UInt256 GetNonce(Address address);
         UInt256 GetBalance(Address address);
         byte[] GetStorage(Address address, UInt256 index);
         byte[] GetStorage(Address address, UInt256 index, Keccak storageRoot);
-        
         Account GetAccount(Address address);
         Account GetAccount(Address address, Keccak stateRoot);
-
         int NewBlockFilter();
         int NewPendingTransactionFilter();
-
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
-
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
@@ -77,10 +66,8 @@ namespace Nethermind.Facade
         Keccak[] GetPendingTransactionFilterChanges(int filterId);
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
-
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
-
         void RunTreeVisitor(ITreeVisitor treeVisitor, Keccak stateRoot);
     }
 }

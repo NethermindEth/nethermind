@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;

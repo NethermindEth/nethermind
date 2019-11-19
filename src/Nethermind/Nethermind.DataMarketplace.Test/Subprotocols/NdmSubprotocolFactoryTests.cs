@@ -21,7 +21,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Channels;
-using Nethermind.DataMarketplace.Consumers;
 using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Events;
 using Nethermind.DataMarketplace.Core.Services;

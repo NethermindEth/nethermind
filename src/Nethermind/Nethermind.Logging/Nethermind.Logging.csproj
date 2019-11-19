@@ -1,15 +1,15 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp2.2</TargetFramework>
-        <LangVersion>7.2</LangVersion>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
+        <LangVersion>8.0</LangVersion>
     </PropertyGroup>
 
     <ItemGroup>
-      <PackageReference Include="NLog" Version="4.6.5" />
+      <PackageReference Include="NLog" Version="4.6.7" />
       <PackageReference Include="NLog.StructuredLogging.Json" Version="4.0.0" />
       <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
-      <PackageReference Include="NLog.Targets.Syslog" Version="5.1.0" />
+      <PackageReference Include="NLog.Targets.Syslog" Version="6.0.0" />
     </ItemGroup>
 
 </Project>
