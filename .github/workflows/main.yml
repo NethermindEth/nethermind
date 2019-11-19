@@ -13,16 +13,9 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-#    - uses: srt32/git-actions@v0.0.3
-#      with:
-#        args: 'git submodule update --init --recursive'
     - uses: actions/checkout@master
       with:
         submodules: true
-    - uses: codecov/codecov-action@v1.0.3
-      with:
-        token: ${{secrets.CODECOV_TOKEN}}
-        name: codecov-nethermind
     - name: Installing Linux dependencies
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.Abi.Test
@@ -76,6 +69,12 @@ jobs:
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+    - name: Upload coverage reports to Codecov
+        if: runner.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v1.0.3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          name: codecov-nethermind 
   eth-tests:
     name: Ethereum Tests
     runs-on: ${{ matrix.os }}
@@ -119,3 +118,9 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Trie.Test
+    - name: Upload coverage reports to Codecov
+        if: runner.os == 'ubuntu-latest'
+        uses: codecov/codecov-action@v1.0.3
+        with:
+          token: ${{secrets.CODECOV_TOKEN}}
+          name: codecov-nethermind 
