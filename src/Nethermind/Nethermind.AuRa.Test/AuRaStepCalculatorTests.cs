@@ -31,7 +31,7 @@ namespace Nethermind.AuRa.Test
         {
             var calculator = new AuRaStepCalculator(stepDuration, new Timestamper());
             var step = calculator.CurrentStep;
-            await Task.Delay(calculator.TimeToNextStep);
+            await TaskExt.DelayAtLeast(calculator.TimeToNextStep);
             calculator.CurrentStep.Should().Be(step + 1, calculator.TimeToNextStep.ToString());
         }
         
