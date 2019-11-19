@@ -204,6 +204,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Benchmar
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dirichlet.Benchmark", "Nethermind.Dirichlet.Benchmark\Nethermind.Dirichlet.Benchmark.csproj", "{242FE484-C16A-4E62-B4E4-051FA876C26A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.LoadTest", "Nethermind.LoadTest\Nethermind.LoadTest.csproj", "{3FF47B51-AFAA-4F91-93CA-1D6FED4C5BAC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -522,6 +524,10 @@ Global
 		{242FE484-C16A-4E62-B4E4-051FA876C26A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{242FE484-C16A-4E62-B4E4-051FA876C26A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{242FE484-C16A-4E62-B4E4-051FA876C26A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3FF47B51-AFAA-4F91-93CA-1D6FED4C5BAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3FF47B51-AFAA-4F91-93CA-1D6FED4C5BAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3FF47B51-AFAA-4F91-93CA-1D6FED4C5BAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3FF47B51-AFAA-4F91-93CA-1D6FED4C5BAC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -582,6 +588,7 @@ Global
 		{DECFBADB-9918-4AEA-905C-93260BA9350E} = {9114A63A-E9DE-42B0-BA54-81505D87F142}
 		{9CAA6869-0B0B-4314-AA35-6B762545DD6B} = {AE494DDC-4577-46C6-8AC1-4F6254FDA31D}
 		{242FE484-C16A-4E62-B4E4-051FA876C26A} = {AE494DDC-4577-46C6-8AC1-4F6254FDA31D}
+		{3FF47B51-AFAA-4F91-93CA-1D6FED4C5BAC} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
