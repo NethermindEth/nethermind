@@ -21,6 +21,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -80,7 +81,7 @@ namespace Nethermind.JsonRpc
         private JsonSerializer _obsoleteBasicJsonSerializer = new JsonSerializer();
 
         private (JsonRpcRequest Model, List<JsonRpcRequest> Collection) DeserializeObjectOrArray(string json)
-        {  
+        {
             var token = JToken.Parse(json);
             if (token is JArray array)
             {
@@ -98,23 +99,36 @@ namespace Nethermind.JsonRpc
 
         private void UpdateParams(JToken token)
         {
-            var paramsToken = token.SelectToken("params");
-            if (paramsToken == null)
+            try
             {
-                paramsToken = token.SelectToken("Params");
+                var paramsToken = token.SelectToken("params");
                 if (paramsToken == null)
                 {
-                    return;
+                    paramsToken = token.SelectToken("Params");
+                    if (paramsToken == null)
+                    {
+                        return;
+                    }
+                }
+
+                if (paramsToken is JValue)
+                {
+                    return; // null
+                }
+
+                JArray arrayToken = (JArray) paramsToken;
+                for (int i = 0; i < arrayToken.Count; i++)
+                {
+                    if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
+                    {
+                        arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
+                    }
                 }
             }
-
-            JArray arrayToken = (JArray) paramsToken;
-            for (int i = 0; i < arrayToken.Count; i++)
+            catch (Exception e)
             {
-                if (arrayToken[i].Type == JTokenType.Array || arrayToken[i].Type == JTokenType.Object)
-                {
-                    arrayToken[i].Replace(JToken.Parse(_jsonSerializer.Serialize(arrayToken[i].Value<object>().ToString())));
-                }
+                Console.WriteLine(e);
+                throw;
             }
         }
 
