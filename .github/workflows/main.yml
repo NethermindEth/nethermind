@@ -11,7 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest]
     steps:
 #    - uses: srt32/git-actions@v0.0.3
 #      with:
@@ -75,11 +75,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macOS-latest]
+        os: [ubuntu-latest]
     steps:
-    - uses: srt32/git-actions@v0.0.3
+    - uses: actions/checkout@v1
       with:
-        args: 'git submodule update --init --recursive'
+        submodules: true
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Ethereum.Basic.Test
