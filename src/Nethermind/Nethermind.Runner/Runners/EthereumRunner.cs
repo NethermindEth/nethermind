@@ -425,7 +425,7 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            _dbProvider = HiveEnabled
+            _dbProvider = (HiveEnabled || _initConfig.UseMemDb)
                 ? (IDbProvider) new MemDbProvider()
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
             
@@ -447,8 +447,7 @@ namespace Nethermind.Runner.Runners
                 _ethereumEcdsa,
                 _specProvider,
                 _txPoolConfig, _stateProvider, _logManager);
-            var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
-            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
+            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
             

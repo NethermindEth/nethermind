@@ -16,8 +16,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Avro;
-using Confluent.Kafka.Admin;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core.Json;
@@ -51,6 +49,11 @@ namespace Nethermind.Runner.Test
                 {
                     return (true, "testspec.json");
                 }
+
+                if (name == "UseMemDb")
+                {
+                    return (true, true);
+                }
                 
                 return (false, null);
             }
@@ -62,7 +65,7 @@ namespace Nethermind.Runner.Test
         }
         
         [Test]
-        public async Task Test()
+        public async Task Smoke()
         {
             Type type1 = typeof(ITxPoolConfig);
             Type type2 = typeof(INetworkConfig);
