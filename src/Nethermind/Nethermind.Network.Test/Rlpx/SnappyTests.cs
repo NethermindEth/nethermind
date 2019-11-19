@@ -106,14 +106,16 @@ namespace Nethermind.Network.Test.Rlpx
         }
 
         [Test]
-        public void Uses_same_compression_as_py_zero()
+        public void Uses_same_compression_as_py_zero_or_go()
         {
             byte[] bytesPy = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
+            byte[] bytesGo = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
 
             ZeroSnappyEncoderForTest encoder = new ZeroSnappyEncoderForTest();
             byte[] compressed = encoder.TestEncode(Bytes.Concat(1, bytesUncompressed));
-            Assert.AreEqual(bytesPy, compressed.Skip(1).ToArray());
+            bool oneOfTwoMatches = Bytes.AreEqual(bytesGo, compressed) || Bytes.AreEqual(bytesPy, compressed);
+            Assert.True(oneOfTwoMatches);
         }
 
         [Test]
