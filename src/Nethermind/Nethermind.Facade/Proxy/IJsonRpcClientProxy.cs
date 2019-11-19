@@ -22,5 +22,6 @@ namespace Nethermind.Facade.Proxy
     {
         Task<RpcResult<T>> SendAsync<T>(string method, params object[] @params);
         Task<RpcResult<T>> SendAsync<T>(string method, long id, params object[] @params);
+        void SetUrls(params string[] urls);
     }
 }

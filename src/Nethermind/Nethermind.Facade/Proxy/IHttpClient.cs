@@ -20,6 +20,7 @@ namespace Nethermind.Facade.Proxy
 {
     public interface IHttpClient
     {
+        Task<T> GetAsync<T>(string endpoint);
         Task<T> PostJsonAsync<T>(string endpoint, object payload = null);
     }
 }

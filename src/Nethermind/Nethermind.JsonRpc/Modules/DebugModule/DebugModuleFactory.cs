@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;

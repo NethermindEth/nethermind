@@ -104,7 +104,7 @@ namespace Nethermind.Runner
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
-                var serializer = new UnforgivingJsonSerializer();
+                var serializer = new EthereumJsonSerializer();
                 if (Logger.IsInfo)
                 {
                     Logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");

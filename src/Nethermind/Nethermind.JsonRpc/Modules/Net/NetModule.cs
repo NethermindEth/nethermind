@@ -17,8 +17,6 @@
  */
 
 using System;
-using System.Numerics;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Logging;
 

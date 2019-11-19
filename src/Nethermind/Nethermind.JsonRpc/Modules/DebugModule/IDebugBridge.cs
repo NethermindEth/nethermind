@@ -18,7 +18,6 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule

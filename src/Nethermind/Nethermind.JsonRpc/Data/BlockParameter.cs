@@ -17,10 +17,8 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core.Json;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Data
 {

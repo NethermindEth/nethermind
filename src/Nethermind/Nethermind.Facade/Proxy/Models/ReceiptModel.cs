@@ -29,7 +29,7 @@ namespace Nethermind.Facade.Proxy.Models
         public UInt256 CumulativeGasUsed { get; set; }
         public Address From { get; set; }
         public UInt256 GasUsed { get; set; }
-        public List<LogModel> Logs { get; set; }
+        public LogModel[] Logs { get; set; }
         public byte[] LogsBloom { get; set; }
         public UInt256 Status { get; set; }
         public Address To { get; set; }

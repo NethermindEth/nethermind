@@ -22,6 +22,8 @@ namespace Nethermind.Core2.Containers
 {
     public class Validator
     {
+        public const ulong ValidatorRegistryLimit = 1_099_511_627_776;
+        
         public Validator(BlsPublicKey publicKey)
         {
             PublicKey = publicKey;

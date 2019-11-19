@@ -15,52 +15,76 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Facade.Proxy
 {
     public class JsonRpcClientProxy : IJsonRpcClientProxy
     {
         private readonly IHttpClient _client;
-        private readonly string _url;
+        private string _url;
+        private readonly ILogger _logger;
 
-        public JsonRpcClientProxy(IHttpClient client, string[] urlProxies)
+        public JsonRpcClientProxy(IHttpClient client, IEnumerable<string> urls, ILogManager logManager)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
-            if (urlProxies is null)
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            if (HasEmptyUrls(urls))
             {
-                throw new ArgumentNullException(nameof(urlProxies));
+                return;
             }
-
-            if (!urlProxies.Any())
-            {
-                throw new ArgumentException("Empty JSON RPC URL proxies.", nameof(urlProxies));
-            }
-
-            foreach (var url in urlProxies)
-            {
-                if (string.IsNullOrWhiteSpace(url))
-                {
-                    throw new ArgumentException("Empty JSON RPC URL proxy.", nameof(_url));
-                }
-
-                new Uri(url);
-            }
-
-            _url = urlProxies.FirstOrDefault();
+            
+            SetUrls(urls.ToArray());
         }
 
         public Task<RpcResult<T>> SendAsync<T>(string method, params object[] @params)
             => SendAsync<T>(method, 1, @params);
 
         public Task<RpcResult<T>> SendAsync<T>(string method, long id, params object[] @params)
-            => _client.PostJsonAsync<RpcResult<T>>(_url, new
+        {
+            if (string.IsNullOrWhiteSpace(_url))
+            {
+                if (_logger.IsWarn) _logger.Warn("JSON RPC Proxy URL isn't specified - call will not be executed.");
+                return Task.FromResult<RpcResult<T>>(default);
+            }
+
+            return _client.PostJsonAsync<RpcResult<T>>(_url, new
             {
                 jsonrpc = 2.0,
                 id,
                 method,
                 @params = (@params ?? Array.Empty<object>()).Where(x => !(x is null))
             });
+        }
+
+        // Multiple URLs as a possibility for load-balancing/fallback mechanism in the future.
+        public void SetUrls(params string[] urls)
+        {
+            if (HasEmptyUrls(urls))
+            {
+                _url = string.Empty;
+                if (_logger.IsWarn) _logger.Warn("JSON RPC Proxy URL has been removed.");
+                return;
+            }
+
+            foreach (var url in urls)
+            {
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    continue;
+                }
+
+                new Uri(url);
+            }
+
+            _url = urls.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
+            if (_logger.IsInfo) _logger.Info($"JSON RPC Proxy URL has been set.");
+        }
+
+        private static bool HasEmptyUrls(IEnumerable<string> urls)
+            => urls is null || !urls.Any() || urls.All(string.IsNullOrWhiteSpace);
     }
 }

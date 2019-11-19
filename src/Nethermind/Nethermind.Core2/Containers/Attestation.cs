@@ -22,7 +22,9 @@ namespace Nethermind.Core2.Containers
 {
     public class Attestation
     {
-        public const int SszDynamicOffset = 2 * sizeof(uint) + AttestationData.SszLength + BlsSignature.SszLength; 
+        public const int SszDynamicOffset = sizeof(uint) + AttestationData.SszLength + BlsSignature.SszLength; 
+        
+        public static readonly uint MaxValidatorsPerCommittee = 2048;
         
         public static int SszLength(Attestation container)
         {
@@ -31,19 +33,17 @@ namespace Nethermind.Core2.Containers
                 return 0;
             }
             
-            return SszDynamicOffset + container.AggregationBits.Length + container.CustodyBits.Length;
+            return SszDynamicOffset + container.AggregationBits.Length;
         }
         
         public byte[] AggregationBits { get; set; }
         public AttestationData Data { get; set; }
-        public byte[] CustodyBits { get; set; }
         public BlsSignature Signature { get; set; }
 
         public bool Equals(Attestation other)
         {
             return Bytes.AreEqual(AggregationBits, other.AggregationBits) &&
                    Equals(Data, other.Data) &&
-                   Bytes.AreEqual(CustodyBits, other.CustodyBits) &&
                    Equals(Signature, other.Signature);
         }
 

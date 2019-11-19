@@ -17,9 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -28,7 +25,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
-using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {

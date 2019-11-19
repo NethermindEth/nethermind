@@ -39,6 +39,8 @@ namespace Nethermind.Core2.Containers
                                             1 + // not sure
                                             3 * Checkpoint.SszLength;
 
+        public const ulong HistoricalRootsLimit = 16_777_216;
+        
         public static int SszLength(BeaconState container)
         {
             int result = SszDynamicOffset;

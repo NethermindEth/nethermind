@@ -34,7 +34,7 @@ namespace Nethermind.Dirichlet.Benchmark
 //            BenchmarkRunner.Run<UInt256Multiply>();
 //            BenchmarkRunner.Run<UInt256Divide>();
 
-            BenchmarkRunner.Run<UInt256ToBigEndianBenchmarks>();
+//            BenchmarkRunner.Run<UInt256ToBigEndianBenchmarks>();
         }
     }
 }

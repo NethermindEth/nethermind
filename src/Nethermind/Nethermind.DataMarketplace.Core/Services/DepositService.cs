@@ -20,14 +20,12 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Abi;
-using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Logging;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Core.Services
@@ -36,20 +34,16 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         private readonly IAbiEncoder _abiEncoder;
         private readonly INdmBlockchainBridge _blockchainBridge;
-        private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
-        private readonly ILogger _logger;
         private readonly Address _contractAddress;
 
-        public DepositService(INdmBlockchainBridge blockchainBridge, ITxPool txPool, IAbiEncoder abiEncoder, IWallet wallet,
-           Address contractAddress, ILogManager logManager)
+        public DepositService(INdmBlockchainBridge blockchainBridge, IAbiEncoder abiEncoder, IWallet wallet,
+           Address contractAddress)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
-            _txPool = txPool;
             _abiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
@@ -115,8 +109,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction);
 
-            byte[] intBytes = data.Length < 4 ? data : data.Slice(data.Length - 4, 4);
-            return intBytes.AsSpan().ReadEthUInt32LittleEndian();
+            return data.AsSpan().ReadEthUInt32LittleEndian();
             
         }
         

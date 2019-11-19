@@ -14,29 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Net.Http;
-using Nethermind.Core;
 using Nethermind.Facade.Proxy;
-using Nethermind.Logging;
+using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
     public class EthModuleProxyFactory : ModuleFactoryBase<IEthModule>
     {
-        private readonly string[] _urlProxies;
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly ILogManager _logManager;
+        private readonly IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
+        private readonly IWallet _wallet;
 
-        public EthModuleProxyFactory(string[] urlProxies, IJsonSerializer jsonSerializer, ILogManager logManager)
+        public EthModuleProxyFactory(IEthJsonRpcClientProxy ethJsonRpcClientProxy, IWallet wallet)
         {
-            _urlProxies = urlProxies;
-            _jsonSerializer = jsonSerializer;
-            _logManager = logManager;
+            _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
+            _wallet = wallet;
         }
 
-        public override IEthModule Create()
-            => new EthModuleProxy(new EthJsonRpcClientProxy(new JsonRpcClientProxy(new DefaultHttpClient(
-                new HttpClient(), _jsonSerializer, _logManager), _urlProxies)));
+        public override IEthModule Create() => new EthModuleProxy(_ethJsonRpcClientProxy, _wallet);
     }
 }
