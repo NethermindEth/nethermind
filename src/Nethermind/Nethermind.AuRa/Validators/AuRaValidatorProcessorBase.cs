@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
+using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -51,11 +53,14 @@ namespace Nethermind.AuRa.Validators
 
         public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
-            var auRaStep = block.Header.AuRaStep.Value;
-            if (!IsValidSealer(block.Beneficiary, auRaStep))
+            if (!options.IsProducingBlock())
             {
-                 if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.Number} ({block.Hash}), step {auRaStep} from author {block.Beneficiary}.");
-                 throw new InvalidBlockException(block.Hash);
+                var auRaStep = block.Header.AuRaStep.Value;
+                if (!IsValidSealer(block.Beneficiary, auRaStep))
+                {
+                    if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.Number} ({block.Hash}), step {auRaStep} from author {block.Beneficiary}.");
+                    throw new InvalidBlockException(block.Hash);
+                }
             }
         }
 
