@@ -17,10 +17,10 @@ jobs:
       with:
         submodules: true
     - name: Installing Linux packages
-      if: matrix.os == "ubuntu-latest"
+      if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Installing macOS packages
-      if: matrix.os == "macOS"
+      if: matrix.os == 'macOS'
       run: brew install gmp && brew install snappy && brew install lz4
     - name: Nethermind.Abi.Test
       run: |
