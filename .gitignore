@@ -342,6 +342,7 @@ out/
 db/
 plugins/
 logs/
+reports/
 src/Nethermind/Nethermind.Runner/git-hash
 src/Nethermind/Nethermind.Runner/node.key.plain
 
