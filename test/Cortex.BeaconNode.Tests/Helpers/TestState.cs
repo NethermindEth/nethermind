@@ -16,7 +16,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
         /// <summary>
         /// Transition to the start slot of the next epoch
         /// </summary>
-        public static void NextEpoch(BeaconState state, BeaconStateTransition beaconStateTransition, TimeParameters timeParameters)
+        public static void NextEpoch(BeaconState state, TimeParameters timeParameters, BeaconStateTransition beaconStateTransition)
         {
             var slot = state.Slot + timeParameters.SlotsPerEpoch - (state.Slot % timeParameters.SlotsPerEpoch);
             beaconStateTransition.ProcessSlots(state, slot);

@@ -449,7 +449,7 @@ namespace Cortex.BeaconNode
             //ProcessCrosslinks(state);
 
             ProcessRewardsAndPenalties(state);
-            // ProcessRegistryUpdates(state);
+            ProcessRegistryUpdates(state);
 
             //# @process_reveal_deadlines
             //# @process_challenge_deadlines
@@ -666,6 +666,13 @@ namespace Cortex.BeaconNode
             var mix = randaoMix.Xor(randaoHash);
             var randaoIndex = epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector;
             state.SetRandaoMix(randaoIndex, mix);
+        }
+
+        public void ProcessRegistryUpdates(BeaconState state)
+        {
+            _logger.LogInformation(Event.ProcessRegistryUpdates, "Process epoch registry updates state {BeaconState}", state);
+
+            throw new NotImplementedException();
         }
 
         public void ProcessRewardsAndPenalties(BeaconState state)
