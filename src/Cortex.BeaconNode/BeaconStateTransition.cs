@@ -671,8 +671,48 @@ namespace Cortex.BeaconNode
         public void ProcessRegistryUpdates(BeaconState state)
         {
             _logger.LogInformation(Event.ProcessRegistryUpdates, "Process epoch registry updates state {BeaconState}", state);
+            
+            var gweiValues = _gweiValueOptions.CurrentValue;
 
-            throw new NotImplementedException();
+            // Process activation eligibility and ejections
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            for (var index = 0; index < state.Validators.Count; index++)
+            {
+                var validator = state.Validators[index];
+                if (validator.ActivationEligibilityEpoch == _chainConstants.FarFutureEpoch
+                    && validator.EffectiveBalance == gweiValues.MaximumEffectiveBalance)
+                {
+                    validator.SetEligible(currentEpoch);
+                }
+
+                var isActive = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+                if (isActive && validator.EffectiveBalance <= gweiValues.EjectionBalance)
+                {
+                    _beaconStateMutator.InitiateValidatorExit(state, new ValidatorIndex((ulong)index));
+                }
+            }
+
+            // Queue validators eligible for activation and not dequeued for activation prior to finalized epoch
+            var activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(state.FinalizedCheckpoint.Epoch);
+
+            var activationQueue = state.Validators
+                .Select((validator, index) => new { index, validator })
+                .Where(x => x.validator.ActivationEligibilityEpoch != _chainConstants.FarFutureEpoch
+                    && x.validator.ActivationEpoch >= activationExitEpoch)
+                .OrderBy(x => x.validator.ActivationEligibilityEpoch)
+                .Select(x => x.index);
+
+            // Dequeued validators for activation up to churn limit (without resetting activation epoch)
+            var validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
+            var activationEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
+            foreach(var index in activationQueue.Take((int)validatorChurnLimit))
+            {
+                var validator = state.Validators[index];
+                if (validator.ActivationEpoch == _chainConstants.FarFutureEpoch)
+                {
+                    validator.SetActive(activationEpoch);
+                }
+            }
         }
 
         public void ProcessRewardsAndPenalties(BeaconState state)

@@ -41,6 +41,7 @@ namespace Cortex.BeaconNode
             services.Configure<GweiValues>(x =>
             {
                 x.MaximumEffectiveBalance = new Gwei(configuration.GetValue<ulong>("MAX_EFFECTIVE_BALANCE"));
+                x.EjectionBalance = new Gwei(configuration.GetValue<ulong>("EJECTION_BALANCE"));
                 x.EffectiveBalanceIncrement = new Gwei(configuration.GetValue<ulong>("EFFECTIVE_BALANCE_INCREMENT"));
             });
             services.Configure<InitialValues>(x =>

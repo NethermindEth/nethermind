@@ -31,6 +31,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             gweiValueOptions = TestOptionsMonitor.Create(new GweiValues()
             {
                 MaximumEffectiveBalance = new Gwei(((ulong)1 << 5) * 1000 * 1000 * 1000),
+                EjectionBalance = new Gwei(((ulong)1 << 4) * 1000 * 1000 * 1000),
                 EffectiveBalanceIncrement = new Gwei(1000 * 1000 * 1000),
             });
             initialValueOptions = TestOptionsMonitor.Create(new InitialValues()
