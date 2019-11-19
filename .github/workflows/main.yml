@@ -1,7 +1,7 @@
 name: Tests workflow
 
 on:
-  push:
+  pull_request:
     branches:
     - github-actions
 
@@ -11,13 +11,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macOS]
     steps:
     - uses: actions/checkout@master
       with:
         submodules: true
-    - name: Installing Linux dependencies
+    - name: Installing Linux packages
+      if: matrix.os == "ubuntu-latest"
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
+    - name: Installing macOS packages
+      if: matrix.os == "macOS"
+      run: brew install gmp && brew install snappy && brew install lz4
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
@@ -57,6 +61,9 @@ jobs:
     - name: Nethermind.Runner.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Runner.Test
+    - name: Nethermind.Ssz.Test
+      run: |
+        dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Ssz.Test
     - name: Nethermind.Store.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Store.Test
@@ -65,10 +72,10 @@ jobs:
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*" src/Nethermind/Nethermind.Wallet.Test
     - name: Nethermind.DataMarketplace.Test
       run: |
-        dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Test
+        dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.DataMarketplace.Test
     - name: Nethermind.DataMarketplace.Consumers.Test
       run: |
-        dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
+        dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*" src/Nethermind/Nethermind.DataMarketplace.Consumers.Test
     - name: Upload coverage reports to Codecov
       uses: codecov/codecov-action@v1.0.3
       with:
@@ -79,7 +86,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macOS]
     steps:
     - uses: actions/checkout@master
       with:
