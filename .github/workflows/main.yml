@@ -16,13 +16,13 @@ jobs:
 #    - uses: srt32/git-actions@v0.0.3
 #      with:
 #        args: 'git submodule update --init --recursive'
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@master
       with:
         submodules: true
-#    - uses: codecov/codecov-action@v1.0.3
-#      with:
-#        token: ${{secrets.CODECOV_TOKEN}}
-#       name: codecov-nethermind
+    - uses: codecov/codecov-action@v1.0.3
+      with:
+        token: ${{secrets.CODECOV_TOKEN}}
+       name: codecov-nethermind
     - name: Installing Linux dependencies
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.Abi.Test
@@ -83,7 +83,7 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@master
       with:
         submodules: true
     - name: Ethereum.Basic.Test
