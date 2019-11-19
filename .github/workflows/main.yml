@@ -22,7 +22,7 @@ jobs:
     - uses: codecov/codecov-action@v1.0.3
       with:
         token: ${{secrets.CODECOV_TOKEN}}
-       name: codecov-nethermind
+        name: codecov-nethermind
     - name: Installing Linux dependencies
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
     - name: Nethermind.Abi.Test
