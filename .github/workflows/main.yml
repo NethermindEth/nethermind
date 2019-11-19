@@ -16,6 +16,9 @@ jobs:
 #    - uses: srt32/git-actions@v0.0.3
 #      with:
 #        args: 'git submodule update --init --recursive'
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
     - name: Nethermind.Abi.Test
       run: |
         dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*" src/Nethermind/Nethermind.Abi.Test
