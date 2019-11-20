@@ -30,8 +30,7 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         cd bls/
-        make -j3
-        mklib dll
+        call mklib.bat dll
         mk -d test\bls_c384_test.cpp
         bin\bls_c384_test.exe
     - name: Building BLS for Linux
