@@ -87,8 +87,8 @@ namespace Nethermind.AuRa
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
-                        ? $"Blocks finalized by {finalizingBlock.Number} ({finalizingBlock.Hash}): {finalizedBlocks[0].Number} [{finalizedBlocks[0].Hash}]."
-                        : $"Blocks finalized by {finalizingBlock.Number} ({finalizingBlock.Hash}): {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
+                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)} : {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
+                        : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
                 
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
                 LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
