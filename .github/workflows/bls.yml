@@ -15,8 +15,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
       with:
-        repository: NethermindEth/bls
-        fetch-depth: 1
+        repository: herumi/bls
     - uses: actions/checkout@master
       with: 
         repository: herumi/mcl
