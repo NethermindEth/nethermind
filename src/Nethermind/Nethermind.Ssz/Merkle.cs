@@ -19,6 +19,7 @@ using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -46,6 +47,7 @@ namespace Nethermind.Ssz
         static Merkle()
         {
             BuildZeroHashes();
+            UInt256.CreateFromBigEndian(out RootOfNull, Sha256.OfAnEmptyString.Bytes);
         }
 
         [Todo(Improve.Refactor, "Consider moving to extensions")]
@@ -168,7 +170,7 @@ namespace Nethermind.Ssz
 
         public static void Ize(out UInt256 root, Sha256 value)
         {
-            UInt256.CreateFromLittleEndian(out root, value.Bytes);
+            UInt256.CreateFromLittleEndian(out root, value?.Bytes ?? Bytes.Zero32);
         }
 
         public static void Ize(out UInt256 root, Span<bool> value)

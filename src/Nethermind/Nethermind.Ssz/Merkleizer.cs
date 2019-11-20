@@ -17,6 +17,7 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -348,7 +349,7 @@ namespace Nethermind.Ssz
             UInt256[] input = new UInt256[value.Length];
             for (int i = 0; i < value.Length; i++)
             {
-                UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes);
+                UInt256.CreateFromLittleEndian(out input[i], value[i]?.Bytes ?? Bytes.Zero32);
             }
             
             Merkle.Ize(out _chunks[^1], input);
