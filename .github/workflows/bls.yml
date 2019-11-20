@@ -25,14 +25,12 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         git clone git://github.com/herumi/cybozulib_ext 
-    - name: Building MCL 
-      run: |
-        cd mcl/
-        make -j4
+
     - name: Building BLS for Windows
       if: matrix.os == 'windows-latest'
       run: |
         cd bls/
+        make -j3
         mklib dll
         mk -d test\bls_c384_test.cpp
         bin\bls_c384_test.exe
