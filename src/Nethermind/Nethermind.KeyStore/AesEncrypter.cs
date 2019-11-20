@@ -17,8 +17,11 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
+using System.Text;
+using Nethermind.Core.Extensions;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 
@@ -31,18 +34,39 @@ namespace Nethermind.KeyStore
 
         public AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager)
         {
+            _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _config = keyStoreConfig;
         }
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
         {
             try
             {
-                using (var aes = CreateAesCryptoServiceProvider(key, iv, cipherType))
+                switch (cipherType)
                 {
-                    var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
-                    return Execute(encryptor, content);
+                    case "aes-128-cbc":
+                    {
+                        using var aes = new AesCryptoServiceProvider
+                        {
+                            BlockSize = _config.SymmetricEncrypterBlockSize,
+                            KeySize = _config.SymmetricEncrypterKeySize,
+                            Padding = PaddingMode.PKCS7,
+                            Key = key,
+                            IV = iv
+                        };
+                        var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+                        return Execute(encryptor, content);
+                    }
+                    case "aes-128-ctr":
+                    {
+                        using var outputEncryptedStream = new MemoryStream();
+                        using var inputStream = new MemoryStream(content);
+                        AesCtr(key, iv, inputStream, outputEncryptedStream);
+                        outputEncryptedStream.Position = 0;
+                        return outputEncryptedStream.ToArray();
+                    }
+                    default:
+                        throw new Exception($"Unsupported cipherType: {cipherType}");
                 }
             }
             catch (Exception ex)
@@ -56,15 +80,36 @@ namespace Nethermind.KeyStore
         {
             try
             {
-                using (var aes = CreateAesCryptoServiceProvider(key, iv, cipherType))
+                switch (cipherType)
                 {
-                    var decryptor = aes.CreateDecryptor(key, aes.IV);
-                    return Execute(decryptor, cipher);
+                    case "aes-128-cbc":
+                    {
+                        using var aes = new AesCryptoServiceProvider
+                        {
+                            BlockSize = _config.SymmetricEncrypterBlockSize,
+                            KeySize = _config.SymmetricEncrypterKeySize,
+                            Padding = PaddingMode.PKCS7,
+                            Key = key,
+                            IV = iv
+                        };
+                        var decryptor = aes.CreateDecryptor(key, aes.IV);
+                        return Execute(decryptor, cipher);
+                    }
+                    case "aes-128-ctr":
+                    {
+                        using var outputEncryptedStream = new MemoryStream(cipher);
+                        using var outputDecryptedStream = new MemoryStream();
+                        AesCtr(key, iv, outputEncryptedStream, outputDecryptedStream);
+                        outputDecryptedStream.Position = 0;
+                        return outputDecryptedStream.ToArray();
+                    }
+                    default:
+                        throw new Exception($"Unsupported cipherType: {cipherType}");
                 }
             }
             catch (Exception ex)
             {
-                _logger.Error("Error during decryption", ex);
+                _logger.Error("Error during encryption", ex);
                 return null;
             }
         }
@@ -82,24 +127,44 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private SymmetricAlgorithm CreateAesCryptoServiceProvider(byte[] key, byte[] iv, string cipherType)
+        private static void AesCtr(byte[] key, byte[] salt, Stream inputStream, Stream outputStream)
         {
-            switch (cipherType)
+            using var aes = new AesManaged {Mode = CipherMode.ECB, Padding = PaddingMode.None};
+            var blockSize = aes.BlockSize / 8;
+            if (salt.Length != blockSize)
             {
-                case "aes-128-ctr":
-                    //Custom impl for AES128 CTR
-                    return new Aes128CounterMode(iv);
-                case "aes-128-cbc":
-                    return new AesCryptoServiceProvider
+                throw new ArgumentException($"Salt size must be same as block size ({salt.Length} != {blockSize})");
+            }
+
+            var counter = (byte[]) salt.Clone();
+            var xorMask = new Queue<byte>();
+            var zeroIv = new byte[blockSize];
+            var encryptor = aes.CreateEncryptor(key, zeroIv);
+
+            int @byte;
+            while ((@byte = inputStream.ReadByte()) != -1)
+            {
+                if (xorMask.Count == 0)
+                {
+                    var counterModeBlock = new byte[blockSize];
+                    encryptor.TransformBlock(counter, 0, counter.Length, counterModeBlock, 0);
+
+                    for (var i = counter.Length - 1; i >= 0; i--)
                     {
-                        BlockSize = _config.SymmetricEncrypterBlockSize,
-                        KeySize = _config.SymmetricEncrypterKeySize,
-                        Padding = PaddingMode.PKCS7,
-                        Key = key,
-                        IV = iv
-                    };
-                default:
-                    throw new Exception($"Unsupported cipherType: {cipherType}");
+                        if (++counter[i] != 0)
+                        {
+                            break;
+                        }
+                    }
+
+                    foreach (var block in counterModeBlock)
+                    {
+                        xorMask.Enqueue(block);
+                    }
+                }
+
+                var mask = xorMask.Dequeue();
+                outputStream.WriteByte((byte) ((byte) @byte ^ mask));
             }
         }
     }

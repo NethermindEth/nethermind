@@ -23,7 +23,7 @@ namespace Nethermind.KeyStore.Config
         public string KeyStoreDirectory { get; set; } = "keystore";
         public string KeyStoreEncoding { get; set; } = "UTF-8";
         public string Kdf { get; set; } = "scrypt";
-        public string Cipher { get; set; } = "aes-128-cbc";
+        public string Cipher { get; set; } = "aes-128-ctr";
         public int KdfparamsDklen { get; set; } = 32;
         public int KdfparamsN { get; set; } = 262144;
         public int KdfparamsP { get; set; } = 1;
