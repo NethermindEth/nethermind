@@ -6,9 +6,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="nunit" Version="3.12.0"/>
-        <PackageReference Include="NUnit3TestAdapter" Version="3.13.0"/>
-        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0"/>
+        <PackageReference Include="nunit" Version="3.12.0" />
+        <PackageReference Include="NUnit3TestAdapter" Version="3.13.0" />
+        <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
     </ItemGroup>
 
     <ItemGroup>
@@ -19,8 +19,8 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nethermind.Bls\Nethermind.Bls.csproj"/>
-        <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj"/>
+        <ProjectReference Include="..\Nethermind.Bls\Nethermind.Bls.csproj" />
+        <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
     </ItemGroup>
 
 </Project>
