@@ -29,7 +29,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var preState = BeaconState.Clone(state);
 
@@ -59,7 +59,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var miscellaneousParameters = miscellaneousParameterOptions.CurrentValue;
             var timeParameters = timeParameterOptions.CurrentValue;
@@ -121,7 +121,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var timeParameters = timeParameterOptions.CurrentValue;
 

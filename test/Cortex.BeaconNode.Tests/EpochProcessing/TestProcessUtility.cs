@@ -30,6 +30,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 beaconStateTransition.ProcessRegistryUpdates(state);
                 return;
             }
+            if (step == TestProcessStep.ProcessSlashings)
+            {
+                beaconStateTransition.ProcessSlashings(state);
+                return;
+            }
 
             throw new NotImplementedException();
         }
@@ -60,12 +65,21 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 return;
             }
 
-            beaconStateTransition.ProcessRegistryUpdates(state);
+            beaconStateTransition.ProcessRewardsAndPenalties(state);
 
             if (step == TestProcessStep.ProcessRegistryUpdates)
             {
                 return;
             }
+
+            beaconStateTransition.ProcessRegistryUpdates(state);
+
+            if (step == TestProcessStep.ProcessSlashings)
+            {
+                return;
+            }
+
+            beaconStateTransition.ProcessSlashings(state);
 
             throw new NotImplementedException();
         }

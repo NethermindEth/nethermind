@@ -454,15 +454,13 @@ namespace Cortex.BeaconNode
             //# @process_reveal_deadlines
             //# @process_challenge_deadlines
 
-            // ProcessSlashings(state);
+            ProcessSlashings(state);
 
             //# @update_period_committee
 
             ProcessFinalUpdates(state);
 
             //# @after_process_final_updates
-
-            // throw new NotImplementedException();
         }
 
         public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
@@ -671,7 +669,7 @@ namespace Cortex.BeaconNode
         public void ProcessRegistryUpdates(BeaconState state)
         {
             _logger.LogInformation(Event.ProcessRegistryUpdates, "Process epoch registry updates state {BeaconState}", state);
-            
+
             var gweiValues = _gweiValueOptions.CurrentValue;
 
             // Process activation eligibility and ejections
@@ -705,7 +703,7 @@ namespace Cortex.BeaconNode
             // Dequeued validators for activation up to churn limit (without resetting activation epoch)
             var validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
             var activationEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
-            foreach(var index in activationQueue.Take((int)validatorChurnLimit))
+            foreach (var index in activationQueue.Take((int)validatorChurnLimit))
             {
                 var validator = state.Validators[index];
                 if (validator.ActivationEpoch == _chainConstants.FarFutureEpoch)
@@ -731,6 +729,32 @@ namespace Cortex.BeaconNode
                 var validatorIndex = new ValidatorIndex((ulong)index);
                 _beaconStateMutator.IncreaseBalance(state, validatorIndex, rewards[index]);
                 _beaconStateMutator.DecreaseBalance(state, validatorIndex, penalties[index]);
+            }
+        }
+
+        public void ProcessSlashings(BeaconState state)
+        {
+            _logger.LogInformation(Event.ProcessSlashings, "Process epoch slashings state {BeaconState}", state);
+
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            var totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+
+            var targetEpoch = currentEpoch + new Epoch((ulong)_stateListLengthOptions.CurrentValue.EpochsPerSlashingsVector / 2);
+
+            var totalSlashings = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
+            var minimumFactor = Gwei.Min(totalSlashings * 3, totalBalance);
+
+            for (var index = 0; index < state.Validators.Count; index++)
+            {
+                var validator = state.Validators[index];
+                if (validator.IsSlashed && validator.WithdrawableEpoch == targetEpoch)
+                {
+                    var increment = (ulong)_gweiValueOptions.CurrentValue.EffectiveBalanceIncrement; // # Factored out from penalty numerator to avoid uint64 overflow
+                    var penaltyNumerator = (validator.EffectiveBalance / increment) * (ulong)minimumFactor;
+                    var penalty = (penaltyNumerator / (ulong)totalBalance) * increment;
+                    var validatorIndex = new ValidatorIndex((ulong)index);
+                    _beaconStateMutator.DecreaseBalance(state, validatorIndex, penalty);
+                }
             }
         }
 

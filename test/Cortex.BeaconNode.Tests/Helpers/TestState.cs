@@ -31,7 +31,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             beaconStateTransition.ProcessSlots(state, slot);
         }
 
-        public static (BeaconChainUtility, BeaconStateAccessor, BeaconStateTransition, BeaconState) PrepareTestState(ChainConstants chainConstants,
+        public static (BeaconChainUtility, BeaconStateAccessor, BeaconStateMutator, BeaconStateTransition, BeaconState) PrepareTestState(ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
@@ -57,7 +57,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
             var state = TestGenesis.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
-            return (beaconChainUtility, beaconStateAccessor, beaconStateTransition, state);
+            return (beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition, state);
         }
     }
 }

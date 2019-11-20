@@ -11,5 +11,6 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         //ProcessCrosslinks,
         ProcessRewardsAndPenalties,
         ProcessRegistryUpdates,
+        ProcessSlashings,
     }
 }
