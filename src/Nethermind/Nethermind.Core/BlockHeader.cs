@@ -118,14 +118,7 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 default:
-                    if (Hash == null)
-                    {
-                        return $"{Number} null";
-                    }
-                    else
-                    {
-                        return $"{Number} ({Hash.Bytes.ToHexString().Substring(58, 6)})";
-                    }
+                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
             }
         }
 

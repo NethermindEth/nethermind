@@ -58,7 +58,7 @@ namespace Nethermind.AuRa.Validators
                 var auRaStep = block.Header.AuRaStep.Value;
                 if (!IsValidSealer(block.Beneficiary, auRaStep))
                 {
-                    if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.Number} ({block.Hash}), step {auRaStep} from author {block.Beneficiary}.");
+                    if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.ToString(Block.Format.FullHashAndNumber)}, step {auRaStep} from author {block.Beneficiary}.");
                     throw new InvalidBlockException(block.Hash);
                 }
             }
