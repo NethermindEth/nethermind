@@ -18,6 +18,7 @@
 
 using System.IO;
 using NUnit.Framework;
+using YamlDotNet.RepresentationModel;
 
 namespace Ethereum2.Bls.Test
 {
@@ -51,12 +52,25 @@ namespace Ethereum2.Bls.Test
         public void Bls_priv_to_pub()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("priv_to_pub", "small"));
+            var a = LoadValue(valid[0]);
         }
         
         [Test]
         public void Bls_sign_msg()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("sign_msg", "small"));
+        }
+        
+        private static (YamlNode rootNode, YamlNodeType nodeType) LoadValue(string file)
+        {
+            using FileStream fileStream = File.OpenRead(file); // value.yaml
+            using var input = new StreamReader(fileStream);
+            var yaml = new YamlStream();
+            yaml.Load(input);
+
+            var rootNode = yaml.Documents[0].RootNode;
+            YamlNodeType nodeType = rootNode.NodeType;
+            return (rootNode, nodeType);
         }
     }
 }

@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Nethermind.BeaconChain;
 using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
@@ -37,6 +38,8 @@ namespace Nethermind.Monitoring.Metrics
             RegisterMetrics(typeof(Evm.Metrics));
             RegisterMetrics(typeof(Network.Metrics));
             RegisterMetrics(typeof(JsonRpc.Metrics));
+            RegisterMetrics(typeof(InteropMetrics));
+            RegisterMetrics(typeof(BeaconChain.Metrics));
         }
         
         private void RegisterMetrics(Type type)
