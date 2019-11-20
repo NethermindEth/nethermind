@@ -17,6 +17,7 @@
  */
 
 using System.IO;
+using System.Linq;
 using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
 
@@ -28,43 +29,56 @@ namespace Ethereum2.Bls.Test
         public void Bls_aggregate_pubkeys()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("aggregate_pubkeys", "small"));
+            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+            string[] inputHex = node.ArrayProp<string>("input");
+            string outputHex = node.Prop<string>("output");
         }
-        
+
         [Test]
         public void Bls_aggregate_sigs()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("aggregate_sigs", "small"));
+            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+            string[] inputHex = node.ArrayProp<string>("input");
+            string outputHex = node.Prop<string>("output");
         }
-        
+
         [Test]
         public void Bls_msg_hash_compressed()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_compressed", "small"));
+            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+            var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
+            string[] outputHex = node.ArrayProp<string>("output");
         }
-        
+
         [Test]
         public void Bls_msg_hash_uncompressed()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_uncompressed", "small"));
+            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+            var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
+            string[][] outputHex = node.ArrayProp<string[]>("output", sequence => sequence.Children.Select(c => (c as YamlScalarNode).Value).ToArray());
         }
-        
+
         [Test]
         public void Bls_priv_to_pub()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("priv_to_pub", "small"));
             (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
-            YamlMappingNode mappingNode = node as YamlMappingNode;
-            Assert.NotNull(mappingNode);
-            string inputHex = (string)mappingNode["input"];
-            string outputHex = (string)mappingNode["output"];
+            string inputHex = node.Prop<string>("input");
+            string outputHex = node.Prop<string>("output");
         }
-        
+
         [Test]
         public void Bls_sign_msg()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("sign_msg", "small"));
+            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+            var input = new {PrivateKey = node["input"].Prop<string>("privkey"), Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
+            string outputHex = node.Prop<string>("output");
         }
-        
+
         private static (YamlNode rootNode, YamlNodeType nodeType) LoadValue(string file)
         {
             using FileStream fileStream = File.OpenRead(file); // value.yaml
