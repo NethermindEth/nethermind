@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v1
       with:
         repository: NethermindEth/bls
     - uses: actions/checkout@master
@@ -34,5 +34,3 @@ jobs:
       run: |
         cd bls/
         make test
-        make clean
-        make BLS_ETH=1 bin/libbls384_256.a
