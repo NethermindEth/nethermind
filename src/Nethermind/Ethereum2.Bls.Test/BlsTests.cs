@@ -52,7 +52,11 @@ namespace Ethereum2.Bls.Test
         public void Bls_priv_to_pub()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("priv_to_pub", "small"));
-            var a = LoadValue(valid[0]);
+            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+            YamlMappingNode mappingNode = node as YamlMappingNode;
+            Assert.NotNull(mappingNode);
+            string inputHex = (string)mappingNode["input"];
+            string outputHex = (string)mappingNode["output"];
         }
         
         [Test]
