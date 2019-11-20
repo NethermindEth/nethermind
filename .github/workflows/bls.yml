@@ -33,7 +33,7 @@ jobs:
         cd build
         cmake ..
         make
-        bin\bls_c384_test.exe
+        build\bin\bls_c384_test.exe
     - name: Building BLS for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
