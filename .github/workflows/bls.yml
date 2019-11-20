@@ -13,9 +13,9 @@ jobs:
       matrix:
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1
-      with:
-        repository: herumi/bls
+    #- uses: actions/checkout@v1
+    #  with:
+    #    repository: herumi/bls
     - uses: actions/checkout@master
       with: 
         repository: herumi/mcl
