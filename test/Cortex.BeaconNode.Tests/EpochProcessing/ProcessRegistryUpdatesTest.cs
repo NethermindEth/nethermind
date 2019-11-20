@@ -55,6 +55,56 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         }
 
         [TestMethod]
+        public void ActivationQueueSorting()
+        {
+            // Arrange
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
+                out var maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+
+            var mockActivations = 10;
+            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            for (var index = 0; index < mockActivations; index++)
+            {
+                MockDeposit(state, index,
+                    chainConstants, gweiValueOptions.CurrentValue,
+                    beaconChainUtility, beaconStateAccessor);
+                state.Validators[index].SetEligible(currentEpoch + new Epoch(1));
+            }
+
+            // give the last priority over the others
+            state.Validators[mockActivations - 1].SetEligible(currentEpoch);
+
+            // make sure we are hitting the churn
+            var churnLimit = (int)beaconStateAccessor.GetValidatorChurnLimit(state);
+            mockActivations.ShouldBeGreaterThan(churnLimit);
+
+            // Act
+            RunProcessRegistryUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+
+            //# the first got in as second
+            state.Validators[0].ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
+            //# the prioritized got in as first
+            state.Validators[mockActivations - 1].ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
+            //# the second last is at the end of the queue, and did not make the churn,
+            //#  hence is not assigned an activation_epoch yet.
+            state.Validators[mockActivations - 2].ActivationEpoch.ShouldBe(chainConstants.FarFutureEpoch);
+            //# the one at churn_limit - 1 did not make it, it was out-prioritized
+            state.Validators[churnLimit - 1].ActivationEpoch.ShouldBe(chainConstants.FarFutureEpoch);
+            //# but the the one in front of the above did
+            state.Validators[churnLimit - 2].ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
+        }
+
+        [TestMethod]
         public void Ejection()
         {
             // Arrange
