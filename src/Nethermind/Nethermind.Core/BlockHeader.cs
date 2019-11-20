@@ -117,15 +117,10 @@ namespace Nethermind.Core
             {
                 case Format.Full:
                     return ToString(string.Empty);
+                case Format.FullHashAndNumber:
+                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
                 default:
-                    if (Hash == null)
-                    {
-                        return $"{Number} null";
-                    }
-                    else
-                    {
-                        return $"{Number} ({Hash.Bytes.ToHexString().Substring(58, 6)})";
-                    }
+                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash.ToShortString()})";
             }
         }
 
@@ -133,7 +128,8 @@ namespace Nethermind.Core
         public enum Format
         {
             Full,
-            Short
+            Short,
+            FullHashAndNumber
         }
     }
 }
