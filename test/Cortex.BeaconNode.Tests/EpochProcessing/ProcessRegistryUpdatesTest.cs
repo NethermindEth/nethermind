@@ -54,6 +54,48 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             isActive.ShouldBeTrue();
         }
 
+        [TestMethod]
+        public void Ejection()
+        {
+            // Arrange
+            TestConfiguration.GetMinimalConfiguration(
+                out var chainConstants,
+                out var miscellaneousParameterOptions,
+                out var gweiValueOptions,
+                out var initialValueOptions,
+                out var timeParameterOptions,
+                out var stateListLengthOptions,
+                out var rewardsAndPenaltiesOptions,
+                out var maxOperationsPerBlockOptions);
+            (var beaconChainUtility, var beaconStateAccessor, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+
+            var index = 0;
+
+            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            var validator = state.Validators[index];
+            var isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            isActive.ShouldBeTrue();
+            validator.ExitEpoch.ShouldBe(chainConstants.FarFutureEpoch);
+
+            // Mock an ejection
+            state.Validators[index].SetEffectiveBalance(gweiValueOptions.CurrentValue.EjectionBalance);
+
+            for (var count = (ulong)0; count < (ulong)timeParameterOptions.CurrentValue.MaximumSeedLookahead + 1; count++)
+            {
+                TestState.NextEpoch(state, timeParameterOptions.CurrentValue, beaconStateTransition);
+            }
+
+            // Act
+            RunProcessRegistryUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+
+            // Assert
+            var epochAfter = beaconStateAccessor.GetCurrentEpoch(state);
+            var validatorAfter = state.Validators[index];
+            var isActiveAfter = beaconChainUtility.IsActiveValidator(validatorAfter, epochAfter);
+            isActiveAfter.ShouldBeFalse();
+            validatorAfter.ExitEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
+        }
+
         private void MockDeposit(BeaconState state, int index,
             ChainConstants chainConstants, GweiValues gweiValues,
             BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
