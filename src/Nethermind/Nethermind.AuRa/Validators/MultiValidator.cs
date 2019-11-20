@@ -149,7 +149,7 @@ namespace Nethermind.AuRa.Validators
                 InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
             }
 
-            _currentValidator?.SetFinalizationManager(finalizationManager);
+            _currentValidator?.SetFinalizationManager(finalizationManager, forProducing);
         }
 
         private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)
