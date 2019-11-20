@@ -17,10 +17,14 @@ jobs:
       run: |
         git clone git://github.com/NethermindEth/bls
         git clone git://github.com/herumi/mcl.git
-    - name: Installing libgmp-dev for ubuntu
+    - name: Installing GMP for ubuntu
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt install libgmp-dev
+    - name: Installing GMP for osx
+      if: matrix.os == 'macOS-latest'
+      run: |
+        brew install gmp
     - name: Cloning lib for Windows
       if: matrix.os == 'windows-latest'
       run: |
