@@ -43,5 +43,8 @@ jobs:
       if: matrix.os == 'macOS-latest'
       run: |
         cd bls/
+        mkdir build
+        cd build
+        cmake ..
         make test
 
