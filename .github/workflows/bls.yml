@@ -29,18 +29,19 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         cd bls/
-      mkdir build
-      cd build
-      cmake .. -A x64
-      msbuild bls.sln /p:Configuration=Release /m
-      ls
+        mkdir build
+        cd build
+        cmake .. -A x64
+        msbuild bls.sln /p:Configuration=Release /m
+        ls
     - name: Building BLS for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
         cd bls/
         make test
-    #- name: Building BLS for OSX
-    #  if: matrix.os == 'macOS-latest'
-    #  run: |
-    #    cd bls/
-    #    make test
+    - name: Building BLS for OSX
+      if: matrix.os == 'macOS-latest'
+      run: |
+        cd bls/
+        make test
+
