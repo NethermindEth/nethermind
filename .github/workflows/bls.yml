@@ -37,8 +37,8 @@ jobs:
       run: |
         cd bls/
         make test
-    - name: Building BLS for OSX
-      if: matrix.os == 'macOS-latest'
-      run: |
-        cd bls/
-        make test
+    #- name: Building BLS for OSX
+    #  if: matrix.os == 'macOS-latest'
+    #  run: |
+    #    cd bls/
+    #    make test
