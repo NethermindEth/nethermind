@@ -11,24 +11,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    #- uses: actions/checkout@v1
-    #  with:
-    #    repository: herumi/bls
-    - uses: actions/checkout@master
-      with: 
-        repository: herumi/mcl
-    #- uses: actions/checkout@master
-    #  if: matrix.os == 'windows-latest'
-    #  with:
-    #    repository: herumi/cybozulib_ext
-    #- name: bls for Windows
-    # if: matrix.os == 'windows-latest'
-    #  run: |
-    #    mklib dll
-    #    mk -d test\bls_c384_test.cpp
-    #    bin\bls_c384_test.exe
+    - name: Cloning required repositories
+      run: |
+        git clone git://github.com/NethermindEth/bls
+        git clone git://github.com/herumi/bls.git
+    - name: Clonining lib for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        git clone git://github.com/herumi/cybozulib_ext 
+    - name: bls for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        mklib dll
+        mk -d test\bls_c384_test.cpp
+        bin\bls_c384_test.exe
     - name: bls for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
