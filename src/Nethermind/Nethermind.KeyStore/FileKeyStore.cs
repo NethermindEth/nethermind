@@ -257,8 +257,7 @@ namespace Nethermind.KeyStore
                     },
                     MAC = mac.ToHexString(false),
                 },
-                
-                Id = addressString,
+                Id = Guid.NewGuid().ToString(),
                 Version = Version
             };
             
