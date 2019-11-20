@@ -1,0 +1,38 @@
+name: BLS test
+
+on:
+  push:
+    branches:
+    - github-actions
+
+jobs:
+  neth-tests:
+    name: bls
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@master
+      with:
+        repository: NethermindEth/bls
+    - uses: actions/checkout@master
+      with: 
+        repository: herumi/mcl
+    - uses: actions/checkout@master
+      if: matrix.os == 'windows-latest'
+      with:
+        repository: herumi/cybozulib_ext
+    - name: bls for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        mklib dll
+        mk -d test\bls_c384_test.cpp
+        bin\bls_c384_test.exe
+    - name: bls for Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        cd bls/
+        make test
+        make clean
+        make BLS_ETH=1 bin/libbls384_256.a
