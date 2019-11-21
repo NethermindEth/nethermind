@@ -35,6 +35,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 beaconStateTransition.ProcessSlashings(state);
                 return;
             }
+            if (step == TestProcessStep.ProcessFinalUpdates)
+            {
+                beaconStateTransition.ProcessFinalUpdates(state);
+                return;
+            }
 
             throw new NotImplementedException();
         }
@@ -81,7 +86,12 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
 
             beaconStateTransition.ProcessSlashings(state);
 
-            throw new NotImplementedException();
+            if (step == TestProcessStep.ProcessFinalUpdates)
+            {
+                return;
+            }
+
+            beaconStateTransition.ProcessFinalUpdates(state);
         }
     }
 }

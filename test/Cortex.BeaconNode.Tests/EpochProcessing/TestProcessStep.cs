@@ -12,5 +12,6 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         ProcessRewardsAndPenalties,
         ProcessRegistryUpdates,
         ProcessSlashings,
+        ProcessFinalUpdates,
     }
 }
