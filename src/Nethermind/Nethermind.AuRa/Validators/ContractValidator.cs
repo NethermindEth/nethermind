@@ -171,7 +171,7 @@ namespace Nethermind.AuRa.Validators
             {
                 var isProcessingBlock = !options.IsProducingBlock();
                 InitiateChange(block, potentialValidators, isProcessingBlock, Validators.Length == 1);
-                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.ToString(Block.Format.Short)}. New list: [{string.Join<Address>(", ", potentialValidators)}].");
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.ToString(Block.Format.Short)}. New list of {potentialValidators.Length} : [{string.Join<Address>(", ", potentialValidators)}].");
             }
         }
 
@@ -224,7 +224,7 @@ namespace Nethermind.AuRa.Validators
                 throw new AuRaException("Failed to initialize validators list.");
             }
             
-            if(_logger.IsInfo && !_isProducing) _logger.Info($"Initial contract validators: [{string.Join<Address>(", ", validators)}].");
+            if(_logger.IsInfo && !_isProducing) _logger.Info($"Initial contract {validators.Length} validators: [{string.Join<Address>(", ", validators)}].");
            
             return validators;
         }

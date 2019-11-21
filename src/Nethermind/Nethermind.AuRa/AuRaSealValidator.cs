@@ -96,7 +96,7 @@ namespace Nethermind.AuRa
             // Report malice if the validator produced other sibling blocks in the same step.
             if (_receivedSteps.ContainsOrInsert(header.AuRaStep.Value, header.Beneficiary, _validator.CurrentSealersCount))
             {
-                if (_logger.IsWarn) _logger.Warn($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
+                if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 // report malicious
             }
             
@@ -147,7 +147,7 @@ namespace Nethermind.AuRa
 
         private class ReceivedSteps
         {
-            private readonly List<(long Step, Address Author, ISet<Address> Authors)> _list = new List<(long, Address, ISet<Address>)>();
+            private readonly List<(long Step, Address Author, ISet<Address> Authors)> _list = new List<(long Step, Address Author, ISet<Address> Authors)>();
             private const int CacheSizeFullRoundsMultiplier = 4;
 
             public bool ContainsOrInsert(long step, Address author, int validatorCount)
@@ -195,10 +195,10 @@ namespace Nethermind.AuRa
             }
         }
         
-        private class StepElementComparer : IComparer<(long, Address, ISet<Address>)>
+        private class StepElementComparer : IComparer<(long Step, Address Author, ISet<Address> Authors)>
         {
             public static readonly StepElementComparer Instance = new StepElementComparer();
-            public int Compare((long, Address, ISet<Address>) x, (long, Address, ISet<Address>) y) => x.CompareTo(y);
+            public int Compare((long Step, Address Author, ISet<Address> Authors) x, (long Step, Address Author, ISet<Address> Authors) y) => x.Step.CompareTo(y.Step);
         }
     }
 }
