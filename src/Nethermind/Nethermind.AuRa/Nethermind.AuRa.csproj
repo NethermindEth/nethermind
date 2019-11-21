@@ -11,4 +11,8 @@
       <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Nito.Collections.Deque" Version="1.0.4" />
+    </ItemGroup>
+
 </Project>
