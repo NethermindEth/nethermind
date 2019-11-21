@@ -32,11 +32,11 @@ jobs:
     - name: Building BLS for Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install make
-        dir
         cd bls/
         dir
-        make all
+        D:\a\nethermind\nethermind\bls\mklib.bat dll
+        D:\a\nethermind\nethermind\bls\mk.bat -d test\bls_c384_test.cpp
+        D:\a\nethermind\nethermind\bls\bin\bls_c384_test.exe
     - name: Building BLS for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
