@@ -33,9 +33,9 @@ jobs:
       if: matrix.os == 'windows-latest'
       run: |
         choco install visualcpp-build-tools
-        cd bls/
-        where cl.exe
-        where link.exe
+        cd C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\
+        dir
+        C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat x86
         D:\a\nethermind\nethermind\bls\mklib.bat dll
         D:\a\nethermind\nethermind\bls\mk.bat -d test\bls_c384_test.cpp
         D:\a\nethermind\nethermind\bls\bin\bls_c384_test.exe
