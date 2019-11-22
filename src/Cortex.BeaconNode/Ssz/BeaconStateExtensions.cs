@@ -30,7 +30,7 @@ namespace Cortex.BeaconNode.Ssz
             yield return item.LatestBlockHeader.ToSszContainer();
             yield return item.BlockRoots.ToSszVector();
             yield return item.StateRoots.ToSszVector();
-            //historical_roots: List[Hash, HISTORICAL_ROOTS_LIMIT]
+            yield return item.HistoricalRoots.ToSszList(stateListLengths.HistoricalRootsLimit);
 
             //# Eth1
             yield return item.Eth1Data.ToSszContainer();
@@ -46,7 +46,8 @@ namespace Cortex.BeaconNode.Ssz
             yield return item.RandaoMixes.ToSszVector();
 
             //# Slashings
-            //slashings: Vector[Gwei, EPOCHS_PER_SLASHINGS_VECTOR]  # Per-epoch sums of slashed effective balances
+            //Per-epoch sums of slashed effective balances
+            yield return item.Slashings.ToSszBasicVector();
 
             //# Attestations
             yield return item.PreviousEpochAttestations.ToSszList(maxOperationsPerBlock.MaximumAttestations * (ulong)timeParameters.SlotsPerEpoch, miscellaneousParameters);

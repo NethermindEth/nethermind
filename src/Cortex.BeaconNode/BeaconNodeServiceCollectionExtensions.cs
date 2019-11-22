@@ -66,6 +66,7 @@ namespace Cortex.BeaconNode
             {
                 x.EpochsPerHistoricalVector = new Epoch(configuration.GetValue<ulong>("EPOCHS_PER_HISTORICAL_VECTOR"));
                 x.EpochsPerSlashingsVector = new Epoch(configuration.GetValue<ulong>("EPOCHS_PER_SLASHINGS_VECTOR"));
+                x.HistoricalRootsLimit = configuration.GetValue<ulong>("HISTORICAL_ROOTS_LIMIT");
                 x.ValidatorRegistryLimit = configuration.GetValue<ulong>("VALIDATOR_REGISTRY_LIMIT");
             });
             services.Configure<RewardsAndPenalties>(x =>

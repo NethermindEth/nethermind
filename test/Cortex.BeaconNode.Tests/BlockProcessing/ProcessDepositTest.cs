@@ -36,8 +36,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 beaconChainUtility, beaconStateAccessor);
 
             RunDepositProcessing(state, deposit, validatorIndex, expectValid: true, effective: true,
-                gweiValueOptions.CurrentValue,
-                beaconStateAccessor, beaconStateTransition);
+                gweiValues: gweiValueOptions.CurrentValue,
+                beaconStateTransition: beaconStateTransition);
         }
 
         //    Run ``process_deposit``, yielding:
@@ -47,7 +47,7 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //If ``valid == False``, run expecting ``AssertionError``
         private void RunDepositProcessing(BeaconState state, Deposit deposit, ValidatorIndex validatorIndex, bool expectValid, bool effective,
             GweiValues gweiValues,
-            BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+            BeaconStateTransition beaconStateTransition)
         {
             var preValidatorCount = state.Validators.Count;
             var preBalance = Gwei.Zero;

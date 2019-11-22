@@ -2,9 +2,9 @@
 using System.Linq;
 using Cortex.Containers;
 
-namespace Cortex.BeaconNode.Tests
+namespace Cortex.BeaconNode.Tests.Helpers
 {
-    public static class TestData
+    public static class TestCheckpoint
     {
         public static IList<Checkpoint> GetCheckpoints(Epoch epoch)
         {

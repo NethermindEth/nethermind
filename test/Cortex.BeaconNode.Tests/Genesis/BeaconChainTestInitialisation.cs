@@ -10,7 +10,7 @@ using Shouldly;
 namespace Cortex.BeaconNode.Tests.Genesis
 {
     [TestClass]
-    public class BeaconChainTest_Initialisation
+    public class BeaconChainTestInitialisation
     {
         [TestMethod]
         public void TestInitializeBeaconStateFromEth1()

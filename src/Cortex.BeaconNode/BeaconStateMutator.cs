@@ -107,7 +107,7 @@ namespace Cortex.BeaconNode
             validator.SetWithdrawableEpoch(withdrawableEpoch);
 
             var slashingsIndex = epoch % stateListLengths.EpochsPerSlashingsVector;
-            state.AddSlashings(slashingsIndex, validator.EffectiveBalance);
+            state.SetSlashings(slashingsIndex, validator.EffectiveBalance);
             var slashingPenalty = validator.EffectiveBalance / rewardsAndPenalties.MinimumSlashingPenaltyQuotient;
             DecreaseBalance(state, slashedIndex, slashingPenalty);
 

@@ -6,15 +6,14 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using NSubstitute;
 using Shouldly;
 
 namespace Cortex.BeaconNode.Tests.Genesis
 {
     [TestClass]
-    public class BeaconChainTest_Validity
+    public class BeaconChainTestValidity
     {
-        public BeaconState CreateValidBeaconState(BeaconChain beaconChain, BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor,
+        public static BeaconState CreateValidBeaconState(BeaconChain beaconChain, BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor,
             ChainConstants chainConstants, InitialValues initialValues, MiscellaneousParameters miscellaneousParameters, GweiValues gweiValues,
             TimeParameters timeParameters, ulong? eth1TimestampOverride = null)
         {
@@ -28,7 +27,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             return state;
         }
 
-        public void IsValidGenesisState(BeaconChain beaconChain, BeaconState state, bool valid)
+        public static void IsValidGenesisState(BeaconChain beaconChain, BeaconState state, bool valid)
         {
             var isValid = beaconChain.IsValidGenesisState(state);
             isValid.ShouldBe(valid);

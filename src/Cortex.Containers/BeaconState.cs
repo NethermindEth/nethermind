@@ -13,6 +13,7 @@ namespace Cortex.Containers
         private readonly List<PendingAttestation> _currentEpochAttestations;
 
         private readonly List<Eth1Data> _eth1DataVotes;
+        private readonly List<Hash32> _historicalRoots;
 
         //private readonly Crosslink[] _previousCrosslinks;
         private readonly List<PendingAttestation> _previousEpochAttestations;
@@ -29,7 +30,7 @@ namespace Cortex.Containers
             BeaconBlockHeader latestBlockHeader,
             Hash32[] blockRoots,
             Hash32[] stateRoots,
-            //IList<Hash32> historicalRoots,
+            IList<Hash32> historicalRoots,
             Eth1Data eth1Data,
             IList<Eth1Data> eth1DataVotes,
             ulong eth1DepositIndex,
@@ -50,6 +51,7 @@ namespace Cortex.Containers
             LatestBlockHeader = latestBlockHeader;
             _blockRoots = blockRoots;
             _stateRoots = stateRoots;
+            _historicalRoots = historicalRoots.ToList();
             Eth1Data = eth1Data;
             _eth1DataVotes = eth1DataVotes.ToList();
             Eth1DepositIndex = eth1DepositIndex;
@@ -77,6 +79,7 @@ namespace Cortex.Containers
             _balances = new List<Gwei>();
             _blockRoots = Enumerable.Repeat(Hash32.Zero, (int)(ulong)slotsPerHistoricalRoot).ToArray();
             _stateRoots = Enumerable.Repeat(Hash32.Zero, (int)(ulong)slotsPerHistoricalRoot).ToArray();
+            _historicalRoots = new List<Hash32>();
             _randaoMixes = Enumerable.Repeat(Hash32.Zero, (int)(ulong)epochsPerHistoricalVector).ToArray();
             _slashings = Enumerable.Repeat(Gwei.Zero, (int)(ulong)epochsPerSlashingsVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
@@ -101,17 +104,12 @@ namespace Cortex.Containers
         public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
 
         public Eth1Data Eth1Data { get; private set; }
-
         public IReadOnlyList<Eth1Data> Eth1DataVotes { get { return _eth1DataVotes; } }
-
         public ulong Eth1DepositIndex { get; private set; }
-
         public Checkpoint FinalizedCheckpoint { get; private set; }
-
         public Fork Fork { get; }
-
         public ulong GenesisTime { get; }
-
+        public IReadOnlyList<Hash32> HistoricalRoots { get { return _historicalRoots; } }
         public BitArray JustificationBits { get; private set; }
 
         public BeaconBlockHeader LatestBlockHeader { get; }
@@ -144,6 +142,7 @@ namespace Cortex.Containers
                 BeaconBlockHeader.Clone(other.LatestBlockHeader),
                 other.BlockRoots.Select(x => Hash32.Clone(x)).ToArray(),
                 other.StateRoots.Select(x => Hash32.Clone(x)).ToArray(),
+                other.HistoricalRoots.Select(x => Hash32.Clone(x)).ToList(),
                 Eth1Data.Clone(other.Eth1Data),
                 other.Eth1DataVotes.Select(x => Eth1Data.Clone(x)).ToList(),
                 other.Eth1DepositIndex,
@@ -163,9 +162,11 @@ namespace Cortex.Containers
 
         public void AddCurrentAttestation(PendingAttestation attestation) => _currentEpochAttestations.Add(attestation);
 
-        public void AddPreviousAttestation(PendingAttestation attestation) => _previousEpochAttestations.Add(attestation);
+        public void AddEth1DataVote(Eth1Data eth1Data) => _eth1DataVotes.Add(eth1Data);
 
-        public void AddSlashings(Epoch slashingsIndex, Gwei amount) => _slashings[(int)(ulong)slashingsIndex] += amount;
+        public void AddHistoricalRoot(Hash32 historicalRoot) => _historicalRoots.Add(historicalRoot);
+
+        public void AddPreviousAttestation(PendingAttestation attestation) => _previousEpochAttestations.Add(attestation);
 
         public void AddValidatorWithBalance(Validator validator, Gwei amount)
         {
@@ -173,7 +174,7 @@ namespace Cortex.Containers
             _balances.Add(amount);
         }
 
-        public void AppendEth1DataVotes(Eth1Data eth1Data) => _eth1DataVotes.Add(eth1Data);
+        public void ClearEth1DataVotes() => _eth1DataVotes.Clear();
 
         public void IncreaseEth1DepositIndex() => Eth1DepositIndex++;
 
@@ -219,6 +220,8 @@ namespace Cortex.Containers
         public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint) => PreviousJustifiedCheckpoint = checkpoint;
 
         public void SetRandaoMix(Epoch randaoIndex, Hash32 mix) => _randaoMixes[(int)(ulong)randaoIndex] = mix;
+
+        public void SetSlashings(Epoch slashingsIndex, Gwei amount) => _slashings[(int)(ulong)slashingsIndex] += amount;
 
         public void SetSlot(Slot slot) => Slot = slot;
 

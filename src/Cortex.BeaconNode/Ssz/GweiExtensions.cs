@@ -17,5 +17,9 @@ namespace Cortex.BeaconNode.Ssz
             return new SszBasicList(list.Select(x => (ulong)x).ToArray(), limit);
         }
 
+        public static SszElement ToSszBasicVector(this IEnumerable<Gwei> vector)
+        {
+            return new SszBasicVector(vector.Select(x => (ulong)x).ToArray());
+        }
     }
 }

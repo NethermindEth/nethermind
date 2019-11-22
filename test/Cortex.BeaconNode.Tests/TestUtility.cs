@@ -8,17 +8,16 @@ namespace Cortex.BeaconNode.Tests
 {
     public static class TestUtility
     {
-        private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
+        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
-        private static readonly byte[][] _zeroHashes;
+        private static readonly byte[][] s_zeroHashes = new byte[32][];
 
         static TestUtility()
         {
-            _zeroHashes = new byte[32][];
-            _zeroHashes[0] = new byte[32];
+            s_zeroHashes[0] = new byte[32];
             for (var index = 1; index < 32; index++)
             {
-                _zeroHashes[index] = Hash(_zeroHashes[index - 1], _zeroHashes[index - 1]);
+                s_zeroHashes[index] = Hash(s_zeroHashes[index - 1], s_zeroHashes[index - 1]);
             }
         }
 
@@ -55,7 +54,7 @@ namespace Cortex.BeaconNode.Tests
             {
                 if (workingValues.Count % 2 == 1)
                 {
-                    workingValues.Add(new Hash32(_zeroHashes[height]));
+                    workingValues.Add(new Hash32(s_zeroHashes[height]));
                 }
                 var hashes = new List<Hash32>();
                 for (var index = 0; index < workingValues.Count; index += 2)
@@ -77,7 +76,7 @@ namespace Cortex.BeaconNode.Tests
                 var subindex = (itemIndex / (1 << height)) ^ 1;
                 var value = subindex < tree[height].Count
                     ? tree[height][subindex]
-                    : new Hash32(_zeroHashes[height]);
+                    : new Hash32(s_zeroHashes[height]);
                 proof.Add(value);
             }
             return proof;
@@ -85,7 +84,7 @@ namespace Cortex.BeaconNode.Tests
 
         public static byte[] Hash(ReadOnlySpan<byte> bytes)
         {
-            return _hashAlgorithm.ComputeHash(bytes.ToArray());
+            return s_hashAlgorithm.ComputeHash(bytes.ToArray());
         }
 
         public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
@@ -93,7 +92,7 @@ namespace Cortex.BeaconNode.Tests
             var combined = new Span<byte>(new byte[64]);
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(32));
-            return _hashAlgorithm.ComputeHash(combined.ToArray());
+            return s_hashAlgorithm.ComputeHash(combined.ToArray());
         }
     }
 }

@@ -30,8 +30,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 beaconStateAccessor);
 
             RunProposerSlashingProcessing(state, proposerSlashing, expectValid: true,
-                chainConstants,
-                beaconStateAccessor, beaconStateTransition);
+                chainConstants: chainConstants,
+                beaconStateTransition: beaconStateTransition);
         }
 
         [TestMethod]
@@ -54,8 +54,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 beaconStateAccessor);
 
             RunProposerSlashingProcessing(state, proposerSlashing, expectValid: false,
-                chainConstants,
-                beaconStateAccessor, beaconStateTransition);
+                chainConstants: chainConstants,
+                beaconStateTransition: beaconStateTransition);
         }
 
         //Run ``process_proposer_slashing``, yielding:
@@ -65,7 +65,7 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //If ``valid == False``, run expecting ``AssertionError``
         private void RunProposerSlashingProcessing(BeaconState state, ProposerSlashing proposerSlashing, bool expectValid,
             ChainConstants chainConstants,
-            BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+            BeaconStateTransition beaconStateTransition)
         {
             if (!expectValid)
             {

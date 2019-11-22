@@ -23,7 +23,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             block.SetSlot(slot);
-            foreach (var attestation in attestations) 
+            foreach (var attestation in attestations)
             {
                 block.Body.AddAttestations(attestation);
             }

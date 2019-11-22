@@ -72,7 +72,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
 
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             var slashingsIndex = currentEpoch % stateListLengths.EpochsPerSlashingsVector;
-            state.AddSlashings(slashingsIndex, totalSlashedBalance);
+            state.SetSlashings(slashingsIndex, totalSlashedBalance);
         }
 
         private void RunProcessSlashings(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)

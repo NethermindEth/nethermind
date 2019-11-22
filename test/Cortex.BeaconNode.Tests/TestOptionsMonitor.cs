@@ -32,15 +32,15 @@ namespace Cortex.BeaconNode.Tests
             return new TestChangeDisposable();
         }
 
-        public class TestChangeDisposable : IDisposable
+        private class TestChangeDisposable : IDisposable
         {
-            protected virtual void Dispose(bool disposing)
-            {
-            }
-
             public void Dispose()
             {
                 Dispose(true);
+            }
+
+            protected virtual void Dispose(bool disposing)
+            {
             }
         }
     }

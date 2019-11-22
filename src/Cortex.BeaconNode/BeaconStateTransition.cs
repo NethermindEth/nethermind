@@ -136,14 +136,14 @@ namespace Cortex.BeaconNode
                 foreach (var index in eligibleValidatorIndices)
                 {
                     var delayPenalty = GetBaseReward(state, index) * _chainConstants.BaseRewardsPerEpoch;
-                    _logger.LogDebug(0, "Penalty validator {ValidatorIndex} finality delay -{Penalty}", index, setNames[setIndex], delayPenalty);
+                    _logger.LogDebug(0, "Penalty validator {ValidatorIndex} finality delay -{Penalty}", index, delayPenalty);
                     penalties[(int)(ulong)index] += delayPenalty;
 
                     if (!matchingTargetAttestingIndices.Contains(index))
                     {
                         var effectiveBalance = state.Validators[(int)(ulong)index].EffectiveBalance;
                         var additionalInactivityPenalty = (effectiveBalance * (ulong)finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
-                        _logger.LogDebug(0, "Penalty validator {ValidatorIndex} inactivity -{Penalty}", index, setNames[setIndex], additionalInactivityPenalty);
+                        _logger.LogDebug(0, "Penalty validator {ValidatorIndex} inactivity -{Penalty}", index, additionalInactivityPenalty);
                         penalties[(int)(ulong)index] += additionalInactivityPenalty;
                     }
                 }
@@ -467,7 +467,7 @@ namespace Cortex.BeaconNode
         {
             _logger.LogInformation(Event.ProcessEth1Data, "Process block ETH1 data for block body {BeaconBlockBody}", body);
 
-            state.AppendEth1DataVotes(body.Eth1Data);
+            state.AddEth1DataVote(body.Eth1Data);
             var eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
             if (eth1DataVoteCount * 2 > (int)(ulong)_timeParameterOptions.CurrentValue.SlotsPerEth1VotingPeriod)
             {
@@ -479,17 +479,51 @@ namespace Cortex.BeaconNode
         {
             _logger.LogInformation(Event.ProcessFinalUpdates, "Process epoch final updates state {BeaconState}", state);
 
-            // TODO: Implement these
+            var timeParameters = _timeParameterOptions.CurrentValue;
+            var gweiValues = _gweiValueOptions.CurrentValue;
+            var stateListLengths = _stateListLengthOptions.CurrentValue;
+
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            var nextEpoch = currentEpoch + new Epoch(1);
 
             // Reset eth1 data votes
+            var nextSlot = state.Slot + new Slot(1);
+            if (nextSlot % timeParameters.SlotsPerEth1VotingPeriod == Slot.Zero)
+            {
+                state.ClearEth1DataVotes();
+            }
 
             // Update effective balances with hysteresis
+            var halfIncrement = gweiValues.EffectiveBalanceIncrement / 2;
+            for (var index = 0; index < state.Validators.Count; index++)
+            {
+                var validator = state.Validators[index];
+                var balance = state.Balances[index];
+                if (balance < validator.EffectiveBalance || (validator.EffectiveBalance + (halfIncrement * 3)) < balance)
+                {
+                    var roundedBalance = balance - (balance % gweiValues.EffectiveBalanceIncrement);
+                    var effectiveBalance = Gwei.Min(roundedBalance, gweiValues.MaximumEffectiveBalance);
+                    validator.SetEffectiveBalance(effectiveBalance);
+                }
+            }
 
             // Reset slashings
+            var slashingsIndex = nextEpoch % stateListLengths.EpochsPerSlashingsVector;
+            state.SetSlashings(slashingsIndex, Gwei.Zero);
 
             // Set randao mix
+            var randaoIndex = nextEpoch % stateListLengths.EpochsPerHistoricalVector;
+            var randaoMix = _beaconStateAccessor.GetRandaoMix(state, currentEpoch);
+            state.SetRandaoMix(randaoIndex, randaoMix);
 
             // Set historical root accumulator
+            var divisor = timeParameters.SlotsPerHistoricalRoot / timeParameters.SlotsPerEpoch;
+            if ((ulong)nextEpoch % divisor == 0)
+            {
+                var historicalBatch = new HistoricalBatch(state.BlockRoots.ToArray(), state.StateRoots.ToArray());
+                var historicalRoot = historicalBatch.HashTreeRoot();
+                state.AddHistoricalRoot(historicalRoot);
+            }
 
             // Rotate current/previous epoch attestations
             state.SetPreviousEpochAttestations(state.CurrentEpochAttestations);

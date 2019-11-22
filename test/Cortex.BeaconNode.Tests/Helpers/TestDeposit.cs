@@ -9,10 +9,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestDeposit
     {
-        public static (Deposit, Hash32) BuildDeposit(BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount,Hash32 withdrawalCredentials, bool signed, 
+        public static (Deposit, Hash32) BuildDeposit(BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, bool signed,
             ChainConstants chainConstants, BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
         {
-            var depositData = BuildDepositData(publicKey, privateKey, amount, withdrawalCredentials, state, signed, 
+            var depositData = BuildDepositData(publicKey, privateKey, amount, withdrawalCredentials, state, signed,
                 beaconChainUtility, beaconStateAccessor);
             var index = depositDataList.Count;
             depositDataList.Add(depositData);
@@ -46,8 +46,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return depositData;
         }
 
-        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(int genesisValidatorCount, Gwei amount, bool signed, 
-            ChainConstants chainConstants, InitialValues initialValues, TimeParameters timeParameters, 
+        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(int genesisValidatorCount, Gwei amount, bool signed,
+            ChainConstants chainConstants, InitialValues initialValues, TimeParameters timeParameters,
             BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
         {
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
@@ -83,7 +83,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
         /// Prepare the state for the deposit, and create a deposit for the given validator, depositing the given amount.
         /// </summary>
         public static Deposit PrepareStateAndDeposit(BeaconState state, ValidatorIndex validatorIndex, Gwei amount, Hash32 withdrawalCredentials, bool signed,
-            ChainConstants chainConstants, InitialValues initialValues, TimeParameters timeParameters, 
+            ChainConstants chainConstants, InitialValues initialValues, TimeParameters timeParameters,
             BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
         {
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
@@ -101,7 +101,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             var depositDataList = new List<DepositData>();
             (var deposit, var depositRoot) = BuildDeposit(state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed,
-                chainConstants, 
+                chainConstants,
                 beaconChainUtility, beaconStateAccessor);
 
             state.SetEth1DepositIndex(0);

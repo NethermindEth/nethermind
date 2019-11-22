@@ -4,7 +4,6 @@ using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using NSubstitute;
 using Shouldly;
 
 namespace Cortex.BeaconNode.Tests

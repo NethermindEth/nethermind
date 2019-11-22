@@ -56,9 +56,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
             {
                 EpochsPerHistoricalVector = new Epoch(64),
                 EpochsPerSlashingsVector = new Epoch(64),
+                HistoricalRootsLimit = (ulong)1 << 24,
                 ValidatorRegistryLimit = (ulong)1 << 40,
             });
-            rewardsAndPenaltiesOptions = TestOptionsMonitor.Create(new RewardsAndPenalties() { 
+            rewardsAndPenaltiesOptions = TestOptionsMonitor.Create(new RewardsAndPenalties()
+            {
                 BaseRewardFactor = 64,
                 WhistleblowerRewardQuotient = 512,
                 ProposerRewardQuotient = 8,

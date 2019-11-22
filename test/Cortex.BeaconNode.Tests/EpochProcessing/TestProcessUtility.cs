@@ -7,47 +7,9 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
     public static class TestProcessUtility
     {
         /// <summary>
-        /// Processes to the next epoch transition, up to and including the sub-transition named ``process_name``
-        /// - pre-state('pre'), state before calling ``process_name``
-        /// - post-state('post'), state after calling ``process_name``
-        /// </summary>
-        public static void RunEpochProcessingWith(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
-        {
-            RunEpochProcessingTo(beaconStateTransition, timeParameters, state, step);
-
-            if (step == TestProcessStep.ProcessJustificationAndFinalization)
-            {
-                beaconStateTransition.ProcessJustificationAndFinalization(state);
-                return;
-            }
-            if (step == TestProcessStep.ProcessRewardsAndPenalties)
-            {
-                beaconStateTransition.ProcessRewardsAndPenalties(state);
-                return;
-            }
-            if (step == TestProcessStep.ProcessRegistryUpdates)
-            {
-                beaconStateTransition.ProcessRegistryUpdates(state);
-                return;
-            }
-            if (step == TestProcessStep.ProcessSlashings)
-            {
-                beaconStateTransition.ProcessSlashings(state);
-                return;
-            }
-            if (step == TestProcessStep.ProcessFinalUpdates)
-            {
-                beaconStateTransition.ProcessFinalUpdates(state);
-                return;
-            }
-
-            throw new NotImplementedException();
-        }
-
-        /// <summary>
         /// Processes to the next epoch transition, up to, but not including, the sub-transition named ``process_name``
         /// </summary>
-        private static void RunEpochProcessingTo(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
+        public static void RunEpochProcessingTo(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
         {
             var slot = state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
 
@@ -92,6 +54,44 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
 
             beaconStateTransition.ProcessFinalUpdates(state);
+        }
+
+        /// <summary>
+        /// Processes to the next epoch transition, up to and including the sub-transition named ``process_name``
+        /// - pre-state('pre'), state before calling ``process_name``
+        /// - post-state('post'), state after calling ``process_name``
+        /// </summary>
+        public static void RunEpochProcessingWith(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
+        {
+            RunEpochProcessingTo(beaconStateTransition, timeParameters, state, step);
+
+            if (step == TestProcessStep.ProcessJustificationAndFinalization)
+            {
+                beaconStateTransition.ProcessJustificationAndFinalization(state);
+                return;
+            }
+            if (step == TestProcessStep.ProcessRewardsAndPenalties)
+            {
+                beaconStateTransition.ProcessRewardsAndPenalties(state);
+                return;
+            }
+            if (step == TestProcessStep.ProcessRegistryUpdates)
+            {
+                beaconStateTransition.ProcessRegistryUpdates(state);
+                return;
+            }
+            if (step == TestProcessStep.ProcessSlashings)
+            {
+                beaconStateTransition.ProcessSlashings(state);
+                return;
+            }
+            if (step == TestProcessStep.ProcessFinalUpdates)
+            {
+                beaconStateTransition.ProcessFinalUpdates(state);
+                return;
+            }
+
+            throw new NotImplementedException();
         }
     }
 }
