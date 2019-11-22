@@ -30,6 +30,7 @@ using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -38,24 +39,28 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
     public class NdmRpcConsumerModule : INdmRpcConsumerModule
     {
-
         private readonly IConsumerService _consumerService;
         private readonly IDepositReportService _depositReportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
         private readonly IEthPriceService _ethPriceService;
+        private readonly IGasPriceService _gasPriceService;
+        private readonly ITransactionService _transactionService;
         private readonly IPersonalBridge _personalBridge;
         private readonly ITimestamper _timestamper;
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IEthPriceService ethPriceService, IPersonalBridge personalBridge, ITimestamper timestamper)
+            IEthPriceService ethPriceService, IGasPriceService gasPriceService, ITransactionService transactionService,
+            IPersonalBridge personalBridge, ITimestamper timestamper)
         {
             _consumerService = consumerService;
             _depositReportService = depositReportService;
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             _ethRequestService = ethRequestService;
             _ethPriceService = ethPriceService;
+            _gasPriceService = gasPriceService;
+            _transactionService = transactionService;
             _personalBridge = personalBridge;
             _timestamper = timestamper;
         }
@@ -135,9 +140,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit, timestamp));
         }
 
-        public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit)
+        public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null)
         {
-            var depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value);
+            var depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value,
+                gasPrice);
 
             return depositId is null
                 ? ResultWrapper<Keccak>.Fail("Deposit couldn't be made.")
@@ -234,5 +240,24 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         }
 
         public ResultWrapper<decimal> ndm_getEthUsdPrice() => ResultWrapper<decimal>.Success(_ethPriceService.UsdPrice);
+
+        public async Task<ResultWrapper<GasPriceTypesForRpc>> ndm_getGasPrice()
+        {
+            var types = await _gasPriceService.GetAvailableAsync();
+
+            return types is null
+                ? ResultWrapper<GasPriceTypesForRpc>.Fail("Gas price couldn't be requested.")
+                : ResultWrapper<GasPriceTypesForRpc>.Success(new GasPriceTypesForRpc(types));
+        }
+
+        public async Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType)
+        {
+            await _gasPriceService.SetAsync(gasPriceOrType);
+
+            return ResultWrapper<bool>.Success(true);
+        }
+
+        public async Task<ResultWrapper<Keccak>> ndm_updateTransactionGasPrice(Keccak transactionHash, UInt256 gasPrice)
+            => ResultWrapper<Keccak>.Success(await _transactionService.UpdateGasPriceAsync(transactionHash, gasPrice));
     }
 }

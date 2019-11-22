@@ -56,6 +56,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
         private IEthPriceService _ethPriceService;
+        private IGasPriceService _gasPriceService;
+        private ITransactionService _transactionService;
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
@@ -70,10 +72,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _ethPriceService = Substitute.For<IEthPriceService>();
+            _gasPriceService = Substitute.For<IGasPriceService>();
+            _transactionService = Substitute.For<ITransactionService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _personalBridge, _timestamper);
+                _ethRequestService, _ethPriceService, _gasPriceService, _transactionService, _personalBridge,
+                _timestamper);
         }
 
         [Test]
@@ -100,7 +105,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _personalBridge, _timestamper);
+                _ethRequestService, _ethPriceService, _gasPriceService, _transactionService, _personalBridge,
+                _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -451,6 +457,53 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _ethPriceService.UsdPrice.Returns(price);
             var result = _rpc.ndm_getEthUsdPrice();
             result.Data.Should().Be(price);
+        }
+
+        [Test]
+        public async Task get_gas_price_should_return_types()
+        {
+            const string type = "test";
+            var safeLow = new GasPriceDetails(1, 1000);
+            var average = new GasPriceDetails(10, 100);
+            var fast = new GasPriceDetails(100, 100);
+            var fastest = new GasPriceDetails(1000, 1);
+            var custom = new GasPriceDetails(500, 2);
+            _gasPriceService.GetAvailableAsync().Returns(new GasPriceTypes(safeLow, average, fast, fastest, custom,
+                type));
+            var result = await _rpc.ndm_getGasPrice();
+            VerifyGasPrice(result.Data.SafeLow, safeLow);
+            VerifyGasPrice(result.Data.Average, average);
+            VerifyGasPrice(result.Data.Fast, fast);
+            VerifyGasPrice(result.Data.Fastest, fastest);
+            VerifyGasPrice(result.Data.Custom, custom);
+            result.Data.Type.Should().Be(type);
+        }
+        
+        [Test]
+        public async Task set_gas_price_should_return_true()
+        {
+            const string type = "test";
+            var result = await _rpc.ndm_setGasPrice(type);
+            result.Data.Should().BeTrue();
+            await _gasPriceService.Received().SetAsync(type);
+        }
+        
+        [Test]
+        public async Task update_transaction_gas_price_should_return_transaction_hash()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var gasPrice = 20.GWei();
+            var updatedTransactionHash = TestItem.KeccakB;
+            _transactionService.UpdateGasPriceAsync(transactionHash, gasPrice).Returns(updatedTransactionHash);
+            var result = await _rpc.ndm_updateTransactionGasPrice(transactionHash, gasPrice);
+            result.Data.Should().Be(updatedTransactionHash);
+            await _transactionService.Received().UpdateGasPriceAsync(transactionHash, gasPrice);
+        }
+
+        private static void VerifyGasPrice(GasPriceDetailsForRpc rpcGasPrice, GasPriceDetails gasPrice)
+        {
+            rpcGasPrice.Price.Should().Be(gasPrice.Price);
+            rpcGasPrice.WaitTime.Should().Be(gasPrice.WaitTime);
         }
 
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)

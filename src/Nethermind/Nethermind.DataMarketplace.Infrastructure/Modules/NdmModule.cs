@@ -70,7 +70,9 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             {
                 ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
             }
-            
+
+            var gasPriceService = new GasPriceService(services.HttpClient, services.ConfigManager, config.Id,
+                logManager);
             var depositService = new DepositService(ndmBlockchainBridge, encoder, services.Wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
@@ -78,7 +80,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 //            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
-                depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
+                depositService, gasPriceService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
                 ndmBlockchainBridge));
         }
 
