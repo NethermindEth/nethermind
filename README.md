@@ -55,19 +55,61 @@ Client code:
 dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
+### Implemented
+
+Impelmented so far:
+
+Phase 0:
+
+* The Beacon Chain
+
+Supporting components:
+
+* SimpleSerialize (SSZ) spec -- sufficient to support the beacon chain, no deserialisation yet, see the separate Cortex.Ssz project, https://github.com/sgryphon/cortex-ssz
+* BLS signature verification --  sufficient to support the beacon chain, currently only Windows support, based on the Herumi library, see the separate Cortex.Cryptography.Bls project, https://github.com/sgryphon/cortex-cryptography-bls
+
+### In Progress
+
+* Fork Choice
+* Eth2 APIs
+
+### To Do
+
+Phase 0:
+
+* Deposit Contract
+* Honest Validator
+
+Phase 1:
+
+* Custody Game
+* Shard Data Chains
+* Misc beacon chain updates
+
+Supporting:
+
+* General test format
+* Merkle proof formats
+* Light client syncing protocol
+
+Other: 
+
+* Eth2 Metrics
+* Interop Standards in Eth2 PM
+
+Project-specific:
+
+* Peer to peer
+* Installation, e.g.Windows Service
+
+https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/windows-service?view=aspnetcore-3.0&tabs=netcore-cli
+
 ## Contributions
 
 Donations (ETH) can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
 
 Help me try and reach the 32 Eth needed to be a validator.
 
-## To Do
-
-* Code everything !!!
-
-* Commands to install as a Windows Service
-
-https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/windows-service?view=aspnetcore-3.0&tabs=netcore-cli
 
 ## License
 
