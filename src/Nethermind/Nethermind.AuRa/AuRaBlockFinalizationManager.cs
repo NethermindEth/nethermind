@@ -87,8 +87,8 @@ namespace Nethermind.AuRa
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
-                        ? $"Finalizing block {finalizedBlocks[0].Number} ({finalizedBlocks[0].Hash}) by block {finalizingBlock.Number} ({finalizingBlock.Hash})."
-                        : $"Finalizing blocks {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} ({string.Join(",", finalizedBlocks.Select(b => b.Hash))}) by block {finalizingBlock.Number} ({finalizingBlock.Hash}).");
+                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)} : {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
+                        : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
                 
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
                 LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
@@ -107,16 +107,8 @@ namespace Nethermind.AuRa
             var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
             var originalBlock = block;
             
-            bool IsConsecutiveBlock()
-            {
-                return originalBlock.ParentHash == _lastProcessedBlockHash;
-            }
-
-            bool ConsecutiveBlockWillFinalizeBlocks()
-            {
-                _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
-                return _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
-            }
+            bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
+            bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.CountWith(block) >= minSealersForFinalization;
 
             List<BlockHeader> finalizedBlocks;
             var isConsecutiveBlock = IsConsecutiveBlock();
@@ -127,6 +119,7 @@ namespace Nethermind.AuRa
             if (isConsecutiveBlock && !ConsecutiveBlockWillFinalizeBlocks())
             {
                 finalizedBlocks = Empty;
+                _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
             }
             else
             {
@@ -138,6 +131,7 @@ namespace Nethermind.AuRa
                 finalizedBlocks = new List<BlockHeader>();
                 var validators = new HashSet<Address>();
                 var originalBlockSealer = originalBlock.Beneficiary;
+                bool ancestorsNotYetRemoved = true;
 
                 using (var batch = _chainLevelInfoRepository.StartBatch())
                 {
@@ -157,7 +151,11 @@ namespace Nethermind.AuRa
                             _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
 
                             finalizedBlocks.Add(block);
-                            _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
+                            if (ancestorsNotYetRemoved)
+                            {
+                                _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
+                                ancestorsNotYetRemoved = false;
+                            }
                         }
                         else
                         {
@@ -246,33 +244,46 @@ namespace Nethermind.AuRa
         [DebuggerDisplay("Count = {Count}")]
         private class ValidationStampCollection
         {
-            private readonly ISet<Address> _set = new HashSet<Address>();
-            private readonly SortedList<long, Address> _list = new SortedList<long, Address>(Comparer<long>.Create((x, y) => y.CompareTo(x)));
-
-            public int Count => _set.Count;
+            private readonly IDictionary<Address, int> _validatorCount = new Dictionary<Address, int>();
+            [Todo("Optimization: circular sorted list?")]
+            private readonly SortedDictionary<long, Address> _blockValidator = new SortedDictionary<long, Address>();
             
+            public int CountWith(BlockHeader block) => _validatorCount.ContainsKey(block.Beneficiary) ? _validatorCount.Count : _validatorCount.Count + 1;
+
             public void Add(BlockHeader blockHeader)
             {
-                if (_set.Add(blockHeader.Beneficiary))
+                if (!_blockValidator.ContainsKey(blockHeader.Number))
                 {
-                    _list.Add(blockHeader.Number, blockHeader.Beneficiary);
+                    _blockValidator[blockHeader.Number] = blockHeader.Beneficiary;
+                    int count = _validatorCount.TryGetValue(blockHeader.Beneficiary, out count) ? count + 1 : 1;
+                    _validatorCount[blockHeader.Beneficiary] = count;
                 }
             }
 
             public void RemoveAncestors(long blockNumber)
             {
-                IEnumerable<long> toDelete = _list.Keys.SkipWhile(k => k > blockNumber).ToArray();
-                foreach (var number in toDelete)
+                var itemsToDelete = _blockValidator.TakeWhile(k => k.Key <= blockNumber).ToArray();
+                for (int i = 0; i < itemsToDelete.Length; i++)
                 {
-                    _set.Remove(_list[number]);
-                    _list.Remove(number);
+                    var item = itemsToDelete[i];
+                    var setCount = _validatorCount[item.Value];
+                    if (setCount == 1)
+                    {
+                        _validatorCount.Remove(item.Value);
+                    }
+                    else
+                    {
+                        _validatorCount[item.Value] = setCount - 1;
+                    }
+
+                    _blockValidator.Remove(item.Key);
                 }
             }
 
             public void Clear()
             {
-                _set.Clear();;
-                _list.Clear();
+                _validatorCount.Clear();;
+                _blockValidator.Clear();
             }
         }
     }

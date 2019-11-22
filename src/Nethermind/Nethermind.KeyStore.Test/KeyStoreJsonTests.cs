@@ -89,6 +89,13 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
+        
+        [Test]
+        public void CtrTest()
+        {
+            var testModel = _testsModel.Ctr;
+            RunTest(testModel);
+        }
 
         private void RunTest(KeyStoreTestModel testModel)
         {
@@ -119,6 +126,7 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Test2 { get; set; }
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
+            public KeyStoreTestModel Ctr { get; set; }
             
             public KeyStoreTestModel Sealer0 { get; set; }
         }

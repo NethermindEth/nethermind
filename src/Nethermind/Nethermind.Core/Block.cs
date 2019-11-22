@@ -214,39 +214,13 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 case Format.FullHashAndNumber:
-                    if (Hash == null)
-                    {
-                        return $"{Number} null";
-                    }
-                    else
-                    {
-                        return $"{Number} ({Hash})";
-                    }
+                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash})";
                 case Format.HashNumberAndTx:
-                    if (Hash == null)
-                    {
-                        return $"{Number} null, tx count: {Body.Transactions.Length}";
-                    }
-                    else
-                    {
-                        return $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}";
-                    }
+                    return Hash == null ? $"{Number} null, tx count: {Body.Transactions.Length}" : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}";
                 case Format.HashNumberDiffAndTx:
-                    if (Hash == null)
-                    {
-                        return $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}";
-                    }
-                    else
-                    {
-                        return $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}";
-                    }
+                    return Hash == null ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}" : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}";
                 default:
-                    if (Hash == null)
-                    {
-                        return $"{Number} null";
-                    }
-
-                    return $"{Number} ({Hash?.ToShortString()})";
+                    return Hash == null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})";
             }
         }
     }

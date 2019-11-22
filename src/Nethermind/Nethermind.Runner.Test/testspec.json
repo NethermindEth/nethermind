@@ -1,6 +1,6 @@
 {
-  "name": "Rinkeby",
-  "dataDir": "rinkeby",
+  "name": "Görli Testnet",
+  "dataDir": "goerli",
   "engine": {
     "clique": {
       "params": {
@@ -11,39 +11,39 @@
   },
   "params": {
     "accountStartNonce": "0x0",
-    "chainID": "0x4",
-    "eip140Transition": "0xfcc25",
-    "eip145Transition": "0x37db77",
-    "eip150Transition": "0x2",
-    "eip155Transition": "0x3",
+    "chainID": "0x5",
+    "eip140Transition": "0x0",
+    "eip145Transition": "0x0",
+    "eip150Transition": "0x0",
+    "eip155Transition": "0x0",
     "eip160Transition": "0x0",
     "eip161abcTransition": "0x0",
     "eip161dTransition": "0x0",
-    "eip211Transition": "0xfcc25",
-    "eip214Transition": "0xfcc25",
-    "eip658Transition": "0xfcc25",
-    "eip1014Transition": "0x37db77",
-    "eip1052Transition": "0x37db77",
-    "eip1283Transition": "0x37db77",
-    "eip1283DisableTransition": "0x41efd2",
-    "eip152Transition": "0x52efd1",
-    "eip1108Transition": "0x52efd1",
-    "eip1344Transition": "0x52efd1",
-    "eip1884Transition": "0x52efd1",
-    "eip2028Transition": "0x52efd1",
-    "eip2200Transition": "0x52efd1",
+    "eip211Transition": "0x0",
+    "eip214Transition": "0x0",
+    "eip658Transition": "0x0",
+    "eip1014Transition": "0x0",
+    "eip1052Transition": "0x0",
+    "eip1283Transition": "0x0",
+    "eip1283DisableTransition": "0x0",
+    "eip152Transition": "0x17D433",
+    "eip1108Transition": "0x17D433",
+    "eip1344Transition": "0x17D433",
+    "eip1884Transition": "0x17D433",
+    "eip2028Transition": "0x17D433",
+    "eip2200Transition": "0x17D433",
     "gasLimitBoundDivisor": "0x400",
     "maxCodeSize": "0x6000",
     "maxCodeSizeTransition": "0x0",
     "maximumExtraDataSize": "0xffff",
     "minGasLimit": "0x1388",
-    "networkID": "0x4"
+    "networkID": "0x5"
   },
   "genesis": {
     "author": "0x0000000000000000000000000000000000000000",
     "difficulty": "0x1",
-    "extraData": "0x52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    "gasLimit": "0x47b760",
+    "extraData": "0x22466c6578692069732061207468696e6722202d204166726900000000000000e0a2bd4258d2768837baa26a28fe71dc079f84c70000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "gasLimit": "0xa00000",
     "parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
     "seal": {
       "ethereum": {
@@ -51,12 +51,13 @@
         "mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
       }
     },
-    "timestamp": "0x58ee40ba"
+    "timestamp": "0x5c51a607"
   },
   "nodes": [
-    "enode://a24ac7c5484ef4ed0c5eb2d36620ba4e4aa13b8c84684e1b4aab0cebea2ae45cb4d375b77eab56516d34bfbd3c1a833fc51296ff084b770b94fb9028c4d25ccf@52.169.42.101:30303",
-    "enode://343149e4feefa15d882d9fe4ac7d88f885bd05ebb735e547f12e12080a9fa07c8014ca6fd7f373123488102fe5e34111f8509cf0b7de3f5b44339c9f25e87cb8@52.3.158.184:30303",
-    "enode://b6b28890b006743680c52e64e0d16db57f28124885595fa03a562be1d2bf0f3a1da297d56b13da25fb992888fd556d4c1a27b1f39d531bde7de1921c90061cc6@159.89.28.211:30303"
+    "enode://011f758e6552d105183b1761c5e2dea0111bc20fd5f6422bc7f91e0fabbec9a6595caf6239b37feb773dddd3f87240d99d859431891e4a642cf2a0a9e6cbb98a@51.141.78.53:30303",
+    "enode://176b9417f511d05b6b2cf3e34b756cf0a7096b3094572a8f6ef4cdcb9d1f9d00683bf0f83347eebdf3b81c3521c2332086d9592802230bf528eaf606a1d9677b@13.93.54.137:30303",
+    "enode://46add44b9f13965f7b9875ac6b85f016f341012d84f975377573800a863526f4da19ae2c620ec73d11591fa9510e992ecc03ad0751f53cc02f7c7ed6d55c7291@94.237.54.114:30313",
+    "enode://b5948a2d3e9d486c4d75bf32713221c2bd6cf86463302339299bd227dc2e276cd5a1c7ca4f43a0e9122fe9af884efed563bd2a1fd28661f3b5f5ad7bf1de5949@18.218.250.66:30303"
   ],
   "accounts": {
     "0x0000000000000000000000000000000000000000": {
@@ -114,7 +115,7 @@
       "balance": "0x1",
       "builtin": {
         "name": "modexp",
-        "activate_at": "0xfcc25",
+        "activate_at": "0x0",
         "pricing": {
           "modexp": {
             "divisor": 20
@@ -126,7 +127,7 @@
       "balance": "0x1",
       "builtin": {
         "name": "alt_bn128_add",
-        "activate_at": "0xfcc25",
+        "activate_at": "0x0",
         "pricing": {
           "linear": {
             "base": 500,
@@ -139,7 +140,7 @@
       "balance": "0x1",
       "builtin": {
         "name": "alt_bn128_mul",
-        "activate_at": "0xfcc25",
+        "activate_at": "0x0",
         "pricing": {
           "linear": {
             "base": 40000,
@@ -152,7 +153,7 @@
       "balance": "0x1",
       "builtin": {
         "name": "alt_bn128_pairing",
-        "activate_at": "0xfcc25",
+        "activate_at": "0x0",
         "pricing": {
           "alt_bn128_pairing": {
             "base": 100000,
@@ -902,8 +903,17 @@
     "0x00000000000000000000000000000000000000ff": {
       "balance": "0x1"
     },
-    "0x31b98d14007bdee637298086988a0bbd31184523": {
-      "balance": "0x200000000000000000000000000000000000000000000000000000000000000"
+    "0x4c2ae482593505f0163cdefc073e81c63cda4107": {
+      "balance": "0x152d02c7e14af6800000"
+    },
+    "0xa8e8f14732658e4b51e8711931053a8a69baf2b1": {
+      "balance": "0x152d02c7e14af6800000"
+    },
+    "0xd9a5179f091d85051d3c982785efd1455cec8699": {
+      "balance": "0x84595161401484a000000"
+    },
+    "0xe0a2bd4258d2768837baa26a28fe71dc079f84c7": {
+      "balance": "0x4a47e3c12448f4ad000000"
     }
   }
 }

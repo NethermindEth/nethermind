@@ -118,6 +118,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
             chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
+            chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition;
+            chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
         }
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

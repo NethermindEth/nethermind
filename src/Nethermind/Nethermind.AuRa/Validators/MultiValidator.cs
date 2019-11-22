@@ -78,7 +78,7 @@ namespace Nethermind.AuRa.Validators
                 if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !CanChangeImmediately(validator.ValidatorType))
                 {
                     SetCurrentValidator(e.FinalizingBlock.Number, validator);
-                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.Number} ({finalizedBlockHeader.Hash}) at block {e.FinalizingBlock.Number} ({e.FinalizingBlock.Hash}).");
+                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.ToString(BlockHeader.Format.Short)} at block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
                 }
             }
         }
@@ -122,9 +122,9 @@ namespace Nethermind.AuRa.Validators
                 if (CanChangeImmediately(validator.ValidatorType))
                 {
                     SetCurrentValidator(block.Number, validator);
-                    if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block at block {block.Number} ({block.Hash}) to {validator.ValidatorType}.");
+                    if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
                 }
-                else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.Number} ({block.Hash}).");
+                else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
             }
         }
         
@@ -149,7 +149,7 @@ namespace Nethermind.AuRa.Validators
                 InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
             }
 
-            _currentValidator?.SetFinalizationManager(finalizationManager);
+            _currentValidator?.SetFinalizationManager(finalizationManager, forProducing);
         }
 
         private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)

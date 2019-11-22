@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security;
+using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -241,6 +242,22 @@ namespace Nethermind.KeyStore.Test
 
             Result deleteResult = _store.DeleteKey(key.Address);
             Assert.AreEqual(ResultType.Success, deleteResult.ResultType);
+        }
+
+        [Test]
+        public void ShouldSaveFileWithoutBom()
+        {
+            const string bomBytesHex = "efbbbf";
+            const string validBytesHex = "7b2276";
+            var (key, _) = _store.GenerateKey(_testPasswordSecured);
+            var directory = _keyStoreConfig.KeyStoreDirectory.GetApplicationResourcePath();
+            var addressHex = key.Address.ToString(false, false);
+            var file = Directory.GetFiles(directory).SingleOrDefault(f => f.Contains(addressHex));
+            var bytes = File.ReadAllBytes(file);
+            _store.DeleteKey(key.Address);
+            var bytesHex = bytes.ToHexString();
+            bytesHex.Should().NotStartWith(bomBytesHex);
+            bytesHex.Should().StartWith(validBytesHex);
         }
     }
 }

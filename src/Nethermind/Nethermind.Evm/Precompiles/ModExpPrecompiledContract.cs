@@ -110,7 +110,7 @@ namespace Nethermind.Evm.Precompiles
                 return lengthOver32 * 8;
             }
 
-            return (lengthOver32 + exponent.Length - leadingZeros - 1) * 8 + exponent[leadingZeros].GetHighestSetBitIndex();
+            return (lengthOver32 + exponent.Length - leadingZeros - 1) * 8 + (exponent[leadingZeros].GetHighestSetBitIndex() - 1);
         }
     }
 }

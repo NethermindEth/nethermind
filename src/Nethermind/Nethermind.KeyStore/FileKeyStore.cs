@@ -71,14 +71,17 @@ namespace Nethermind.KeyStore
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
 
-        public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
+        public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer,
+            ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _keyStoreEncoding = Encoding.GetEncoding(_config.KeyStoreEncoding);
+            _keyStoreEncoding = _config.KeyStoreEncoding.Equals("UTF-8", StringComparison.InvariantCultureIgnoreCase)
+                ? new UTF8Encoding(false)
+                : Encoding.GetEncoding(_config.KeyStoreEncoding);
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
@@ -211,7 +214,18 @@ namespace Nethermind.KeyStore
 
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _config.KdfparamsN, _config.KdfparamsR, _config.KdfparamsP, null, _config.KdfparamsDklen);
 
-            var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
+            byte[] encryptKey;
+            var kdf = _config.Kdf;
+            var cipherType = _config.Cipher;
+            if (kdf == "scrypt" && cipherType == "aes-128-cbc")
+            {
+                encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+            }
+            else
+            {
+                encryptKey = derivedKey.Take(16).ToArray();
+            }
+
             var encryptContent = key.KeyBytes;
             var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
@@ -246,8 +260,7 @@ namespace Nethermind.KeyStore
                     },
                     MAC = mac.ToHexString(false),
                 },
-                
-                Id = addressString,
+                Id = Guid.NewGuid().ToString(),
                 Version = Version
             };
             
@@ -259,7 +272,7 @@ namespace Nethermind.KeyStore
             try
             {
                 var files = Directory.GetFiles(GetStoreDirectory(), "UTC--*--*");
-                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Substring("UTC--2019-01-03T17-14-43.479138000Z--".Length)).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
+                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
                 return (addresses, new Result { ResultType = ResultType.Success });
             }
             catch (Exception e)
