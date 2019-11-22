@@ -5,10 +5,10 @@ using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Options;
 
-namespace Cortex.BeaconNode
+namespace Cortex.BeaconNode.Data
 {
     // Data Class
-    public class Store
+    public class Store : IStore
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;

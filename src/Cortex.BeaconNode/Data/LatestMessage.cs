@@ -1,7 +1,7 @@
 ﻿using Epoch = System.UInt64;
 using Hash = System.Byte; // Byte32
 
-namespace Cortex.BeaconNode
+namespace Cortex.BeaconNode.Data
 {
     // Data Class
     public class LatestMessage

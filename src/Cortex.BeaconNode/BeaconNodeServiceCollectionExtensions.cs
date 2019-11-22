@@ -1,4 +1,5 @@
 ﻿using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Data;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,7 +18,7 @@ namespace Cortex.BeaconNode
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();
             services.AddSingleton<BeaconNodeConfiguration>();
-            services.AddSingleton<Store>();
+            services.AddSingleton<IStore, Store>();
             services.AddSingleton<ICryptographyService, CryptographyService>();
 
             services.AddScoped<BlockProducer>();

@@ -1,14 +1,15 @@
 ﻿using System;
 using System.Threading.Tasks;
+using Cortex.BeaconNode.Data;
 using Cortex.Containers;
 
 namespace Cortex.BeaconNode
 {
     public class BlockProducer
     {
-        private readonly Store _store;
+        private readonly IStore _store;
 
-        public BlockProducer(Store store)
+        public BlockProducer(IStore store)
         {
             _store = store;
         }
