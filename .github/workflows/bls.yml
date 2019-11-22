@@ -39,6 +39,7 @@ jobs:
         cd D:\a\nethermind\nethermind\bls && call mklib.bat dll
         cd D:\a\nethermind\nethermind\bls && call mk -d test\bls_c384_test.cpp
         cd D:\a\nethermind\nethermind\bls && call bin\bls_c384_test.exe
+      shell: cmd
     - name: Building BLS for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
