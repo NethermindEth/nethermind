@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             const RefundReason reason = RefundReason.DataDiscontinued;
             var deposit = new Deposit(TestItem.KeccakA, 1, 1, 1);
-            var depositDetails = new DepositDetails(deposit, null, null, null, 0, null);
+            var depositDetails = new DepositDetails(deposit, null, null, null, 0, null, 0);
             var ticket = new EarlyRefundTicket(deposit.Id, 0, null);
             var refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
             _depositRepository.GetAsync(ticket.DepositId).Returns(depositDetails);

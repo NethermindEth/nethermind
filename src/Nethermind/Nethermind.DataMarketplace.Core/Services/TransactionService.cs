@@ -38,10 +38,15 @@ namespace Nethermind.DataMarketplace.Core.Services
 
         public async Task<Keccak> UpdateGasPriceAsync(Keccak transactionHash, UInt256 gasPrice)
         {
+            if (gasPrice == 0)
+            {
+                throw new InvalidOperationException($"Gas price cannot be 0.");
+            }
+            
             var transactionDetails = await _blockchainBridge.GetTransactionAsync(transactionHash);
             if (transactionDetails is null)
             {
-                throw new InvalidOperationException($"Transaction was not found for hash: '{transactionHash}'");
+                throw new InvalidOperationException($"Transaction was not found for hash: '{transactionHash}'.");
             }
 
             var transaction = transactionDetails.Transaction;

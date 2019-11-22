@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IEthRequestService _ethRequestService;
         private IEthPriceService _ethPriceService;
         private IGasPriceService _gasPriceService;
-        private ITransactionService _transactionService;
+        private IConsumerTransactionsService _consumerTransactionsService;
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
@@ -73,11 +73,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _ethRequestService = Substitute.For<IEthRequestService>();
             _ethPriceService = Substitute.For<IEthPriceService>();
             _gasPriceService = Substitute.For<IGasPriceService>();
-            _transactionService = Substitute.For<ITransactionService>();
+            _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
             _personalBridge = Substitute.For<IPersonalBridge>();
             _timestamper = new Timestamper(Date);
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _gasPriceService, _transactionService, _personalBridge,
+                _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _personalBridge,
                 _timestamper);
         }
 
@@ -105,7 +105,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
-                _ethRequestService, _ethPriceService, _gasPriceService, _transactionService, _personalBridge,
+                _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _personalBridge,
                 _timestamper);
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
@@ -493,15 +493,27 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
         
         [Test]
-        public async Task update_transaction_gas_price_should_return_transaction_hash()
+        public async Task update_deposit_gas_price_should_return_transaction_hash()
         {
-            var transactionHash = TestItem.KeccakA;
+            var depositId = TestItem.KeccakA;
             var gasPrice = 20.GWei();
-            var updatedTransactionHash = TestItem.KeccakB;
-            _transactionService.UpdateGasPriceAsync(transactionHash, gasPrice).Returns(updatedTransactionHash);
-            var result = await _rpc.ndm_updateTransactionGasPrice(transactionHash, gasPrice);
-            result.Data.Should().Be(updatedTransactionHash);
-            await _transactionService.Received().UpdateGasPriceAsync(transactionHash, gasPrice);
+            var transactionHash = TestItem.KeccakB;
+            _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, gasPrice).Returns(transactionHash);
+            var result = await _rpc.ndm_updateDepositGasPrice(depositId, gasPrice);
+            result.Data.Should().Be(transactionHash);
+            await _consumerTransactionsService.Received().UpdateDepositGasPriceAsync(depositId, gasPrice);
+        }
+        
+        [Test]
+        public async Task update_refund_gas_price_should_return_transaction_hash()
+        {
+            var depositId = TestItem.KeccakA;
+            var gasPrice = 20.GWei();
+            var transactionHash = TestItem.KeccakB;
+            _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, gasPrice).Returns(transactionHash);
+            var result = await _rpc.ndm_updateRefundGasPrice(depositId, gasPrice);
+            result.Data.Should().Be(transactionHash);
+            await _consumerTransactionsService.Received().UpdateRefundGasPriceAsync(depositId, gasPrice);
         }
 
         private static void VerifyGasPrice(GasPriceDetailsForRpc rpcGasPrice, GasPriceDetails gasPrice)
@@ -639,7 +651,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
-                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
+                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA, 1);
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,

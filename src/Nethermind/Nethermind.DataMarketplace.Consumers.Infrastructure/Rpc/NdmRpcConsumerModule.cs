@@ -45,14 +45,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         private readonly IEthRequestService _ethRequestService;
         private readonly IEthPriceService _ethPriceService;
         private readonly IGasPriceService _gasPriceService;
-        private readonly ITransactionService _transactionService;
+        private readonly IConsumerTransactionsService _consumerTransactionsService;
         private readonly IPersonalBridge _personalBridge;
         private readonly ITimestamper _timestamper;
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
-            IEthPriceService ethPriceService, IGasPriceService gasPriceService, ITransactionService transactionService,
-            IPersonalBridge personalBridge, ITimestamper timestamper)
+            IEthPriceService ethPriceService, IGasPriceService gasPriceService,
+            IConsumerTransactionsService consumerTransactionsService, IPersonalBridge personalBridge,
+            ITimestamper timestamper)
         {
             _consumerService = consumerService;
             _depositReportService = depositReportService;
@@ -60,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             _ethRequestService = ethRequestService;
             _ethPriceService = ethPriceService;
             _gasPriceService = gasPriceService;
-            _transactionService = transactionService;
+            _consumerTransactionsService = consumerTransactionsService;
             _personalBridge = personalBridge;
             _timestamper = timestamper;
         }
@@ -255,17 +256,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
-        public async Task<ResultWrapper<Keccak>> ndm_updateTransactionGasPrice(Keccak transactionHash, UInt256 gasPrice)
-            => ResultWrapper<Keccak>.Success(await _transactionService.UpdateGasPriceAsync(transactionHash, gasPrice));
+        public async Task<ResultWrapper<Keccak>> ndm_updateDepositGasPrice(Keccak depositId, UInt256 gasPrice)
+            => ResultWrapper<Keccak>.Success(await _consumerTransactionsService
+                .UpdateDepositGasPriceAsync(depositId, gasPrice));
 
-        public Task<ResultWrapper<Keccak>> ndm_updateDepositTransactionGasPrice(Keccak depositId, UInt256 gasPrice)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task<ResultWrapper<Keccak>> ndm_updateRefundTransactionGasPrice(Keccak refundId, UInt256 gasPrice)
-        {
-            throw new NotImplementedException();
-        }
+        public async Task<ResultWrapper<Keccak>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice)
+            => ResultWrapper<Keccak>.Success(await _consumerTransactionsService
+                .UpdateRefundGasPriceAsync(depositId, gasPrice));
     }
 }

@@ -74,7 +74,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider, refundTo);
                 var gasPrice = await _gasPriceService.GetCurrentAsync();
                 transactionHash = await _refundService.ClaimRefundAsync(refundTo, refundClaim, gasPrice);
-                deposit.SetClaimedRefundTransactionHash(transactionHash);
+                deposit.SetClaimedRefundTransactionHash(transactionHash, gasPrice);
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }
@@ -112,7 +112,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     ticket.ClaimableAfter, ticket.Signature, refundTo);
                 var gasPrice = await _gasPriceService.GetCurrentAsync();
                 transactionHash = await _refundService.ClaimEarlyRefundAsync(refundTo, earlyRefundClaim, gasPrice);
-                deposit.SetClaimedRefundTransactionHash(transactionHash);
+                deposit.SetClaimedRefundTransactionHash(transactionHash, gasPrice);
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }

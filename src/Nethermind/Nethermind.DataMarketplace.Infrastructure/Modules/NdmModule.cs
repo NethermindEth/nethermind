@@ -41,6 +41,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 : new Address(config.ContractAddress);
 
             var logManager = services.LogManager;
+            var wallet = services.Wallet;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
@@ -54,7 +55,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.ReceiptStorage,
                 services.FilterStore,
                 services.FilterManager,
-                services.Wallet,
+                wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
@@ -73,15 +74,16 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
 
             var gasPriceService = new GasPriceService(services.HttpClient, services.ConfigManager, config.Id,
                 services.Timestamper, logManager);
-            var depositService = new DepositService(ndmBlockchainBridge, encoder, services.Wallet, contractAddress);
+            var transactionService = new TransactionService(ndmBlockchainBridge, wallet, logManager);
+            var depositService = new DepositService(ndmBlockchainBridge, encoder, wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
 //            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
-                depositService, gasPriceService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
-                ndmBlockchainBridge));
+                depositService, gasPriceService, transactionService, ndmDataPublisher, jsonRpcNdmConsumerChannel,
+                ndmConsumerChannelManager, ndmBlockchainBridge));
         }
 
         private static void AddDecoders()

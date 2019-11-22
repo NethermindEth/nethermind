@@ -118,6 +118,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var httpClient = services.RequiredServices.HttpClient;
             var jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
             var ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
+            var transactionService = services.CreatedServices.TransactionService;
 
             var dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
             var transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
@@ -160,7 +161,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
                 receiptService, refundService, sessionService, proxyService);
             var ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
-            var transactionService = new TransactionService(blockchainBridge, wallet, logManager);
+            var consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
+                logManager);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
                 ? new PersonalBridge(ecdsa, wallet)
@@ -168,7 +170,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService,
-                    gasPriceService, transactionService, personalBridge, timestamper), true));
+                    gasPriceService, consumerTransactionsService, personalBridge, timestamper), true));
 
             var useDepositTimer = ndmConfig.ProxyEnabled;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,

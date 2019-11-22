@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var deposit = GetDepositDetails();
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
-            deposit.SetTransactionHash(TestItem.KeccakA);
+            deposit.SetTransactionHash(TestItem.KeccakA, 1);
             await _depositConfirmationService.TryConfirmAsync(deposit);
             await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.TransactionHash);
             deposit.Confirmed.Should().BeTrue();

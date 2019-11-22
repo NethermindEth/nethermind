@@ -131,7 +131,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            if (dataAsset.KycRequired && !(await _kycVerifier.IsVerifiedAsync(assetId, address)))
+            if (dataAsset.KycRequired && !await _kycVerifier.IsVerifiedAsync(assetId, address))
             {
                 return null;
             }
@@ -169,7 +169,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             var depositId = Keccak.Compute(abiHash);
             var deposit = new Deposit(depositId, units, expiryTime, value);
             var depositDetails = new DepositDetails(deposit, dataAsset, address, pepper, now,
-                null, requiredConfirmations: _requiredBlockConfirmations);
+                null, 0, requiredConfirmations: _requiredBlockConfirmations);
             var gasPriceValue = gasPrice is null || gasPrice.Value == 0
                 ? await _gasPriceService.GetCurrentAsync()
                 : gasPrice.Value;
@@ -177,7 +177,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (_logger.IsInfo) _logger.Info($"Created a deposit with id: '{depositId}', for data asset: '{assetId}', address: '{address}'.");
             var transactionHash = await _depositService.MakeDepositAsync(address, deposit, gasPriceValue);
             if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{address}', gas price: {gasPriceValue} wei.");
-            depositDetails.SetTransactionHash(transactionHash);
+            depositDetails.SetTransactionHash(transactionHash, gasPriceValue);
             await _depositRepository.UpdateAsync(depositDetails);
                 
             return depositId;
