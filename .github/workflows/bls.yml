@@ -32,13 +32,13 @@ jobs:
     - name: Building BLS for Windows
       if: matrix.os == 'windows-latest'
       run: |
-        choco install visualcpp-build-tools
-        cd C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\
-        dir
-        C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\vcvarsall.bat x86
-        D:\a\nethermind\nethermind\bls\mklib.bat dll
-        D:\a\nethermind\nethermind\bls\mk.bat -d test\bls_c384_test.cpp
-        D:\a\nethermind\nethermind\bls\bin\bls_c384_test.exe
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cd D:\a\nethermind\nethermind\mcl && call mklib.bat dll
+        cd D:\a\nethermind\nethermind\mcl && call mk -d test\bls12_test.cpp
+        cd D:\a\nethermind\nethermind\mcl && call bin\bls12_test.exe
+        cd D:\a\nethermind\nethermind\bls && call mklib.bat dll
+        cd D:\a\nethermind\nethermind\bls && call mk -d test\bls_c384_test.cpp
+        cd D:\a\nethermind\nethermind\bls && call bin\bls_c384_test.exe
     - name: Building BLS for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
