@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -263,5 +264,16 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         public async Task<ResultWrapper<Keccak>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice)
             => ResultWrapper<Keccak>.Success(await _consumerTransactionsService
                 .UpdateRefundGasPriceAsync(depositId, gasPrice));
+
+        public async Task<ResultWrapper<Keccak>> ndm_cancelTransaction(Keccak transactionHash)
+            => ResultWrapper<Keccak>.Success(await _consumerTransactionsService.CancelAsync(transactionHash));
+
+        public async Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getPendingTransactions()
+        {
+            var transactions = await _consumerTransactionsService.GetPendingAsync();
+
+            return ResultWrapper<IEnumerable<PendingTransactionForRpc>>.Success(transactions
+                .Select(t => new PendingTransactionForRpc(t)));
+        }
     }
 }

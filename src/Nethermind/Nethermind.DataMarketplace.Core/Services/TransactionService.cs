@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -40,9 +41,25 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             if (gasPrice == 0)
             {
-                throw new InvalidOperationException($"Gas price cannot be 0.");
+                throw new InvalidOperationException("Gas price cannot be 0.");
             }
-            
+
+            return await UpdateAsync(transactionHash, transaction =>
+            {
+                transaction.GasPrice = gasPrice;
+                if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' gas price: {transaction.GasPrice} -> {gasPrice} wei.");
+            });
+        }
+
+        public Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value) 
+            => UpdateAsync(transactionHash, transaction =>
+            {
+                transaction.Value = value;
+                if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' value: {transaction.Value} -> {value} wei.");
+            });
+
+        private async Task<Keccak> UpdateAsync(Keccak transactionHash, Action<Transaction> update)
+        {
             var transactionDetails = await _blockchainBridge.GetTransactionAsync(transactionHash);
             if (transactionDetails is null)
             {
@@ -50,16 +67,15 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
 
             var transaction = transactionDetails.Transaction;
-            if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' gas price: {transaction.GasPrice} -> {gasPrice} wei.");
-            transaction.GasPrice = gasPrice;
+            update(transaction);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
             var hash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
             if (hash is null)
             {
                 throw new InvalidOperationException("Transaction was not sent (received an empty hash).");
             }
-            
-            if (_logger.IsInfo) _logger.Info($"Received a new transaction hash: '{hash}' after updating transaction with hash: '{transactionHash}' gas price.");
+
+            if (_logger.IsInfo) _logger.Info($"Received a new transaction hash: '{hash}' after updating transaction with hash: '{transactionHash}'.");
 
             return hash;
         }

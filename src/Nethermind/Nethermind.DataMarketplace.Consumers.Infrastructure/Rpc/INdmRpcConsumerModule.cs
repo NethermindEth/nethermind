@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -64,5 +65,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType);
         Task<ResultWrapper<Keccak>> ndm_updateDepositGasPrice(Keccak depositId, UInt256 gasPrice);
         Task<ResultWrapper<Keccak>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice);
+        Task<ResultWrapper<Keccak>> ndm_cancelTransaction(Keccak transactionHash);
+        Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getPendingTransactions();
     }
 }

@@ -515,13 +515,40 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.Data.Should().Be(transactionHash);
             await _consumerTransactionsService.Received().UpdateRefundGasPriceAsync(depositId, gasPrice);
         }
+        
+        [Test]
+        public async Task cancel_transaction_should_return_transaction_hash()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var canceledTransactionHash = TestItem.KeccakB;
+            _consumerTransactionsService.CancelAsync(transactionHash).Returns(canceledTransactionHash);
+            var result = await _rpc.ndm_cancelTransaction(transactionHash);
+            result.Data.Should().Be(canceledTransactionHash);
+            await _consumerTransactionsService.Received().CancelAsync(transactionHash);
+        }
+
+        [Test]
+        public async Task get_pending_transactions_should_return_data()
+        {
+            var pendingTransactions = new List<PendingTransaction>
+            {
+                new PendingTransaction(TestItem.KeccakA, 1, "test")
+            };
+            var transaction = pendingTransactions[0];
+            _consumerTransactionsService.GetPendingAsync().Returns(pendingTransactions);
+            var result = await _rpc.ndm_getPendingTransactions();
+            await _consumerTransactionsService.Received().GetPendingAsync();
+            result.Data.Should().NotBeEmpty();
+            result.Data.Should().ContainSingle(t => t.Hash == transaction.Hash &&
+                                                    t.GasPrice == transaction.GasPrice && t.Type == transaction.Type);
+        }
 
         private static void VerifyGasPrice(GasPriceDetailsForRpc rpcGasPrice, GasPriceDetails gasPrice)
         {
             rpcGasPrice.Price.Should().Be(gasPrice.Price);
             rpcGasPrice.WaitTime.Should().Be(gasPrice.WaitTime);
         }
-
+        
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)
         {
             rpcItem.Id.Should().Be(item.Id);
