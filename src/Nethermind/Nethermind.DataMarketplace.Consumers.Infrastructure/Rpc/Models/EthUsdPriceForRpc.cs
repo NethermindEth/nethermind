@@ -14,14 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
-
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
-    public interface IEthPriceService
+    public class EthUsdPriceForRpc
     {
-        Task UpdateAsync();
-        decimal UsdPrice { get; }
-        ulong UpdatedAt { get; }
+        public decimal Price { get; set; }
+        public ulong UpdatedAt { get; set; }
+
+        public EthUsdPriceForRpc()
+        {
+        }
+        
+        public EthUsdPriceForRpc(decimal price, ulong updatedAt)
+        {
+            Price = price;
+            UpdatedAt = updatedAt;
+        }
     }
 }

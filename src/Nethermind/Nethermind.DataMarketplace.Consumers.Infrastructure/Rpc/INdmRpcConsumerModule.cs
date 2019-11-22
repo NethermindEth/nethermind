@@ -59,9 +59,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<FaucetResponseForRpc>> ndm_requestEth(Address address);
         Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy();
         Task<ResultWrapper<bool>> ndm_setProxy(string[] urls);
-        ResultWrapper<decimal> ndm_getEthUsdPrice();
-        Task<ResultWrapper<GasPriceTypesForRpc>> ndm_getGasPrice();
+        ResultWrapper<EthUsdPriceForRpc> ndm_getEthUsdPrice();
+        ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice();
         Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType);
         Task<ResultWrapper<Keccak>> ndm_updateTransactionGasPrice(Keccak transactionHash, UInt256 gasPrice);
+        Task<ResultWrapper<Keccak>> ndm_updateDepositTransactionGasPrice(Keccak depositId, UInt256 gasPrice);
+        Task<ResultWrapper<Keccak>> ndm_updateRefundTransactionGasPrice(Keccak refundId, UInt256 gasPrice);
     }
 }

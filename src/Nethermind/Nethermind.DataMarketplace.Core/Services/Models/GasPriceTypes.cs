@@ -24,9 +24,10 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
         public GasPriceDetails Fastest { get; }
         public GasPriceDetails Custom { get; }
         public string Type { get; }
+        public ulong UpdatedAt { get; }
 
         public GasPriceTypes(GasPriceDetails safeLow, GasPriceDetails average, GasPriceDetails fast,
-            GasPriceDetails fastest, GasPriceDetails custom, string type)
+            GasPriceDetails fastest, GasPriceDetails custom, string type, ulong updatedAt)
         {
             SafeLow = safeLow;
             Average = average;
@@ -34,6 +35,7 @@ namespace Nethermind.DataMarketplace.Core.Services.Models
             Fastest = fastest;
             Custom = custom;
             Type = type;
+            UpdatedAt = updatedAt;
         }
     }
 }

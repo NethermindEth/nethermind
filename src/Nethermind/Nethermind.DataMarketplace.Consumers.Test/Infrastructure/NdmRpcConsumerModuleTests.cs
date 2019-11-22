@@ -454,31 +454,35 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public void get_eth_usd_price_should_return_amount()
         {
             const decimal price = 187;
+            const ulong updatedAt = 123456789;
             _ethPriceService.UsdPrice.Returns(price);
+            _ethPriceService.UpdatedAt.Returns(updatedAt);
             var result = _rpc.ndm_getEthUsdPrice();
-            result.Data.Should().Be(price);
+            result.Data.Price.Should().Be(price);
+            result.Data.UpdatedAt.Should().Be(updatedAt);
         }
 
         [Test]
-        public async Task get_gas_price_should_return_types()
+        public void get_gas_price_should_return_types()
         {
             const string type = "test";
+            const ulong updatedAt = 123456789;
             var safeLow = new GasPriceDetails(1, 1000);
             var average = new GasPriceDetails(10, 100);
             var fast = new GasPriceDetails(100, 100);
             var fastest = new GasPriceDetails(1000, 1);
             var custom = new GasPriceDetails(500, 2);
-            _gasPriceService.GetAvailableAsync().Returns(new GasPriceTypes(safeLow, average, fast, fastest, custom,
-                type));
-            var result = await _rpc.ndm_getGasPrice();
+            _gasPriceService.Types.Returns(new GasPriceTypes(safeLow, average, fast, fastest, custom, type, updatedAt));
+            var result = _rpc.ndm_getGasPrice();
             VerifyGasPrice(result.Data.SafeLow, safeLow);
             VerifyGasPrice(result.Data.Average, average);
             VerifyGasPrice(result.Data.Fast, fast);
             VerifyGasPrice(result.Data.Fastest, fastest);
             VerifyGasPrice(result.Data.Custom, custom);
             result.Data.Type.Should().Be(type);
+            result.Data.UpdatedAt.Should().Be(updatedAt);
         }
-        
+
         [Test]
         public async Task set_gas_price_should_return_true()
         {

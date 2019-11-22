@@ -48,7 +48,6 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private readonly IDepositService _depositService;
         private readonly IDepositUnitsCalculator _depositUnitsCalculator;
         private readonly IDepositDetailsRepository _depositRepository;
-        private readonly IConsumerSessionRepository _sessionRepository;
         private readonly IDataAssetService _dataAssetService;
         private readonly IKycVerifier _kycVerifier;
         private readonly IProviderService _providerService;
@@ -63,13 +62,12 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         public DepositManager(IDepositService depositService, IDepositUnitsCalculator depositUnitsCalculator,
             IDataAssetService dataAssetService, IKycVerifier kycVerifier, IProviderService providerService,
             IAbiEncoder abiEncoder, ICryptoRandom cryptoRandom, IWallet wallet, IGasPriceService gasPriceService,
-            IDepositDetailsRepository depositRepository, IConsumerSessionRepository sessionRepository,
-            ITimestamper timestamper, ILogManager logManager, uint requiredBlockConfirmations)
+            IDepositDetailsRepository depositRepository, ITimestamper timestamper, ILogManager logManager,
+            uint requiredBlockConfirmations)
         {
             _depositService = depositService;
             _depositUnitsCalculator = depositUnitsCalculator;
             _depositRepository = depositRepository;
-            _sessionRepository = sessionRepository;
             _dataAssetService = dataAssetService;
             _kycVerifier = kycVerifier;
             _providerService = providerService;

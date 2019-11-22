@@ -18,7 +18,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
@@ -37,37 +37,20 @@ namespace Nethermind.DataMarketplace.Core.Services
         private readonly IHttpClient _client;
         private readonly IConfigManager _configManager;
         private readonly string _configId;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
+        private ulong _updatedAt;
+        
+        public GasPriceTypes Types { get; private set; }
 
         public GasPriceService(IHttpClient client, IConfigManager configManager, string configId,
-            ILogManager logManager)
+            ITimestamper timestamper, ILogManager logManager)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
             _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
             _configId = configId ?? throw new ArgumentNullException(nameof(configId));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public async Task<GasPriceTypes> GetAvailableAsync()
-        {
-            var config = await _configManager.GetAsync(_configId);
-            var result = await _client.GetAsync<Result>(Url);
-            if (result is null)
-            {
-                if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
-                return new GasPriceTypes(GasPriceDetails.Empty, GasPriceDetails.Empty, GasPriceDetails.Empty,
-                    GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType);
-            }
-
-            var type = config.GasPriceType;
-            var custom = type.Equals("custom", StringComparison.InvariantCultureIgnoreCase)
-                ? new GasPriceDetails(config.GasPrice, 0)
-                : GasPriceDetails.Empty;
-
-            return new GasPriceTypes(new GasPriceDetails(((int) result.SafeLow).GWei(), result.SafeLowWait),
-                new GasPriceDetails(((int) result.Average).GWei(), result.AvgWait),
-                new GasPriceDetails(((int) result.Fast).GWei(), result.FastWait),
-                new GasPriceDetails(((int) result.Fastest).GWei(), result.FastestWait), custom, type);
         }
 
         public async Task<UInt256> GetCurrentAsync()
@@ -88,7 +71,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             else
             {
                 type = gasPriceOrType;
-                gasPriceValue = await GetForTypeAsync(type);
+                gasPriceValue = GetForType(type);
                 if (gasPriceValue == 0)
                 {
                     throw new ArgumentException($"Gas price type: {type} couldn't be updated.", nameof(type));
@@ -102,7 +85,33 @@ namespace Nethermind.DataMarketplace.Core.Services
             if (_logger.IsInfo) _logger.Info($"Updated gas price: {config.GasPrice} wei.");
         }
 
-        private async Task<UInt256> GetForTypeAsync(string type)
+        public async Task UpdateAsync()
+        {
+            var config = await _configManager.GetAsync(_configId);
+            var result = await _client.GetAsync<Result>(Url);
+            if (result is null)
+            {
+                if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
+                Types = new GasPriceTypes(GasPriceDetails.Empty, GasPriceDetails.Empty, GasPriceDetails.Empty,
+                    GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType, _updatedAt);
+                return;
+            }
+
+            var type = config.GasPriceType;
+            var custom = type.Equals("custom", StringComparison.InvariantCultureIgnoreCase)
+                ? new GasPriceDetails(config.GasPrice, 0)
+                : GasPriceDetails.Empty;
+
+            _updatedAt = _timestamper.EpochSeconds;
+            Types = new GasPriceTypes(new GasPriceDetails(((int) result.SafeLow).GWei(), result.SafeLowWait),
+                new GasPriceDetails(((int) result.Average).GWei(), result.AvgWait),
+                new GasPriceDetails(((int) result.Fast).GWei(), result.FastWait),
+                new GasPriceDetails(((int) result.Fastest).GWei(), result.FastestWait), custom, type, _updatedAt);
+            
+            if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, , fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
+        }
+
+        private UInt256 GetForType(string type)
         {
             if (string.IsNullOrWhiteSpace(type))
             {
@@ -115,18 +124,17 @@ namespace Nethermind.DataMarketplace.Core.Services
                 throw new ArgumentException($"Invalid gas price type: {type}", nameof(type));
             }
 
-            var types = await GetAvailableAsync();
-            if (types is null)
+            if (Types is null)
             {
                 return 0;
             }
 
             return type.ToLowerInvariant() switch
             {
-                "safelow" => types.SafeLow?.Price ?? 0,
-                "average" => types.Average?.Price ?? 0,
-                "fast" => types.Fast?.Price ?? 0,
-                "fastest" => types.Fastest?.Price ?? 0,
+                "safelow" => Types.SafeLow.Price,
+                "average" => Types.Average.Price,
+                "fast" => Types.Fast.Price,
+                "fastest" => Types.Fastest.Price,
                 _ => UInt256.Zero
             };
         }

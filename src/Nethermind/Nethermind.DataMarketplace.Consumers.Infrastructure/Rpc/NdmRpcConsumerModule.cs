@@ -239,16 +239,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<decimal> ndm_getEthUsdPrice() => ResultWrapper<decimal>.Success(_ethPriceService.UsdPrice);
+        public ResultWrapper<EthUsdPriceForRpc> ndm_getEthUsdPrice()
+            => ResultWrapper<EthUsdPriceForRpc>.Success(new EthUsdPriceForRpc(_ethPriceService.UsdPrice,
+                _ethPriceService.UpdatedAt));
 
-        public async Task<ResultWrapper<GasPriceTypesForRpc>> ndm_getGasPrice()
-        {
-            var types = await _gasPriceService.GetAvailableAsync();
-
-            return types is null
+        public ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice()
+            => _gasPriceService.Types is null
                 ? ResultWrapper<GasPriceTypesForRpc>.Fail("Gas price couldn't be requested.")
-                : ResultWrapper<GasPriceTypesForRpc>.Success(new GasPriceTypesForRpc(types));
-        }
+                : ResultWrapper<GasPriceTypesForRpc>.Success(new GasPriceTypesForRpc(_gasPriceService.Types));
 
         public async Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType)
         {
@@ -259,5 +257,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public async Task<ResultWrapper<Keccak>> ndm_updateTransactionGasPrice(Keccak transactionHash, UInt256 gasPrice)
             => ResultWrapper<Keccak>.Success(await _transactionService.UpdateGasPriceAsync(transactionHash, gasPrice));
+
+        public Task<ResultWrapper<Keccak>> ndm_updateDepositTransactionGasPrice(Keccak depositId, UInt256 gasPrice)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<ResultWrapper<Keccak>> ndm_updateRefundTransactionGasPrice(Keccak refundId, UInt256 gasPrice)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

@@ -143,7 +143,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 depositRepository, depositService, logManager, requiredBlockConfirmations);
             var depositManager = new DepositManager(depositService, depositUnitsCalculator, dataAssetService,
                 kycVerifier, providerService, abiEncoder, cryptoRandom, wallet, gasPriceService, depositRepository,
-                sessionRepository, timestamper, logManager, requiredBlockConfirmations);
+                timestamper, logManager, requiredBlockConfirmations);
             var depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
                 timestamper);
             var receiptService = new ReceiptService(depositProvider, providerService, receiptRequestValidator,
@@ -159,7 +159,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var consumerService = new ConsumerService(accountService, dataAssetService, dataRequestService,
                 dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
                 receiptService, refundService, sessionService, proxyService);
-            var ethPriceService = new EthPriceService(httpClient, logManager);
+            var ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
             var transactionService = new TransactionService(blockchainBridge, wallet, logManager);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
@@ -172,8 +172,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 
             var useDepositTimer = ndmConfig.ProxyEnabled;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
-                refundClaimant, depositConfirmationService, ethPriceService, blockProcessor, depositRepository,
-                consumerNotifier, logManager, useDepositTimer: useDepositTimer,
+                refundClaimant, depositConfirmationService, ethPriceService, gasPriceService, blockProcessor,
+                depositRepository, consumerNotifier, logManager, useDepositTimer: useDepositTimer,
                 ethJsonRpcClientProxy: ethJsonRpcClientProxy);
 
             consumerServicesBackgroundProcessor.Init();

@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             }
 
             var gasPriceService = new GasPriceService(services.HttpClient, services.ConfigManager, config.Id,
-                logManager);
+                services.Timestamper, logManager);
             var depositService = new DepositService(ndmBlockchainBridge, encoder, services.Wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;

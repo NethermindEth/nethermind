@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Core.Services.Models;
 
 namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
 {
@@ -205,12 +206,45 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     graceUnits
                 }));
 
-        public void SendEthUsdPriceAsync(decimal price)
+        public Task SendEthUsdPriceAsync(decimal price, ulong updatedAt)
             => _notifier.NotifyAsync(new Notification("eth_usd_price",
                 new
                 {
-                    price
+                    price,
+                    updatedAt
                 }));
 
+        public Task SendGasPriceAsync(GasPriceTypes types)
+            => _notifier.NotifyAsync(new Notification("gas_price",
+                new
+                {
+                    safeLow = new
+                    {
+                        price = types.SafeLow.Price,
+                        waitTime = types.SafeLow.WaitTime
+                    },
+                    average = new
+                    {
+                        price = types.Average.Price,
+                        waitTime = types.Average.WaitTime
+                    },
+                    fast = new
+                    {
+                        price = types.Fast.Price,
+                        waitTime = types.Fast.WaitTime
+                    },
+                    fastest = new
+                    {
+                        price = types.Fastest.Price,
+                        waitTime = types.Fastest.WaitTime
+                    },
+                    custom = new
+                    {
+                        price = types.Custom.Price,
+                        waitTime = types.Custom.WaitTime
+                    },
+                    type = types.Type,
+                    updatedAt = types.UpdatedAt
+                }));
     }
 }
