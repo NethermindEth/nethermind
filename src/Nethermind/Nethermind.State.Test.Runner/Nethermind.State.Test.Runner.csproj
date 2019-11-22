@@ -20,6 +20,10 @@
       <Content Include="statetest1.json">
         <CopyToOutputDirectory>Always</CopyToOutputDirectory>
       </Content>
+      <None Remove="storagefuzz0.json" />
+      <Content Include="storagefuzz0.json">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
     </ItemGroup>
 
 </Project>
