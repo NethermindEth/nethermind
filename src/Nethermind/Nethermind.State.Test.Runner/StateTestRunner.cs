@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Json;
@@ -30,12 +29,16 @@ namespace Nethermind.State.Test.Runner
     {
         private IBlockchainTestsSource _testsSource;
         private readonly bool _alwaysTrace;
+        private readonly bool _traceMemory;
+        private readonly bool _traceStack;
         private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace)
+        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace, bool traceMemory, bool traceStack)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _alwaysTrace = alwaysTrace;
+            _traceMemory = traceMemory;
+            _traceStack = traceStack;
             Setup(null);
         }
 
@@ -70,6 +73,8 @@ namespace Nethermind.State.Test.Runner
                 if (!(result?.Pass ?? false))
                 {
                     StateTestTxTracer txTracer = new StateTestTxTracer();
+                    txTracer.IsTracingMemory = _traceMemory;
+                    txTracer.IsTracingStack = _traceStack;
                     result = RunTest(test, txTracer);
 
                     var txTrace = txTracer.BuildResult();

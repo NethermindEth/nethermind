@@ -37,6 +37,12 @@ namespace Nethermind.State.Test.Runner
             
             [Option('w', "wait", Required = false, HelpText = "Wait for input after the test run.")]
             public bool Wait { get; set; }
+
+            [Option('m', "memory", Required = false, HelpText = "Exclude memory trace")]
+            public bool ExcludeMemory { get; set; }
+            
+            [Option('s', "stack", Required = false, HelpText = "Exclude stack trace")]
+            public bool ExcludeStack { get; set; }
         }
 
         public static void Main(params string[] args)
@@ -53,7 +59,7 @@ namespace Nethermind.State.Test.Runner
         {
             if (!string.IsNullOrWhiteSpace(options.Input))
             {
-                RunSingleTest(options.Input, source => new StateTestsRunner(source, options.TraceAlways));
+                RunSingleTest(options.Input, source => new StateTestsRunner(source, options.TraceAlways, !options.ExcludeMemory, !options.ExcludeStack));
             }
 
             if (options.Wait)

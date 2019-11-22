@@ -36,10 +36,10 @@ namespace Nethermind.State.Test.Runner
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
         public bool IsTracingOpLevelStorage => true;
-        public bool IsTracingMemory => true;
+        public bool IsTracingMemory { get; set; } = true;
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingCode => false;
-        public bool IsTracingStack => true;
+        public bool IsTracingStack { get; set; } = true;
         bool ITxTracer.IsTracingState => false;
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
@@ -213,7 +213,7 @@ namespace Nethermind.State.Test.Runner
                 string prepared = s.AsSpan().Slice(2).TrimStart('0').ToString();
                 if (prepared == string.Empty)
                 {
-                    prepared = "0x0";
+                    prepared = "0";
                 }
                 
                 _traceEntry.Stack.Add(prepared);
