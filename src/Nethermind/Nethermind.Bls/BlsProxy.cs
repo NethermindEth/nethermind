@@ -28,7 +28,9 @@ namespace Nethermind.Bls
 
         private const int MclBls12_381CurveId = 5;
 
-        private const int MclBnCompileTimeVar = MclBnFrUnitSize * 10 + MclBnFpUnitSize + 100;
+        private const int BlsCompilerTimeVarAdjustment = 200; 
+        
+        private const int MclBnCompileTimeVar = MclBnFrUnitSize * 10 + MclBnFpUnitSize + BlsCompilerTimeVarAdjustment;
 
         private const int BlsPublicKeyLength = 3 * 48;
         private const int PublicKeyLength = 48;
@@ -138,7 +140,10 @@ namespace Nethermind.Bls
         private static extern void blsSetETHserialization(int ETHserialization);
 
         [DllImport("bls384_256.dll")]
-        private static extern unsafe int blsSign(byte* blsSignature, byte* blsPrivateKey, byte* message, int size);
+        private static extern unsafe int blsSignHash(byte* blsSignature, byte* blsPrivateKey, byte* hash, int size);
+        
+        [DllImport("bls384_256.dll")]
+        private static extern unsafe int blsSignHashWithDomain(byte* blsSignature, byte* blsPrivateKey, byte* hashWithDomain);
 
         [DllImport("bls384_256.dll")]
         private static extern unsafe void blsSignatureAdd(byte* blsSignatureA, byte* blsSignatureB);
@@ -150,6 +155,9 @@ namespace Nethermind.Bls
         private static extern unsafe int blsSignatureSerialize(byte* signatureBytes, int signatureLength, byte* blsSignature);
 
         [DllImport("bls384_256.dll")]
-        private static extern unsafe int blsVerify(byte* blsSignature, byte* blsPublicKey, byte* message, int size);
+        private static extern unsafe int blsVerifyHash(byte* blsSignature, byte* blsPublicKey, byte* hash, int size);
+        
+        [DllImport("bls384_256.dll")]
+        private static extern unsafe int blsVerifyHashWithDomain(byte* blsSignature, byte* blsPublicKey, byte* hashWithDomain);
     }
 }
