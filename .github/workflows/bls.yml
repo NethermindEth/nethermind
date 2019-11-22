@@ -1,4 +1,4 @@
-name: BLS test
+name: BLS build
 
 on:
   push:
@@ -51,6 +51,9 @@ jobs:
       run: |
         cd bls/
         make all
+    - name: Stripping Linux file
+      if: matrix.os == 'ubuntu-latest'
+      run: strip /home/runner/work/nethermind/nethermind/bls/lib/libbls384_256.so
     - uses: actions/upload-artifact@v1
       if: matrix.os == 'ubuntu-latest'
       name: Uploading Linux artifact
