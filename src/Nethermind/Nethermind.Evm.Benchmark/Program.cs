@@ -16,6 +16,7 @@
 
 using System.Linq;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Environments;
 using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
@@ -27,7 +28,7 @@ namespace Nethermind.Evm.Benchmark
         {
             BenchmarkRunner.Run<EvmBenchmarks>(
                 DefaultConfig.Instance.With(
-                    Job.Core.With(
+                    Job.Default.With(CoreRuntime.Core30).With(
                         new[] {new EnvironmentVariable("NETH.BENCHMARK.BYTECODE", args.Any() ? args[0] : "0x")})));
         }
     }
