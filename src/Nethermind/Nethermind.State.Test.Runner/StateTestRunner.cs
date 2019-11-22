@@ -21,6 +21,8 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Json;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Test.Runner
@@ -58,6 +60,8 @@ namespace Nethermind.State.Test.Runner
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
+        private IntrinsicGasCalculator _calculator = new IntrinsicGasCalculator();
+        
         public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
@@ -80,7 +84,7 @@ namespace Nethermind.State.Test.Runner
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-                
+                    txTrace.Result.GasUsed -= _calculator.Calculate(test.Transaction, test.Fork);
                     WriteErr(txTrace);    
                 }
                 

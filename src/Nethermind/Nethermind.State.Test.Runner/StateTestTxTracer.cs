@@ -32,6 +32,7 @@ namespace Nethermind.State.Test.Runner
     {
         private StateTestTxTraceEntry _traceEntry;
         private StateTestTxTrace _trace = new StateTestTxTrace();
+        private bool _gasAlreadySetForCurrentOp;
 
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
@@ -58,6 +59,7 @@ namespace Nethermind.State.Test.Runner
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
 //            var previousTraceEntry = _traceEntry;
+            _gasAlreadySetForCurrentOp = false;
             _traceEntry = new StateTestTxTraceEntry();
             _traceEntry.Pc = pc;
             _traceEntry.Operation = (byte)opcode;
@@ -115,7 +117,7 @@ namespace Nethermind.State.Test.Runner
                 case EvmExceptionType.AccessViolation:
                     return "AccessViolation";
                 case EvmExceptionType.StaticCallViolation:
-                    return "StaticCallViolation";
+                    return "evm: write protection";
                 default:
                     return "Error";
             }
@@ -123,7 +125,11 @@ namespace Nethermind.State.Test.Runner
 
         public void ReportOperationRemainingGas(long gas)
         {
-            _traceEntry.GasCost = _traceEntry.Gas - gas;
+            if (!_gasAlreadySetForCurrentOp)
+            {
+                _gasAlreadySetForCurrentOp = true;
+                _traceEntry.GasCost = _traceEntry.Gas - gas;
+            }
         }
 
         public void SetOperationMemorySize(ulong newSize)

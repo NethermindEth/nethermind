@@ -37,6 +37,7 @@ namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
     {
+        private const EvmExceptionType StaticCallViolationErrorText = EvmExceptionType.StaticCallViolation;
         private const EvmExceptionType BadInstructionErrorText = EvmExceptionType.BadInstruction;
         private const EvmExceptionType OutOfGasErrorText = EvmExceptionType.OutOfGas;
         
@@ -404,7 +405,6 @@ namespace Nethermind.Evm
         {
             if (gasAvailable < gasCost)
             {
-                Metrics.EvmExceptions++;
                 return false;
             }
 
@@ -461,11 +461,13 @@ namespace Nethermind.Evm
             //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
             if (!UpdateGas(baseGasCost, ref gasAvailable))
             {
+                Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
 
             if (!UpdateGas(dataGasCost, ref gasAvailable))
             {
+                Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
 
@@ -1612,7 +1614,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip211Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -1631,7 +1632,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip211Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -1649,7 +1649,6 @@ namespace Nethermind.Evm
 
                         if (UInt256.AddWouldOverflow(ref length, ref src) || length + src > _returnDataBuffer.Length)
                         {
-                            Metrics.EvmExceptions++;
                             return CallResult.AccessViolationException;
                         }
 
@@ -1737,7 +1736,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip1344Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -1755,7 +1753,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip1884Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -1855,7 +1852,7 @@ namespace Nethermind.Evm
                         
                         if (evmState.IsStatic)
                         {
-                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(StaticCallViolationErrorText);
                             return CallResult.StaticCallViolationException;
                         }
 
@@ -1869,7 +1866,6 @@ namespace Nethermind.Evm
                         
                         if (spec.IsEip2200Enabled && gasAvailable <= GasCostOf.CallStipend)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
@@ -2250,7 +2246,7 @@ namespace Nethermind.Evm
                     {
                         if (evmState.IsStatic)
                         {
-                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(StaticCallViolationErrorText);
                             return CallResult.StaticCallViolationException;
                         }
 
@@ -2291,7 +2287,7 @@ namespace Nethermind.Evm
                         
                         if (evmState.IsStatic)
                         {
-                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(StaticCallViolationErrorText);
                             return CallResult.StaticCallViolationException;
                         }
 
@@ -2420,7 +2416,6 @@ namespace Nethermind.Evm
                         if (instruction == Instruction.DELEGATECALL && !spec.IsEip7Enabled ||
                             instruction == Instruction.STATICCALL && !spec.IsEip214Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -2449,7 +2444,7 @@ namespace Nethermind.Evm
 
                         if (evmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE)
                         {
-                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(StaticCallViolationErrorText);
                             return CallResult.StaticCallViolationException;
                         }
 
@@ -2605,7 +2600,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip140Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -2627,8 +2621,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-
-                        Metrics.EvmExceptions++;
+                        
                         EndInstructionTraceError(BadInstructionErrorText);
                         return CallResult.InvalidInstructionException;
                     }
@@ -2636,7 +2629,7 @@ namespace Nethermind.Evm
                     {
                         if (evmState.IsStatic)
                         {
-                            Metrics.EvmExceptions++;
+                            EndInstructionTraceError(StaticCallViolationErrorText);
                             return CallResult.StaticCallViolationException;
                         }
 
@@ -2692,7 +2685,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip145Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -2722,7 +2714,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip145Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -2752,7 +2743,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip145Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -2794,7 +2784,6 @@ namespace Nethermind.Evm
                     {
                         if (!spec.IsEip1052Enabled)
                         {
-                            Metrics.EvmExceptions++;
                             EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
@@ -2820,7 +2809,6 @@ namespace Nethermind.Evm
                     }
                     default:
                     {
-                        Metrics.EvmExceptions++;
                         EndInstructionTraceError(BadInstructionErrorText);
                         return CallResult.InvalidInstructionException;
                     }
