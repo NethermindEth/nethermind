@@ -10,6 +10,7 @@ namespace Cortex.BeaconNode
 {
     public class ForkChoice
     {
+        private readonly BeaconChainUtility _beaconChainUtility;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
@@ -25,6 +26,7 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
+            BeaconChainUtility beaconChainUtility,
             StoreProvider storeProvider)
         {
             _logger = logger;
@@ -33,7 +35,15 @@ namespace Cortex.BeaconNode
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
+            _beaconChainUtility = beaconChainUtility;
             _storeProvider = storeProvider;
+        }
+
+        public Slot ComputeSlotsSinceEpochStart(Slot slot)
+        {
+            var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
+            var startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            return slot - startSlot;
         }
 
         public Slot GetCurrentSlot(IStore store)
@@ -83,7 +93,21 @@ namespace Cortex.BeaconNode
         {
             var previousSlot = GetCurrentSlot(store);
 
+            // update store time
             store.SetTime(time);
+
+            var currentSlot = GetCurrentSlot(store);
+            // Not a new epoch, return
+            var isNewEpoch = (currentSlot > previousSlot) && (ComputeSlotsSinceEpochStart(currentSlot) == Slot.Zero);
+            if (!isNewEpoch)
+            {
+                return;
+            }
+            // Update store.justified_checkpoint if a better checkpoint is known
+            if (store.BestJustifiedCheckpoint.Epoch > store.JustifiedCheckpoint.Epoch)
+            {
+                store.SetJustifiedCheckpoint(store.BestJustifiedCheckpoint);
+            }
         }
     }
 }

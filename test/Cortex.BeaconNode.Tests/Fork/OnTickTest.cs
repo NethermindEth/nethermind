@@ -27,14 +27,14 @@ namespace Cortex.BeaconNode.Tests.Fork
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
                 out var maxOperationsPerBlockOptions);
-            (var beaconChainUtility, _, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            (var beaconChainUtility, _, _, _, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
             });
             var storeProvider = new StoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
             var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                storeProvider);
+                beaconChainUtility, storeProvider);
             var store = forkChoice.GetGenesisStore(state);
 
             // Act

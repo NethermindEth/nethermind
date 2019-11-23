@@ -17,5 +17,6 @@ namespace Cortex.BeaconNode.Data
 
         Task<Hash32> GetHeadAsync();
         void SetTime(ulong time);
+        void SetJustifiedCheckpoint(Checkpoint bestJustifiedCheckpoint);
     }
 }

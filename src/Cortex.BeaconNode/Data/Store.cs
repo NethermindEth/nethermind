@@ -41,15 +41,12 @@ namespace Cortex.BeaconNode.Data
         }
 
         public Checkpoint BestJustifiedCheckpoint { get; }
-
-        //public Checkpoint FinalizedCheckpoint { get; }
         public IDictionary<Hash32, BeaconBlock> Blocks { get; }
-
         public IDictionary<Hash32, BeaconState> BlockStates { get; }
         public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
         public Checkpoint FinalizedCheckpoint { get; }
         public ulong GenesisTime { get; }
-        public Checkpoint JustifiedCheckpoint { get; }
+        public Checkpoint JustifiedCheckpoint { get; private set; }
         public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
         public ulong Time { get; private set; }
 
@@ -77,6 +74,8 @@ namespace Cortex.BeaconNode.Data
                 }
             });
         }
+
+        public void SetJustifiedCheckpoint(Checkpoint checkpoint) => JustifiedCheckpoint = checkpoint;
 
         public void SetTime(ulong time) => Time = time;
 
