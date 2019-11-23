@@ -18,7 +18,7 @@ namespace Cortex.BeaconNode
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();
             services.AddSingleton<BeaconNodeConfiguration>();
-            services.AddSingleton<IStore, Store>();
+            services.AddSingleton<IStoreProvider, StoreProvider>();
             services.AddSingleton<ICryptographyService, CryptographyService>();
 
             services.AddScoped<BlockProducer>();

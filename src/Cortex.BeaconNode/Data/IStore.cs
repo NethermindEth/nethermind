@@ -6,6 +6,7 @@ namespace Cortex.BeaconNode.Data
 {
     public interface IStore
     {
+        Checkpoint BestJustifiedCheckpoint { get; }
         IDictionary<Hash32, BeaconBlock> Blocks { get; }
         IDictionary<Hash32, BeaconState> BlockStates { get; }
         IDictionary<Checkpoint, BeaconState> CheckpointStates { get; }

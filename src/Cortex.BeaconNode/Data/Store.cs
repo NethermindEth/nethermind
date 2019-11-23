@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Data
@@ -11,20 +12,44 @@ namespace Cortex.BeaconNode.Data
     public class Store : IStore
     {
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly ILogger _logger;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public Store(IOptionsMonitor<TimeParameters> timeParameterOptions, BeaconChainUtility beaconChainUtility)
+        public Store(ulong time,
+            ulong genesisTime,
+            Checkpoint justifiedCheckpoint,
+            Checkpoint finalizedCheckpoint,
+            Checkpoint bestJustifiedCheckpoint,
+            IDictionary<Hash32, BeaconBlock> blocks,
+            IDictionary<Hash32, BeaconState> blockStates,
+            IDictionary<Checkpoint, BeaconState> checkpointStates,
+            ILogger<Store> logger,
+            IOptionsMonitor<TimeParameters> timeParameterOptions,
+            BeaconChainUtility beaconChainUtility)
         {
+            Time = time;
+            GenesisTime = genesisTime;
+            JustifiedCheckpoint = justifiedCheckpoint;
+            FinalizedCheckpoint = finalizedCheckpoint;
+            BestJustifiedCheckpoint = bestJustifiedCheckpoint;
+            Blocks = blocks;
+            BlockStates = blockStates;
+            CheckpointStates = checkpointStates;
+            _logger = logger;
             _timeParameterOptions = timeParameterOptions;
             _beaconChainUtility = beaconChainUtility;
         }
 
-        //public Checkpoint FinalizedCheckpoint { get; }
-        public IDictionary<Hash32, BeaconBlock> Blocks { get; } = new Dictionary<Hash32, BeaconBlock>();
+        public Checkpoint BestJustifiedCheckpoint { get; }
 
-        public IDictionary<Hash32, BeaconState> BlockStates { get; } = new Dictionary<Hash32, BeaconState>();
-        public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; } = new Dictionary<Checkpoint, BeaconState>();
-        public Checkpoint JustifiedCheckpoint { get; } = new Checkpoint(new Epoch(0), Hash32.Zero);
+        //public Checkpoint FinalizedCheckpoint { get; }
+        public IDictionary<Hash32, BeaconBlock> Blocks { get; }
+
+        public IDictionary<Hash32, BeaconState> BlockStates { get; }
+        public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
+        public Checkpoint FinalizedCheckpoint { get; }
+        public ulong GenesisTime { get; }
+        public Checkpoint JustifiedCheckpoint { get; }
         public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
         public ulong Time { get; }
 
