@@ -36,6 +36,12 @@ namespace Cortex.BeaconNode
             _storeProvider = storeProvider;
         }
 
+        public Slot GetCurrentSlot(IStore store)
+        {
+            var slotValue = (store.Time - store.GenesisTime) / _timeParameterOptions.CurrentValue.SecondsPerSlot;
+            return new Slot(slotValue);
+        }
+
         public IStore GetGenesisStore(BeaconState genesisState)
         {
             var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
@@ -75,6 +81,9 @@ namespace Cortex.BeaconNode
 
         public void OnTick(IStore store, ulong time)
         {
+            var previousSlot = GetCurrentSlot(store);
+
+            store.SetTime(time);
         }
     }
 }

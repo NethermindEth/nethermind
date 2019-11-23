@@ -41,6 +41,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             });
             timeParameterOptions = TestOptionsMonitor.Create(new TimeParameters()
             {
+                SecondsPerSlot = 6,
                 MinimumAttestationInclusionDelay = new Slot(1),
                 SlotsPerEpoch = new Slot(8),
                 MinimumSeedLookahead = new Epoch(1),

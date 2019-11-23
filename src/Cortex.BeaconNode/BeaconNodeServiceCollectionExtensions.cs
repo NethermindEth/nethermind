@@ -52,6 +52,7 @@ namespace Cortex.BeaconNode
             });
             services.Configure<TimeParameters>(x =>
             {
+                x.SecondsPerSlot = configuration.GetValue<ulong>("SECONDS_PER_SLOT");
                 x.MinimumAttestationInclusionDelay = new Slot(configuration.GetValue<ulong>("MIN_ATTESTATION_INCLUSION_DELAY"));
                 x.SlotsPerEpoch = new Slot(configuration.GetValue<ulong>("SLOTS_PER_EPOCH"));
                 x.MinimumSeedLookahead = new Epoch(configuration.GetValue<ulong>("MIN_SEED_LOOKAHEAD"));

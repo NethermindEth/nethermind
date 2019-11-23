@@ -51,7 +51,7 @@ namespace Cortex.BeaconNode.Data
         public ulong GenesisTime { get; }
         public Checkpoint JustifiedCheckpoint { get; }
         public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
-        public ulong Time { get; }
+        public ulong Time { get; private set; }
 
         public async Task<Hash32> GetHeadAsync()
         {
@@ -77,6 +77,8 @@ namespace Cortex.BeaconNode.Data
                 }
             });
         }
+
+        public void SetTime(ulong time) => Time = time;
 
         private Gwei GetLatestAttestingBalance(Hash32 root)
         {

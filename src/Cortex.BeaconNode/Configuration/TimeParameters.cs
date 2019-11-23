@@ -12,6 +12,7 @@ namespace Cortex.BeaconNode.Configuration
         public Epoch MinimumSeedLookahead { get; set; }
         public Epoch MinimumValidatorWithdrawabilityDelay { get; set; }
         public Epoch PersistentCommitteePeriod { get; set; }
+        public ulong SecondsPerSlot { get; set; }
         public Slot SlotsPerEpoch { get; set; }
         public Slot SlotsPerEth1VotingPeriod { get; set; }
         public Slot SlotsPerHistoricalRoot { get; set; }
