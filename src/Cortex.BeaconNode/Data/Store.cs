@@ -40,7 +40,7 @@ namespace Cortex.BeaconNode.Data
             _beaconChainUtility = beaconChainUtility;
         }
 
-        public Checkpoint BestJustifiedCheckpoint { get; }
+        public Checkpoint BestJustifiedCheckpoint { get; private set; }
         public IDictionary<Hash32, BeaconBlock> Blocks { get; }
         public IDictionary<Hash32, BeaconState> BlockStates { get; }
         public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
@@ -74,6 +74,8 @@ namespace Cortex.BeaconNode.Data
                 }
             });
         }
+
+        public void SetBestJustifiedCheckpoint(Checkpoint checkpoint) => BestJustifiedCheckpoint = checkpoint;
 
         public void SetJustifiedCheckpoint(Checkpoint checkpoint) => JustifiedCheckpoint = checkpoint;
 
