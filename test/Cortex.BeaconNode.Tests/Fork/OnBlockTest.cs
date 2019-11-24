@@ -73,9 +73,9 @@ namespace Cortex.BeaconNode.Tests.Fork
                 miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
 
-            var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            options.AddCortexContainerConverters();
-            var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
+            //var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            //options.AddCortexContainerConverters();
+            //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
             RunOnBlock(store, block2, expectValid: true,
                 miscellaneousParameterOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,

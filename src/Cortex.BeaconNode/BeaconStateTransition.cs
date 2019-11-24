@@ -366,6 +366,7 @@ namespace Cortex.BeaconNode
                 bodyRoot,
                 new BlsSignature() //`signature` is zeroed
                 );
+            state.SetLatestBlockHeader(newBlockHeader);
 
             // Verify proposer is not slashed
             var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
@@ -893,9 +894,9 @@ namespace Cortex.BeaconNode
             // Validate state root (True in production)
             if (validateStateRoot)
             {
-                var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-                options.AddCortexContainerConverters();
-                var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
+                //var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                //options.AddCortexContainerConverters();
+                //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
                 var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
                 if (block.StateRoot != checkStateRoot)

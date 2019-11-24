@@ -112,7 +112,7 @@ namespace Cortex.Containers
         public IReadOnlyList<Hash32> HistoricalRoots { get { return _historicalRoots; } }
         public BitArray JustificationBits { get; private set; }
 
-        public BeaconBlockHeader LatestBlockHeader { get; }
+        public BeaconBlockHeader LatestBlockHeader { get; private set; }
 
         public IReadOnlyList<PendingAttestation> PreviousEpochAttestations { get { return _previousEpochAttestations; } }
 
@@ -210,6 +210,8 @@ namespace Cortex.Containers
             JustificationBits.SetAll(false);
             JustificationBits.Or(justificationBits);
         }
+
+        public void SetLatestBlockHeader(BeaconBlockHeader blockHeader) => LatestBlockHeader = blockHeader;
 
         public void SetPreviousEpochAttestations(IReadOnlyList<PendingAttestation> attestations)
         {
