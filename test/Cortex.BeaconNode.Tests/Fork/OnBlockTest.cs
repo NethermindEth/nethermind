@@ -45,7 +45,7 @@ namespace Cortex.BeaconNode.Tests.Fork
             store.Time.ShouldBe(time);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, signed:false,
+            var block = TestBlock.BuildEmptyBlockForNextSlot(state, signed:true,
                 miscellaneousParameterOptions.CurrentValue, timeParameters, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             TestState.StateTransitionAndSignBlock(state, block,
@@ -58,7 +58,7 @@ namespace Cortex.BeaconNode.Tests.Fork
             //  On receiving a block of next epoch
             var time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             store.SetTime(time2);
-            var block2 = TestBlock.BuildEmptyBlockForNextSlot(state, signed: false,
+            var block2 = TestBlock.BuildEmptyBlockForNextSlot(state, signed: true,
                 miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             var slot2 = block.Slot + timeParameters.SlotsPerEpoch;
