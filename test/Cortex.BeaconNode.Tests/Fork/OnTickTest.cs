@@ -15,7 +15,7 @@ namespace Cortex.BeaconNode.Tests.Fork
     public class OnTickTest
     {
         [TestMethod]
-        public void Basic()
+        public void BasicOnTick()
         {
             // Arrange
             TestConfiguration.GetMinimalConfiguration(

@@ -1,4 +1,5 @@
 ﻿using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
@@ -58,6 +59,22 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var state = TestGenesis.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
 
             return (beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition, state);
+        }
+
+        /// <summary>
+        /// State transition via the provided ``block``
+        /// then package the block with the state root and signature.
+        /// </summary>
+        public static void StateTransitionAndSignBlock(BeaconState state, BeaconBlock block,
+            MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock,
+            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        {
+            beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
+            var stateRoot = state.HashTreeRoot(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock);
+            block.SetStateRoot(stateRoot);
+            TestBlock.SignBlock(state, block, ValidatorIndex.None,
+                miscellaneousParameters, timeParameters, maxOperationsPerBlock,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
         }
     }
 }

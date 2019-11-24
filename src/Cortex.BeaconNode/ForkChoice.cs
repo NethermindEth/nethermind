@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Data;
 using Cortex.BeaconNode.Ssz;
@@ -108,6 +109,11 @@ namespace Cortex.BeaconNode
             {
                 store.SetJustifiedCheckpoint(store.BestJustifiedCheckpoint);
             }
+        }
+
+        public void OnBlock(IStore store, BeaconBlock block)
+        {
+            throw new NotImplementedException();
         }
     }
 }

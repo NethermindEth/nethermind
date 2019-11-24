@@ -27,21 +27,17 @@
         public Hash32 ParentRoot { get; }
         public BlsSignature Signature { get; private set; }
         public Slot Slot { get; private set; }
-        public Hash32 StateRoot { get; }
+        public Hash32 StateRoot { get; private set; }
 
-        public void SetSignature(BlsSignature signature)
-        {
-            Signature = signature;
-        }
+        public void SetSignature(BlsSignature signature) => Signature = signature;
+
+        public void SetSlot(Slot slot) => Slot = slot;
+
+        public void SetStateRoot(Hash32 stateRoot) => StateRoot = stateRoot;
 
         public override string ToString()
         {
             return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 16)} St:{StateRoot.ToString().Substring(0, 16)}";
-        }
-
-        public void SetSlot(Slot slot)
-        {
-            Slot = slot;
         }
     }
 }
