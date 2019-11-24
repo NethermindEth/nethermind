@@ -5,6 +5,7 @@ using Cortex.BeaconNode.Data;
 using Cortex.BeaconNode.Ssz;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Cortex.Containers.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -71,6 +72,10 @@ namespace Cortex.BeaconNode.Tests.Fork
             TestState.StateTransitionAndSignBlock(state, block2,
                 miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+
+            var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            options.AddCortexContainerConverters();
+            var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
             RunOnBlock(store, block2, expectValid: true,
                 miscellaneousParameterOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,

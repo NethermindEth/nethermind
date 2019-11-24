@@ -4,6 +4,7 @@ using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Cortex.Containers.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -892,6 +893,10 @@ namespace Cortex.BeaconNode
             // Validate state root (True in production)
             if (validateStateRoot)
             {
+                var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                options.AddCortexContainerConverters();
+                var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
+
                 var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
                 if (block.StateRoot != checkStateRoot)
                 {
