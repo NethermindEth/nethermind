@@ -27,15 +27,17 @@ namespace Cortex.BeaconNode.Tests.Fork
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out var forkChoiceConfigurationOptions);
             (var beaconChainUtility, var beaconStateAccessor, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var loggerFactory = new LoggerFactory(new[] {
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
             });
             var storeProvider = new StoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
-            var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(), miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                beaconChainUtility, storeProvider);
+            var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(), 
+                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions,
+                beaconChainUtility, beaconStateTransition, storeProvider);
 
             // Initialization
             var timeParameters = timeParameterOptions.CurrentValue;
@@ -63,6 +65,9 @@ namespace Cortex.BeaconNode.Tests.Fork
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             var slot2 = block.Slot + timeParameters.SlotsPerEpoch;
             block2.SetSlot(slot2);
+            TestBlock.SignBlock(state, block2, ValidatorIndex.None,
+                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
             TestState.StateTransitionAndSignBlock(state, block2,
                 miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition);

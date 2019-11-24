@@ -26,7 +26,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
 
             var loggerFactory = new LoggerFactory(new[] {
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))

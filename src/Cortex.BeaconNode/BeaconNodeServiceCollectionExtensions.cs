@@ -87,6 +87,10 @@ namespace Cortex.BeaconNode
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
                 x.MaximumVoluntaryExits = configuration.GetValue<ulong>("MAX_VOLUNTARY_EXITS");
             });
+            services.Configure<ForkChoiceConfiguration>(x =>
+            {
+                x.SafeSlotsToUpdateJustified = new Slot(configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED"));
+            });
         }
     }
 }

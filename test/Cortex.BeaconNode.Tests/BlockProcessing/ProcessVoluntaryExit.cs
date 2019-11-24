@@ -22,7 +22,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var _, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // move state forward PERSISTENT_COMMITTEE_PERIOD epochs to allow for exit
@@ -56,7 +57,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var _, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // move state forward PERSISTENT_COMMITTEE_PERIOD epochs to allow for exit

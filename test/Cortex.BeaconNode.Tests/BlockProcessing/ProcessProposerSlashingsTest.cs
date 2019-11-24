@@ -22,7 +22,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (_, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var proposerSlashing = TestProposerSlashing.GetValidProposerSlashing(state, signed1: true, signed2: true,
@@ -46,7 +47,8 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (_, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var proposerSlashing = TestProposerSlashing.GetValidProposerSlashing(state, signed1: false, signed2: true,

@@ -380,7 +380,7 @@ namespace Cortex.BeaconNode
             var validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
             if (!validSignature)
             {
-                throw new Exception($"Block signature must match proposer public key ${proposer.PublicKey}");
+                throw new Exception($"Block signature must match proposer public key {proposer.PublicKey}");
             }
         }
 
@@ -895,7 +895,7 @@ namespace Cortex.BeaconNode
                 var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
                 if (block.StateRoot != checkStateRoot)
                 {
-                    throw new Exception("Mismatch between calculated state root and block state root.");
+                    throw new Exception($"Mismatch between calculated state root {checkStateRoot} and block state root {block.StateRoot}.");
                 }
             }
             return state;

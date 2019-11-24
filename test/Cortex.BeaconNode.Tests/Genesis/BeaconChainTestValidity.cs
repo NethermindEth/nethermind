@@ -45,7 +45,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // Act
@@ -67,7 +68,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // Act
@@ -90,7 +92,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             // Act
@@ -114,7 +117,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount + 1;
@@ -143,7 +147,8 @@ namespace Cortex.BeaconNode.Tests.Genesis
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount - 1;

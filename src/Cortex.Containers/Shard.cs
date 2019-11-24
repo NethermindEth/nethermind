@@ -67,7 +67,7 @@ namespace Cortex.Containers
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(_value);
+            return _value.GetHashCode();
         }
     }
 }

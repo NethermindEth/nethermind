@@ -28,7 +28,8 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             (var beaconChainUtility, var beaconStateAccessor, var beaconStateMutator, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
 
             var slashedCount = (state.Validators.Count / 3) + 1;

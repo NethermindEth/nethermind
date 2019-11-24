@@ -12,6 +12,9 @@ namespace Cortex.BeaconNode.Data
     public class Store : IStore
     {
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly Dictionary<Hash32, BeaconBlock> _blocks;
+        private readonly Dictionary<Hash32, BeaconState> _blockStates;
+        private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
@@ -32,23 +35,27 @@ namespace Cortex.BeaconNode.Data
             JustifiedCheckpoint = justifiedCheckpoint;
             FinalizedCheckpoint = finalizedCheckpoint;
             BestJustifiedCheckpoint = bestJustifiedCheckpoint;
-            Blocks = blocks;
-            BlockStates = blockStates;
-            CheckpointStates = checkpointStates;
+            _blocks = new Dictionary<Hash32, BeaconBlock>(blocks);
+            _blockStates = new Dictionary<Hash32, BeaconState>(blockStates);
+            _checkpointStates = new Dictionary<Checkpoint, BeaconState>(checkpointStates);
             _logger = logger;
             _timeParameterOptions = timeParameterOptions;
             _beaconChainUtility = beaconChainUtility;
         }
 
         public Checkpoint BestJustifiedCheckpoint { get; private set; }
-        public IDictionary<Hash32, BeaconBlock> Blocks { get; }
-        public IDictionary<Hash32, BeaconState> BlockStates { get; }
-        public IDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
-        public Checkpoint FinalizedCheckpoint { get; }
+        public IReadOnlyDictionary<Hash32, BeaconBlock> Blocks { get { return _blocks; } }
+        public IReadOnlyDictionary<Hash32, BeaconState> BlockStates { get { return _blockStates; } }
+        public IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get { return _checkpointStates; } }
+        public Checkpoint FinalizedCheckpoint { get; private set; }
         public ulong GenesisTime { get; }
         public Checkpoint JustifiedCheckpoint { get; private set; }
         public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
         public ulong Time { get; private set; }
+
+        public void AddBlock(Hash32 signingRoot, BeaconBlock block) => _blocks[signingRoot] = block;
+
+        public void AddBlockState(Hash32 signingRoot, BeaconState state) => _blockStates[signingRoot] = state;
 
         public async Task<Hash32> GetHeadAsync()
         {
@@ -77,9 +84,15 @@ namespace Cortex.BeaconNode.Data
 
         public void SetBestJustifiedCheckpoint(Checkpoint checkpoint) => BestJustifiedCheckpoint = checkpoint;
 
+        public void SetFinalizedCheckpoint(Checkpoint checkpoint) => FinalizedCheckpoint = checkpoint;
+
         public void SetJustifiedCheckpoint(Checkpoint checkpoint) => JustifiedCheckpoint = checkpoint;
 
         public void SetTime(ulong time) => Time = time;
+
+        public bool TryGetBlock(Hash32 signingRoot, out BeaconBlock block) => _blocks.TryGetValue(signingRoot, out block);
+
+        public bool TryGetBlockState(Hash32 signingRoot, out BeaconState state) => _blockStates.TryGetValue(signingRoot, out state);
 
         private Gwei GetLatestAttestingBalance(Hash32 root)
         {

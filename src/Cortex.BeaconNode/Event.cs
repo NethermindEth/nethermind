@@ -28,6 +28,8 @@ namespace Cortex.BeaconNode
         public static readonly EventId ProcessRegistryUpdates = new EventId(2016, nameof(ProcessRegistryUpdates));
         public static readonly EventId ProcessSlashings = new EventId(2017, nameof(ProcessSlashings));
 
+        public static readonly EventId CreateGenesisStore = new EventId(2100, nameof(CreateGenesisStore));
+
         // 4bxx warning
         public static readonly EventId InvalidIndexedAttestation = new EventId(4100, nameof(InvalidIndexedAttestation));
 

@@ -38,7 +38,8 @@ namespace Cortex.BeaconNode.Tests
                 out var timeParameterOptions,
                 out var stateListLengthOptions,
                 out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions);
+                out var maxOperationsPerBlockOptions,
+                out _);
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
 
             var loggerFactory = new LoggerFactory(new[] {

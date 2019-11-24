@@ -49,7 +49,12 @@ namespace Cortex.Containers
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(_bytes);
+            var hash = new HashCode();
+            foreach (var b in _bytes)
+            {
+                hash.Add(b);
+            }
+            return hash.ToHashCode();
         }
 
         public override string ToString()

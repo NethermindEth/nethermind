@@ -14,7 +14,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
             out IOptionsMonitor<TimeParameters> timeParameterOptions,
             out IOptionsMonitor<StateListLengths> stateListLengthOptions,
             out IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
-            out IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
+            out IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
+            out IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions)
         {
             chainConstants = new ChainConstants();
             miscellaneousParameterOptions = TestOptionsMonitor.Create(new MiscellaneousParameters()
@@ -75,6 +76,10 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 MaximumAttestations = 128,
                 MaximumDeposits = 16,
                 MaximumVoluntaryExits = 16,
+            });
+            forkChoiceConfigurationOptions = TestOptionsMonitor.Create(new ForkChoiceConfiguration()
+            {
+                SafeSlotsToUpdateJustified = new Slot(8),
             });
         }
     }
