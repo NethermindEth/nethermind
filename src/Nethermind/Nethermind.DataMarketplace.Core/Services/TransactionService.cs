@@ -15,9 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Globalization;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Wallet;
@@ -28,12 +32,17 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         private readonly INdmBlockchainBridge _blockchainBridge;
         private readonly IWallet _wallet;
+        private readonly IConfigManager _configManager;
+        private readonly string _configId;
         private readonly ILogger _logger;
 
-        public TransactionService(INdmBlockchainBridge blockchainBridge, IWallet wallet, ILogManager logManager)
+        public TransactionService(INdmBlockchainBridge blockchainBridge, IWallet wallet, IConfigManager configManager,
+            string configId, ILogManager logManager)
         {
             _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
+            _configManager = configManager ?? throw new ArgumentNullException(nameof(configManager));
+            _configId = configId ?? throw new ArgumentNullException(nameof(configId));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -41,7 +50,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             if (gasPrice == 0)
             {
-                throw new InvalidOperationException("Gas price cannot be 0.");
+                throw new ArgumentException("Gas price cannot be 0.", nameof(gasPrice));
             }
 
             return await UpdateAsync(transactionHash, transaction =>
@@ -58,12 +67,33 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' value: {transaction.Value} -> {value} wei.");
             });
 
+        public Task<Keccak> CancelAsync(Keccak transactionHash)
+            => UpdateAsync(transactionHash, async transaction =>
+            {
+                var config = await _configManager.GetAsync(_configId);
+                var multiplier = config.CancelTransactionGasPricePercentageMultiplier;
+                if (multiplier == 0)
+                {
+                    throw new InvalidOperationException("Multiplier for gas price when canceling transaction cannot be 0.");
+                }
+                
+                var gasPrice = multiplier *  (BigInteger)transaction.GasPrice / 100;
+                transaction.GasPrice = new UInt256(gasPrice);
+                transaction.Value = 0;
+                if (_logger.IsInfo) _logger.Info($"Canceling transaction with hash: '{transactionHash}', gas price: {gasPrice} wei ({multiplier}% of original transaction).");
+            });
+
         private async Task<Keccak> UpdateAsync(Keccak transactionHash, Action<Transaction> update)
         {
+            if (transactionHash is null)
+            {
+                throw new ArgumentException("Transaction hash cannot be null.", nameof(transactionHash));
+            }
+            
             var transactionDetails = await _blockchainBridge.GetTransactionAsync(transactionHash);
             if (transactionDetails is null)
             {
-                throw new InvalidOperationException($"Transaction was not found for hash: '{transactionHash}'.");
+                throw new ArgumentException($"Transaction was not found for hash: '{transactionHash}'.", nameof(transactionHash));
             }
 
             var transaction = transactionDetails.Transaction;
@@ -75,7 +105,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 throw new InvalidOperationException("Transaction was not sent (received an empty hash).");
             }
 
-            if (_logger.IsInfo) _logger.Info($"Received a new transaction hash: '{hash}' after updating transaction with hash: '{transactionHash}'.");
+            if (_logger.IsInfo) _logger.Info($"Received a new transaction hash: '{hash}' (previous transaction hash: '{transactionHash}').");
 
             return hash;
         }

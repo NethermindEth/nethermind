@@ -24,5 +24,6 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         Task<Keccak> UpdateGasPriceAsync(Keccak transactionHash, UInt256 gasPrice);
         Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value);
+        Task<Keccak> CancelAsync(Keccak transactionHash);
     }
 }

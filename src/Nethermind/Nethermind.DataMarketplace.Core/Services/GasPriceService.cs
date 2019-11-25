@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
@@ -60,11 +61,18 @@ namespace Nethermind.DataMarketplace.Core.Services
             return config.GasPrice;
         }
 
-
         public async Task SetAsync(string gasPriceOrType)
         {
             string type;
-            if (UInt256.TryParse(gasPriceOrType, out var gasPriceValue))
+            var isHex = gasPriceOrType.StartsWith("0x");
+            if (isHex && gasPriceOrType.Length == 2)
+            {
+                throw new ArgumentException($"Invalid gas price: {gasPriceOrType}");
+            }
+            
+            var numberStyle = isHex ? NumberStyles.HexNumber : NumberStyles.Integer;
+            var value = isHex ? gasPriceOrType.Substring(2) : gasPriceOrType;
+            if (UInt256.TryParse(value, numberStyle, CultureInfo.InvariantCulture, out var gasPriceValue))
             {
                 type = CustomType;
             }
@@ -74,7 +82,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 gasPriceValue = GetForType(type);
                 if (gasPriceValue == 0)
                 {
-                    throw new ArgumentException($"Gas price type: {type} couldn't be updated.", nameof(type));
+                    throw new ArgumentException($"Gas price type: {type} couldn't be updated (price is 0).", nameof(type));
                 }
             }
 
@@ -93,7 +101,8 @@ namespace Nethermind.DataMarketplace.Core.Services
             {
                 if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
                 Types = new GasPriceTypes(GasPriceDetails.Empty, GasPriceDetails.Empty, GasPriceDetails.Empty,
-                    GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType, _updatedAt);
+                    GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType,
+                    _timestamper.EpochSeconds);
                 return;
             }
 
@@ -121,7 +130,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             type = type.ToLowerInvariant();
             if (!_types.Contains(type))
             {
-                throw new ArgumentException($"Invalid gas price type: {type}", nameof(type));
+                throw new ArgumentException($"Invalid gas price type: {type}.", nameof(type));
             }
 
             if (Types is null)

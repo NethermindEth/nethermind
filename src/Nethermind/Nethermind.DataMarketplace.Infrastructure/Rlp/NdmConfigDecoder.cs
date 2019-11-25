@@ -69,6 +69,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var jsonRpcUrlProxies = rlpStream.DecodeArray(c => c.DecodeString());
             var gasPriceType = rlpStream.DecodeString();
             var gasPrice = rlpStream.DecodeUInt256();
+            var cancelTransactionGasPricePercentageMultiplier = rlpStream.DecodeUInt();
 
             return new NdmConfig
             {
@@ -100,6 +101,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 JsonRpcUrlProxies = jsonRpcUrlProxies,
                 GasPriceType = gasPriceType,
                 GasPrice = gasPrice,
+                CancelTransactionGasPricePercentageMultiplier = cancelTransactionGasPricePercentageMultiplier
             };
         }
 
@@ -138,7 +140,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.ProxyEnabled),
                 Nethermind.Core.Encoding.Rlp.Encode(item.JsonRpcUrlProxies),
                 Nethermind.Core.Encoding.Rlp.Encode(item.GasPriceType),
-                Nethermind.Core.Encoding.Rlp.Encode(item.GasPrice));
+                Nethermind.Core.Encoding.Rlp.Encode(item.GasPrice),
+                Nethermind.Core.Encoding.Rlp.Encode(item.CancelTransactionGasPricePercentageMultiplier));
         }
 
         public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

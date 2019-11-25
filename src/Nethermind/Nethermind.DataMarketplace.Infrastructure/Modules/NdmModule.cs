@@ -40,7 +40,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
 
+            var configId = config.Id;
+            var configManager = services.ConfigManager;
             var logManager = services.LogManager;
+            var timestamper = services.Timestamper;
             var wallet = services.Wallet;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
@@ -72,9 +75,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
             }
 
-            var gasPriceService = new GasPriceService(services.HttpClient, services.ConfigManager, config.Id,
-                services.Timestamper, logManager);
-            var transactionService = new TransactionService(ndmBlockchainBridge, wallet, logManager);
+            var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,
+                logManager);
+            var transactionService = new TransactionService(ndmBlockchainBridge, wallet, configManager, configId,
+                logManager);
             var depositService = new DepositService(ndmBlockchainBridge, encoder, wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;

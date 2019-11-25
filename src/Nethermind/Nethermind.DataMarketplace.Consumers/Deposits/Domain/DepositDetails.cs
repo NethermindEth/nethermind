@@ -59,9 +59,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Pepper = pepper;
             Timestamp = timestamp;
             TransactionHash = transactionHash;
-            TransactionHash = transactionHash;
             TransactionGasPrice = transactionGasPrice;
-            ConfirmationTimestamp = confirmationTimestamp;
             ConfirmationTimestamp = confirmationTimestamp;
             Rejected = rejected;
             EarlyRefundTicket = earlyRefundTicket;

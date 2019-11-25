@@ -83,5 +83,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         UInt256 GasPrice { get; }
         [ConfigItem(Description = "Gas price type ('custom', 'safeLow', 'average', 'fast', 'fastest').", DefaultValue = "custom")]
         string GasPriceType { get; }
+        [ConfigItem(Description = "Percentage multiplier (by default 110%) for calculating gas price when canceling transaction.", DefaultValue = "110")]
+        uint CancelTransactionGasPricePercentageMultiplier { get; set; } 
     }
 }

@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         private static PendingTransaction MapPendingTransaction(DepositDetails deposit)
         {
-            if (deposit.EarlyRefundTicket is null)
+            if (deposit.ClaimedRefundTransactionHash is null)
             {
                 return new PendingTransaction(deposit.TransactionHash, deposit.TransactionGasPrice, "deposit");
             }
@@ -68,6 +68,11 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public async Task<Keccak> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice)
         {
+            if (gasPrice == 0)
+            {
+                throw new ArgumentException("Gas price cannot be 0.", nameof(gasPrice));
+            }
+            
             var deposit = await GetDepositAsync(depositId);
             if (deposit.Confirmed)
             {
@@ -79,13 +84,18 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price.");
             deposit.SetTransactionHash(transactionHash, gasPrice);
             await _depositRepository.UpdateAsync(deposit);
-            if (_logger.IsInfo) _logger.Info($"Updated gas price for deposit with id: '{depositId}', transaction hash: '{transactionHash}.");
+            if (_logger.IsInfo) _logger.Info($"Updated gas price for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
             return transactionHash;
         }
 
         public async Task<Keccak> UpdateRefundGasPriceAsync(Keccak depositId, UInt256 gasPrice)
         {
+            if (gasPrice == 0)
+            {
+                throw new ArgumentException("Gas price cannot be 0.", nameof(gasPrice));
+            }
+            
             var deposit = await GetDepositAsync(depositId);
             if (deposit.ClaimedRefundTransactionHash is null)
             {
@@ -94,7 +104,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
             if (deposit.RefundClaimed)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' has already claimed refund.");
+                throw new InvalidOperationException($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{deposit.ClaimedRefundTransactionHash}').");
             }
             
             if (_logger.IsInfo) _logger.Info($"Updating gas price for refund claim for deposit with id: '{depositId}', current transaction hash: '{deposit.ClaimedRefundTransactionHash}'.");
@@ -102,13 +112,20 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price for refund claim.");
             deposit.SetClaimedRefundTransactionHash(transactionHash, gasPrice);
             await _depositRepository.UpdateAsync(deposit);
-            if (_logger.IsInfo) _logger.Info($"Updated gas price for refund claim for deposit with id: '{depositId}', transaction hash: '{transactionHash}.");
+            if (_logger.IsInfo) _logger.Info($"Updated gas price for refund claim for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
             return transactionHash;
         }
 
         public Task<Keccak> CancelAsync(Keccak transactionHash)
-            => _transactionService.UpdateValueAsync(transactionHash, 0);
+        {
+            if (transactionHash is null)
+            {
+                throw new ArgumentException("Transaction hash cannot be empty.", nameof(transactionHash));
+            }
+            
+            return _transactionService.CancelAsync(transactionHash);
+        }
 
         private async Task<DepositDetails> GetDepositAsync(Keccak depositId)
         {
