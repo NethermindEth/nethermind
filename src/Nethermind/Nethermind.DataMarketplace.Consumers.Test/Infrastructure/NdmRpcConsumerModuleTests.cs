@@ -528,7 +528,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
 
         [Test]
-        public async Task get_pending_transactions_should_return_data()
+        public async Task get_consumer_pending_transactions_should_return_data()
         {
             var pendingTransactions = new List<PendingTransaction>
             {
@@ -536,7 +536,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             };
             var transaction = pendingTransactions[0];
             _consumerTransactionsService.GetPendingAsync().Returns(pendingTransactions);
-            var result = await _rpc.ndm_getPendingTransactions();
+            var result = await _rpc.ndm_getConsumerPendingTransactions();
             await _consumerTransactionsService.Received().GetPendingAsync();
             result.Data.Should().NotBeEmpty();
             result.Data.Should().ContainSingle(t => t.Hash == transaction.Hash &&

@@ -18,7 +18,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
+namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
     public class PendingTransactionForRpc
     {
