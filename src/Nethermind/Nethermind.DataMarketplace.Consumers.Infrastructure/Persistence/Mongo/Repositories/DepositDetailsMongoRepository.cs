@@ -57,7 +57,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Mongo.
                 var filteredDeposits = allDeposits.AsEnumerable();
                 if (query.OnlyPending)
                 {
-                    filteredDeposits = filteredDeposits.Where(d => d.TransactionHash is {} && !d.Rejected &&
+                    filteredDeposits = filteredDeposits.Where(d => d.Transaction?.Hash != null && !d.Rejected &&
                                                                    (!d.Confirmed || d.EarlyRefundTicket is {} &&
                                                                     !d.RefundClaimed));
                 }

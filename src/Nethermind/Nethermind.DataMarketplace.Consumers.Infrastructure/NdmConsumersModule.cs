@@ -162,7 +162,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 receiptService, refundService, sessionService, proxyService);
             var ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
             var consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
-                logManager);
+                timestamper, logManager);
 
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
                 ? new PersonalBridge(ecdsa, wallet)

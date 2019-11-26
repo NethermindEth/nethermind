@@ -20,21 +20,29 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
-    public class PendingTransactionForRpc
+    public class TransactionInfoForRpc
     {
-        public string ResourceId { get; }
-        public string Type { get; }
-        public TransactionInfoForRpc Transaction { get; }
+        public Keccak Hash { get; set; }
+        public UInt256 Value { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public ulong Timestamp { get; set; }
 
-        public PendingTransactionForRpc()
+        public TransactionInfoForRpc()
         {
         }
 
-        public PendingTransactionForRpc(PendingTransaction transaction)
+        public TransactionInfoForRpc(TransactionInfo transaction) :
+            this(transaction.Hash, transaction.Value, transaction.GasPrice, transaction.Timestamp)
         {
-            ResourceId = transaction.ResourceId;
-            Type = transaction.Type;
-            Transaction = new TransactionInfoForRpc(transaction.Transaction);
+
+        }
+
+        public TransactionInfoForRpc(Keccak hash, UInt256 value, UInt256 gasPrice, ulong timestamp)
+        {
+            Hash = hash;
+            Value = value;
+            GasPrice = gasPrice;
+            Timestamp = timestamp;
         }
     }
 }

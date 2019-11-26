@@ -15,26 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
+namespace Nethermind.DataMarketplace.Core.Domain
 {
-    public class PendingTransactionForRpc
+    public class TransactionInfo
     {
-        public string ResourceId { get; }
-        public string Type { get; }
-        public TransactionInfoForRpc Transaction { get; }
+        public Keccak Hash { get; private set; }
+        public UInt256 Value { get; private set; }
+        public UInt256 GasPrice { get; private set; }
+        public ulong Timestamp { get; private set; }
 
-        public PendingTransactionForRpc()
+        public TransactionInfo(Keccak hash, UInt256 value, UInt256 gasPrice, ulong timestamp)
         {
-        }
-
-        public PendingTransactionForRpc(PendingTransaction transaction)
-        {
-            ResourceId = transaction.ResourceId;
-            Type = transaction.Type;
-            Transaction = new TransactionInfoForRpc(transaction.Transaction);
+            Hash = hash;
+            Value = value;
+            GasPrice = gasPrice;
+            Timestamp = timestamp;
         }
     }
 }

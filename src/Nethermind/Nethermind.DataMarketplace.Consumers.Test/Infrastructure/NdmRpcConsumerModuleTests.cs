@@ -532,15 +532,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var pendingTransactions = new List<PendingTransaction>
             {
-                new PendingTransaction(TestItem.KeccakA, 1, "test")
+                new PendingTransaction(TestItem.KeccakA.ToString(), "test", new TransactionInfo(TestItem.KeccakB,
+                    1.Ether(), 20.GWei(), _timestamper.EpochSeconds))
             };
             var transaction = pendingTransactions[0];
             _consumerTransactionsService.GetPendingAsync().Returns(pendingTransactions);
             var result = await _rpc.ndm_getConsumerPendingTransactions();
             await _consumerTransactionsService.Received().GetPendingAsync();
             result.Data.Should().NotBeEmpty();
-            result.Data.Should().ContainSingle(t => t.Hash == transaction.Hash &&
-                                                    t.GasPrice == transaction.GasPrice && t.Type == transaction.Type);
+            result.Data.Should().ContainSingle(t =>
+                t.ResourceId == transaction.ResourceId && t.Type == transaction.Type &&
+                t.Transaction.Hash == transaction.Transaction.Hash &&
+                t.Transaction.Value == transaction.Transaction.Value &&
+                t.Transaction.GasPrice == transaction.Transaction.GasPrice &&
+                t.Transaction.Timestamp == transaction.Transaction.Timestamp);
         }
 
         private static void VerifyGasPrice(GasPriceDetailsForRpc rpcGasPrice, GasPriceDetails gasPrice)
@@ -632,11 +637,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.Value.Should().Be(1);
             deposit.Deposit.ExpiryTime.Should().Be(DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
-            deposit.TransactionHash.Should().Be(TestItem.KeccakA);
+            deposit.Transaction.Hash.Should().Be(TestItem.KeccakA);
+            deposit.Transaction.Value.Should().Be(1);
+            deposit.Transaction.GasPrice.Should().Be(1);
+            deposit.Transaction.Timestamp.Should().Be(1);
             deposit.Confirmed.Should().Be(false);
             deposit.Expired.Should().Be(false);
             deposit.RefundClaimed.Should().Be(false);
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
+            deposit.ClaimedRefundTransaction.Should().BeNull();
             deposit.ConsumedUnits.Should().Be(0);
             deposit.Kyc.Should().BeNullOrEmpty();
             VerifyDataAsset(deposit.DataAsset);
@@ -678,7 +686,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
-                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA, 1);
+                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
+                new TransactionInfo(TestItem.KeccakA, 1, 1, 1));
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,

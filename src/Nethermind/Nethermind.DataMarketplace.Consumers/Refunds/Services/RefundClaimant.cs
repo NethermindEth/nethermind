@@ -66,7 +66,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
             
             var depositId = deposit.Deposit.Id;
-            var transactionHash = deposit.ClaimedRefundTransactionHash;
+            var transactionHash = deposit.ClaimedRefundTransaction?.Hash;
             if (transactionHash is null)
             {
                 var provider = deposit.DataAsset.Provider.Address;
@@ -74,7 +74,14 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     deposit.Deposit.Value, deposit.Deposit.ExpiryTime, deposit.Pepper, provider, refundTo);
                 var gasPrice = await _gasPriceService.GetCurrentAsync();
                 transactionHash = await _refundService.ClaimRefundAsync(refundTo, refundClaim, gasPrice);
-                deposit.SetClaimedRefundTransactionHash(transactionHash, gasPrice);
+                if (transactionHash is null)
+                {
+                    if (_logger.IsError) _logger.Error("There was an error when trying to claim refund (no transaction hash returned).");
+                    return RefundClaimStatus.Empty;
+                }
+                
+                deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice,
+                    _timestamper.EpochSeconds));
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }
@@ -102,7 +109,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             }
             
             var depositId = deposit.Deposit.Id;
-            var transactionHash = deposit.ClaimedRefundTransactionHash;
+            var transactionHash = deposit.ClaimedRefundTransaction?.Hash;
             if (transactionHash is null)
             {
                 var provider = deposit.DataAsset.Provider.Address;
@@ -112,7 +119,14 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     ticket.ClaimableAfter, ticket.Signature, refundTo);
                 var gasPrice = await _gasPriceService.GetCurrentAsync();
                 transactionHash = await _refundService.ClaimEarlyRefundAsync(refundTo, earlyRefundClaim, gasPrice);
-                deposit.SetClaimedRefundTransactionHash(transactionHash, gasPrice);
+                if (transactionHash is null)
+                {
+                    if (_logger.IsError) _logger.Error("There was an error when trying to claim early refund (no transaction hash returned).");
+                    return RefundClaimStatus.Empty;
+                }
+                
+                deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice,
+                    _timestamper.EpochSeconds));
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }
@@ -127,7 +141,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
         private async Task<bool> TryConfirmClaimAsync(DepositDetails deposit, string type)
         {
             var depositId = deposit.Id;
-            var transactionHash = deposit.TransactionHash;
+            var transactionHash = deposit.Transaction?.Hash;
             var transaction  = await _blockchainBridge.GetTransactionAsync(transactionHash);          
             if (transaction is null)
             {

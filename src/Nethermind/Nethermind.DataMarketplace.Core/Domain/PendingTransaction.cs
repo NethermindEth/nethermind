@@ -14,22 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-
 namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class PendingTransaction
     {
-        public Keccak Hash { get; }
-        public UInt256 GasPrice { get; }
+        public string ResourceId { get; }
         public string Type { get; }
-
-        public PendingTransaction(Keccak hash, UInt256 gasPrice, string type)
+        public TransactionInfo Transaction { get; }
+        
+        public PendingTransaction(string resourceId, string type, TransactionInfo transaction)
         {
-            Hash = hash;
-            GasPrice = gasPrice;
+            ResourceId = resourceId;
             Type = type;
+            Transaction = transaction;
         }
     }
 }
