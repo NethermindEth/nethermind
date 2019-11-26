@@ -268,7 +268,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         public async Task<ResultWrapper<Keccak>> ndm_cancelTransaction(Keccak transactionHash)
             => ResultWrapper<Keccak>.Success(await _consumerTransactionsService.CancelAsync(transactionHash));
 
-        public async Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getPendingTransactions()
+        public async Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions()
         {
             var transactions = await _consumerTransactionsService.GetPendingAsync();
 

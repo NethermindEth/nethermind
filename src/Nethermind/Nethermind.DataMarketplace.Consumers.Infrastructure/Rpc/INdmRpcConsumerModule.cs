@@ -66,6 +66,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<Keccak>> ndm_updateDepositGasPrice(Keccak depositId, UInt256 gasPrice);
         Task<ResultWrapper<Keccak>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice);
         Task<ResultWrapper<Keccak>> ndm_cancelTransaction(Keccak transactionHash);
-        Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getPendingTransactions();
+        Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions();
     }
 }
