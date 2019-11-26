@@ -1,8 +1,11 @@
 ﻿using System.Linq;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using NSubstitute;
 using Shouldly;
@@ -18,59 +21,45 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var useBls = true;
 
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
+            var services = new ServiceCollection();
+            services.AddLogging(configure => configure.AddConsole());
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(TestConfiguration.GetMinimalConfigurationDictionary())
+                .Build();
+            services.AddBeaconNode(configuration);
+            var testServiceProvider = services.BuildServiceProvider(new ServiceProviderOptions() { ValidateOnBuild = false });
 
-            var loggerFactory = new LoggerFactory(new[] {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
-            });
-
-            ICryptographyService cryptographyService;
-            if (useBls)
+            if (!useBls)
             {
-                cryptographyService = new CryptographyService();
-            }
-            else
-            {
-                cryptographyService = Substitute.For<ICryptographyService>();
-                cryptographyService
+                var mockCryptographyService = Substitute.For<ICryptographyService>();
+                mockCryptographyService
                     .BlsVerify(Arg.Any<BlsPublicKey>(), Arg.Any<Hash32>(), Arg.Any<BlsSignature>(), Arg.Any<Domain>())
                     .Returns(true);
-                cryptographyService
+                mockCryptographyService
                     .Hash(Arg.Any<Hash32>(), Arg.Any<Hash32>())
                     .Returns(callInfo =>
                     {
                         return new Hash32(TestUtility.Hash(callInfo.ArgAt<Hash32>(0).AsSpan(), callInfo.ArgAt<Hash32>(1).AsSpan()));
                     });
+                services.AddSingleton<ICryptographyService>(mockCryptographyService);
             }
-            var beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
-                miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions, 
-                cryptographyService);
-            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
-                cryptographyService, beaconChainUtility);
-            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
-                 beaconChainUtility, beaconStateAccessor);
-            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
 
-            var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount;
-            (var deposits, var depositRoot) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: useBls,
-                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, beaconChainUtility, beaconStateAccessor);
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
+
+            (var deposits, var depositRoot) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls,
+                chainConstants, initialValues, timeParameters,
+                testServiceProvider.GetService<BeaconChainUtility>(), testServiceProvider.GetService<BeaconStateAccessor>());
+
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
-            var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
+            var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition);
+            var beaconChain = testServiceProvider.GetService<BeaconChain>();
 
             // Act
             //# initialize beacon_state
