@@ -32,14 +32,15 @@ namespace Nethermind.State.Test.Runner
     {
         private StateTestTxTraceEntry _traceEntry;
         private StateTestTxTrace _trace = new StateTestTxTrace();
+        private bool _gasAlreadySetForCurrentOp;
 
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
         public bool IsTracingOpLevelStorage => true;
-        public bool IsTracingMemory => true;
+        public bool IsTracingMemory { get; set; } = true;
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingCode => false;
-        public bool IsTracingStack => true;
+        public bool IsTracingStack { get; set; } = true;
         bool ITxTracer.IsTracingState => false;
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
@@ -58,6 +59,7 @@ namespace Nethermind.State.Test.Runner
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
 //            var previousTraceEntry = _traceEntry;
+            _gasAlreadySetForCurrentOp = false;
             _traceEntry = new StateTestTxTraceEntry();
             _traceEntry.Pc = pc;
             _traceEntry.Operation = (byte)opcode;
@@ -115,7 +117,7 @@ namespace Nethermind.State.Test.Runner
                 case EvmExceptionType.AccessViolation:
                     return "AccessViolation";
                 case EvmExceptionType.StaticCallViolation:
-                    return "StaticCallViolation";
+                    return "evm: write protection";
                 default:
                     return "Error";
             }
@@ -123,12 +125,22 @@ namespace Nethermind.State.Test.Runner
 
         public void ReportOperationRemainingGas(long gas)
         {
-            _traceEntry.GasCost = _traceEntry.Gas - gas;
+            if (!_gasAlreadySetForCurrentOp)
+            {
+                _gasAlreadySetForCurrentOp = true;
+                _traceEntry.GasCost = _traceEntry.Gas - gas;
+            }
         }
 
         public void SetOperationMemorySize(ulong newSize)
         {
             _traceEntry.UpdateMemorySize(newSize);
+            int diff = (int) _traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
+            if (diff > 0)
+            {
+                _traceEntry.Memory += new string('0', diff);
+            }
+
         }
 
         public void ReportMemoryChange(long offset, Span<byte> data)
@@ -210,13 +222,15 @@ namespace Nethermind.State.Test.Runner
             _traceEntry.Stack = new List<string>();
             foreach (string s in stackTrace)
             {
-                string prepared = s.AsSpan().Slice(2).TrimStart('0').ToString();
-                if (prepared == string.Empty)
+                ReadOnlySpan<char> inProgress = s.AsSpan();
+                if (s.StartsWith("0x"))
                 {
-                    prepared = "0x0";
+                    inProgress = inProgress.Slice(2);
                 }
                 
-                _traceEntry.Stack.Add(prepared);
+                inProgress = inProgress.TrimStart('0');
+
+                _traceEntry.Stack.Add(inProgress.Length == 0 ? "0x0" : "0x" + inProgress.ToString());
             }
         }
 
@@ -226,7 +240,7 @@ namespace Nethermind.State.Test.Runner
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
-            _traceEntry.Memory = "0x" + string.Concat(memoryTrace.Select(mt => mt.Replace("0x", string.Empty)));
+            _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.Select(mt => mt.Replace("0x", string.Empty))));
         }
 
         public StateTestTxTrace BuildResult()
