@@ -15,13 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Globalization;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Wallet;
@@ -55,16 +52,18 @@ namespace Nethermind.DataMarketplace.Core.Services
 
             return await UpdateAsync(transactionHash, transaction =>
             {
+                var previousGasPrice = transaction.GasPrice;
                 transaction.GasPrice = gasPrice;
-                if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' gas price: {transaction.GasPrice} -> {gasPrice} wei.");
+                if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' gas price: {previousGasPrice} wei -> {gasPrice} wei.");
             });
         }
 
         public Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value) 
             => UpdateAsync(transactionHash, transaction =>
             {
+                var previousValue = transaction.Value;
                 transaction.Value = value;
-                if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' value: {transaction.Value} -> {value} wei.");
+                if (_logger.IsInfo) _logger.Info($"Updating transaction with hash: '{transactionHash}' value: {previousValue} wei -> {value} wei.");
             });
 
         public Task<Keccak> CancelAsync(Keccak transactionHash)
@@ -95,7 +94,7 @@ namespace Nethermind.DataMarketplace.Core.Services
             {
                 throw new ArgumentException($"Transaction was not found for hash: '{transactionHash}'.", nameof(transactionHash));
             }
-
+            
             var transaction = transactionDetails.Transaction;
             update(transaction);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
