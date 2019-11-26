@@ -53,18 +53,21 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 var pepper = rlpStream.DecodeByteArray();
                 var timestamp = rlpStream.DecodeUInt();
                 var transactionHash = rlpStream.DecodeKeccak();
+                var transactionGasPrice = rlpStream.DecodeUInt256();
                 var confirmationTimestamp = rlpStream.DecodeUInt();
                 var rejected = rlpStream.DecodeBool();
                 var earlyRefundTicket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(rlpStream);
                 var claimedRefundTransactionHash = rlpStream.DecodeKeccak();
+                var claimedRefundTransactionGasPrice = rlpStream.DecodeUInt256();
                 var refundClaimed = rlpStream.DecodeBool();
                 var kyc = rlpStream.DecodeString();
                 var confirmations = rlpStream.DecodeUInt();
                 var requiredConfirmations = rlpStream.DecodeUInt();
 
                 return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactionHash,
-                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransactionHash, refundClaimed,
-                    kyc, confirmations, requiredConfirmations);
+                    transactionGasPrice, confirmationTimestamp, rejected, earlyRefundTicket,
+                    claimedRefundTransactionHash, claimedRefundTransactionGasPrice, refundClaimed, kyc, confirmations,
+                    requiredConfirmations);
             }
             catch (Exception)
             {
@@ -80,10 +83,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 var consumer = rlpStream.DecodeAddress();
                 var pepper = rlpStream.DecodeByteArray();
                 var transactionHash = rlpStream.DecodeKeccak();
+                var transactionGasPrice = rlpStream.DecodeUInt256();
                 var confirmationTimestamp = rlpStream.DecodeUInt();
                 var rejected = rlpStream.DecodeBool();
                 var earlyRefundTicket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(rlpStream);
                 var claimedRefundTransactionHash = rlpStream.DecodeKeccak();
+                var claimedRefundTransactionGasPrice = rlpStream.DecodeUInt256();
                 var refundClaimed = rlpStream.DecodeBool();
                 var kyc = rlpStream.DecodeString();
                 var confirmations = rlpStream.DecodeUInt();
@@ -95,8 +100,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 }
 
                 return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactionHash,
-                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransactionHash, refundClaimed,
-                    kyc, confirmations, requiredConfirmations);
+                    transactionGasPrice, confirmationTimestamp, rejected, earlyRefundTicket,
+                    claimedRefundTransactionHash, claimedRefundTransactionGasPrice, refundClaimed, kyc, confirmations,
+                    requiredConfirmations);
             }
         }
 
@@ -114,10 +120,12 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.Pepper),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Timestamp),
                 Nethermind.Core.Encoding.Rlp.Encode(item.TransactionHash),
+                Nethermind.Core.Encoding.Rlp.Encode(item.TransactionGasPrice),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConfirmationTimestamp),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Rejected),
                 Nethermind.Core.Encoding.Rlp.Encode(item.EarlyRefundTicket),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ClaimedRefundTransactionHash),
+                Nethermind.Core.Encoding.Rlp.Encode(item.ClaimedRefundTransactionGasPrice),
                 Nethermind.Core.Encoding.Rlp.Encode(item.RefundClaimed),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Kyc),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Confirmations),

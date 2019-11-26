@@ -91,9 +91,10 @@ namespace Nethermind.KeyStore.Test
         }
         
         [Test]
-        public void CtrTest()
+        [Ignore("Awaits Ethereum Tests PR approval.")]
+        public void MyCryptoTest()
         {
-            var testModel = _testsModel.Ctr;
+            var testModel = _testsModel.MyCrypto;
             RunTest(testModel);
         }
 
@@ -126,7 +127,7 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Test2 { get; set; }
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
-            public KeyStoreTestModel Ctr { get; set; }
+            public KeyStoreTestModel MyCrypto { get; set; }
             
             public KeyStoreTestModel Sealer0 { get; set; }
         }

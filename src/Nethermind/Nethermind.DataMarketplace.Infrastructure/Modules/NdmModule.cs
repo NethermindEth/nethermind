@@ -40,7 +40,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
 
+            var configId = config.Id;
+            var configManager = services.ConfigManager;
             var logManager = services.LogManager;
+            var timestamper = services.Timestamper;
+            var wallet = services.Wallet;
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
@@ -54,7 +58,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.ReceiptStorage,
                 services.FilterStore,
                 services.FilterManager,
-                services.Wallet,
+                wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
@@ -70,16 +74,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             {
                 ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
             }
-            
-            var depositService = new DepositService(ndmBlockchainBridge, encoder, services.Wallet, contractAddress);
+
+            var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,
+                logManager);
+            var transactionService = new TransactionService(ndmBlockchainBridge, wallet, configManager, configId,
+                logManager);
+            var depositService = new DepositService(ndmBlockchainBridge, encoder, wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
 //            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
-                depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
-                ndmBlockchainBridge));
+                depositService, gasPriceService, transactionService, ndmDataPublisher, jsonRpcNdmConsumerChannel,
+                ndmConsumerChannelManager, ndmBlockchainBridge));
         }
 
         private static void AddDecoders()

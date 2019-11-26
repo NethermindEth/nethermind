@@ -18,6 +18,7 @@ using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 using Newtonsoft.Json;
@@ -29,16 +30,19 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         private const string Url = "https://api.coinmarketcap.com/v1/ticker/ethereum/?convert=USD";
         private readonly IHttpClient _client;
+        private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
+        
+        public decimal UsdPrice { get; private set; }
+        public ulong UpdatedAt { get; private set; }
 
-        public EthPriceService(IHttpClient client, ILogManager logManager)
+        public EthPriceService(IHttpClient client, ITimestamper timestamper, ILogManager logManager)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(client));
         }
 
-        public decimal UsdPrice { get; private set; }
-        
         public async Task UpdateAsync()
         {
             var results = await _client.GetAsync<Result[]>(Url);
@@ -48,9 +52,11 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsWarn) _logger.Warn($"There was an error when updating ETH price. Latest know value is: {UsdPrice} USD");
                 return;
             }
-            
+
+            UpdatedAt = _timestamper.EpochSeconds;
             UsdPrice = result.PriceUsd;
-            if (_logger.IsInfo) _logger.Info($"Updated ETH price: {UsdPrice} USD");
+            
+            if (_logger.IsInfo) _logger.Info($"Updated ETH price: {UsdPrice} USD, updated at: {UpdatedAt}");
         }
 
         internal class Result

@@ -14,14 +14,31 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.DataMarketplace.Consumers.Shared.Services.Models
 {
-    public interface IEthPriceService
+    public class RefundClaimStatus
     {
-        Task UpdateAsync();
-        decimal UsdPrice { get; }
-        ulong UpdatedAt { get; }
+        public Keccak TransactionHash { get; }
+        public bool IsConfirmed { get; }
+
+        private RefundClaimStatus()
+        {
+        }
+
+        public RefundClaimStatus(Keccak transactionHash, bool confirmed)
+        {
+            TransactionHash = transactionHash;
+            IsConfirmed = confirmed;
+        }
+
+        public static RefundClaimStatus Empty => new RefundClaimStatus();
+
+        public static RefundClaimStatus Confirmed(Keccak transactionHash)
+            => new RefundClaimStatus(transactionHash, true);
+
+        public static RefundClaimStatus Unconfirmed(Keccak transactionHash)
+            => new RefundClaimStatus(transactionHash, false);
     }
 }

@@ -49,5 +49,8 @@ namespace Nethermind.DataMarketplace.Core.Configs
         public string DatabasePath { get; set; } = "ndm";
         public bool ProxyEnabled { get; set; }
         public string[] JsonRpcUrlProxies { get; set; } = Array.Empty<string>();
+        public UInt256 GasPrice { get; set; } = 20000000000;
+        public string GasPriceType { get; set; } = "custom";
+        public uint CancelTransactionGasPricePercentageMultiplier { get; set; } = 110;
     }
 }

@@ -48,7 +48,6 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private readonly IDepositService _depositService;
         private readonly IDepositUnitsCalculator _depositUnitsCalculator;
         private readonly IDepositDetailsRepository _depositRepository;
-        private readonly IConsumerSessionRepository _sessionRepository;
         private readonly IDataAssetService _dataAssetService;
         private readonly IKycVerifier _kycVerifier;
         private readonly IProviderService _providerService;
@@ -57,18 +56,18 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private readonly ITimestamper _timestamper;
         private readonly uint _requiredBlockConfirmations;
         private readonly IWallet _wallet;
+        private readonly IGasPriceService _gasPriceService;
         private readonly ILogger _logger;
 
         public DepositManager(IDepositService depositService, IDepositUnitsCalculator depositUnitsCalculator,
             IDataAssetService dataAssetService, IKycVerifier kycVerifier, IProviderService providerService,
-            IAbiEncoder abiEncoder, ICryptoRandom cryptoRandom, IWallet wallet,
-            IDepositDetailsRepository depositRepository, IConsumerSessionRepository sessionRepository,
-            ITimestamper timestamper, ILogManager logManager, uint requiredBlockConfirmations)
+            IAbiEncoder abiEncoder, ICryptoRandom cryptoRandom, IWallet wallet, IGasPriceService gasPriceService,
+            IDepositDetailsRepository depositRepository, ITimestamper timestamper, ILogManager logManager,
+            uint requiredBlockConfirmations)
         {
             _depositService = depositService;
             _depositUnitsCalculator = depositUnitsCalculator;
             _depositRepository = depositRepository;
-            _sessionRepository = sessionRepository;
             _dataAssetService = dataAssetService;
             _kycVerifier = kycVerifier;
             _providerService = providerService;
@@ -77,6 +76,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             _timestamper = timestamper;
             _requiredBlockConfirmations = requiredBlockConfirmations;
             _wallet = wallet;
+            _gasPriceService = gasPriceService;
             _logger = logManager.GetClassLogger();
         }
 
@@ -106,7 +106,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             return deposits;
         }
 
-        public async Task<Keccak> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address)
+        public async Task<Keccak> MakeAsync(Keccak assetId, uint units, UInt256 value, Address address,
+            UInt256? gasPrice = null)
         {
             if (!_wallet.IsUnlocked(address))
             {
@@ -130,7 +131,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            if (dataAsset.KycRequired && !(await _kycVerifier.IsVerifiedAsync(assetId, address)))
+            if (dataAsset.KycRequired && !await _kycVerifier.IsVerifiedAsync(assetId, address))
             {
                 return null;
             }
@@ -168,12 +169,15 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             var depositId = Keccak.Compute(abiHash);
             var deposit = new Deposit(depositId, units, expiryTime, value);
             var depositDetails = new DepositDetails(deposit, dataAsset, address, pepper, now,
-                null, requiredConfirmations: _requiredBlockConfirmations);
+                null, 0, requiredConfirmations: _requiredBlockConfirmations);
+            var gasPriceValue = gasPrice is null || gasPrice.Value == 0
+                ? await _gasPriceService.GetCurrentAsync()
+                : gasPrice.Value;
             await _depositRepository.AddAsync(depositDetails);
             if (_logger.IsInfo) _logger.Info($"Created a deposit with id: '{depositId}', for data asset: '{assetId}', address: '{address}'.");
-            var transactionHash = await _depositService.MakeDepositAsync(address, deposit);
-            if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{address}'.");
-            depositDetails.SetTransactionHash(transactionHash);
+            var transactionHash = await _depositService.MakeDepositAsync(address, deposit, gasPriceValue);
+            if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{address}', gas price: {gasPriceValue} wei.");
+            depositDetails.SetTransactionHash(transactionHash, gasPriceValue);
             await _depositRepository.UpdateAsync(depositDetails);
                 
             return depositId;

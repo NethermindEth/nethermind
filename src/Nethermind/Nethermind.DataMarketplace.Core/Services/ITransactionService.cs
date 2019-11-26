@@ -15,13 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
-    public interface IEthPriceService
+    public interface ITransactionService
     {
-        Task UpdateAsync();
-        decimal UsdPrice { get; }
-        ulong UpdatedAt { get; }
+        Task<Keccak> UpdateGasPriceAsync(Keccak transactionHash, UInt256 gasPrice);
+        Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value);
+        Task<Keccak> CancelAsync(Keccak transactionHash);
     }
 }

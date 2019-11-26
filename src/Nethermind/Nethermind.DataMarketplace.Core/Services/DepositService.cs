@@ -85,9 +85,10 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
         }
 
-        public async Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit)
+        public async Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit, UInt256 gasPrice)
         {
-            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig, deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig,
+                deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);
             Transaction transaction = new Transaction
             {
                 Value = deposit.Value,
@@ -95,12 +96,12 @@ namespace Nethermind.DataMarketplace.Core.Services
                 To = _contractAddress,
                 SenderAddress = onBehalfOf,
                 GasLimit = 70000,
-                GasPrice = 20.GWei(),
+                GasPrice = gasPrice,
                 Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf)
             };
             // check  
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
-            
+
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
 
@@ -109,16 +110,15 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction);
 
-            return data.AsSpan().ReadEthUInt32LittleEndian();
-            
+            return data.AsSpan().ReadEthUInt32();
         }
-        
+
         public async Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId, long blockNumber)
         {
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction, blockNumber);
 
-            return data.AsSpan().ReadEthUInt32LittleEndian();
+            return data.AsSpan().ReadEthUInt32();
         }
 
         private async Task<Transaction> GetTransactionAsync(Address onBehalfOf, Keccak depositId)

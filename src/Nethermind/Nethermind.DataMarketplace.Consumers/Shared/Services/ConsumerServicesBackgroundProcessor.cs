@@ -46,6 +46,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
         private readonly IEthPriceService _ethPriceService;
+        private readonly IGasPriceService _gasPriceService;
         private readonly IBlockProcessor _blockProcessor;
         private readonly Timer _refundClaimTimer;
         private readonly Timer _depositTimer;
@@ -55,15 +56,16 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public ConsumerServicesBackgroundProcessor(IAccountService accountService, IRefundClaimant refundClaimant,
             IDepositConfirmationService depositConfirmationService, IEthPriceService ethPriceService,
-            IBlockProcessor blockProcessor, IDepositDetailsRepository depositRepository,
-            IConsumerNotifier consumerNotifier, ILogManager logManager,
-            uint tryClaimRefundsIntervalMilliseconds = 60000, bool useDepositTimer = false, 
+            IGasPriceService gasPriceService, IBlockProcessor blockProcessor,
+            IDepositDetailsRepository depositRepository, IConsumerNotifier consumerNotifier, ILogManager logManager,
+            uint tryClaimRefundsIntervalMilliseconds = 60000, bool useDepositTimer = false,
             IEthJsonRpcClientProxy ethJsonRpcClientProxy = null, uint depositTimer = 10000)
         {
             _accountService = accountService;
             _refundClaimant = refundClaimant;
             _depositConfirmationService = depositConfirmationService;
             _ethPriceService = ethPriceService;
+            _gasPriceService = gasPriceService;
             _blockProcessor = blockProcessor;
             _depositRepository = depositRepository;
             _consumerNotifier = consumerNotifier;
@@ -75,7 +77,9 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             {
                 _depositTimer = new Timer(depositTimer);
             }
+
             _ethPriceService.UpdateAsync();
+            _gasPriceService.UpdateAsync();
         }
 
         public void Init()
@@ -123,7 +127,9 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private void RefundClaimTimerOnElapsed(object sender, ElapsedEventArgs e)
         {
             _ethPriceService.UpdateAsync();
-            _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice);
+            _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice, _ethPriceService.UpdatedAt);
+            _gasPriceService.UpdateAsync();
+            _consumerNotifier.SendGasPriceAsync(_gasPriceService.Types);
             _depositRepository.BrowseAsync(new GetDeposits
                 {
                     Results = int.MaxValue,
@@ -148,8 +154,19 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                     var refundTo = _accountService.GetAddress();
                     foreach (var deposit in t.Result.Items)
                     {
-                        await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
-                        await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
+                        var earlyRefundClaimStatus = await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
+                        if (earlyRefundClaimStatus.IsConfirmed)
+                        {
+                            await _consumerNotifier.SendClaimedEarlyRefundAsync(deposit.Id, deposit.DataAsset.Name,
+                                earlyRefundClaimStatus.TransactionHash);
+                        }
+
+                        var refundClaimStatus = await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
+                        if (refundClaimStatus.IsConfirmed)
+                        {
+                            await _consumerNotifier.SendClaimedRefundAsync(deposit.Id, deposit.DataAsset.Name,
+                                refundClaimStatus.TransactionHash);
+                        }
                     }
                 });
         }

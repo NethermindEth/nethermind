@@ -15,13 +15,16 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.DataMarketplace.Core.Services.Models;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Services
 {
-    public interface IEthPriceService
+    public interface IGasPriceService
     {
+        GasPriceTypes Types { get; }
+        Task<UInt256> GetCurrentAsync();
+        Task SetAsync(string gasPriceOrType);
         Task UpdateAsync();
-        decimal UsdPrice { get; }
-        ulong UpdatedAt { get; }
     }
 }
