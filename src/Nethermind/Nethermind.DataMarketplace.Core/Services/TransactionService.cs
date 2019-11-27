@@ -94,6 +94,11 @@ namespace Nethermind.DataMarketplace.Core.Services
             {
                 throw new ArgumentException($"Transaction was not found for hash: '{transactionHash}'.", nameof(transactionHash));
             }
+
+            if (!transactionDetails.IsPending)
+            {
+                throw new InvalidOperationException($"Transaction with hash: '{transactionHash}' is not pending.");
+            }
             
             var transaction = transactionDetails.Transaction;
             update(transaction);

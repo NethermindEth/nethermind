@@ -110,12 +110,14 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
         public bool CanClaimEarlyRefund(ulong currentBlockTimestamp)
             => Confirmed && !Rejected && !RefundClaimed && !(EarlyRefundTicket is null) &&
+               ClaimedRefundTransaction?.State != TransactionState.Canceled &&
                EarlyRefundTicket.ClaimableAfter <= currentBlockTimestamp;
 
         public bool CanClaimRefund(ulong currentBlockTimestamp)
-            => Confirmed && !Rejected && !RefundClaimed && currentBlockTimestamp >= Deposit.ExpiryTime &&
-               ConfirmationTimestamp + Deposit.Units + DataAsset.Rules.Expiry.Value <=
-               currentBlockTimestamp;
+            => Confirmed && !Rejected && !RefundClaimed &&
+               ClaimedRefundTransaction?.State != TransactionState.Canceled &&
+               currentBlockTimestamp >= Deposit.ExpiryTime &&
+               ConfirmationTimestamp + Deposit.Units + DataAsset.Rules.Expiry.Value <= currentBlockTimestamp;
 
         public void SetConfirmations(uint confirmations)
         {

@@ -517,14 +517,25 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         }
         
         [Test]
-        public async Task cancel_transaction_should_return_transaction_hash()
+        public async Task cancel_deposit_should_return_transaction_hash()
         {
-            var transactionHash = TestItem.KeccakA;
+            var depositId = TestItem.KeccakA;
             var canceledTransactionHash = TestItem.KeccakB;
-            _consumerTransactionsService.CancelAsync(transactionHash).Returns(canceledTransactionHash);
-            var result = await _rpc.ndm_cancelTransaction(transactionHash);
+            _consumerTransactionsService.CancelDepositAsync(depositId).Returns(canceledTransactionHash);
+            var result = await _rpc.ndm_cancelDeposit(depositId);
             result.Data.Should().Be(canceledTransactionHash);
-            await _consumerTransactionsService.Received().CancelAsync(transactionHash);
+            await _consumerTransactionsService.Received().CancelDepositAsync(depositId);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_return_transaction_hash()
+        {
+            var depositId = TestItem.KeccakA;
+            var canceledTransactionHash = TestItem.KeccakB;
+            _consumerTransactionsService.CancelRefundAsync(depositId).Returns(canceledTransactionHash);
+            var result = await _rpc.ndm_cancelRefund(depositId);
+            result.Data.Should().Be(canceledTransactionHash);
+            await _consumerTransactionsService.Received().CancelRefundAsync(depositId);
         }
 
         [Test]

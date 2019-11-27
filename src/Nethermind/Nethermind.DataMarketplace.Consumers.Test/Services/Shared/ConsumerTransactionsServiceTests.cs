@@ -156,6 +156,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             deposit.Transaction.Hash.Should().Be(newTransactionHash);
             deposit.Transaction.GasPrice.Should().Be(gasPrice);
             await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(transactionHash, gasPrice);
         }
 
@@ -245,26 +246,61 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             deposit.ClaimedRefundTransaction.Hash.Should().Be(newTransactionHash);
             deposit.ClaimedRefundTransaction.GasPrice.Should().Be(gasPrice);
             await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(claimedRefundTransactionHash, gasPrice);
         }
-
+        
         [Test]
-        public void cancel_should_fail_for_empty_transaction_hash()
+        public void cancel_deposit_should_fail_for_missing_deposit()
         {
-            Func<Task> act = () => _consumerTransactionsService.CancelAsync(null);
-            act.Should().Throw<ArgumentException>()
-                .WithMessage("Transaction hash cannot be empty. (Parameter 'transactionHash')");
+            var depositId = TestItem.KeccakA;
+            Func<Task> act = () => _consumerTransactionsService.CancelDepositAsync(depositId);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"Deposit with id: '{depositId}' was not found.");
+        }
+        
+        [Test]
+        public void cancel_refund_should_fail_for_missing_deposit()
+        {
+            var depositId = TestItem.KeccakA;
+            Func<Task> act = () => _consumerTransactionsService.CancelRefundAsync(depositId);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"Deposit with id: '{depositId}' was not found.");
         }
 
         [Test]
-        public async Task cancel_should_return_transaction_hash()
+        public async Task cancel_deposit_should_return_transaction_hash()
         {
             var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
             var canceledTransactionHash = TestItem.KeccakB;
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             _transactionService.CancelAsync(transactionHash).Returns(canceledTransactionHash);
-            var hash = await _consumerTransactionsService.CancelAsync(transactionHash);
+            var hash = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
             hash.Should().Be(canceledTransactionHash);
+            deposit.Transaction.Hash.Should().Be(canceledTransactionHash);
+            deposit.Transaction.State.Should().Be(TransactionState.Canceled);
+            await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().CancelAsync(transactionHash);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_return_transaction_hash()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var claimedRefundTransactionHash = TestItem.KeccakB;
+            var deposit = GetDepositDetails(transactionHash, claimedRefundTransactionHash);
+            var canceledTransactionHash = TestItem.KeccakC;
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            _transactionService.CancelAsync(claimedRefundTransactionHash).Returns(canceledTransactionHash);
+            var hash = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            hash.Should().Be(canceledTransactionHash);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(canceledTransactionHash);
+            deposit.ClaimedRefundTransaction.State.Should().Be(TransactionState.Canceled);
+            await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
+            await _transactionService.Received().CancelAsync(claimedRefundTransactionHash);
         }
 
         private static DepositDetails GetDepositDetails(Keccak transactionHash = null,

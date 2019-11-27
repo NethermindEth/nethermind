@@ -39,7 +39,7 @@ namespace Nethermind.DataMarketplace.Core.Services
         {
             var result = await _proxy.eth_blockNumber();
 
-            return result?.IsValid == true && result.Result.HasValue ? (long) result.Result.Value : 0;
+            return result?.IsValid == true && result.Result.HasValue ? result.Result.Value : 0;
         }
 
         public async Task<byte[]> GetCodeAsync(Address address)
@@ -84,14 +84,10 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transactionTask = _proxy.eth_getTransactionByHash(transactionHash);
             var receiptTask = _proxy.eth_getTransactionReceipt(transactionHash);
             await Task.WhenAll(transactionTask, receiptTask);
-
-            if (transactionTask.Result is null || !transactionTask.Result.IsValid ||
-                receiptTask.Result is null || !receiptTask.Result.IsValid)
-            {
-                return null;
-            }
-
-            return MapTransaction(transactionTask.Result.Result, receiptTask.Result.Result);
+            
+            return transactionTask.Result?.Result is null
+                ? null
+                : MapTransaction(transactionTask.Result.Result, receiptTask.Result?.Result);
         }
 
         public async Task<int> GetNetworkIdAsync()
@@ -125,9 +121,11 @@ namespace Nethermind.DataMarketplace.Core.Services
         }
 
         private static NdmTransaction MapTransaction(TransactionModel transaction, ReceiptModel receipt)
-            => transaction is null || receipt is null
-                ? null
-                : new NdmTransaction(transaction.ToTransaction(), (long) transaction.BlockNumber,
-                    transaction.BlockHash, (long) receipt.GasUsed);
+        {
+            var isPending = receipt is null;
+
+            return new NdmTransaction(transaction.ToTransaction(), isPending, (long) (receipt?.BlockNumber ?? 0),
+                receipt?.BlockHash, (long) (receipt?.GasUsed ?? 0));
+        }
     }
 }

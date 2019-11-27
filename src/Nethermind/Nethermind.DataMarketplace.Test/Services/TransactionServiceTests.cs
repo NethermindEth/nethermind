@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var transactionHash = TestItem.KeccakA;
             var transaction = Build.A.Transaction.TestObject;
             _blockchainBridge.GetTransactionAsync(transactionHash)
-                .Returns(new NdmTransaction(transaction, 1, TestItem.KeccakB, 1));
+                .Returns(new NdmTransaction(transaction, true, 1, TestItem.KeccakB, 1));
             Func<Task> act = () => _transactionService.UpdateGasPriceAsync(transactionHash, 1);
             act.Should().Throw<InvalidOperationException>()
                 .WithMessage("Transaction was not sent (received an empty hash).");
@@ -101,7 +101,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var sentTransactionHash = TestItem.KeccakB;
             var gasPrice = 30.GWei();
             _blockchainBridge.GetTransactionAsync(transactionHash)
-                .Returns(new NdmTransaction(transaction, 1, TestItem.KeccakB, 1));
+                .Returns(new NdmTransaction(transaction, true, 1, TestItem.KeccakB, 1));
             _blockchainBridge.SendOwnTransactionAsync(transaction).Returns(sentTransactionHash);
             var hash = await _transactionService.UpdateGasPriceAsync(transactionHash, gasPrice);
             hash.Should().Be(sentTransactionHash);
@@ -119,7 +119,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var sentTransactionHash = TestItem.KeccakB;
             var value = 10.GWei();
             _blockchainBridge.GetTransactionAsync(transactionHash)
-                .Returns(new NdmTransaction(transaction, 1, TestItem.KeccakB, 1));
+                .Returns(new NdmTransaction(transaction, true, 1, TestItem.KeccakB, 1));
             _blockchainBridge.SendOwnTransactionAsync(transaction).Returns(sentTransactionHash);
             var hash = await _transactionService.UpdateValueAsync(transactionHash, value);
             hash.Should().Be(sentTransactionHash);
@@ -137,7 +137,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             var transaction = Build.A.Transaction.WithGasPrice(gasPrice).TestObject;
             var sentTransactionHash = TestItem.KeccakB;
             _blockchainBridge.GetTransactionAsync(transactionHash)
-                .Returns(new NdmTransaction(transaction, 1, TestItem.KeccakB, 1));
+                .Returns(new NdmTransaction(transaction, true, 1, TestItem.KeccakB, 1));
             _blockchainBridge.SendOwnTransactionAsync(transaction).Returns(sentTransactionHash);
             var hash = await _transactionService.CancelAsync(transactionHash);
             hash.Should().Be(sentTransactionHash);

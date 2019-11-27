@@ -49,7 +49,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         
         public async Task TryConfirmAsync(DepositDetails deposit)
         {
-            if (deposit.Transaction is null || deposit.Confirmed || deposit.Rejected)
+            if (deposit.Transaction is null || deposit.Confirmed || deposit.Rejected ||
+                deposit.Transaction.State == TransactionState.Canceled)
             {
                 return;
             }
@@ -60,6 +61,19 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             {
                 if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
                 return;
+            }
+
+            if (transaction.IsPending)
+            {
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' is still pending.");
+                return;
+            }
+
+            if (deposit.Transaction.State == TransactionState.Pending)
+            {
+                deposit.Transaction.SetIncluded();
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' was included into block: {transaction.BlockNumber}.");
+                await _depositRepository.UpdateAsync(deposit);
             }
 
             var headNumber = await _blockchainBridge.GetLatestBlockNumberAsync();

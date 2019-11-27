@@ -26,23 +26,26 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
         public UInt256 Value { get; set; }
         public UInt256 GasPrice { get; set; }
         public ulong Timestamp { get; set; }
+        public string State { get; set; }
 
         public TransactionInfoForRpc()
         {
         }
 
         public TransactionInfoForRpc(TransactionInfo transaction) :
-            this(transaction.Hash, transaction.Value, transaction.GasPrice, transaction.Timestamp)
+            this(transaction.Hash, transaction.Value, transaction.GasPrice, transaction.Timestamp,
+                transaction.State.ToString().ToLowerInvariant())
         {
-
         }
 
-        public TransactionInfoForRpc(Keccak hash, UInt256 value, UInt256 gasPrice, ulong timestamp)
+        public TransactionInfoForRpc(Keccak hash, UInt256 value, UInt256 gasPrice, ulong timestamp,
+            string state)
         {
             Hash = hash;
             Value = value;
             GasPrice = gasPrice;
             Timestamp = timestamp;
+            State = state;
         }
     }
 }

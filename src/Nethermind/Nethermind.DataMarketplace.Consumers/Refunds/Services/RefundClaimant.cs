@@ -140,24 +140,38 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
 
         private async Task<bool> TryConfirmClaimAsync(DepositDetails deposit, string type)
         {
+            var claimType = $"{type}refund";
             var depositId = deposit.Id;
-            var transactionHash = deposit.Transaction?.Hash;
-            var transaction  = await _blockchainBridge.GetTransactionAsync(transactionHash);          
+            var transactionHash = deposit.ClaimedRefundTransaction.Hash;
+            var transaction  = await _blockchainBridge.GetTransactionAsync(transactionHash);
             if (transaction is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositId}' to claim the {type}refund.");
+                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{depositId}' to claim the {claimType}.");
                 return false;
             }
             
-            if (_logger.IsInfo) _logger.Info($"Trying to claim the {type}refund (transaction hash: '{transactionHash}') for deposit: '{depositId}'.");
+            if (transaction.IsPending)
+            {
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' ({claimType}) is still pending.");
+                return false;
+            }
+
+            if (deposit.ClaimedRefundTransaction.State == TransactionState.Pending)
+            {
+                deposit.ClaimedRefundTransaction.SetIncluded();
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' ({claimType}) was included into block: {transaction.BlockNumber}.");
+                await _depositRepository.UpdateAsync(deposit);
+            }
+            
+            if (_logger.IsInfo) _logger.Info($"Trying to claim the {claimType} (transaction hash: '{transactionHash}') for deposit: '{depositId}'.");
             var verifierResult = await _transactionVerifier.VerifyAsync(transaction);
             if (!verifierResult.BlockFound)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block number: {transaction.BlockNumber}, hash: '{transaction.BlockHash}' was not found for transaction hash: '{transactionHash}' - {type}refund claim for deposit: '{depositId}' will not confirmed.");
+                if (_logger.IsWarn) _logger.Warn($"Block number: {transaction.BlockNumber}, hash: '{transaction.BlockHash}' was not found for transaction hash: '{transactionHash}' - {claimType} claim for deposit: '{depositId}' will not confirmed.");
                 return false;
             }
             
-            if (_logger.IsInfo) _logger.Info($"The {type}refund claim (transaction hash: '{transactionHash}') for deposit: '{depositId}' has {verifierResult.Confirmations} confirmations (required at least {verifierResult.RequiredConfirmations}).");
+            if (_logger.IsInfo) _logger.Info($"The {claimType} claim (transaction hash: '{transactionHash}') for deposit: '{depositId}' has {verifierResult.Confirmations} confirmations (required at least {verifierResult.RequiredConfirmations}).");
             if (!verifierResult.Confirmed)
             {
                 return false;
@@ -165,7 +179,7 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             
             deposit.SetRefundClaimed();
             await _depositRepository.UpdateAsync(deposit);
-            if (_logger.IsInfo) _logger.Info($"The {type}refund claim (transaction hash: '{transactionHash}') for deposit: '{depositId}' has been confirmed.");
+            if (_logger.IsInfo) _logger.Info($"The {claimType} claim (transaction hash: '{transactionHash}') for deposit: '{depositId}' has been confirmed.");
 
             return true;
         }
