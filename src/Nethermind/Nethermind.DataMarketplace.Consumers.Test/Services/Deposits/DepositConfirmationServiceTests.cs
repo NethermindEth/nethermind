@@ -60,9 +60,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var deposit = GetDepositDetails();
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
-            deposit.SetTransactionHash(TestItem.KeccakA, 1);
+            deposit.SetTransaction(new TransactionInfo(TestItem.KeccakA, 1, 1, 1));
             await _depositConfirmationService.TryConfirmAsync(deposit);
-            await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.TransactionHash);
+            await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
             deposit.Confirmed.Should().BeTrue();
         }
         
@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var deposit = GetDepositDetails();
             deposit.Reject();
             await _depositConfirmationService.TryConfirmAsync(deposit);
-            await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.TransactionHash);
+            await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
             deposit.Rejected.Should().BeTrue();
         }
         
@@ -81,9 +81,31 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         {
             var deposit = GetDepositDetails();
             await _depositConfirmationService.TryConfirmAsync(deposit);
-            await _blockchainBridge.Received().GetTransactionAsync(deposit.TransactionHash);
+            await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
             await _blockchainBridge.DidNotReceive().GetLatestBlockNumberAsync();
             deposit.Confirmed.Should().BeFalse();
+        }
+        
+        [Test]
+        public async Task try_confirm_should_skip_further_processing_if_transaction_is_pending()
+        {
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction(true);
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
+            await _depositService.DidNotReceive().VerifyDepositAsync(deposit.Consumer, deposit.Id, Arg.Any<long>());
+        }
+        
+        [Test]
+        public async Task try_confirm_should_set_transaction_state_to_included_if_was_pending_before()
+        {
+            var deposit = GetDepositDetails();
+            var transaction = GetTransaction();
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            deposit.Transaction.State.Should().Be(TransactionState.Included);
+            await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
         }
         
         [Test]
@@ -92,9 +114,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             const int latestBlockNumber = 3;
             var deposit = GetDepositDetails();
             var transaction = GetTransaction();
-            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
             await _depositConfirmationService.TryConfirmAsync(deposit);
+            await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
             await _blockchainBridge.Received().GetLatestBlockNumberAsync();
             await _blockchainBridge.Received().FindBlockAsync(latestBlockNumber);
             await _depositService.DidNotReceive().VerifyDepositAsync(deposit.Consumer, deposit.Id, Arg.Any<long>());
@@ -108,14 +131,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var block = GetBlock();
             var deposit = GetDepositDetails();
             var transaction = GetTransaction();
-            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
             _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
             _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
                 .Returns(confirmationTimestamp);
             await _depositConfirmationService.TryConfirmAsync(deposit);
             await _depositService.Received().VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number);
-            await _depositRepository.DidNotReceive().UpdateAsync(deposit);
+            await _depositRepository.Received().UpdateAsync(deposit);
         }
         
         [Test]
@@ -126,7 +149,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var block = GetBlock();
             var deposit = GetDepositDetails();
             var transaction = GetTransaction();
-            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
             _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
             _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
@@ -145,7 +168,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var parentBlock = GetBlock();
             var deposit = GetDepositDetails();
             var transaction = GetTransaction();
-            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
             _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
             _blockchainBridge.FindBlockAsync(block.ParentHash).Returns(parentBlock);
@@ -169,7 +192,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var deposit = GetDepositDetails();
             var transaction = GetTransaction();
             block.Hash = transaction.BlockHash;
-            _blockchainBridge.GetTransactionAsync(deposit.TransactionHash).Returns(transaction);
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             _blockchainBridge.GetLatestBlockNumberAsync().Returns(latestBlockNumber);
             _blockchainBridge.FindBlockAsync(latestBlockNumber).Returns(block);
             _depositService.VerifyDepositAsync(deposit.Consumer, deposit.Id, block.Header.Number)
@@ -188,13 +211,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             return block;
         }
 
-        private static NdmTransaction GetTransaction()
-            => new NdmTransaction(Build.A.Transaction.TestObject, 1, TestItem.KeccakA, 1);
+        private static NdmTransaction GetTransaction(bool pending = false)
+            => new NdmTransaction(Build.A.Transaction.TestObject, pending, 1, TestItem.KeccakA, 1);
 
         private static DepositDetails GetDepositDetails(uint timestamp = 0)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
-                GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA,
-                timestamp);
+                GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
+                new TransactionInfo(TestItem.KeccakA, 1, 1, 1), timestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

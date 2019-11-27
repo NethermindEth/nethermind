@@ -71,9 +71,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
         {
             var deposit = GetDepositDetails();
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
+            deposit.ClaimedRefundTransaction.Should().BeNull();
             await _refundService.DidNotReceiveWithAnyArgs().ClaimRefundAsync(null, null, Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeFalse();
         }
@@ -84,9 +83,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             var deposit = GetDepositDetails();
             deposit.Reject();
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
+            deposit.ClaimedRefundTransaction.Should().BeNull();
             await _refundService.DidNotReceiveWithAnyArgs().ClaimRefundAsync(null, null, Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeFalse();
         }
@@ -98,9 +96,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
-            deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(_claimedRefundTransactionHash);
             await _refundService.Received(1).ClaimRefundAsync(refundTo, Arg.Any<RefundClaim>(), Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeTrue();
         }
@@ -112,13 +109,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             for (var i = 0; i < 10; i++)
             {
                 await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
             }
 
-            deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(_claimedRefundTransactionHash);
             await _refundService.Received(1).ClaimRefundAsync(refundTo, Arg.Any<RefundClaim>(), Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeTrue();
         }
@@ -128,9 +124,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
         {
             var deposit = GetDepositDetails();
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
+            deposit.ClaimedRefundTransaction.Should().BeNull();
             await _refundService.DidNotReceiveWithAnyArgs().ClaimEarlyRefundAsync(null, null, Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeFalse();
         }
@@ -141,9 +136,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             var deposit = GetDepositDetails();
             deposit.Reject();
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
+            deposit.ClaimedRefundTransaction.Should().BeNull();
             await _refundService.DidNotReceiveWithAnyArgs().ClaimEarlyRefundAsync(null, null, Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeFalse();
         }
@@ -155,9 +149,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
-            deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(_claimedRefundTransactionHash);
             await _refundService.Received(1).ClaimEarlyRefundAsync(refundTo, Arg.Any<EarlyRefundClaim>(), Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeTrue();
         }
@@ -169,20 +162,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Refunds
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
             var refundTo = TestItem.AddressB;
-            deposit.ClaimedRefundTransactionHash.Should().BeNull();
             for (var i = 0; i < 10; i++)
             {
                 await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
             }
 
-            deposit.ClaimedRefundTransactionHash.Should().Be(_claimedRefundTransactionHash);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(_claimedRefundTransactionHash);
             await _refundService.Received(1).ClaimEarlyRefundAsync(refundTo, Arg.Any<EarlyRefundClaim>(), Arg.Any<UInt256>());
             deposit.RefundClaimed.Should().BeTrue();
         }
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, 1, 1),
-                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA, 1,
+                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
+                new TransactionInfo(TestItem.KeccakA, 1, 1, 1),
                 earlyRefundTicket: new EarlyRefundTicket(Keccak.OfAnEmptyString, 1, null));
 
         private static DataAsset GetDataAsset()

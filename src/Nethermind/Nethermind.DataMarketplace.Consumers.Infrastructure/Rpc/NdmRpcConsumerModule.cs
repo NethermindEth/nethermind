@@ -265,8 +265,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             => ResultWrapper<Keccak>.Success(await _consumerTransactionsService
                 .UpdateRefundGasPriceAsync(depositId, gasPrice));
 
-        public async Task<ResultWrapper<Keccak>> ndm_cancelTransaction(Keccak transactionHash)
-            => ResultWrapper<Keccak>.Success(await _consumerTransactionsService.CancelAsync(transactionHash));
+        public async Task<ResultWrapper<Keccak>> ndm_cancelDeposit(Keccak depositId)
+            => ResultWrapper<Keccak>.Success(await _consumerTransactionsService.CancelDepositAsync(depositId));
+
+        public async Task<ResultWrapper<Keccak>> ndm_cancelRefund(Keccak depositId)
+            => ResultWrapper<Keccak>.Success(await _consumerTransactionsService.CancelRefundAsync(depositId));
 
         public async Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions()
         {

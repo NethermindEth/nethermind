@@ -14,20 +14,38 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Consumers.Shared
+namespace Nethermind.DataMarketplace.Infrastructure.Rpc.Models
 {
-    public interface IConsumerTransactionsService
+    public class TransactionInfoForRpc
     {
-        Task<IEnumerable<PendingTransaction>> GetPendingAsync();
-        Task<Keccak> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice);
-        Task<Keccak> UpdateRefundGasPriceAsync(Keccak depositId, UInt256 gasPrice);
-        Task<Keccak> CancelDepositAsync(Keccak depositId);
-        Task<Keccak> CancelRefundAsync(Keccak depositId);
+        public Keccak Hash { get; set; }
+        public UInt256 Value { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public ulong Timestamp { get; set; }
+        public string State { get; set; }
+
+        public TransactionInfoForRpc()
+        {
+        }
+
+        public TransactionInfoForRpc(TransactionInfo transaction) :
+            this(transaction.Hash, transaction.Value, transaction.GasPrice, transaction.Timestamp,
+                transaction.State.ToString().ToLowerInvariant())
+        {
+        }
+
+        public TransactionInfoForRpc(Keccak hash, UInt256 value, UInt256 gasPrice, ulong timestamp,
+            string state)
+        {
+            Hash = hash;
+            Value = value;
+            GasPrice = gasPrice;
+            Timestamp = timestamp;
+            State = state;
+        }
     }
 }

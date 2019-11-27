@@ -70,9 +70,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             var filteredDeposits = deposits.AsEnumerable();
             if (query.OnlyPending)
             {
-                filteredDeposits = filteredDeposits.Where(d => d.TransactionHash is {} && !d.Rejected &&
-                                                               (!d.Confirmed || d.EarlyRefundTicket is {} &&
-                                                                !d.RefundClaimed));
+                filteredDeposits = filteredDeposits.Where(d => !d.Rejected && !d.RefundClaimed &&
+                                                               d.Transaction?.State == TransactionState.Pending ||
+                                                               d.ClaimedRefundTransaction?.State ==
+                                                               TransactionState.Pending);
             }
 
             if (query.OnlyUnconfirmed)

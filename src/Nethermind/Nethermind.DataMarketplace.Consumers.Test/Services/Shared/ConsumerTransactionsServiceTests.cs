@@ -39,6 +39,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
     {
         private ITransactionService _transactionService;
         private IDepositDetailsRepository _depositRepository;
+        private ITimestamper _timestamper;
         private IConsumerTransactionsService _consumerTransactionsService;
 
         [SetUp]
@@ -46,8 +47,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         {
             _transactionService = Substitute.For<ITransactionService>();
             _depositRepository = Substitute.For<IDepositDetailsRepository>();
+            _timestamper = new Timestamper(DateTime.UtcNow);
             _consumerTransactionsService = new ConsumerTransactionsService(_transactionService, _depositRepository,
-                LimboLogs.Instance);
+                _timestamper, LimboLogs.Instance);
         }
 
         [Test]
@@ -70,11 +72,15 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var depositWithRefund = deposits[1];
             var depositPendingTransaction = transactions.ElementAt(0);
             var refundPendingTransaction = transactions.ElementAt(1);
-            depositPendingTransaction.Hash.Should().Be(deposit.TransactionHash);
-            depositPendingTransaction.GasPrice.Should().Be(deposit.TransactionGasPrice);
+            depositPendingTransaction.Transaction.Hash.Should().Be(deposit.Transaction.Hash);
+            depositPendingTransaction.Transaction.Value.Should().Be(deposit.Transaction.Value);
+            depositPendingTransaction.Transaction.GasPrice.Should().Be(deposit.Transaction.GasPrice);
+            depositPendingTransaction.Transaction.Timestamp.Should().Be(deposit.Transaction.Timestamp);
             depositPendingTransaction.Type.Should().Be("deposit");
-            refundPendingTransaction.Hash.Should().Be(depositWithRefund.ClaimedRefundTransactionHash);
-            refundPendingTransaction.GasPrice.Should().Be(depositWithRefund.ClaimedRefundTransactionGasPrice);
+            refundPendingTransaction.Transaction.Hash.Should().Be(depositWithRefund.ClaimedRefundTransaction.Hash);
+            refundPendingTransaction.Transaction.Value.Should().Be(depositWithRefund.ClaimedRefundTransaction.Value);
+            refundPendingTransaction.Transaction.Hash.Should().Be(depositWithRefund.ClaimedRefundTransaction.Hash);
+            refundPendingTransaction.Transaction.Timestamp.Should().Be(depositWithRefund.ClaimedRefundTransaction.Timestamp);
             refundPendingTransaction.Type.Should().Be("refund");
             await _depositRepository.Received().BrowseAsync(Arg.Is<GetDeposits>(x => x.OnlyPending && x.Page == 1 &&
                                                                                      x.Results == int.MaxValue));
@@ -105,7 +111,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             Func<Task> act = () => _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
             act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction hash.");
+                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction.");
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -144,12 +150,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var gasPrice = 10.GWei();
             var deposit = GetDepositDetails(transactionHash);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            _transactionService.UpdateGasPriceAsync(deposit.TransactionHash, gasPrice).Returns(newTransactionHash);
+            _transactionService.UpdateGasPriceAsync(deposit.Transaction.Hash, gasPrice).Returns(newTransactionHash);
             var hash = await _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, gasPrice);
             hash.Should().Be(newTransactionHash);
-            deposit.TransactionHash.Should().Be(newTransactionHash);
-            deposit.TransactionGasPrice.Should().Be(gasPrice);
+            deposit.Transaction.Hash.Should().Be(newTransactionHash);
+            deposit.Transaction.GasPrice.Should().Be(gasPrice);
             await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(transactionHash, gasPrice);
         }
 
@@ -178,7 +185,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
             act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction hash.");
+                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction.");
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -203,7 +210,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
             act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction hash for refund claim.");
+                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction for refund claim.");
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -219,7 +226,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
             act.Should().Throw<InvalidOperationException>()
                 .WithMessage(
-                    $"Deposit with id: '{deposit.Id}' has already claimed refund (transaction hash: '{deposit.ClaimedRefundTransactionHash}').");
+                    $"Deposit with id: '{deposit.Id}' has already claimed refund (transaction hash: '{deposit.ClaimedRefundTransaction.Hash}').");
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -232,40 +239,78 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var gasPrice = 10.GWei();
             var deposit = GetDepositDetails(transactionHash, claimedRefundTransactionHash);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            _transactionService.UpdateGasPriceAsync(deposit.ClaimedRefundTransactionHash, gasPrice)
+            _transactionService.UpdateGasPriceAsync(deposit.ClaimedRefundTransaction.Hash, gasPrice)
                 .Returns(newTransactionHash);
             var hash = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, gasPrice);
             hash.Should().Be(newTransactionHash);
-            deposit.ClaimedRefundTransactionHash.Should().Be(newTransactionHash);
-            deposit.ClaimedRefundTransactionGasPrice.Should().Be(gasPrice);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(newTransactionHash);
+            deposit.ClaimedRefundTransaction.GasPrice.Should().Be(gasPrice);
             await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(claimedRefundTransactionHash, gasPrice);
         }
-
+        
         [Test]
-        public void cancel_should_fail_for_empty_transaction_hash()
+        public void cancel_deposit_should_fail_for_missing_deposit()
         {
-            Func<Task> act = () => _consumerTransactionsService.CancelAsync(null);
-            act.Should().Throw<ArgumentException>()
-                .WithMessage("Transaction hash cannot be empty. (Parameter 'transactionHash')");
+            var depositId = TestItem.KeccakA;
+            Func<Task> act = () => _consumerTransactionsService.CancelDepositAsync(depositId);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"Deposit with id: '{depositId}' was not found.");
+        }
+        
+        [Test]
+        public void cancel_refund_should_fail_for_missing_deposit()
+        {
+            var depositId = TestItem.KeccakA;
+            Func<Task> act = () => _consumerTransactionsService.CancelRefundAsync(depositId);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"Deposit with id: '{depositId}' was not found.");
         }
 
         [Test]
-        public async Task cancel_should_return_transaction_hash()
+        public async Task cancel_deposit_should_return_transaction_hash()
         {
             var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
             var canceledTransactionHash = TestItem.KeccakB;
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             _transactionService.CancelAsync(transactionHash).Returns(canceledTransactionHash);
-            var hash = await _consumerTransactionsService.CancelAsync(transactionHash);
+            var hash = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
             hash.Should().Be(canceledTransactionHash);
+            deposit.Transaction.Hash.Should().Be(canceledTransactionHash);
+            deposit.Transaction.State.Should().Be(TransactionState.Canceled);
+            await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().CancelAsync(transactionHash);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_return_transaction_hash()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var claimedRefundTransactionHash = TestItem.KeccakB;
+            var deposit = GetDepositDetails(transactionHash, claimedRefundTransactionHash);
+            var canceledTransactionHash = TestItem.KeccakC;
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            _transactionService.CancelAsync(claimedRefundTransactionHash).Returns(canceledTransactionHash);
+            var hash = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            hash.Should().Be(canceledTransactionHash);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(canceledTransactionHash);
+            deposit.ClaimedRefundTransaction.State.Should().Be(TransactionState.Canceled);
+            await _depositRepository.Received().GetAsync(deposit.Id);
+            await _depositRepository.Received().UpdateAsync(deposit);
+            await _transactionService.Received().CancelAsync(claimedRefundTransactionHash);
         }
 
         private static DepositDetails GetDepositDetails(Keccak transactionHash = null,
             Keccak claimedRefundTransactionHash = null)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
-                GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1, transactionHash,
-                1, claimedRefundTransactionHash: claimedRefundTransactionHash);
+                GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
+                transactionHash is null ? null : new TransactionInfo(transactionHash, 1, 1, 1),
+                claimedRefundTransaction: claimedRefundTransactionHash is null
+                    ? null
+                    : new TransactionInfo(claimedRefundTransactionHash, 1, 1, 1));
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

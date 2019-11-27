@@ -108,6 +108,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             FaucetResponseDecoder.Init();
             FaucetRequestDetailsDecoder.Init();
             SessionDecoder.Init();
+            TransactionInfoDecoder.Init();
             UnitsRangeDecoder.Init();
         }
 

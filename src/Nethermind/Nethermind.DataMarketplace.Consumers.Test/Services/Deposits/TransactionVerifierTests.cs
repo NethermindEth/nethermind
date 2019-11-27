@@ -95,7 +95,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         }
 
         private static NdmTransaction GetTransaction(long blockNumber = 1, Keccak blockHash = null)
-            => new NdmTransaction(null, blockNumber, blockHash, 0);
+            => new NdmTransaction(null, true, blockNumber, blockHash, 0);
 
         private static Block GetBlock() => Build.A.Block.WithNumber(2).TestObject;
     }
