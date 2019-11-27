@@ -104,12 +104,12 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             var randaoDomain = beaconStateAccessor.GetDomain(state, DomainType.Randao, blockEpoch);
             var randaoRevealHash = blockEpoch.HashTreeRoot();
-            var randaoReveal = TestUtility.BlsSign(randaoRevealHash, privateKey, randaoDomain);
+            var randaoReveal = TestSecurity.BlsSign(randaoRevealHash, privateKey, randaoDomain);
             block.Body.SetRandaoReveal(randaoReveal);
 
             var signatureDomain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, blockEpoch);
             var signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            var signature = TestUtility.BlsSign(signingRoot, privateKey, signatureDomain);
+            var signature = TestSecurity.BlsSign(signingRoot, privateKey, signatureDomain);
             block.SetSignature(signature);
         }
     }

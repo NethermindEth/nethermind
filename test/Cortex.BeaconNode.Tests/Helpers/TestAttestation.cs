@@ -40,7 +40,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var message = new AttestationDataAndCustodyBit(attestationData, custodyBit);
             var messageHash = message.HashTreeRoot();
             var domain = beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, attestationData.Target.Epoch);
-            var signature = TestUtility.BlsSign(messageHash, privateKey, domain);
+            var signature = TestSecurity.BlsSign(messageHash, privateKey, domain);
             return signature;
         }
 
@@ -98,7 +98,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 signatures.Add(signature);
             }
 
-            return TestUtility.BlsAggregateSignatures(signatures);
+            return TestSecurity.BlsAggregateSignatures(signatures);
         }
 
         public static void SignAttestation(BeaconState state, Attestation attestation,

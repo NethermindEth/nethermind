@@ -10,7 +10,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
         {
             var domain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, Epoch.None);
             var signingRoot = header.SigningRoot();
-            var signature = TestUtility.BlsSign(signingRoot, privateKey, domain);
+            var signature = TestSecurity.BlsSign(signingRoot, privateKey, domain);
             header.SetSignature(signature);
         }
     }

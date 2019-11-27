@@ -21,28 +21,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var useBls = true;
 
             // Arrange
-            var services = new ServiceCollection();
-            services.AddLogging(configure => configure.AddConsole());
-            var configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(TestConfiguration.GetMinimalConfigurationDictionary())
-                .Build();
-            services.AddBeaconNode(configuration);
-            var testServiceProvider = services.BuildServiceProvider(new ServiceProviderOptions() { ValidateOnBuild = false });
-
-            if (!useBls)
-            {
-                var mockCryptographyService = Substitute.For<ICryptographyService>();
-                mockCryptographyService
-                    .BlsVerify(Arg.Any<BlsPublicKey>(), Arg.Any<Hash32>(), Arg.Any<BlsSignature>(), Arg.Any<Domain>())
-                    .Returns(true);
-                mockCryptographyService
-                    .Hash(Arg.Any<Hash32>(), Arg.Any<Hash32>())
-                    .Returns(callInfo =>
-                    {
-                        return new Hash32(TestUtility.Hash(callInfo.ArgAt<Hash32>(0).AsSpan(), callInfo.ArgAt<Hash32>(1).AsSpan()));
-                    });
-                services.AddSingleton<ICryptographyService>(mockCryptographyService);
-            }
+            var testServiceProvider = TestSystem.BuildTestServiceProvider(useBls);
 
             var chainConstants = testServiceProvider.GetService<ChainConstants>();
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;

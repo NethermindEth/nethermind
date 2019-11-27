@@ -12,7 +12,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
             var publicKey = publicKeys[validatorIndex];
             // insecurely use pubkey as withdrawal key if no credentials provided
-            var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
+            var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
             withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
             var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
 

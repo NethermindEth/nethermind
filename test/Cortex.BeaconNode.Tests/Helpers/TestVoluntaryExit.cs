@@ -20,7 +20,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             BeaconStateAccessor beaconStateAccessor)
         {
             var domain = beaconStateAccessor.GetDomain(state, DomainType.VoluntaryExit, voluntaryExit.Epoch);
-            var signature = TestUtility.BlsSign(voluntaryExit.SigningRoot(), privateKey, domain);
+            var signature = TestSecurity.BlsSign(voluntaryExit.SigningRoot(), privateKey, domain);
             voluntaryExit.SetSignature(signature);
         }
     }

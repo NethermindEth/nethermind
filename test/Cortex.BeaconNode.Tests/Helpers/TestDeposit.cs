@@ -18,8 +18,8 @@ namespace Cortex.BeaconNode.Tests.Helpers
             depositDataList.Add(depositData);
             Hash32 root = depositDataList.HashTreeRoot((ulong)1 << chainConstants.DepositContractTreeDepth);
             var allLeaves = depositDataList.Select(x => x.HashTreeRoot());
-            var tree = TestUtility.CalculateMerkleTreeFromLeaves(allLeaves);
-            var merkleProof = TestUtility.GetMerkleProof(tree, index, 32);
+            var tree = TestSecurity.CalculateMerkleTreeFromLeaves(allLeaves);
+            var merkleProof = TestSecurity.GetMerkleProof(tree, index, 32);
             var proof = new List<Hash32>(merkleProof);
             var indexBytes = new Span<byte>(new byte[32]);
             BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
@@ -68,7 +68,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 var publicKey = publicKeys[validatorIndex];
                 var privateKey = privateKeys[validatorIndex];
                 // insecurely use pubkey as withdrawal key if no credentials provided
-                var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
+                var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
                 var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
                 (var deposit, var depositRoot) = BuildDeposit(null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed,
@@ -94,7 +94,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             if (withdrawalCredentials == Hash32.Zero)
             {
                 // insecurely use pubkey as withdrawal key if no credentials provided
-                var withdrawalCredentialBytes = TestUtility.Hash(publicKey.AsSpan());
+                var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
                 withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
             }
@@ -125,7 +125,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 domain = beaconStateAccessor.GetDomain(state, DomainType.Deposit, Epoch.None);
             }
 
-            var signature = TestUtility.BlsSign(depositData.SigningRoot(), privateKey, domain);
+            var signature = TestSecurity.BlsSign(depositData.SigningRoot(), privateKey, domain);
             depositData.SetSignature(signature);
         }
     }

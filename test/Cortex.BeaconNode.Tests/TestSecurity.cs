@@ -6,13 +6,13 @@ using Cortex.Cryptography;
 
 namespace Cortex.BeaconNode.Tests
 {
-    public static class TestUtility
+    public static class TestSecurity
     {
         private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
         private static readonly byte[][] s_zeroHashes = new byte[32][];
 
-        static TestUtility()
+        static TestSecurity()
         {
             s_zeroHashes[0] = new byte[32];
             for (var index = 1; index < 32; index++)
