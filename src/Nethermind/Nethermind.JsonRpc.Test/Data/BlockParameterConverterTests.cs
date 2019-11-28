@@ -52,7 +52,9 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("null", BlockParameterType.Latest)]
         [TestCase("\"\"", BlockParameterType.Latest)]
         [TestCase("\"latest\"", BlockParameterType.Latest)]
+        [TestCase("\"LATEst\"", BlockParameterType.Latest)]
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
+        [TestCase("\"EaRlIEST\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
         [TestCase("\"PeNdInG\"", BlockParameterType.Pending)]
         public void Can_read_type(string input, BlockParameterType output)
@@ -71,6 +73,7 @@ namespace Nethermind.JsonRpc.Test.Data
         [TestCase("\"latest\"", BlockParameterType.Latest)]
         [TestCase("\"earliest\"", BlockParameterType.Earliest)]
         [TestCase("\"pending\"", BlockParameterType.Pending)]
+        [TestCase("null", BlockParameterType.BlockNumber)]
         public void Can_write_type(string output, BlockParameterType input)
         {
             BlockParameter blockParameter = new BlockParameter(input);
