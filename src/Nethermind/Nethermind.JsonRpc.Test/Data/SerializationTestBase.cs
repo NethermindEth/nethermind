@@ -23,6 +23,7 @@ using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core.Json;
 using Nethermind.Facade;
+using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -50,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Data
             Assert.True(equalityComparer(item, deserialized));
         }
 
-        protected void TestSerialization<T>(T item, Func<T, T, bool> equalityComparer)
+        protected void TestSerialization<T>(T item, Func<T, T, bool> equalityComparer, string description = "")
         {
             JsonSerializer serializer = BuildSerializer<T>();
 
@@ -61,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Data
             JsonReader reader = new JsonTextReader(new StringReader(result));
             T deserialized = serializer.Deserialize<T>(reader);
 
-            Assert.True(equalityComparer(item, deserialized));
+            Assert.True(equalityComparer(item, deserialized), description);
         }
 
         private static JsonSerializer BuildSerializer<T>()
@@ -83,6 +84,8 @@ namespace Nethermind.JsonRpc.Test.Data
             {
                 serializer.Converters.Add(converter);
             }
+            
+            serializer.Converters.Add(new BlockParameterConverter());
 
             return serializer;
         }

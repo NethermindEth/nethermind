@@ -24,7 +24,7 @@ using NUnit.Framework;
 namespace Nethermind.JsonRpc.Test.Data
 {
     [TestFixture]
-    public class BlockParameterConverterTests
+    public class BlockParameterConverterTests : SerializationTestBase
     {
         [TestCase("0x0", 0)]
         [TestCase("0xA", 10)]
@@ -104,6 +104,16 @@ namespace Nethermind.JsonRpc.Test.Data
             serializer.Serialize(textWriter, blockParameter);
             
             Assert.AreEqual(output, reader.ToString());
+        }
+        
+        [Test]
+        public void Can_do_roundtrip()
+        {
+            TestSerialization(BlockParameter.Latest, (a, b) => a.Equals(b), "latest");
+            TestSerialization(BlockParameter.Pending, (a, b) => a.Equals(b), "pending");
+            TestSerialization(BlockParameter.Earliest, (a, b) => a.Equals(b), "earliest");
+            TestSerialization(new BlockParameter(0L), (a, b) => a.Equals(b), "zero");
+            TestSerialization(new BlockParameter(long.MaxValue), (a, b) => a.Equals(b), "max");
         }
     }
 }

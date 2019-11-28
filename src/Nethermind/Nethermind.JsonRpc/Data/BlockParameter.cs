@@ -18,11 +18,12 @@
 
 using System;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Core;
 using Nethermind.Core.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
-    public class BlockParameter
+    public class BlockParameter : IEquatable<BlockParameter>
     {
         public static BlockParameter Earliest = new BlockParameter(BlockParameterType.Earliest);
 
@@ -36,7 +37,7 @@ namespace Nethermind.JsonRpc.Data
         public BlockParameter()
         {
         }
-        
+
         public BlockParameter(BlockParameterType type)
         {
             Type = type;
@@ -48,7 +49,7 @@ namespace Nethermind.JsonRpc.Data
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
         }
-        
+
         public BlockParameter FromJson(string jsonValue)
         {
             switch (jsonValue)
@@ -72,10 +73,30 @@ namespace Nethermind.JsonRpc.Data
         {
             return $"{Type}, {BlockNumber}";
         }
-        
+
         public FilterBlock ToFilterBlock()
             => BlockNumber != null
                 ? new FilterBlock(BlockNumber ?? 0)
                 : new FilterBlock(Type.ToFilterBlockType());
+
+        public bool Equals(BlockParameter other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Type == other.Type && BlockNumber == other.BlockNumber;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((BlockParameter) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new NotSupportedException();
+        }
     }
 }
