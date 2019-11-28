@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -26,6 +25,6 @@ namespace Nethermind.JsonRpc
     {
         Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
         JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message);
-        IList<JsonConverter> Converters { get; }
+        JsonConverter[] Converters { get; }
     }
 }
