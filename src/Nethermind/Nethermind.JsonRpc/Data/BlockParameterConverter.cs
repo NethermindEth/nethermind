@@ -32,6 +32,7 @@ namespace Nethermind.JsonRpc.Data
             if (value.Type == BlockParameterType.BlockNumber)
             {
                 _longConverter.WriteJson(writer, value.BlockNumber, serializer);
+                return;
             }
 
             switch (value.Type)
@@ -59,20 +60,24 @@ namespace Nethermind.JsonRpc.Data
                 return BlockParameter.Latest;
             }
             
-            if (reader.IsNonStringValueType())
+            if (reader.Value.IsNonStringValueType())
             {
                 return new BlockParameter((long)reader.Value);
             }
                 
             string value = reader.Value as string;
-            return value switch
+            switch (value)
             {
-                "" => BlockParameter.Latest,
-                "latest" => BlockParameter.Latest,
-                "earliest" => BlockParameter.Earliest,
-                "pending" => BlockParameter.Pending,
-                _ => new BlockParameter(LongConverter.FromString(value))
-            };
+                case "":
+                case { } latest when latest.Equals("latest", StringComparison.InvariantCultureIgnoreCase):
+                    return BlockParameter.Latest;
+                case { } latest when latest.Equals("earliest", StringComparison.InvariantCultureIgnoreCase):
+                    return BlockParameter.Earliest;
+                case { } latest when latest.Equals("pending", StringComparison.InvariantCultureIgnoreCase):
+                    return BlockParameter.Pending;
+                default:
+                    return new BlockParameter(LongConverter.FromString(value));
+            }
         }
     }
 }

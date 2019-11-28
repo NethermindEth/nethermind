@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Data
         {
         }
         
-        private BlockParameter(BlockParameterType type)
+        public BlockParameter(BlockParameterType type)
         {
             Type = type;
             BlockNumber = null;
