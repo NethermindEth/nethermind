@@ -1,8 +1,8 @@
-﻿using Cortex.BeaconNode.Configuration;
+﻿using System;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
@@ -17,8 +17,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
         /// <summary>
         /// Transition to the start slot of the next epoch
         /// </summary>
-        public static void NextEpoch(BeaconState state, TimeParameters timeParameters, BeaconStateTransition beaconStateTransition)
+        public static void NextEpoch(IServiceProvider testServiceProvider, BeaconState state)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             var slot = state.Slot + timeParameters.SlotsPerEpoch - (state.Slot % timeParameters.SlotsPerEpoch);
             beaconStateTransition.ProcessSlots(state, slot);
         }
@@ -26,55 +29,40 @@ namespace Cortex.BeaconNode.Tests.Helpers
         /// <summary>
         /// Transition to the next slot.
         /// </summary>
-        public static void NextSlot(BeaconState state, BeaconStateTransition beaconStateTransition)
+        public static void NextSlot(IServiceProvider testServiceProvider, BeaconState state)
         {
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             var slot = state.Slot + new Slot(1);
             beaconStateTransition.ProcessSlots(state, slot);
         }
 
-        public static (BeaconChainUtility, BeaconStateAccessor, BeaconStateMutator, BeaconStateTransition, BeaconState) PrepareTestState(ChainConstants chainConstants,
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
-            IOptionsMonitor<GweiValues> gweiValueOptions,
-            IOptionsMonitor<InitialValues> initialValueOptions,
-            IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
+        public static BeaconState PrepareTestState(IServiceProvider testServiceProvider)
         {
-            var loggerFactory = new LoggerFactory(new[] {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
-            });
-            var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
-                miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
-                cryptographyService);
-            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
-                cryptographyService, beaconChainUtility);
-            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
-                beaconChainUtility, beaconStateAccessor);
-            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
-            var numberOfValidators = (ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * 10;
-            var state = TestGenesis.CreateGenesisState(chainConstants, miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, numberOfValidators);
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var numberOfValidators = (ulong)timeParameters.SlotsPerEpoch * 10;
+            var state = TestGenesis.CreateGenesisState(testServiceProvider, numberOfValidators);
 
-            return (beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition, state);
+            return state;
         }
 
         /// <summary>
         /// State transition via the provided ``block``
         /// then package the block with the state root and signature.
         /// </summary>
-        public static void StateTransitionAndSignBlock(BeaconState state, BeaconBlock block,
-            MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        public static void StateTransitionAndSignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block)
         {
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
             var stateRoot = state.HashTreeRoot(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock);
             block.SetStateRoot(stateRoot);
-            TestBlock.SignBlock(state, block, ValidatorIndex.None,
-                miscellaneousParameters, timeParameters, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
         }
     }
 }

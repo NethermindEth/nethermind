@@ -1,13 +1,16 @@
-﻿using Cortex.BeaconNode.Ssz;
+﻿using System;
+using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestVoluntaryExit
     {
-        public static VoluntaryExit BuildVoluntaryExit(BeaconState state, Epoch epoch, ValidatorIndex validatorIndex, byte[] privateKey, bool signed,
-            BeaconStateAccessor beaconStateAccessor)
+        public static VoluntaryExit BuildVoluntaryExit(IServiceProvider testServiceProvider, BeaconState state, Epoch epoch, ValidatorIndex validatorIndex, byte[] privateKey, bool signed)
         {
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             var voluntaryExit = new VoluntaryExit(epoch, validatorIndex, new BlsSignature());
             if (signed)
             {

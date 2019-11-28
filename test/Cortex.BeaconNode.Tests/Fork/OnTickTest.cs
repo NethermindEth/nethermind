@@ -4,8 +4,8 @@ using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Data;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -18,29 +18,14 @@ namespace Cortex.BeaconNode.Tests.Fork
         public void BasicOnTick()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out var forkChoiceConfigurationOptions);
-            (var beaconChainUtility, _, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var loggerFactory = new LoggerFactory(new[] {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
-            });
-            var storeProvider = new StoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
-            var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(), 
-                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions,
-                beaconChainUtility, beaconStateTransition, storeProvider);
+            var forkChoice = testServiceProvider.GetService<ForkChoice>();
             var store = forkChoice.GetGenesisStore(state);
 
             // Act
-            RunOnTick(store, store.Time + 1, expectNewJustifiedCheckpoint:false, forkChoice);
+            RunOnTick(testServiceProvider, store, store.Time + 1, expectNewJustifiedCheckpoint: false);
 
             // Assert
         }
@@ -49,28 +34,14 @@ namespace Cortex.BeaconNode.Tests.Fork
         public void UpdateJustifiedSingle()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out var forkChoiceConfigurationOptions);
-            (var beaconChainUtility, _, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var loggerFactory = new LoggerFactory(new[] {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
-            });
-            var storeProvider = new StoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
-            var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
-                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions,
-                beaconChainUtility, beaconStateTransition, storeProvider);
+            var forkChoice = testServiceProvider.GetService<ForkChoice>();
             var store = forkChoice.GetGenesisStore(state);
 
-            var timeParameters = timeParameterOptions.CurrentValue;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
             var secondsPerEpoch = timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             var checkpoint = new Checkpoint(
                 store.JustifiedCheckpoint.Epoch + new Epoch(1),
@@ -78,13 +49,15 @@ namespace Cortex.BeaconNode.Tests.Fork
             store.SetBestJustifiedCheckpoint(checkpoint);
 
             // Act
-            RunOnTick(store, store.Time + secondsPerEpoch, expectNewJustifiedCheckpoint: true, forkChoice);
+            RunOnTick(testServiceProvider, store, store.Time + secondsPerEpoch, expectNewJustifiedCheckpoint: true);
 
             // Assert
         }
 
-        private void RunOnTick(IStore store, ulong time, bool expectNewJustifiedCheckpoint, ForkChoice forkChoice)
+        private void RunOnTick(IServiceProvider testServiceProvider, IStore store, ulong time, bool expectNewJustifiedCheckpoint)
         {
+            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+
             var previousJustifiedCheckpoint = store.JustifiedCheckpoint;
 
             forkChoice.OnTick(store, time);

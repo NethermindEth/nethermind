@@ -4,6 +4,8 @@ using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
@@ -46,10 +48,18 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return depositData;
         }
 
-        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(int genesisValidatorCount, Gwei amount, bool signed,
-            ChainConstants chainConstants, InitialValues initialValues, TimeParameters timeParameters,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        public static (IEnumerable<Deposit>, Hash32) PrepareGenesisDeposits(IServiceProvider testServiceProvider, int genesisValidatorCount, Gwei amount, bool signed)
         {
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             BlsPublicKey[] publicKeys;
             if (signed)
@@ -62,7 +72,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
             var depositDataList = new List<DepositData>();
             var genesisDeposits = new List<Deposit>();
-            Hash32 root = Hash32.Zero;
+            var root = Hash32.Zero;
             for (var validatorIndex = 0; validatorIndex < genesisValidatorCount; validatorIndex++)
             {
                 var publicKey = publicKeys[validatorIndex];
@@ -82,10 +92,15 @@ namespace Cortex.BeaconNode.Tests.Helpers
         /// <summary>
         /// Prepare the state for the deposit, and create a deposit for the given validator, depositing the given amount.
         /// </summary>
-        public static Deposit PrepareStateAndDeposit(BeaconState state, ValidatorIndex validatorIndex, Gwei amount, Hash32 withdrawalCredentials, bool signed,
-            ChainConstants chainConstants, InitialValues initialValues, TimeParameters timeParameters,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        public static Deposit PrepareStateAndDeposit(IServiceProvider testServiceProvider, BeaconState state, ValidatorIndex validatorIndex, Gwei amount, Hash32 withdrawalCredentials, bool signed)
         {
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             var publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
             var privateKey = privateKeys[(int)(ulong)validatorIndex];

@@ -11,7 +11,7 @@ namespace Cortex.BeaconNode.Tests
 {
     public static class TestSystem
     {
-        public static IServiceProvider BuildTestServiceProvider(bool useBls = false)
+        public static IServiceProvider BuildTestServiceProvider(bool useBls = true)
         {
             var services = new ServiceCollection();
             services.AddLogging(configure => configure.AddConsole());
@@ -22,17 +22,9 @@ namespace Cortex.BeaconNode.Tests
 
             if (!useBls)
             {
-                var mockCryptographyService = Substitute.For<ICryptographyService>();
-                mockCryptographyService
-                    .BlsVerify(Arg.Any<BlsPublicKey>(), Arg.Any<Hash32>(), Arg.Any<BlsSignature>(), Arg.Any<Domain>())
-                    .Returns(true);
-                mockCryptographyService
-                    .Hash(Arg.Any<Hash32>(), Arg.Any<Hash32>())
-                    .Returns(callInfo =>
-                    {
-                        return new Hash32(TestSecurity.Hash(callInfo.ArgAt<Hash32>(0).AsSpan(), callInfo.ArgAt<Hash32>(1).AsSpan()));
-                    });
-                services.AddSingleton<ICryptographyService>(mockCryptographyService);
+                // NOTE: Can't mock ByRef Span<T>
+                var testCryptographyService = new TestCryptographyService();
+                services.AddSingleton<ICryptographyService>(testCryptographyService);
             }
 
             var options = new ServiceProviderOptions() { ValidateOnBuild = false };
@@ -79,7 +71,7 @@ namespace Cortex.BeaconNode.Tests
 
                 // State list lengths
                 ["EPOCHS_PER_HISTORICAL_VECTOR"] = "64",
-                ["EPOCHS_PER_SLASHINGS_VECTOR	"] = "64",
+                ["EPOCHS_PER_SLASHINGS_VECTOR"] = "64",
                 ["HISTORICAL_ROOTS_LIMIT"] = "16777216",
                 ["VALIDATOR_REGISTRY_LIMIT"] = "1099511627776",
 
@@ -102,5 +94,36 @@ namespace Cortex.BeaconNode.Tests
             };
             return configuration;
         }
+
+        public class TestCryptographyService : ICryptographyService
+        {
+            ICryptographyService _cryptographyService = new CryptographyService();
+
+            public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
+            {
+                return new BlsPublicKey();
+            }
+
+            public bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain)
+            {
+                return true;
+            }
+
+            public bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain)
+            {
+                return true;
+            }
+
+            public Hash32 Hash(Hash32 a, Hash32 b)
+            {
+                return _cryptographyService.Hash(a, b);
+            }
+
+            public Hash32 Hash(ReadOnlySpan<byte> bytes)
+            {
+                return _cryptographyService.Hash(bytes);
+            }
+        }
+
     }
 }

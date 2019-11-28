@@ -1,15 +1,19 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestProposerSlashing
     {
-        public static ProposerSlashing GetValidProposerSlashing(BeaconState state, bool signed1, bool signed2,
-            TimeParameters timeParameters,
-            BeaconStateAccessor beaconStateAccessor)
+        public static ProposerSlashing GetValidProposerSlashing(IServiceProvider testServiceProvider, BeaconState state, bool signed1, bool signed2)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             var validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch).Last();
             var validator = state.Validators[(int)(ulong)validatorIndex];

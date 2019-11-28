@@ -1,22 +1,22 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestAttesterSlashing
     {
-        public static AttesterSlashing GetValidAttesterSlashing(BeaconState state, bool signed1, bool signed2,
-            MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        public static AttesterSlashing GetValidAttesterSlashing(IServiceProvider testServiceProvider, BeaconState state, bool signed1, bool signed2)
         {
-            var attestation1 = TestAttestation.GetValidAttestation(state, Slot.None, CommitteeIndex.None, signed1,
-                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var attestation2 = TestAttestation.GetValidAttestation(state, Slot.None, CommitteeIndex.None, signed: false,
-                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
+
+            var attestation2 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: false);
 
             attestation2.Data.Target.SetRoot(new Hash32(Enumerable.Repeat((byte)0x01, 32).ToArray()));
             if (signed2)

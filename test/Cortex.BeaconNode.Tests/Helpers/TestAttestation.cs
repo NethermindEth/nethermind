@@ -5,32 +5,25 @@ using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestAttestation
     {
-        public static void AddAttestationsToState(BeaconState state, IEnumerable<Attestation> attestations, Slot slot,
-            MiscellaneousParameters miscellaneousParameters,
-            TimeParameters timeParameters,
-            StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition)
+        public static void AddAttestationsToState(IServiceProvider testServiceProvider, BeaconState state, IEnumerable<Attestation> attestations, Slot slot)
         {
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, false,
-                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
+            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, false);
             block.SetSlot(slot);
             foreach (var attestation in attestations)
             {
                 block.Body.AddAttestations(attestation);
             }
             beaconStateTransition.ProcessSlots(state, block.Slot);
-            TestBlock.SignBlock(state, block, ValidatorIndex.None,
-                miscellaneousParameters, timeParameters, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }
 
@@ -45,15 +38,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
         }
 
         // def get_valid_attestation(spec, state, slot=None, index=None, signed=False):
-        public static Attestation GetValidAttestation(BeaconState state, Slot slot, CommitteeIndex index, bool signed,
-                    MiscellaneousParameters miscellaneousParameters,
-            TimeParameters timeParameters,
-            StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition)
+        public static Attestation GetValidAttestation(IServiceProvider testServiceProvider, BeaconState state, Slot slot, CommitteeIndex index, bool signed)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             if (slot == Slot.None)
             {
                 slot = state.Slot;
@@ -63,9 +52,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 index = new CommitteeIndex(0);
             }
 
-            var attestationData = BuildAttestationData(state, slot, index,
-                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var attestationData = BuildAttestationData(testServiceProvider, state, slot, index);
 
             var beaconCommittee = beaconStateAccessor.GetBeaconCommittee(state, attestationData.Slot, attestationData.Index);
 
@@ -112,15 +99,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
             attestation.SetSignature(signature);
         }
 
-        private static AttestationData BuildAttestationData(BeaconState state, Slot slot, CommitteeIndex index,
-            MiscellaneousParameters miscellaneousParameters,
-            TimeParameters timeParameters,
-            StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition)
+        private static AttestationData BuildAttestationData(IServiceProvider testServiceProvider, BeaconState state, Slot slot, CommitteeIndex index)
         {
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot cannot be greater than state slot {state.Slot}.");
@@ -129,9 +112,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             Hash32 blockRoot;
             if (slot == state.Slot)
             {
-                var nextBlock = TestBlock.BuildEmptyBlockForNextSlot(state, false,
-                    miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                    beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                var nextBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, false);
                 blockRoot = nextBlock.ParentRoot;
             }
             else

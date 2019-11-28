@@ -4,8 +4,8 @@ using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -21,22 +21,17 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         {
             // Arrange
             var epoch = new Epoch(epochValue);
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
             epoch.ShouldBeGreaterThan(new Epoch(4));
 
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+
             // Skip ahead to just before epoch
-            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
             state.SetSlot(slot);
 
             // 43210 -- epochs ago
@@ -44,7 +39,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             // 11*0. -- justification bitfield contents, . = this epoch, * is being justified now
             // checkpoints for the epochs ago:
             var checkpoints = TestCheckpoint.GetCheckpoints(epoch).ToArray();
-            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..3]);
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameters, state, checkpoints[0..3]);
 
             var oldFinalized = state.FinalizedCheckpoint;
             state.SetPreviousJustifiedCheckpoint(checkpoints[3]);
@@ -56,18 +51,16 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             state.SetJustificationBits(justificationBits);
 
             // mock the 2nd latest epoch as justifiable, with 4th as source
-            AddMockAttestations(state,
+            AddMockAttestations(testServiceProvider,
+                state,
                 new Epoch((ulong)epoch - 2),
                 checkpoints[3],
                 checkpoints[1],
                 sufficientSupport,
-                messedUpTarget: false,
-                timeParameters: timeParameterOptions.CurrentValue,
-                beaconChainUtility: beaconChainUtility,
-                beaconStateAccessor: beaconStateAccessor);
+                messedUpTarget: false);
 
             // process
-            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(testServiceProvider, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
@@ -90,22 +83,17 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         {
             // Arrange
             var epoch = new Epoch(epochValue);
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
             epoch.ShouldBeGreaterThan(new Epoch(3));
 
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+
             // Skip ahead to just before epoch
-            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
             state.SetSlot(slot);
 
             //# 43210 -- epochs ago
@@ -114,7 +102,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             //# 01*0. -- justification bitfield contents, . = this epoch, * is being justified now
             //# checkpoints for the epochs ago:
             var checkpoints = TestCheckpoint.GetCheckpoints(epoch).ToArray();
-            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..2]);
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameters, state, checkpoints[0..2]);
 
             var oldFinalized = state.FinalizedCheckpoint;
             state.SetPreviousJustifiedCheckpoint(checkpoints[2]);
@@ -125,18 +113,16 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             state.SetJustificationBits(justificationBits);
 
             // # mock the 2nd latest epoch as justifiable, with 3rd as source
-            AddMockAttestations(state,
+            AddMockAttestations(testServiceProvider,
+                state,
                 new Epoch((ulong)epoch - 2),
                 checkpoints[2],
                 checkpoints[1],
                 sufficientSupport,
-                messedUpTarget: false,
-                timeParameters: timeParameterOptions.CurrentValue,
-                beaconChainUtility: beaconChainUtility,
-                beaconStateAccessor: beaconStateAccessor);
+                messedUpTarget: false);
 
             // process
-            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(testServiceProvider, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
@@ -159,22 +145,17 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         {
             // Arrange
             var epoch = new Epoch(epochValue);
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
             epoch.ShouldBeGreaterThan(new Epoch(5));
 
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+
             // Skip ahead to just before epoch
-            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
             state.SetSlot(slot);
 
             //# 43210 -- epochs ago
@@ -183,7 +164,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             //# 011*. -- justification bitfield contents, . = this epoch, * is being justified now
             //# checkpoints for the epochs ago:
             var checkpoints = TestCheckpoint.GetCheckpoints(epoch).ToArray();
-            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..4]);
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameters, state, checkpoints[0..4]);
 
             var oldFinalized = state.FinalizedCheckpoint;
             state.SetPreviousJustifiedCheckpoint(checkpoints[4]);
@@ -194,29 +175,25 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             state.SetJustificationBits(justificationBits);
 
             //# mock the 2nd latest epoch as justifiable, with 5th as source
-            AddMockAttestations(state,
+            AddMockAttestations(testServiceProvider,
+                state,
                 new Epoch((ulong)epoch - 2),
                 checkpoints[4],
                 checkpoints[1],
                 sufficientSupport,
-                messedUpTarget: false,
-                timeParameters: timeParameterOptions.CurrentValue,
-                beaconChainUtility: beaconChainUtility,
-                beaconStateAccessor: beaconStateAccessor);
+                messedUpTarget: false);
 
             //# mock the 1st latest epoch as justifiable, with 3rd as source
-            AddMockAttestations(state,
+            AddMockAttestations(testServiceProvider,
+                state,
                 new Epoch((ulong)epoch - 1),
                 checkpoints[2],
                 checkpoints[0],
                 sufficientSupport,
-                messedUpTarget: false,
-                timeParameters: timeParameterOptions.CurrentValue,
-                beaconChainUtility: beaconChainUtility,
-                beaconStateAccessor: beaconStateAccessor);
+                messedUpTarget: false);
 
             // process
-            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(testServiceProvider, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[2]); // changed to old current
@@ -240,22 +217,17 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         {
             // Arrange
             var epoch = new Epoch(epochValue);
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
             epoch.ShouldBeGreaterThan(new Epoch(2));
 
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+
             // Skip ahead to just before epoch
-            var slot = new Slot((ulong)timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch - 1);
+            var slot = new Slot((ulong)timeParameters.SlotsPerEpoch * (ulong)epoch - 1);
             state.SetSlot(slot);
 
             //# 43210 -- epochs ago
@@ -264,7 +236,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             //# 001*. -- justification bitfield contents, . = this epoch, * is being justified now
             //# checkpoints for the epochs ago:
             var checkpoints = TestCheckpoint.GetCheckpoints(epoch).ToArray();
-            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameterOptions.CurrentValue, state, checkpoints[0..1]);
+            PutCheckpointsInBlockRoots(beaconChainUtility, timeParameters, state, checkpoints[0..1]);
 
             var oldFinalized = state.FinalizedCheckpoint;
             state.SetPreviousJustifiedCheckpoint(checkpoints[1]);
@@ -275,18 +247,16 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             state.SetJustificationBits(justificationBits);
 
             // # mock the 1st latest epoch as justifiable, with 2nd as source
-            AddMockAttestations(state,
+            AddMockAttestations(testServiceProvider,
+                state,
                 new Epoch((ulong)epoch - 1),
                 checkpoints[1],
                 checkpoints[0],
                 sufficientSupport,
-                messedUpTarget,
-                timeParameterOptions.CurrentValue,
-                beaconChainUtility,
-                beaconStateAccessor);
+                messedUpTarget);
 
             // process
-            RunProcessJustificationAndFinalization(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessJustificationAndFinalization(testServiceProvider, state);
 
             // Assert
             state.PreviousJustifiedCheckpoint.ShouldBe(checkpoints[1]); // changed to old current
@@ -302,16 +272,19 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
         }
 
-        private void RunProcessJustificationAndFinalization(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
+        private void RunProcessJustificationAndFinalization(IServiceProvider testServiceProvider, BeaconState state)
         {
-            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, TestProcessStep.ProcessJustificationAndFinalization);
+            TestProcessUtility.RunEpochProcessingWith(testServiceProvider, state, TestProcessStep.ProcessJustificationAndFinalization);
         }
 
-        private void AddMockAttestations(BeaconState state, Epoch epoch, Checkpoint source, Checkpoint target, 
-            bool sufficientSupport, bool messedUpTarget, 
-            TimeParameters timeParameters, 
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        private void AddMockAttestations(IServiceProvider testServiceProvider, BeaconState state, Epoch epoch, Checkpoint source, Checkpoint target,
+            bool sufficientSupport, bool messedUpTarget)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             // we must be at the end of the epoch
             var isEndOfEpoch = ((ulong)state.Slot + 1) % (ulong)timeParameters.SlotsPerEpoch == 0;
             isEndOfEpoch.ShouldBeTrue();
@@ -346,7 +319,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             for (var slot = startSlot; slot < startSlot + timeParameters.SlotsPerEpoch; slot += oneSlot)
             {
                 var committeesPerSlot = beaconStateAccessor.GetCommitteeCountAtSlot(state, slot);
-                for(var index = new CommitteeIndex(); index < new CommitteeIndex(committeesPerSlot); index += oneCommitteeIndex)
+                for (var index = new CommitteeIndex(); index < new CommitteeIndex(committeesPerSlot); index += oneCommitteeIndex)
                 {
                     // Check if we already have had sufficient balance. (and undone if we don't want it).
                     // If so, do not create more attestations. (we do not have empty pending attestations normally anyway)
@@ -398,7 +371,6 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                     {
                         state.AddPreviousAttestation(attestation);
                     }
-
                 }
             }
         }

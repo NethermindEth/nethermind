@@ -1,7 +1,10 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -14,19 +17,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void Eth1VoteNoReset()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (_, _, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = timeParameterOptions.CurrentValue;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
             timeParameters.SlotsPerEth1VotingPeriod.ShouldBeGreaterThan(timeParameters.SlotsPerEpoch);
 
             // skip ahead to the end of the epoch
@@ -43,7 +38,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
 
             // Act
-            RunProcessFinalUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessFinalUpdates(testServiceProvider, state);
 
             // Assert
             state.Eth1DataVotes.Count.ShouldBe((int)(ulong)timeParameters.SlotsPerEpoch);
@@ -53,19 +48,10 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void Eth1VoteReset()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (_, _, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = timeParameterOptions.CurrentValue;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             //  skip ahead to the end of the voting period
             state.SetSlot(timeParameters.SlotsPerEth1VotingPeriod - new Slot(1));
@@ -81,7 +67,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
 
             // Act
-            RunProcessFinalUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessFinalUpdates(testServiceProvider, state);
 
             // Assert
             state.Eth1DataVotes.Count.ShouldBe(0);
@@ -91,24 +77,20 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void EffectiveBalanceHysteresis()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
             //# Prepare state up to the final-updates.
             //# Then overwrite the balances, we only want to focus to be on the hysteresis based changes.
-            TestProcessUtility.RunEpochProcessingTo(beaconStateTransition, timeParameterOptions.CurrentValue, state, TestProcessStep.ProcessFinalUpdates);
+            TestProcessUtility.RunEpochProcessingTo(testServiceProvider, state, TestProcessStep.ProcessFinalUpdates);
+
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             // Set some edge cases for balances
-            var gweiValues = gweiValueOptions.CurrentValue;
             var maximum = gweiValues.MaximumEffectiveBalance;
             var minimum = gweiValues.EjectionBalance;
             var increment = gweiValues.EffectiveBalanceIncrement;
@@ -158,32 +140,25 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void HistoricalRootAccumulator()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (_, _, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             // skip ahead to near the end of the historical roots period (excl block before epoch processing)
-            state.SetSlot(timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot - new Slot(1));
+            state.SetSlot(timeParameters.SlotsPerHistoricalRoot - new Slot(1));
             var historyLength = state.HistoricalRoots.Count;
 
             // Act
-            RunProcessFinalUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessFinalUpdates(testServiceProvider, state);
 
             // Assert
             state.HistoricalRoots.Count.ShouldBe(historyLength + 1);
         }
 
-        private void RunProcessFinalUpdates(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
+        private void RunProcessFinalUpdates(IServiceProvider testServiceProvider, BeaconState state)
         {
-            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, TestProcessStep.ProcessFinalUpdates);
+            TestProcessUtility.RunEpochProcessingWith(testServiceProvider, state, TestProcessStep.ProcessFinalUpdates);
         }
 
         private class EffectiveBalanceCase

@@ -3,21 +3,21 @@ using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestBlock
     {
-        public static BeaconBlock BuildEmptyBlock(BeaconState state, Slot slot, bool signed,
-            MiscellaneousParameters miscellaneousParameters,
-            TimeParameters timeParameters,
-            StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition)
+        public static BeaconBlock BuildEmptyBlock(IServiceProvider testServiceProvider, BeaconState state, Slot slot, bool signed)
         {
             //if (slot) is none
+
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
             var eth1Data = new Eth1Data(state.Eth1DepositIndex, Hash32.Zero);
 
@@ -46,32 +46,27 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             if (signed)
             {
-                SignBlock(state, emptyBlock, ValidatorIndex.None,
-                    miscellaneousParameters, timeParameters, maxOperationsPerBlock,
-                    beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                SignBlock(testServiceProvider, state, emptyBlock, ValidatorIndex.None);
             }
 
             return emptyBlock;
         }
 
-        public static BeaconBlock BuildEmptyBlockForNextSlot(BeaconState state, bool signed,
-            MiscellaneousParameters miscellaneousParameters,
-            TimeParameters timeParameters,
-            StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility,
-            BeaconStateAccessor beaconStateAccessor,
-            BeaconStateTransition beaconStateTransition)
+        public static BeaconBlock BuildEmptyBlockForNextSlot(IServiceProvider testServiceProvider, BeaconState state, bool signed)
         {
-            return BuildEmptyBlock(state, state.Slot + new Slot(1), signed,
-                miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            return BuildEmptyBlock(testServiceProvider, state, state.Slot + new Slot(1), signed);
         }
 
-        public static void SignBlock(BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex,
-            MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, MaxOperationsPerBlock maxOperationsPerBlock,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        public static void SignBlock(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, ValidatorIndex proposerIndex)
         {
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             if (state.Slot > block.Slot)
             {
                 throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Slot of block must be equal or less that state slot {state.Slot}");

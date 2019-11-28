@@ -1,6 +1,7 @@
 ﻿using System;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -13,48 +14,24 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         public void SuccessBlockHeader()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, signed: true,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
 
-            RunBlockHeaderProcessing(state, block, expectValid: true,
-                beaconStateTransition);
+            RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: true);
         }
 
         [TestMethod]
         public void InvalidSignatureBlockHeader()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, signed: false,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: false);
 
-            RunBlockHeaderProcessing(state, block, expectValid: false,
-                beaconStateTransition);
+            RunBlockHeaderProcessing(testServiceProvider, state, block, expectValid: false);
         }
 
         // Run ``process_block_header``, yielding:
@@ -62,9 +39,10 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //  - block('block')
         //  - post-state('post').
         // If ``valid == False``, run expecting ``AssertionError``
-        private void RunBlockHeaderProcessing(BeaconState state, BeaconBlock block, bool expectValid,
-            BeaconStateTransition beaconStateTransition)
+        private void RunBlockHeaderProcessing(IServiceProvider testServiceProvider, BeaconState state, BeaconBlock block, bool expectValid)
         {
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             PrepareStateForHeaderProcessing(state,
                 beaconStateTransition);
 

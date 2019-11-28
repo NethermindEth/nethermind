@@ -1,9 +1,12 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
@@ -13,22 +16,24 @@ namespace Cortex.BeaconNode.Tests.Genesis
     [TestClass]
     public class BeaconChainTestValidity
     {
-        public static BeaconState CreateValidBeaconState(BeaconChain beaconChain, BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor,
-            ChainConstants chainConstants, InitialValues initialValues, MiscellaneousParameters miscellaneousParameters, GweiValues gweiValues,
-            TimeParameters timeParameters, ulong? eth1TimestampOverride = null)
+        public static BeaconState CreateValidBeaconState(IServiceProvider testServiceProvider, ulong? eth1TimestampOverride = null)
         {
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+
+            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
-            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValues.MaximumEffectiveBalance, signed: true,
-                chainConstants, initialValues, timeParameters, 
-                beaconChainUtility, beaconStateAccessor);
+            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = eth1TimestampOverride ?? miscellaneousParameters.MinimumGenesisTime;
             var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
             return state;
         }
 
-        public static void IsValidGenesisState(BeaconChain beaconChain, BeaconState state, bool valid)
+        public static void IsValidGenesisState(IServiceProvider testServiceProvider, BeaconState state, bool valid)
         {
+            var beaconChain = testServiceProvider.GetService<BeaconChain>();
             var isValid = beaconChain.IsValidGenesisState(state);
             isValid.ShouldBe(valid);
         }
@@ -37,164 +42,91 @@ namespace Cortex.BeaconNode.Tests.Genesis
         public void IsValidGenesisStateTrue()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
 
             // Act
-            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, beaconStateAccessor, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue, gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
+            var state = CreateValidBeaconState(testServiceProvider);
 
             // Assert
-            IsValidGenesisState(beaconChain, state, true);
+            IsValidGenesisState(testServiceProvider, state, true);
         }
 
         [TestMethod]
         public void IsValidGenesisStateFalseInvalidTimestamp()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
 
             // Act
-            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, beaconStateAccessor, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
-                gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue, eth1TimestampOverride: (miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime - 3 * chainConstants.SecondsPerDay));
+            var state = CreateValidBeaconState(testServiceProvider, eth1TimestampOverride: (miscellaneousParameters.MinimumGenesisTime - 3 * chainConstants.SecondsPerDay));
 
             // Assert
-            IsValidGenesisState(beaconChain, state, false);
+            IsValidGenesisState(testServiceProvider, state, false);
         }
 
         [TestMethod]
         public void IsValidGenesisStateTrueMoreBalance()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
             // Act
-            var state = CreateValidBeaconState(beaconChain, beaconChainUtility, beaconStateAccessor, chainConstants, initialValueOptions.CurrentValue, miscellaneousParameterOptions.CurrentValue,
-                gweiValueOptions.CurrentValue, timeParameterOptions.CurrentValue);
-            state.Validators[0].SetEffectiveBalance(gweiValueOptions.CurrentValue.MaximumEffectiveBalance + (Gwei)1);
+            var state = CreateValidBeaconState(testServiceProvider);
+            state.Validators[0].SetEffectiveBalance(gweiValues.MaximumEffectiveBalance + (Gwei)1);
 
             // Assert
-            IsValidGenesisState(beaconChain, state, true);
+            IsValidGenesisState(testServiceProvider, state, true);
         }
 
         [TestMethod]
         public void IsValidGenesisStateTrueOneMoreValidator()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
 
-            var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount + 1;
-            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true,
-                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor);
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+
+            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+
+            var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount + 1;
+            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
-            var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
+            var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
             // Act
             var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
-            IsValidGenesisState(beaconChain, state, true);
+            IsValidGenesisState(testServiceProvider, state, true);
         }
 
         [TestMethod]
         public void IsValidGenesisStateFalseNotEnoughValidators()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var beaconChain) = PrepareComponents(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
 
-            var depositCount = miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount - 1;
-            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValueOptions.CurrentValue.MaximumEffectiveBalance, signed: true,
-                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, 
-                beaconChainUtility, beaconStateAccessor);
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+
+            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+
+            var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount - 1;
+            (var deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
-            var eth1Timestamp = miscellaneousParameterOptions.CurrentValue.MinimumGenesisTime;
+            var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
             // Act
             var state = beaconChain.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
-            IsValidGenesisState(beaconChain, state, false);
-        }
-
-        private static (BeaconChainUtility, BeaconStateAccessor, BeaconChain) PrepareComponents(ChainConstants chainConstants,
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
-            IOptionsMonitor<GweiValues> gweiValueOptions,
-            IOptionsMonitor<InitialValues> initialValueOptions,
-            IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
-        {
-            var loggerFactory = new LoggerFactory(new[] {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
-            });
-
-            var cryptographyService = new CryptographyService();
-            var beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
-                miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
-                cryptographyService);
-            var beaconStateAccessor = new BeaconStateAccessor(miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions,
-                cryptographyService, beaconChainUtility);
-            var beaconStateMutator = new BeaconStateMutator(chainConstants, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions,
-                 beaconChainUtility, beaconStateAccessor);
-            var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
-
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(), 
-                chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition);
-
-            return (beaconChainUtility, beaconStateAccessor, beaconChain);
+            IsValidGenesisState(testServiceProvider, state, false);
         }
     }
 }

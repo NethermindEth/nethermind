@@ -1,6 +1,9 @@
-﻿using Cortex.BeaconNode.Configuration;
+﻿using System;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -13,31 +16,26 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void BasicActivation()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             var index = 0;
 
-            MockDeposit(state, index, 
-                chainConstants, gweiValueOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor);
+            MockDeposit(testServiceProvider, state, index);
 
-            for (var count = (ulong)0; count < (ulong)timeParameterOptions.CurrentValue.MaximumSeedLookahead + 1; count++)
+            for (var count = (ulong)0; count < (ulong)timeParameters.MaximumSeedLookahead + 1; count++)
             {
-                TestState.NextEpoch(state, timeParameterOptions.CurrentValue, beaconStateTransition);
+                TestState.NextEpoch(testServiceProvider, state);
             }
 
             // Act
-            RunProcessRegistryUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessRegistryUpdates(testServiceProvider, state);
 
             // Assert
             var validator = state.Validators[index];
@@ -52,25 +50,17 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void ActivationQueueSorting()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             var mockActivations = 10;
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             for (var index = 0; index < mockActivations; index++)
             {
-                MockDeposit(state, index,
-                    chainConstants, gweiValueOptions.CurrentValue,
-                    beaconChainUtility, beaconStateAccessor);
+                MockDeposit(testServiceProvider, state, index);
                 state.Validators[index].SetEligible(currentEpoch + new Epoch(1));
             }
 
@@ -82,7 +72,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             mockActivations.ShouldBeGreaterThan(churnLimit);
 
             // Act
-            RunProcessRegistryUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessRegistryUpdates(testServiceProvider, state);
 
             // Assert
 
@@ -103,17 +93,15 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void Ejection()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             var index = 0;
 
@@ -124,15 +112,15 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             validator.ExitEpoch.ShouldBe(chainConstants.FarFutureEpoch);
 
             // Mock an ejection
-            state.Validators[index].SetEffectiveBalance(gweiValueOptions.CurrentValue.EjectionBalance);
+            state.Validators[index].SetEffectiveBalance(gweiValues.EjectionBalance);
 
-            for (var count = (ulong)0; count < (ulong)timeParameterOptions.CurrentValue.MaximumSeedLookahead + 1; count++)
+            for (var count = (ulong)0; count < (ulong)timeParameters.MaximumSeedLookahead + 1; count++)
             {
-                TestState.NextEpoch(state, timeParameterOptions.CurrentValue, beaconStateTransition);
+                TestState.NextEpoch(testServiceProvider, state);
             }
 
             // Act
-            RunProcessRegistryUpdates(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessRegistryUpdates(testServiceProvider, state);
 
             // Assert
             var epochAfter = beaconStateAccessor.GetCurrentEpoch(state);
@@ -142,10 +130,14 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             validatorAfter.ExitEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
         }
 
-        private void MockDeposit(BeaconState state, int index,
-            ChainConstants chainConstants, GweiValues gweiValues,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        private void MockDeposit(IServiceProvider testServiceProvider, BeaconState state, int index)
         {
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             var validator = state.Validators[index];
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
             var isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
@@ -159,9 +151,9 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             isActiveAfter.ShouldBeFalse();
         }
 
-        private void RunProcessRegistryUpdates(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
+        private void RunProcessRegistryUpdates(IServiceProvider testServiceProvider, BeaconState state)
         {
-            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, TestProcessStep.ProcessRegistryUpdates);
+            TestProcessUtility.RunEpochProcessingWith(testServiceProvider, state, TestProcessStep.ProcessRegistryUpdates);
         }
     }
 }

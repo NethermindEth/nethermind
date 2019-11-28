@@ -1,6 +1,9 @@
 ﻿using System;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -13,27 +16,16 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         public void SuccessAttestation()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var attestation = TestAttestation.GetValidAttestation(state, Slot.None, CommitteeIndex.None, signed: true,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: true);
 
-            var slot = state.Slot + timeParameterOptions.CurrentValue.MinimumAttestationInclusionDelay;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var slot = state.Slot + timeParameters.MinimumAttestationInclusionDelay;
             state.SetSlot(slot);
 
-            RunAttestationProcessing(state, attestation, expectValid: true,
-                beaconStateAccessor, beaconStateTransition);
+            RunAttestationProcessing(testServiceProvider, state, attestation, expectValid: true);
         }
 
         //Run ``process_attestation``, yielding:
@@ -41,9 +33,11 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //  - attestation('attestation')
         //  - post-state('post').
         //If ``valid == False``, run expecting ``AssertionError``
-        private void RunAttestationProcessing(BeaconState state, Attestation attestation, bool expectValid,
-            BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        private void RunAttestationProcessing(IServiceProvider testServiceProvider, BeaconState state, Attestation attestation, bool expectValid)
         {
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             if (!expectValid)
             {
                 Should.Throw<Exception>(() =>

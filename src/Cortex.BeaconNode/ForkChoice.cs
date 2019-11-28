@@ -19,7 +19,7 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly StoreProvider _storeProvider;
+        private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public ForkChoice(
@@ -32,7 +32,7 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions,
             BeaconChainUtility beaconChainUtility,
             BeaconStateTransition beaconStateTransition,
-            StoreProvider storeProvider)
+            IStoreProvider storeProvider)
         {
             _logger = logger;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;

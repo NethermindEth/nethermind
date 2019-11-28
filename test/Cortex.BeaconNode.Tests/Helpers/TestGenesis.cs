@@ -1,7 +1,10 @@
-﻿using System.Linq;
+﻿using System;
+using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.Helpers
 {
@@ -29,15 +32,16 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return validator;
         }
 
-        public static BeaconState CreateGenesisState(ChainConstants chainConstants,
-                    MiscellaneousParameters miscellaneousParameters,
-            InitialValues initialValues,
-            GweiValues gweiValues,
-            TimeParameters timeParameters,
-            StateListLengths stateListLengths,
-            MaxOperationsPerBlock maxOperationsPerBlock,
-            ulong numberOfValidators)
+        public static BeaconState CreateGenesisState(IServiceProvider testServiceProvider, ulong numberOfValidators)
         {
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
             var depositRoot = new Hash32(Enumerable.Repeat((byte)0x42, 32).ToArray());
             var state = new BeaconState(
                 0,

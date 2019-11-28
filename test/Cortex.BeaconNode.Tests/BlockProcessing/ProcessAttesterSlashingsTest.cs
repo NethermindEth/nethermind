@@ -3,6 +3,8 @@ using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -15,50 +17,24 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         public void SuccessDouble()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var attesterSlashing = TestAttesterSlashing.GetValidAttesterSlashing(state, signed1: true, signed2: true,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var attesterSlashing = TestAttesterSlashing.GetValidAttesterSlashing(testServiceProvider, state, signed1: true, signed2: true);
 
-            RunAttesterSlashingProcessing(state, attesterSlashing, expectValid: true,
-                chainConstants, stateListLengthOptions.CurrentValue, rewardsAndPenaltiesOptions.CurrentValue,
-                beaconStateAccessor, beaconStateTransition);
+            RunAttesterSlashingProcessing(testServiceProvider, state, attesterSlashing, expectValid: true);
         }
 
         [TestMethod]
         public void InvalidSignature1()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var attesterSlashing = TestAttesterSlashing.GetValidAttesterSlashing(state, signed1: false, signed2: true,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var attesterSlashing = TestAttesterSlashing.GetValidAttesterSlashing(testServiceProvider, state, signed1: false, signed2: true);
 
-            RunAttesterSlashingProcessing(state, attesterSlashing, expectValid: false,
-                chainConstants, stateListLengthOptions.CurrentValue, rewardsAndPenaltiesOptions.CurrentValue,
-                beaconStateAccessor, beaconStateTransition);
+            RunAttesterSlashingProcessing(testServiceProvider, state, attesterSlashing, expectValid: false);
         }
 
         //    Run ``process_attester_slashing``, yielding:
@@ -66,10 +42,15 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //  - attester_slashing('attester_slashing')
         //  - post-state('post').
         //If ``valid == False``, run expecting ``AssertionError``
-        private void RunAttesterSlashingProcessing(BeaconState state, AttesterSlashing attesterSlashing, bool expectValid,
-            ChainConstants chainConstants, StateListLengths stateListLengths, RewardsAndPenalties rewardsAndPenalties,
-            BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        private void RunAttesterSlashingProcessing(IServiceProvider testServiceProvider, BeaconState state, AttesterSlashing attesterSlashing, bool expectValid)
         {
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
+            var rewardsAndPenalties = testServiceProvider.GetService<IOptions<RewardsAndPenalties>>().Value;
+
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             if (!expectValid)
             {
                 Should.Throw<Exception>(() =>
@@ -128,7 +109,7 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
             else
             {
                 // gained rewards for all slashings, which may include others. And only lost that of themselves.
-                var expectedProposerBalance = preProposerBalance + totalProposerRewards 
+                var expectedProposerBalance = preProposerBalance + totalProposerRewards
                     - (preSlashings[proposerIndex] / rewardsAndPenalties.MinimumSlashingPenaltyQuotient);
                 var proposerBalance = TestState.GetBalance(state, proposerIndex);
                 proposerBalance.ShouldBe(expectedProposerBalance);

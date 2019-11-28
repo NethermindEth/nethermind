@@ -12,14 +12,16 @@ namespace Cortex.BeaconNode
         {
             AddConfiguration(services, configuration);
 
+            services.AddSingleton<ICryptographyService, CryptographyService>();
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<BeaconChainUtility>();
             services.AddSingleton<BeaconStateAccessor>();
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();
-            services.AddSingleton<BeaconNodeConfiguration>();
             services.AddSingleton<IStoreProvider, StoreProvider>();
-            services.AddSingleton<ICryptographyService, CryptographyService>();
+            services.AddSingleton<ForkChoice>();
+
+            services.AddSingleton<BeaconNodeConfiguration>();
 
             services.AddScoped<BlockProducer>();
         }

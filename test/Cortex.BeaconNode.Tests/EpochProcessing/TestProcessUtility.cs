@@ -1,6 +1,8 @@
 ﻿using System;
 using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Tests.EpochProcessing
 {
@@ -9,8 +11,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         /// <summary>
         /// Processes to the next epoch transition, up to, but not including, the sub-transition named ``process_name``
         /// </summary>
-        public static void RunEpochProcessingTo(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
+        public static void RunEpochProcessingTo(IServiceProvider testServiceProvider, BeaconState state, TestProcessStep step)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             var slot = state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
 
             // transition state to slot before epoch state transition
@@ -61,9 +66,11 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         /// - pre-state('pre'), state before calling ``process_name``
         /// - post-state('post'), state after calling ``process_name``
         /// </summary>
-        public static void RunEpochProcessingWith(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state, TestProcessStep step)
+        public static void RunEpochProcessingWith(IServiceProvider testServiceProvider, BeaconState state, TestProcessStep step)
         {
-            RunEpochProcessingTo(beaconStateTransition, timeParameters, state, step);
+            RunEpochProcessingTo(testServiceProvider, state, step);
+
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             if (step == TestProcessStep.ProcessJustificationAndFinalization)
             {

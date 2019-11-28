@@ -2,12 +2,9 @@
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using NSubstitute;
 using Shouldly;
 
 namespace Cortex.BeaconNode.Tests.Genesis
@@ -26,14 +23,10 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var chainConstants = testServiceProvider.GetService<ChainConstants>();
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
 
-            (var deposits, var depositRoot) = TestDeposit.PrepareGenesisDeposits(depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls,
-                chainConstants, initialValues, timeParameters,
-                testServiceProvider.GetService<BeaconChainUtility>(), testServiceProvider.GetService<BeaconStateAccessor>());
+            (var deposits, var depositRoot) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: useBls);
 
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;

@@ -2,6 +2,8 @@
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -14,20 +16,13 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         public void SuccessTest()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var _, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             // move state forward PERSISTENT_COMMITTEE_PERIOD epochs to allow for exit
-            var timeParameters = timeParameterOptions.CurrentValue;
             var move = timeParameters.SlotsPerEpoch * (ulong)timeParameters.PersistentCommitteePeriod;
             var newSlot = state.Slot + move;
             state.SetSlot(newSlot);
@@ -37,32 +32,22 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
             var validator = state.Validators[(int)(ulong)validatorIndex];
             var privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
 
-            var voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(state, currentEpoch, validatorIndex, privateKey, signed: true,
-                beaconStateAccessor);
+            var voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: true);
 
-            RunVoluntaryExitProcessing(state, voluntaryExit, expectValid: true, 
-                chainConstants,
-                beaconStateTransition);
+            RunVoluntaryExitProcessing(testServiceProvider, state, voluntaryExit, expectValid: true);
         }
 
         [TestMethod]
         public void InvalidSignature()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var _, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             // move state forward PERSISTENT_COMMITTEE_PERIOD epochs to allow for exit
-            var timeParameters = timeParameterOptions.CurrentValue;
             var move = timeParameters.SlotsPerEpoch * (ulong)timeParameters.PersistentCommitteePeriod;
             var newSlot = state.Slot + move;
             state.SetSlot(newSlot);
@@ -72,12 +57,9 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
             var validator = state.Validators[(int)(ulong)validatorIndex];
             var privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
 
-            var voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(state, currentEpoch, validatorIndex, privateKey, signed: false,
-                beaconStateAccessor);
+            var voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: false);
 
-            RunVoluntaryExitProcessing(state, voluntaryExit, expectValid: false,
-                chainConstants,
-                beaconStateTransition);
+            RunVoluntaryExitProcessing(testServiceProvider, state, voluntaryExit, expectValid: false);
         }
 
         //    Run ``process_voluntary_exit``, yielding:
@@ -85,10 +67,15 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //  - voluntary_exit('voluntary_exit')
         //  - post-state('post').
         //If ``valid == False``, run expecting ``AssertionError``
-        private void RunVoluntaryExitProcessing(BeaconState state, VoluntaryExit voluntaryExit, bool expectValid,
-            ChainConstants chainConstants,
-            BeaconStateTransition beaconStateTransition)
+        private void RunVoluntaryExitProcessing(IServiceProvider testServiceProvider, BeaconState state, VoluntaryExit voluntaryExit, bool expectValid)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             // Act
             if (!expectValid)
             {

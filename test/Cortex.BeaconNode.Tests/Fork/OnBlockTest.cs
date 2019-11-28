@@ -1,13 +1,11 @@
 ﻿using System;
-using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Data;
 using Cortex.BeaconNode.Ssz;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
-using Cortex.Containers.Json;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -20,75 +18,49 @@ namespace Cortex.BeaconNode.Tests.Fork
         public void BasicOnBlock()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out var forkChoiceConfigurationOptions);
-            (var beaconChainUtility, var beaconStateAccessor, _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var loggerFactory = new LoggerFactory(new[] {
-                new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
-            });
-            var storeProvider = new StoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
-            var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(), 
-                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions,
-                beaconChainUtility, beaconStateTransition, storeProvider);
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            var timeParameters = timeParameterOptions.CurrentValue;
             var store = forkChoice.GetGenesisStore(state);
             var time = 100uL;
             forkChoice.OnTick(store, time);
             store.Time.ShouldBe(time);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            var block = TestBlock.BuildEmptyBlockForNextSlot(state, signed:true,
-                miscellaneousParameterOptions.CurrentValue, timeParameters, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
-            TestState.StateTransitionAndSignBlock(state, block,
-                miscellaneousParameterOptions.CurrentValue, timeParameters, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
-            RunOnBlock(store, block, expectValid: true, 
-                miscellaneousParameterOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                forkChoice);
+            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
+            RunOnBlock(testServiceProvider, store, block, expectValid: true);
 
             //  On receiving a block of next epoch
             var time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             store.SetTime(time2);
-            var block2 = TestBlock.BuildEmptyBlockForNextSlot(state, signed: true,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
             var slot2 = block.Slot + timeParameters.SlotsPerEpoch;
             block2.SetSlot(slot2);
-            TestBlock.SignBlock(state, block2, ValidatorIndex.None,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
-            TestState.StateTransitionAndSignBlock(state, block2,
-                miscellaneousParameterOptions.CurrentValue, timeParameterOptions.CurrentValue, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            TestBlock.SignBlock(testServiceProvider, state, block2, ValidatorIndex.None);
+            TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);
 
             //var options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
             //options.AddCortexContainerConverters();
             //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
-            RunOnBlock(store, block2, expectValid: true,
-                miscellaneousParameterOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue,
-                forkChoice);
+            RunOnBlock(testServiceProvider, store, block2, expectValid: true);
 
             // Assert
             // TODO: add tests for justified_root and finalized_root
         }
 
-        private void RunOnBlock(IStore store, BeaconBlock block, bool expectValid,
-            MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock,
-            ForkChoice forkChoice)
+        private void RunOnBlock(IServiceProvider testServiceProvider, IStore store, BeaconBlock block, bool expectValid)
         {
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
+            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+
             if (!expectValid)
             {
                 Should.Throw<Exception>(() =>

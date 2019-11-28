@@ -2,6 +2,8 @@
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
 
@@ -14,31 +16,19 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         public void NewDepositUnderMax()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
             // fresh deposit = next validator index = validator appended to registry
             var validatorIndex = new ValidatorIndex((ulong)state.Validators.Count);
 
             // effective balance will be 1 EFFECTIVE_BALANCE_INCREMENT smaller because of this small decrement.
-            var amount = gweiValueOptions.CurrentValue.MaximumEffectiveBalance - new Gwei(1);
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            var amount = gweiValues.MaximumEffectiveBalance - new Gwei(1);
 
-            var deposit = TestDeposit.PrepareStateAndDeposit(state, validatorIndex, amount, Hash32.Zero, signed: true,
-                chainConstants, initialValueOptions.CurrentValue, timeParameterOptions.CurrentValue, 
-                beaconChainUtility, beaconStateAccessor);
+            var deposit = TestDeposit.PrepareStateAndDeposit(testServiceProvider, state, validatorIndex, amount, Hash32.Zero, signed: true);
 
-            RunDepositProcessing(state, deposit, validatorIndex, expectValid: true, effective: true,
-                gweiValues: gweiValueOptions.CurrentValue,
-                beaconStateTransition: beaconStateTransition);
+            RunDepositProcessing(testServiceProvider, state, deposit, validatorIndex, expectValid: true, effective: true);
         }
 
         //    Run ``process_deposit``, yielding:
@@ -46,10 +36,11 @@ namespace Cortex.BeaconNode.Tests.BlockProcessing
         //  - deposit('deposit')
         //  - post-state('post').
         //If ``valid == False``, run expecting ``AssertionError``
-        private void RunDepositProcessing(BeaconState state, Deposit deposit, ValidatorIndex validatorIndex, bool expectValid, bool effective,
-            GweiValues gweiValues,
-            BeaconStateTransition beaconStateTransition)
+        private void RunDepositProcessing(IServiceProvider testServiceProvider, BeaconState state, Deposit deposit, ValidatorIndex validatorIndex, bool expectValid, bool effective)
         {
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+
             var preValidatorCount = state.Validators.Count;
             var preBalance = Gwei.Zero;
             if ((int)(ulong)validatorIndex < preValidatorCount)

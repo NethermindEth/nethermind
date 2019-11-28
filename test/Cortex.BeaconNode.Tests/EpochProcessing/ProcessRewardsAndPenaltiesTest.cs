@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Console;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shouldly;
@@ -20,25 +18,19 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void GenesisEpochNoAttestationsNoPenalties()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
             var preState = BeaconState.Clone(state);
 
             var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValueOptions.CurrentValue.GenesisEpoch);
+            stateEpoch.ShouldBe(initialValues.GenesisEpoch);
 
             // Act
-            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessRewardsAndPenalties(testServiceProvider, state);
 
             // Assert
             for (var index = 0; index < preState.Validators.Count; index++)
@@ -51,22 +43,13 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
         public void GenesisEpochFullAttestationsNoRewards()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var miscellaneousParameters = miscellaneousParameterOptions.CurrentValue;
-            var timeParameters = timeParameterOptions.CurrentValue;
-            var stateListLengths = stateListLengthOptions.CurrentValue;
-            var maxOperationsPerBlock = maxOperationsPerBlockOptions.CurrentValue;
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
             var attestations = new List<Attestation>();
             for (var slot = Slot.Zero; slot < timeParameters.SlotsPerEpoch - new Slot(1); slot += new Slot(1))
@@ -74,9 +57,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 // create an attestation for each slot
                 if (slot < timeParameters.SlotsPerEpoch)
                 {
-                    var attestation = TestAttestation.GetValidAttestation(state, slot, CommitteeIndex.None, signed: true,
-                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                    var attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, slot, CommitteeIndex.None, signed: true);
                     attestations.Add(attestation);
                 }
 
@@ -85,22 +66,20 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 {
                     var index = slot - timeParameters.MinimumAttestationInclusionDelay;
                     var includeAttestation = attestations[(int)(ulong)index];
-                    TestAttestation.AddAttestationsToState(state, new[] { includeAttestation }, state.Slot,
-                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                    TestAttestation.AddAttestationsToState(testServiceProvider, state, new[] { includeAttestation }, state.Slot);
                 }
 
-                TestState.NextSlot(state, beaconStateTransition);
+                TestState.NextSlot(testServiceProvider, state);
             }
 
             // ensure has not cross the epoch boundary
             var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValueOptions.CurrentValue.GenesisEpoch);
+            stateEpoch.ShouldBe(initialValues.GenesisEpoch);
 
             var preState = BeaconState.Clone(state);
 
             // Act
-            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameters, state);
+            RunProcessRewardsAndPenalties(testServiceProvider, state);
 
             // Assert
             for (var index = 0; index < preState.Validators.Count; index++)
@@ -109,33 +88,21 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
         }
 
-
         [TestMethod]
         public void FullAttestations()
         {
             // Arrange
-            TestConfiguration.GetMinimalConfiguration(
-                out var chainConstants,
-                out var miscellaneousParameterOptions,
-                out var gweiValueOptions,
-                out var initialValueOptions,
-                out var timeParameterOptions,
-                out var stateListLengthOptions,
-                out var rewardsAndPenaltiesOptions,
-                out var maxOperationsPerBlockOptions,
-                out _);
-            (var beaconChainUtility, var beaconStateAccessor, var _, var beaconStateTransition, var state) = TestState.PrepareTestState(chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions);
+            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = timeParameterOptions.CurrentValue;
+            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            var attestations = PrepareStateWithFullAttestations(state,
-                miscellaneousParameterOptions.CurrentValue, initialValueOptions.CurrentValue, timeParameters, stateListLengthOptions.CurrentValue, maxOperationsPerBlockOptions.CurrentValue, 
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+            var attestations = PrepareStateWithFullAttestations(testServiceProvider, state);
 
             var preState = BeaconState.Clone(state);
 
             // Act
-            RunProcessRewardsAndPenalties(beaconStateTransition, timeParameterOptions.CurrentValue, state);
+            RunProcessRewardsAndPenalties(testServiceProvider, state);
 
             // Assert
             var pendingAttestations = attestations.Select(x => new PendingAttestation(x.AggregationBits, x.Data, Slot.None, ValidatorIndex.None));
@@ -157,10 +124,13 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             }
         }
 
-        private static IList<Attestation> PrepareStateWithFullAttestations(BeaconState state, 
-            MiscellaneousParameters miscellaneousParameters, InitialValues initialValues, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock, 
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor, BeaconStateTransition beaconStateTransition)
+        private static IList<Attestation> PrepareStateWithFullAttestations(IServiceProvider testServiceProvider, BeaconState state)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+
             var attestations = new List<Attestation>();
             var maxSlot = timeParameters.SlotsPerEpoch + timeParameters.MinimumAttestationInclusionDelay;
             for (var slot = Slot.Zero; slot < maxSlot; slot += new Slot(1))
@@ -168,9 +138,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 // create an attestation for each slot in epoch
                 if (slot < timeParameters.SlotsPerEpoch)
                 {
-                    var attestation = TestAttestation.GetValidAttestation(state, Slot.None, CommitteeIndex.None, signed: true,
-                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                    var attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: true);
                     attestations.Add(attestation);
                 }
 
@@ -179,12 +147,10 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
                 {
                     var index = slot - timeParameters.MinimumAttestationInclusionDelay;
                     var includeAttestation = attestations[(int)(ulong)index];
-                    TestAttestation.AddAttestationsToState(state, new[] { includeAttestation }, state.Slot,
-                        miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock,
-                        beaconChainUtility, beaconStateAccessor, beaconStateTransition);
+                    TestAttestation.AddAttestationsToState(testServiceProvider, state, new[] { includeAttestation }, state.Slot);
                 }
 
-                TestState.NextSlot(state, beaconStateTransition);
+                TestState.NextSlot(testServiceProvider, state);
             }
 
             var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
@@ -195,9 +161,9 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             return attestations;
         }
 
-        private void RunProcessRewardsAndPenalties(BeaconStateTransition beaconStateTransition, TimeParameters timeParameters, BeaconState state)
+        private void RunProcessRewardsAndPenalties(IServiceProvider testServiceProvider, BeaconState state)
         {
-            TestProcessUtility.RunEpochProcessingWith(beaconStateTransition, timeParameters, state, TestProcessStep.ProcessRewardsAndPenalties);
+            TestProcessUtility.RunEpochProcessingWith(testServiceProvider, state, TestProcessStep.ProcessRewardsAndPenalties);
         }
     }
 }
