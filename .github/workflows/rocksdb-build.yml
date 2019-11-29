@@ -3,7 +3,7 @@ name: RocksDB Build TEST
 on:
   push:
     branches:
-    - master
+    - github-actions
 
 jobs:
   rocksb-building:
