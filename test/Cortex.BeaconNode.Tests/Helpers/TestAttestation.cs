@@ -27,12 +27,14 @@ namespace Cortex.BeaconNode.Tests.Helpers
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }
 
-        public static BlsSignature GetAttestationSignature(BeaconState state, AttestationData attestationData, byte[] privateKey, bool custodyBit,
-            BeaconStateAccessor beaconStateAccessor)
+        public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey, bool custodyBit)
         {
+            var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             var message = new AttestationDataAndCustodyBit(attestationData, custodyBit);
             var messageHash = message.HashTreeRoot();
-            var domain = beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, attestationData.Target.Epoch);
+            var domain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, attestationData.Target.Epoch);
             var signature = TestSecurity.BlsSign(messageHash, privateKey, domain);
             return signature;
         }
@@ -40,7 +42,6 @@ namespace Cortex.BeaconNode.Tests.Helpers
         // def get_valid_attestation(spec, state, slot=None, index=None, signed=False):
         public static Attestation GetValidAttestation(IServiceProvider testServiceProvider, BeaconState state, Slot slot, CommitteeIndex index, bool signed)
         {
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             if (slot == Slot.None)
@@ -65,37 +66,34 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             if (signed)
             {
-                SignAttestation(state, attestation, timeParameters, beaconStateAccessor);
+                SignAttestation(testServiceProvider, state, attestation);
             }
 
             return attestation;
         }
 
-        public static BlsSignature SignAggregateAttestation(BeaconState state, AttestationData attestationData, IEnumerable<ValidatorIndex> participants,
-            TimeParameters timeParameters,
-            BeaconStateAccessor beaconStateAccessor)
+        public static BlsSignature SignAggregateAttestation(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, IEnumerable<ValidatorIndex> participants)
         {
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToList();
             var signatures = new List<BlsSignature>();
             foreach (var validatorIndex in participants)
             {
                 var privateKey = privateKeys[(int)(ulong)validatorIndex];
-                var signature = GetAttestationSignature(state, attestationData, privateKey, custodyBit: false,
-                    beaconStateAccessor);
+                var signature = GetAttestationSignature(testServiceProvider, state, attestationData, privateKey, custodyBit: false);
                 signatures.Add(signature);
             }
 
             return TestSecurity.BlsAggregateSignatures(signatures);
         }
 
-        public static void SignAttestation(BeaconState state, Attestation attestation,
-                    TimeParameters timeParameters,
-            BeaconStateAccessor beaconStateAccessor)
+        public static void SignAttestation(IServiceProvider testServiceProvider, BeaconState state, Attestation attestation)
         {
+            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+
             var participants = beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
-            var signature = SignAggregateAttestation(state, attestation.Data, participants,
-                timeParameters,
-                beaconStateAccessor);
+            var signature = SignAggregateAttestation(testServiceProvider, state, attestation.Data, participants);
             attestation.SetSignature(signature);
         }
 

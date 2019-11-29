@@ -89,6 +89,16 @@ namespace Cortex.BeaconNode.Tests
                 ["MAX_DEPOSITS"] = "16",
                 ["MAX_VOLUNTARY_EXITS"] = "16",
 
+                // Signature domains
+                ["DOMAIN_BEACON_PROPOSER"] = "0x00000000",
+                ["DOMAIN_BEACON_ATTESTER"] = "0x01000000",
+                ["DOMAIN_RANDAO"] = "0x02000000",
+                ["DOMAIN_DEPOSIT"] = "0x03000000",
+                ["DOMAIN_VOLUNTARY_EXIT"] = "0x04000000",
+                ["DOMAIN_CUSTODY_BIT_CHALLENGE"] = "0x06000000",
+                ["DOMAIN_SHARD_PROPOSER"] = "0x80000000",
+                ["DOMAIN_SHARD_ATTESTER"] = "0x81000000",
+
                 // Fork choice configuration
                 ["SAFE_SLOTS_TO_UPDATE_JUSTIFIED"] = "8",
             };

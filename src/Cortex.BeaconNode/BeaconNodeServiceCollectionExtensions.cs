@@ -1,4 +1,5 @@
-﻿using Cortex.BeaconNode.Configuration;
+﻿using System;
+using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Data;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
@@ -89,10 +90,32 @@ namespace Cortex.BeaconNode
                 x.MaximumDeposits = configuration.GetValue<ulong>("MAX_DEPOSITS");
                 x.MaximumVoluntaryExits = configuration.GetValue<ulong>("MAX_VOLUNTARY_EXITS");
             });
+            services.Configure<SignatureDomains>(x =>
+            {
+                x.BeaconProposer = new DomainType(configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_PROPOSER"));
+                x.BeaconAttester = new DomainType(configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_ATTESTER"));
+                x.Randao = new DomainType(configuration.GetBytesFromPrefixedHex("DOMAIN_RANDAO"));
+                x.Deposit = new DomainType(configuration.GetBytesFromPrefixedHex("DOMAIN_DEPOSIT"));
+                x.VoluntaryExit = new DomainType(configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT"));
+            });
             services.Configure<ForkChoiceConfiguration>(x =>
             {
                 x.SafeSlotsToUpdateJustified = new Slot(configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED"));
             });
         }
+
+        public static byte[] GetBytesFromPrefixedHex(this IConfiguration configuration, string key)
+        {
+            var hex = configuration.GetValue<string>(key);
+            var bytes = new byte[(hex.Length - 2) / 2];
+            var hexIndex = 2;
+            for (var byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
+            {
+                bytes[byteIndex] = Convert.ToByte(hex.Substring(hexIndex, 2), 16);
+                hexIndex += 2;
+            }
+            return bytes;
+        }
+
     }
 }

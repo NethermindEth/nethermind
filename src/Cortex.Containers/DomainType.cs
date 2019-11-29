@@ -6,12 +6,6 @@ namespace Cortex.Containers
     public struct DomainType : IEquatable<DomainType>
     {
         public const int Length = 4;
-        public static readonly DomainType BeaconAttester = new DomainType(new byte[] { 0x01, 0x00, 0x00, 0x00 });
-        public static readonly DomainType BeaconProposer = new DomainType(new byte[] { 0x00, 0x00, 0x00, 0x00 });
-        public static readonly DomainType Deposit = new DomainType(new byte[] { 0x03, 0x00, 0x00, 0x00 });
-        public static readonly DomainType DomainTransfer = new DomainType(new byte[] { 0x05, 0x00, 0x00, 0x00 });
-        public static readonly DomainType Randao = new DomainType(new byte[] { 0x02, 0x00, 0x00, 0x00 });
-        public static readonly DomainType VoluntaryExit = new DomainType(new byte[] { 0x04, 0x00, 0x00, 0x00 });
         private readonly uint _value;
 
         public DomainType(ReadOnlySpan<byte> span)

@@ -15,12 +15,14 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         public BeaconStateAccessor(IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
+            IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility)
         {
@@ -30,6 +32,7 @@ namespace Cortex.BeaconNode
             _initialValueOptions = initialValueOptions;
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
+            _signatureDomainOptions = signatureDomainOptions;
         }
 
         /// <summary>
@@ -81,14 +84,12 @@ namespace Cortex.BeaconNode
         /// </summary>
         public IReadOnlyList<ValidatorIndex> GetBeaconCommittee(BeaconState state, Slot slot, CommitteeIndex index)
         {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-
             var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
             var committeesPerSlot = GetCommitteeCountAtSlot(state, slot);
             //var committeeCount = GetCommitteeCount(state, epoch);
 
             var indices = GetActiveValidatorIndices(state, epoch);
-            var seed = GetSeed(state, epoch, DomainType.BeaconAttester);
+            var seed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconAttester);
             //var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
             var committeeIndex = (ulong)(slot % _timeParameterOptions.CurrentValue.SlotsPerEpoch) * committeesPerSlot + (ulong)index;
             var committeeCount = committeesPerSlot * (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch;
@@ -105,7 +106,7 @@ namespace Cortex.BeaconNode
             var epoch = GetCurrentEpoch(state);
 
             var seedBytes = new Span<byte>(new byte[40]);
-            var initialSeed = GetSeed(state, epoch, DomainType.BeaconProposer);
+            var initialSeed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconProposer);
             initialSeed.AsSpan().CopyTo(seedBytes);
             BitConverter.TryWriteBytes(seedBytes.Slice(32), (ulong)state.Slot);
             if (!BitConverter.IsLittleEndian)

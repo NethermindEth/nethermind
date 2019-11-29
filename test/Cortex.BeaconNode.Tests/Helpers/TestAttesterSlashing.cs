@@ -21,7 +21,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             attestation2.Data.Target.SetRoot(new Hash32(Enumerable.Repeat((byte)0x01, 32).ToArray()));
             if (signed2)
             {
-                TestAttestation.SignAttestation(state, attestation2, timeParameters, beaconStateAccessor);
+                TestAttestation.SignAttestation(testServiceProvider, state, attestation2);
             }
 
             var indexedAttestation1 = beaconStateAccessor.GetIndexedAttestation(state, attestation1);

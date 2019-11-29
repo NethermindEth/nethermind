@@ -21,6 +21,7 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<RewardsAndPenalties> _rewardsAndPenaltiesOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
@@ -35,6 +36,7 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
+            IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
@@ -49,6 +51,7 @@ namespace Cortex.BeaconNode
             _stateListLengthOptions = stateListLengthOptions;
             _rewardsAndPenaltiesOptions = rewardsAndPenaltiesOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
+            _signatureDomainOptions = signatureDomainOptions;
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
@@ -275,7 +278,7 @@ namespace Cortex.BeaconNode
 
             // Check signature
             var indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(state, attestation);
-            var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, data.Target.Epoch);
+            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconAttester, data.Target.Epoch);
             var isValid = _beaconChainUtility.IsValidIndexedAttestation(state, indexedAttestation, domain);
             if (!isValid)
             {
@@ -295,8 +298,10 @@ namespace Cortex.BeaconNode
                 throw new Exception("Attestation data must be slashable.");
             }
 
+            var signatureDomains = _signatureDomainOptions.CurrentValue;
+
             var epoch1 = attestation1.Data.Target.Epoch;
-            var domain1 = _beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, epoch1);
+            var domain1 = _beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, epoch1);
             var attestation1Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation1, domain1);
             if (!attestation1Valid)
             {
@@ -304,7 +309,7 @@ namespace Cortex.BeaconNode
             }
 
             var epoch2 = attestation2.Data.Target.Epoch;
-            var domain2 = _beaconStateAccessor.GetDomain(state, DomainType.BeaconAttester, epoch2);
+            var domain2 = _beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, epoch2);
             var attestation2Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation2, domain2);
             if (!attestation2Valid)
             {
@@ -378,7 +383,7 @@ namespace Cortex.BeaconNode
 
             // Verify proposer signature
             var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, Epoch.None);
+            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
             var validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
             if (!validSignature)
             {
@@ -417,7 +422,7 @@ namespace Cortex.BeaconNode
                 // Note: The deposit contract does not check signatures.
                 // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
 
-                var domain = _beaconChainUtility.ComputeDomain(DomainType.Deposit);
+                var domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
                 if (!_cryptographyService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
                 {
                     return;
@@ -659,7 +664,7 @@ namespace Cortex.BeaconNode
             }
             // Signatures are valid
             var slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.Header1.Slot);
-            var domain = _beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, slashingEpoch);
+            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, slashingEpoch);
 
             var signingRoot1 = proposerSlashing.Header1.SigningRoot();
             var signature1 = proposerSlashing.Header1.Signature;
@@ -688,7 +693,7 @@ namespace Cortex.BeaconNode
             var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
             var proposer = state.Validators[(int)(ulong)beaconProposerIndex];
             var epochRoot = epoch.HashTreeRoot();
-            var domain = _beaconStateAccessor.GetDomain(state, DomainType.Randao, Epoch.None);
+            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.Randao, Epoch.None);
             var validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
             if (!validRandaoReveal)
             {
@@ -870,7 +875,7 @@ namespace Cortex.BeaconNode
             }
 
             //# Verify signature
-            var domain = _beaconStateAccessor.GetDomain(state, DomainType.VoluntaryExit, exit.Epoch);
+            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.VoluntaryExit, exit.Epoch);
             var signingRoot = exit.SigningRoot();
             var validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, exit.Signature, domain);
             if (!validSignature)

@@ -62,6 +62,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
 
             var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
@@ -97,12 +98,12 @@ namespace Cortex.BeaconNode.Tests.Helpers
             var privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
             var privateKey = privateKeys[(int)(ulong)proposerIndex];
 
-            var randaoDomain = beaconStateAccessor.GetDomain(state, DomainType.Randao, blockEpoch);
+            var randaoDomain = beaconStateAccessor.GetDomain(state, signatureDomains.Randao, blockEpoch);
             var randaoRevealHash = blockEpoch.HashTreeRoot();
             var randaoReveal = TestSecurity.BlsSign(randaoRevealHash, privateKey, randaoDomain);
             block.Body.SetRandaoReveal(randaoReveal);
 
-            var signatureDomain = beaconStateAccessor.GetDomain(state, DomainType.BeaconProposer, blockEpoch);
+            var signatureDomain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconProposer, blockEpoch);
             var signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
             var signature = TestSecurity.BlsSign(signingRoot, privateKey, signatureDomain);
             block.SetSignature(signature);

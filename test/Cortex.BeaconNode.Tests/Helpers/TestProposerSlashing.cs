@@ -38,11 +38,11 @@ namespace Cortex.BeaconNode.Tests.Helpers
 
             if (signed1)
             {
-                TestBlockHeader.SignBlockHeader(state, header1, privateKey, beaconStateAccessor);
+                TestBlockHeader.SignBlockHeader(testServiceProvider, state, header1, privateKey);
             }
             if (signed2)
             {
-                TestBlockHeader.SignBlockHeader(state, header2, privateKey, beaconStateAccessor);
+                TestBlockHeader.SignBlockHeader(testServiceProvider, state, header2, privateKey);
             }
 
             var proposerSlashing = new ProposerSlashing(validatorIndex, header1, header2);

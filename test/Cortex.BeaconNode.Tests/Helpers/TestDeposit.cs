@@ -11,11 +11,12 @@ namespace Cortex.BeaconNode.Tests.Helpers
 {
     public static class TestDeposit
     {
-        public static (Deposit, Hash32) BuildDeposit(BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, bool signed,
-            ChainConstants chainConstants, BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        public static (Deposit, Hash32) BuildDeposit(IServiceProvider testServiceProvider, BeaconState? state, IList<DepositData> depositDataList, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, bool signed)
         {
-            var depositData = BuildDepositData(publicKey, privateKey, amount, withdrawalCredentials, state, signed,
-                beaconChainUtility, beaconStateAccessor);
+            var chainConstants = testServiceProvider.GetService<ChainConstants>();
+            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+
+            var depositData = BuildDepositData(testServiceProvider, publicKey, privateKey, amount, withdrawalCredentials, state, signed);
             var index = depositDataList.Count;
             depositDataList.Add(depositData);
             Hash32 root = depositDataList.HashTreeRoot((ulong)1 << chainConstants.DepositContractTreeDepth);
@@ -37,13 +38,12 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return (deposit, root);
         }
 
-        public static DepositData BuildDepositData(BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, BeaconState? state, bool signed,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        public static DepositData BuildDepositData(IServiceProvider testServiceProvider, BlsPublicKey publicKey, byte[] privateKey, Gwei amount, Hash32 withdrawalCredentials, BeaconState? state, bool signed)
         {
             var depositData = new DepositData(publicKey, withdrawalCredentials, amount);
             if (signed)
             {
-                SignDepositData(depositData, privateKey, state, beaconChainUtility, beaconStateAccessor);
+                SignDepositData(testServiceProvider, depositData, privateKey, state);
             }
             return depositData;
         }
@@ -81,8 +81,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
                 var withdrawalCredentialBytes = TestSecurity.Hash(publicKey.AsSpan());
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
                 var withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
-                (var deposit, var depositRoot) = BuildDeposit(null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed,
-                    chainConstants, beaconChainUtility, beaconStateAccessor);
+                (var deposit, var depositRoot) = BuildDeposit(testServiceProvider, null, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
                 root = depositRoot;
                 genesisDeposits.Add(deposit);
             }
@@ -115,9 +114,7 @@ namespace Cortex.BeaconNode.Tests.Helpers
             }
 
             var depositDataList = new List<DepositData>();
-            (var deposit, var depositRoot) = BuildDeposit(state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed,
-                chainConstants,
-                beaconChainUtility, beaconStateAccessor);
+            (var deposit, var depositRoot) = BuildDeposit(testServiceProvider, state, depositDataList, publicKey, privateKey, amount, withdrawalCredentials, signed);
 
             state.SetEth1DepositIndex(0);
             state.Eth1Data.SetDepositRoot(depositRoot);
@@ -126,18 +123,21 @@ namespace Cortex.BeaconNode.Tests.Helpers
             return deposit;
         }
 
-        public static void SignDepositData(DepositData depositData, byte[] privateKey, BeaconState? state,
-            BeaconChainUtility beaconChainUtility, BeaconStateAccessor beaconStateAccessor)
+        public static void SignDepositData(IServiceProvider testServiceProvider, DepositData depositData, byte[] privateKey, BeaconState? state)
         {
+            var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
+
             Domain domain;
             if (state == null)
             {
                 // Genesis
-                domain = beaconChainUtility.ComputeDomain(DomainType.Deposit);
+                var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+                domain = beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
             }
             else
             {
-                domain = beaconStateAccessor.GetDomain(state, DomainType.Deposit, Epoch.None);
+                var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+                domain = beaconStateAccessor.GetDomain(state, signatureDomains.Deposit, Epoch.None);
             }
 
             var signature = TestSecurity.BlsSign(depositData.SigningRoot(), privateKey, domain);
