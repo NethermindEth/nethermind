@@ -9,7 +9,8 @@ namespace Cortex.BeaconNode
 {
     public class Program
     {
-        private const string DefaultYamlConfig = "mainnet";
+        private const string DefaultProductionYamlConfig = "mainnet";
+        private const string DefaultNonProductionYamlConfig = "minimal";
         private const string YamlConfigKey = "config";
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
@@ -19,19 +20,33 @@ namespace Cortex.BeaconNode
                 // configure logging to console, debug, and event source,
                 // and, when 'Development', enables scope validation on the dependency injection container.
                 .UseWindowsService()
+                .ConfigureHostConfiguration(config => {
+                    config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
+                    config.AddJsonFile("hostsettings.json");
+                    config.AddCommandLine(args);
+                })
                 .ConfigureAppConfiguration((hostContext, config) =>
                 {
                     //var entryAssemblyDirectory = Path.GetDirectoryName(Assembly.GetEntryAssembly().Location);
                     //config.SetBasePath(entryAssemblyDirectory);
                     config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
+
+                    // Base JSON settings
+                    config.AddJsonFile("appsettings.json");
+
+                    // Support standard YAML config files
                     var yamlConfig = hostContext.Configuration[YamlConfigKey];
                     if (string.IsNullOrWhiteSpace(yamlConfig))
                     {
-                        yamlConfig = DefaultYamlConfig;
+                        yamlConfig = hostContext.HostingEnvironment.IsProduction()
+                            ? DefaultProductionYamlConfig : DefaultNonProductionYamlConfig;
                         config.AddInMemoryCollection(new Dictionary<string, string> { { YamlConfigKey, yamlConfig } });
                     }
+                    config.AddYamlFile($"{yamlConfig}.yaml", true, true);
 
-                    config.AddYamlFile($"{yamlConfig}.yaml");
+                    // Override with environment specific JSON files
+                    config.AddJsonFile("appsettings." + hostContext.HostingEnvironment.EnvironmentName + ".json", true, true);
+
                     config.AddCommandLine(args);
                 })
                 .ConfigureServices((hostContext, services) =>

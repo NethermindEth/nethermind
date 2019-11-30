@@ -16,7 +16,8 @@ namespace Cortex.BeaconNode.Tests
             var services = new ServiceCollection();
             services.AddLogging(configure => configure.AddConsole());
             var configuration = new ConfigurationBuilder()
-                .AddInMemoryCollection(GetMinimalConfigurationDictionary())
+                .AddJsonFile("appsettings.Development.json")
+                //.AddInMemoryCollection(GetMinimalConfigurationDictionary())
                 .Build();
             services.AddBeaconNode(configuration);
 

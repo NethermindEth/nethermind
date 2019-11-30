@@ -334,3 +334,4 @@ ASALocalRun/
 
 # Include tool runtime debug files
 !tools/**/*.pdb
+configuration/Output
