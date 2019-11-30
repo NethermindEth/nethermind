@@ -24,6 +24,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Queries
     {
         public bool OnlyUnconfirmed { get; set; }
         public bool OnlyNotRejected { get; set; }
+        public bool OnlyPending { get; set; }
         public bool EligibleToRefund { get; set; }
         public long CurrentBlockTimestamp { get; set; }
     }

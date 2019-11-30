@@ -32,6 +32,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IAbiEncoder AbiEncoder { get; }
         public IRlpDecoder<DataAsset> DataAssetRlpDecoder { get; }
         public IDepositService DepositService { get; }
+        public GasPriceService GasPriceService { get; }
+        public TransactionService TransactionService { get; }
         public INdmDataPublisher NdmDataPublisher { get; }
         public IJsonRpcNdmConsumerChannel JsonRpcNdmConsumerChannel { get; }
         public INdmConsumerChannelManager NdmConsumerChannelManager { get; }
@@ -39,6 +41,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
 
         public NdmCreatedServices(Address consumerAddress,
             IAbiEncoder abiEncoder, IRlpDecoder<DataAsset> dataAssetRlpDecoder, IDepositService depositService,
+            GasPriceService gasPriceService, TransactionService transactionService,
             INdmDataPublisher ndmDataPublisher, IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel,
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmBlockchainBridge blockchainBridge)
         {
@@ -46,6 +49,8 @@ namespace Nethermind.DataMarketplace.Infrastructure
             AbiEncoder = abiEncoder;
             DataAssetRlpDecoder = dataAssetRlpDecoder;
             DepositService = depositService;
+            GasPriceService = gasPriceService;
+            TransactionService = transactionService;
             NdmDataPublisher = ndmDataPublisher;
             JsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             NdmConsumerChannelManager = ndmConsumerChannelManager;

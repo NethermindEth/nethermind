@@ -75,11 +75,15 @@ namespace Nethermind.DataMarketplace.Core.Configs
         string PluginsPath { get; }
         [ConfigItem(Description = "Path to the directory, where NDM databases will be kept, when using RocksDB provider", DefaultValue = "ndm")]
         string DatabasePath { get; }
-        
         [ConfigItem(Description = "If 'true' then JSON RPC calls will be redirected to the specified proxies.", DefaultValue = "false")]
         bool ProxyEnabled { get; }
-        
         [ConfigItem(Description = "'List of JSON RPC URLs proxies.", DefaultValue = "")]
         string[] JsonRpcUrlProxies { get; }
+        [ConfigItem(Description = "Gas price (make deposit, claim payment etc.).", DefaultValue = "20000000000")]
+        UInt256 GasPrice { get; }
+        [ConfigItem(Description = "Gas price type ('custom', 'safeLow', 'average', 'fast', 'fastest').", DefaultValue = "custom")]
+        string GasPriceType { get; }
+        [ConfigItem(Description = "Percentage multiplier (by default 110%) for calculating gas price when canceling transaction.", DefaultValue = "110")]
+        uint CancelTransactionGasPricePercentageMultiplier { get; set; } 
     }
 }

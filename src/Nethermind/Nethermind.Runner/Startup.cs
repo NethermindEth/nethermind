@@ -59,7 +59,7 @@ namespace Nethermind.Runner
             IJsonRpcService jsonRpcService)
         {
             _jsonSerializer = new EthereumJsonSerializer();
-            foreach (var converter in jsonRpcService.Converters)
+            foreach (JsonConverter converter in jsonRpcService.Converters)
             {
                 _jsonSerializer.RegisterConverter(converter);
             }

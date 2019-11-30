@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Consumers.Shared
         
         Task<DepositDetails> GetDepositAsync(Keccak depositId);
         Task<PagedResult<DepositDetails>> GetDepositsAsync(GetDeposits query);
-        Task<Keccak> MakeDepositAsync(Keccak assetId, uint units, UInt256 value);
+        Task<Keccak> MakeDepositAsync(Keccak assetId, uint units, UInt256 value, UInt256? gasPrice = null);
 
         Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query);
         Task<Keccak> RequestDepositApprovalAsync(Keccak assetId, string kyc);

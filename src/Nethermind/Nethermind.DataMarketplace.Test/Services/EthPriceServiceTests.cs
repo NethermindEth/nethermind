@@ -14,8 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
@@ -28,12 +30,14 @@ namespace Nethermind.DataMarketplace.Test.Services
     {
         private IHttpClient _client;
         private IEthPriceService _ethPriceService;
+        private ITimestamper _timestamper;
 
         [SetUp]
         public void Setup()
         {
             _client = Substitute.For<IHttpClient>();
-            _ethPriceService = new EthPriceService(_client, LimboLogs.Instance);
+            _timestamper = new Timestamper(DateTime.UtcNow);
+            _ethPriceService = new EthPriceService(_client, _timestamper, LimboLogs.Instance);
         }
 
         [Test]
@@ -50,6 +54,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _client.GetAsync<EthPriceService.Result[]>(Arg.Any<string>()).ReturnsForAnyArgs(results);
             await _ethPriceService.UpdateAsync();
             _ethPriceService.UsdPrice.Should().Be(price);
+            _ethPriceService.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
             await _client.ReceivedWithAnyArgs().GetAsync<EthPriceService.Result[]>(Arg.Any<string>());
         }
     }

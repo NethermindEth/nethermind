@@ -20,6 +20,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {
@@ -30,13 +31,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
         public DataAssetForRpc DataAsset { get; set; }
         public Address Consumer { get; set; }
         public uint Timestamp { get; set; }
-        public Keccak TransactionHash { get; set; }
+        public TransactionInfoForRpc Transaction { get; set; }
         public uint ConfirmationTimestamp { get; set; }
         public bool Confirmed { get; set; }
         public bool Rejected { get; set; }
         public bool Expired { get; set; }
         public bool RefundClaimed { get; set; }
-        public Keccak ClaimedRefundTransactionHash { get; set; }
+        public TransactionInfoForRpc ClaimedRefundTransaction { get; set; }
         public uint ConsumedUnits { get; set; }
         public string Kyc { get; set; }
         public uint Confirmations { get; set; }
@@ -53,13 +54,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
             DataAsset = new DataAssetForRpc(deposit.DataAsset);
             Consumer = deposit.Consumer;
             Timestamp = deposit.Timestamp;
-            TransactionHash = deposit.TransactionHash;
+            Transaction = deposit.Transaction is null ? null : new TransactionInfoForRpc(deposit.Transaction);
             ConfirmationTimestamp = deposit.ConfirmationTimestamp;
             Confirmed = deposit.Confirmed;
             Rejected = deposit.Rejected;
             Expired = deposit.IsExpired(timestamp);
             RefundClaimed = deposit.RefundClaimed;
-            ClaimedRefundTransactionHash = deposit.ClaimedRefundTransactionHash;
+            ClaimedRefundTransaction = deposit.ClaimedRefundTransaction is null
+                ? null
+                : new TransactionInfoForRpc(deposit.ClaimedRefundTransaction);
             ConsumedUnits = deposit.ConsumedUnits;
             Kyc = deposit.Kyc;
             Confirmations = deposit.Confirmations;
