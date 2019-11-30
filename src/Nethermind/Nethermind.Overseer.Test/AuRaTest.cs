@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
@@ -28,9 +26,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Overseer.Test.Framework;
-using Nethermind.Overseer.Test.JsonRpc;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.Overseer.Test
@@ -96,46 +92,5 @@ namespace Nethermind.Overseer.Test
             var authors = auRaState.Blocks.Take(expectedCount).Select(v => v.Value.Author).Distinct();
             authors.Should().Contain(validators.Select(v => v.Address), "each validator produced a block.");
         }
-    }
-
-    public class AuRaContext : TestContextBase<AuRaContext, AuRaState>
-    {
-        public AuRaContext(AuRaState state) : base(state)
-        {
-        }
-
-        public AuRaContext ReadBlockAuthors()
-        {
-            for (int i = 1; i <= State.BlocksCount; i++)
-            {
-                ReadBlockAuthor(i);
-            }
-            
-            return this;
-        }
-        
-        public AuRaContext ReadBlockNumber()
-        {
-            IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc("Read block number", "eth_blockNumber",
-                () => client.PostAsync<long>("eth_blockNumber"), stateUpdater: (s, r) => s.BlocksCount = r.Result
-            );
-        }
-        
-        private AuRaContext ReadBlockAuthor(long blockNumber)
-        {
-            IJsonRpcClient client = TestBuilder.CurrentNode.JsonRpcClient;
-            return AddJsonRpc("Read block", "eth_getBlockByNumber",
-                () => client.PostAsync<JObject>("eth_getBlockByNumber", new object[] {blockNumber, false}),
-                stateUpdater: (s, r) => s.Blocks.Add(
-                    Convert.ToInt64(r.Result["number"].Value<string>(), 16), 
-                    (r.Result["miner"].Value<string>(), Convert.ToInt64(r.Result["step"].Value<string>(), 16))));
-        }
-    }
-
-    public class AuRaState : ITestState
-    {
-        public IDictionary<long, (string Author, long Step)> Blocks { get; set; } = new SortedDictionary<long, (string Author, long Step)>();
-        public long BlocksCount { get; set; }
     }
 }
