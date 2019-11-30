@@ -14,21 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
-
-namespace Nethermind.AuRa
+namespace Nethermind.Core.Specs.ChainSpecStyle
 {
-    public static class AuraDifficultyCalculator
+    public static class ValidatorTypeExtensions
     {
-        public static readonly UInt256 MaxDifficulty;
-
-        static AuraDifficultyCalculator()
-        {
-            UInt256.Create(out MaxDifficulty, UInt128.MaxValue, UInt128.Zero);
-        }
-
-        public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L) =>
-            MaxDifficulty + (UInt256)parentStep - (UInt256)currentStep + (UInt256)emptyStepsCount;
+        public static bool CanChangeImmediately(this AuRaParameters.ValidatorType validatorType) =>
+            validatorType switch
+            {
+                AuRaParameters.ValidatorType.Contract => false,
+                AuRaParameters.ValidatorType.ReportingContract => false,
+                AuRaParameters.ValidatorType.List => true,
+                AuRaParameters.ValidatorType.Multi => true,
+                _ => false
+            };
     }
 }

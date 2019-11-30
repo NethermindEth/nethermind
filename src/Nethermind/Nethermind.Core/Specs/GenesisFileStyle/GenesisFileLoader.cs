@@ -39,9 +39,13 @@ namespace Nethermind.Core.Specs.GenesisFileStyle
 
         public ChainSpec Load(byte[] data)
         {
+            return Load(System.Text.Encoding.UTF8.GetString(data));
+        }
+
+        public ChainSpec Load(string jsonData)
+        {
             try
             {
-                string jsonData = System.Text.Encoding.UTF8.GetString(data);
                 var genesisJson = _serializer.Deserialize<GenesisFileJson>(jsonData);
                 var chainSpec = new ChainSpec();
 

@@ -53,8 +53,7 @@ namespace Nethermind.AuRa
         private readonly ITxPool _txPool;
         private Task _producerTask;
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        private readonly AuraDifficultyCalculator _difficultyCalculator;
-
+        
         public AuRaBlockProducer(ITxPool txPool,
             IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
@@ -76,7 +75,6 @@ namespace Nethermind.AuRa
             _stateProvider = stateProvider  ?? throw new ArgumentNullException(nameof(stateProvider));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _difficultyCalculator = new AuraDifficultyCalculator(_auRaStepCalculator);
         }
 
         public void Start()
@@ -126,24 +124,23 @@ namespace Nethermind.AuRa
 
         private Block PrepareBlock(BlockHeader parentHeader)
         {
-            Block parent = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.None);
             UInt256 timestamp = _timestamper.EpochSeconds;
 
             BlockHeader header = new BlockHeader(
-                parent.Hash,
+                parentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 _nodeAddress,
-                _difficultyCalculator.CalculateDifficulty(parent.Header),
-                parent.Number + 1,
-                parent.GasLimit,
-                timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
+                AuraDifficultyCalculator.CalculateDifficulty(parentHeader.AuRaStep.Value, _auRaStepCalculator.CurrentStep, 0),
+                parentHeader.Number + 1,
+                parentHeader.GasLimit,
+                timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 AuRaStep = (long) _auRaStepCalculator.CurrentStep,
             };
 
-            header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
-            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
+            header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
+            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentHeader.TotalDifficulty} + {header.Difficulty}.");
 
             var transactions = _txPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
 

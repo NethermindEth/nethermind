@@ -14,21 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
+using System.Collections.Generic;
+using Nethermind.Overseer.Test.Framework;
 
-namespace Nethermind.AuRa
+namespace Nethermind.Overseer.Test
 {
-    public static class AuraDifficultyCalculator
+    public class AuRaState : ITestState
     {
-        public static readonly UInt256 MaxDifficulty;
-
-        static AuraDifficultyCalculator()
-        {
-            UInt256.Create(out MaxDifficulty, UInt128.MaxValue, UInt128.Zero);
-        }
-
-        public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L) =>
-            MaxDifficulty + (UInt256)parentStep - (UInt256)currentStep + (UInt256)emptyStepsCount;
+        public IDictionary<long, (string Author, long Step)> Blocks { get; set; } = new SortedDictionary<long, (string Author, long Step)>();
+        public long BlocksCount { get; set; }
     }
 }

@@ -44,11 +44,12 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             _serializer = serializer;
         }
 
-        public ChainSpec Load(byte[] data)
+        public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));
+
+        public ChainSpec Load(string jsonData)
         {
             try
             {
-                string jsonData = System.Text.Encoding.UTF8.GetString(data);
                 var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 var chainSpec = new ChainSpec();
 
