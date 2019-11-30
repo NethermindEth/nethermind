@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Test
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             string path = "chainspec.json";
             logManager.GetClassLogger().Info($"Loading ChainSpec from {path}");
-            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             foreach (var allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value.Balance);

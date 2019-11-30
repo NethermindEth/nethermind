@@ -35,7 +35,6 @@ namespace Nethermind.AuRa
         private readonly IAuRaValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
-        private readonly AuraDifficultyCalculator _auraDifficultyCalculator;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
         
         public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IAuRaValidator validator, IEthereumEcdsa ecdsa, ILogManager logManager)
@@ -45,7 +44,6 @@ namespace Nethermind.AuRa
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _auraDifficultyCalculator = new AuraDifficultyCalculator(stepCalculator);
         }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
@@ -100,15 +98,15 @@ namespace Nethermind.AuRa
                 // report malicious
             }
             
-            if (_parameters.ValidateScoreTransition >= header.Number)
+            if (header.Number >= _parameters.ValidateScoreTransition)
             {
-                if (header.Difficulty >= _auraDifficultyCalculator.MaxDifficulty)
+                if (header.Difficulty >= AuraDifficultyCalculator.MaxDifficulty)
                 {
-                    if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {_auraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
+                    if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {AuraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
                     return false;
                 }
 
-                var expectedDifficulty = _auraDifficultyCalculator.CalculateDifficulty(parent);
+                var expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, header.AuRaStep.Value, 0);
                 if (header.Difficulty != expectedDifficulty)
                 {
                     if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
@@ -123,8 +121,7 @@ namespace Nethermind.AuRa
         {
             if (header.IsGenesis) return true;
 
-            header.Author ??= GetSealer(header); 
-            
+            header.Author ??= GetSealer(header);
 
             if (header.Author != header.Beneficiary)
             {

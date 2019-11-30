@@ -33,15 +33,12 @@ namespace Nethermind.AuRa.Validators
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            Type = validator.ValidatorType;
         }
         
         protected virtual Address[] Validators { get; set; }
         public int MinSealersForFinalization => Validators.MinSealersForFinalization();
         public int CurrentSealersCount => Validators.Length;
 
-        public AuRaParameters.ValidatorType Type { get; }
-        
         public bool IsValidSealer(Address address, long step) => Validators.GetItemRoundRobin(step) == address;
 
         void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)

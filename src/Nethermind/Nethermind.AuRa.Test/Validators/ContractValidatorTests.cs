@@ -182,16 +182,18 @@ namespace Nethermind.AuRa.Test.Validators
         }
             
 
-        [Test]
-        public void loads_initial_validators_from_contract()
+        [TestCase(1L, false, Description = "on initialize")]
+        [TestCase(10L, true, Description = "when producing block")]
+        public void loads_initial_validators_from_contract(long blockNumber, bool producingBlock)
         {
             var initialValidator = TestItem.AddressA;
             SetupInitialValidators(initialValidator);
-            IAuRaValidatorProcessor validator = new ContractValidator(_validator, new MemDb(), _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
-            
-            _block.Number = 1;
+            var startBlockNumber = 1;
+            IAuRaValidatorProcessor validator = new ContractValidator(_validator, new MemDb(), _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, startBlockNumber);
+
+            _block.Number = blockNumber;
             _block.Beneficiary = initialValidator;
-            validator.PreProcess(_block);
+            validator.PreProcess(_block, producingBlock ? ProcessingOptions.ProducingBlock : ProcessingOptions.None);
 
             // getValidators should have been called
             _transactionProcessor.Received(1)
@@ -200,14 +202,36 @@ namespace Nethermind.AuRa.Test.Validators
                     _block.Header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer));
 
-            // finalizeChange should be called
-            _transactionProcessor.Received(1)
-                .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
-                    _block.Header,
-                    Arg.Is<ITxTracer>(t => t is CallOutputTracer));
-            
+            if (blockNumber == startBlockNumber)
+            {
+                // finalizeChange should be called
+                _transactionProcessor.Received(1)
+                    .Execute(Arg.Is<Transaction>(t => CheckTransaction(t, _finalizeChangeData)),
+                        _block.Header,
+                        Arg.Is<ITxTracer>(t => t is CallOutputTracer));
+            }
+
             // initial validator should be true
             validator.IsValidSealer(initialValidator, 5).Should().BeTrue();
+        }
+
+        [Test]
+        public void loads_initial_validators_from_contract_on_demand()
+        {
+            var validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _logManager, 1);
+            var initialValidator = TestItem.AddressA;
+            SetupInitialValidators(initialValidator);
+            _block.Number = 3;
+            _blockTree.Head.Returns(_block.Header);
+
+            validator.IsValidSealer(initialValidator, 10);
+            
+            // getValidators should have been called
+            _transactionProcessor.Received(1)
+                .Execute(
+                    Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
+                    _block.Header,
+                    Arg.Is<ITxTracer>(t => t is CallOutputTracer));
         }
 
         public static IEnumerable<TestCaseData> ConsecutiveInitiateChangeData

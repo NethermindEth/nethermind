@@ -119,24 +119,36 @@ namespace Nethermind.AuRa.Test.Validators
             _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(x => x == 0 ? 1 : x + 2));
         }
         
-        [Test]
-        public void correctly_consecutively_calls_inner_validators()
+        [TestCase(AuRaParameters.ValidatorType.Contract, 1)]
+        [TestCase(AuRaParameters.ValidatorType.List, 0)]
+        [TestCase(AuRaParameters.ValidatorType.ReportingContract, 2)]
+        public void correctly_consecutively_calls_inner_validators(AuRaParameters.ValidatorType validatorType, int blocksToFinalization)
         {
             // Arrange
+            _validator = GetValidator(validatorType);
             IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _logManager);
             var innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
-            var maxCalls = innerValidatorsFirstBlockCalls.Max() + 10;
+            var maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
             validator.SetFinalizationManager(_finalizationManager);
-            
+
             // Act
-            ProcessBlocks(maxCalls, validator);
+            ProcessBlocks(maxCalls, validator, blocksToFinalization);
 
             // Assert
             var callCountPerValidator = innerValidatorsFirstBlockCalls.Zip(
-                innerValidatorsFirstBlockCalls.Skip(1).Union(new[] {maxCalls}), (b0, b1) => (int)(b1 - b0))
+                innerValidatorsFirstBlockCalls.Values.Skip(1).Union(new[] {maxCalls}), (b0, b1) => (int)(b1 - b0.Value))
                 .ToArray();
 
-            EnsureInnerValidatorsCalled(i => (_innerValidators[innerValidatorsFirstBlockCalls[i]], callCountPerValidator[i]));
+            callCountPerValidator[0] += blocksToFinalization;
+            callCountPerValidator[^1] -= blocksToFinalization;
+
+            long GetFinalizedIndex(int j)
+            {
+                var finalizedIndex = innerValidatorsFirstBlockCalls.Values.ElementAt(j);
+                return finalizedIndex == 1 ? finalizedIndex : finalizedIndex + blocksToFinalization;
+            }
+
+            EnsureInnerValidatorsCalled(i => (_innerValidators[GetFinalizedIndex(i)], callCountPerValidator[i]));
         }
 
         [Test]
@@ -147,22 +159,24 @@ namespace Nethermind.AuRa.Test.Validators
             var validator = new MultiValidator(_validator, _factory, _logManager);
             
             // Act
-            ProcessBlocks(_validator.Validators.Keys.Min(), validator);
+            ProcessBlocks(_validator.Validators.Keys.Min(), validator, 1);
 
             // Assert
             EnsureInnerValidatorsCalled(i => (_innerValidators.ElementAt(i).Value, 0));
         }
-
+        
         [Test]
-        public void initializes_with_lastFinalizedBlockLevel()
+        public void initializes_validator_when_producing_block()
         {
-            _finalizationManager.LastFinalizedBlockLevel.Returns(_validator.Validators.Keys.Skip(1).First());
-            IAuRaValidator validator = new MultiValidator(_validator, _factory, _logManager);
-            validator.SetFinalizationManager(_finalizationManager);
+            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _logManager);
+            var blockNumber = 15;
+            _block.Number = blockNumber;
+            validator.PreProcess(_block, ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(1);
+            _innerValidators.Keys.First().Should().Be(blockNumber + 1);
         }
         
-        private void ProcessBlocks(long count, IAuRaValidatorProcessor validator)
+        private void ProcessBlocks(long count, IAuRaValidatorProcessor validator, int blocksToFinalization)
         {
             for (int i = 1; i < count; i++)
             {
@@ -170,6 +184,14 @@ namespace Nethermind.AuRa.Test.Validators
                 validator.PreProcess(_block);
                 validator.IsValidSealer(Address.Zero, i);
                 validator.PostProcess(_block, Array.Empty<TxReceipt>());
+
+                var finalizedBlock = i - blocksToFinalization;
+                if (finalizedBlock >= 1)
+                {
+                    _finalizationManager.BlocksFinalized += Raise.EventWith(new FinalizeEventArgs(
+                        Build.A.BlockHeader.WithNumber(i).TestObject,
+                        Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
+                }
             }
         }
         
@@ -197,9 +219,9 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
         
-        private long[] GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
+        private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
         {
-            return validator.Validators.Keys.Select(x => Math.Max(x + 1, 1)).OrderBy(k => k).ToArray();
+            return validator.Validators.ToDictionary(x => x.Value, x => Math.Max(x.Key + 1, 1));
         }
         
         private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType)
