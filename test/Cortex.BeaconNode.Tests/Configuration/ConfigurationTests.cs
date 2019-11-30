@@ -166,5 +166,36 @@ namespace Cortex.BeaconNode.Tests.Configuration
             signatureDomains.VoluntaryExit.ShouldNotBe(default);
         }
 
+        [TestMethod]
+        public void BothWithOverride() 
+        {
+            // Arrange
+            var services = new ServiceCollection();
+            services.AddLogging(configure => configure.AddConsole());
+            var configuration = new ConfigurationBuilder()
+                .AddYamlFile("testconfigA.yaml")
+                .AddJsonFile("testappsettingsB.json")
+                .Build();
+            services.AddBeaconNode(configuration);
+            var testServiceProvider = services.BuildServiceProvider();
+
+            // Act
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+
+            // Assert
+
+            // yaml only
+            miscellaneousParameters.MaximumCommitteesPerSlot.ShouldBe(11uL);
+            // json only
+            miscellaneousParameters.TargetCommitteeSize.ShouldBe(22uL);
+            // both yaml and json (jsonshould override)
+            miscellaneousParameters.MaximumValidatorsPerCommittee.ShouldBe(23uL);
+            // json only, different section
+            gweiValues.MaximumEffectiveBalance.ShouldBe(new Gwei(24uL));
+            // yaml only, no section in json
+            timeParameters.SecondsPerSlot.ShouldBe(15uL);
+        }
     }
 }

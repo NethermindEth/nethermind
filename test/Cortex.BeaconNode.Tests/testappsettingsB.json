@@ -1,0 +1,11 @@
+{
+  "BeaconChain": {
+    "MiscellaneousParameters": {
+      "TargetCommitteeSize": 22,
+      "MaximumValidatorsPerCommittee": 23
+    },
+    "GweiValues": {
+      "MaximumEffectiveBalance": 24
+    }
+  }
+}

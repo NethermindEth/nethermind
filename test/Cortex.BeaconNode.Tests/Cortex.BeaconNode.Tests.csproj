@@ -44,4 +44,13 @@
     <ProjectReference Include="..\..\src\Cortex.BeaconNode\Cortex.BeaconNode.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="testappsettingsB.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="testconfigA.yaml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
