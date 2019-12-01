@@ -27,8 +27,7 @@ namespace Cortex.BeaconNode
             //    app.UseExceptionHandler("/Error");
             //}
 
-            // TODO: Turn this back on!
-            //app.UseHttpsRedirection();
+            app.UseHttpsRedirection();
 
             //app.UseStaticFiles();
             app.UseRouting();

@@ -9,15 +9,17 @@ namespace Cortex.BeaconNode
     // TODO: Move to worker / services library
     public class Worker : BackgroundService
     {
-        private const string YamlConfigKey = "config";
+        private const string ConfigKey = "config";
 
         private readonly IConfiguration _configuration;
         private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
         private readonly ILogger _logger;
+        private readonly IHostEnvironment _environment;
 
-        public Worker(ILogger<Worker> logger, IConfiguration configuration, BeaconNodeConfiguration beaconNodeConfiguration)
+        public Worker(ILogger<Worker> logger, IHostEnvironment environment, IConfiguration configuration, BeaconNodeConfiguration beaconNodeConfiguration)
         {
             _logger = logger;
+            _environment = environment;
             _configuration = configuration;
             _beaconNodeConfiguration = beaconNodeConfiguration;
         }
@@ -25,9 +27,9 @@ namespace Cortex.BeaconNode
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var version = _beaconNodeConfiguration.Version;
-            var yamlConfig = _configuration[YamlConfigKey];
-            _logger.LogInformation("'{ProductTokenVersion}' started with config '{Config}'",
-                version, yamlConfig);
+            var yamlConfig = _configuration[ConfigKey];
+            _logger.LogInformation(HostEvent.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}')",
+                version, _environment.EnvironmentName, yamlConfig);
 
             while (!stoppingToken.IsCancellationRequested)
             {
