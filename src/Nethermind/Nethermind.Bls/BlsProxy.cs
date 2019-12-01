@@ -40,6 +40,9 @@ namespace Nethermind.Bls
         
         private const int BlsSignatureLength = 3 * 96;
         private const int SignatureLength = 96;
+        
+        private const int HashLength = 32;
+        private const int DomainLength = 8;
 
         static BlsProxy()
         {
@@ -110,9 +113,57 @@ namespace Nethermind.Bls
             }
         }
         
-        public static void Sign(out Span<byte> signatureBytes, Span<byte> privateKeyBytes, Span<byte> hashBytes, Span<byte> domainBytes)
+        public static unsafe void HashWithDomain(out Span<byte> signatureBytes, out Span<byte> blsSignatureBytes, Span<byte> hashBytes, Span<byte> domainBytes)
         {
-            throw new NotImplementedException();
+            blsSignatureBytes = new byte[BlsSignatureLength];
+            signatureBytes = new byte[SignatureLength];
+            
+            Span<byte> hashWithDomain = stackalloc byte[HashLength + DomainLength];
+            hashBytes.CopyTo(hashWithDomain.Slice(0, 32));
+            domainBytes.CopyTo(hashWithDomain.Slice(32, 8));
+            
+            fixed (byte* signatureBytesRef = signatureBytes)
+            fixed (byte* blsSignatureBytesRef = blsSignatureBytes)
+            fixed (byte* hashWithDomainRef = hashWithDomain)
+            {
+                blsHashWithDomainToFp2(signatureBytesRef, hashWithDomainRef);
+                int bytesRead = blsSignatureDeserialize(blsSignatureBytesRef, signatureBytesRef, SignatureLength);
+                if (bytesRead != SignatureLength)
+                {
+                    throw new CryptographicException($"Bytes read was {bytesRead} when deserializing signature");
+                }
+            }
+        }
+        
+        public static unsafe void Sign(out Span<byte> signatureBytes, Span<byte> privateKeyBytes, Span<byte> hashBytes, Span<byte> domainBytes)
+        {
+            Span<byte> blsPrivateKeyBytes = stackalloc byte[BlsPrivateKeyLength];
+            Span<byte> blsSignatureBytes = stackalloc byte[BlsSignatureLength];
+            signatureBytes = new byte[SignatureLength];
+            
+            Span<byte> hashWithDomain = stackalloc byte[HashLength + DomainLength];
+            hashBytes.CopyTo(hashWithDomain.Slice(0, 32));
+            domainBytes.CopyTo(hashWithDomain.Slice(32, 8));
+
+            fixed (byte* privateKeyBytesRef = privateKeyBytes)
+            fixed (byte* blsPrivateKeyRef = blsPrivateKeyBytes)
+            fixed (byte* signatureBytesRef = signatureBytes)
+            fixed (byte* blsSignatureBytesRef = blsSignatureBytes)
+            fixed (byte* hashWithDomainRef = hashWithDomain)
+            {
+                int bytesRead = blsSecretKeyDeserialize(blsPrivateKeyRef, privateKeyBytesRef, PrivateKeyLength);
+                if (bytesRead != PrivateKeyLength)
+                {
+                    throw new CryptographicException($"Bytes read was {bytesRead} when deserializing private key");
+                }
+
+                blsSignHashWithDomain(blsSignatureBytesRef, blsPrivateKeyRef, hashWithDomainRef);
+                int bytesWritten = blsSignatureSerialize(signatureBytesRef, SignatureLength, blsSignatureBytesRef);
+                if (bytesWritten != SignatureLength)
+                {
+                    throw new CryptographicException($"Bytes read was {bytesRead} when deserializing signature");
+                }
+            }
         }
 
         [DllImport("bls384_256.dll")]
@@ -139,6 +190,9 @@ namespace Nethermind.Bls
         [DllImport("bls384_256.dll")]
         private static extern void blsSetETHserialization(int ETHserialization);
 
+        [DllImport("bls384_256.dll")]
+        private static extern unsafe void blsHashWithDomainToFp2(byte* signature, byte* hashWithDomain);
+        
         [DllImport("bls384_256.dll")]
         private static extern unsafe int blsSignHash(byte* blsSignature, byte* blsPrivateKey, byte* hash, int size);
         

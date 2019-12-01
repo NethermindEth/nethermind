@@ -81,14 +81,14 @@ namespace Ethereum2.Bls.Test
         }
 
         [Test]
-        [Ignore("not yet implemented")]
         public void Bls_msg_hash_compressed()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_compressed", "small"));
             (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
             var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
             string[] outputHex = node.ArrayProp<string>("output");
-            throw new NotImplementedException();
+            BlsProxy.HashWithDomain(out Span<byte> signatureBytes, out Span<byte> blsSignatureBytes, Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
+            Assert.AreEqual(string.Join(string.Empty, outputHex), signatureBytes.ToHexString());
         }
 
         [Test]
@@ -121,7 +121,6 @@ namespace Ethereum2.Bls.Test
         }
 
         [Test]
-        [Ignore("not yet implemented")]
         public void Bls_sign_msg()
         {
             string[] valid = Directory.GetDirectories(Path.Combine("sign_msg", "small"));
@@ -130,7 +129,7 @@ namespace Ethereum2.Bls.Test
             string outputHex = node.Prop<string>("output");
 
             BlsProxy.Sign(out Span<byte> signatureBytes, Bytes.FromHexString(input.PrivateKey), Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
-            throw new NotImplementedException();
+            Assert.AreEqual(outputHex, signatureBytes.ToHexString(true));
         }
 
         private static (YamlNode rootNode, YamlNodeType nodeType) LoadValue(string file)
