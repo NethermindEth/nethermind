@@ -75,7 +75,7 @@ namespace Nethermind.AuRa.Validators
             for (int i = 0; i < e.FinalizedBlocks.Count; i++)
             {
                 var finalizedBlockHeader = e.FinalizedBlocks[i];
-                if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !CanChangeImmediately(validator.ValidatorType))
+                if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(e.FinalizingBlock.Number, validator);
                     if (_logger.IsInfo && !_isProducing) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.ToString(BlockHeader.Format.Short)} at block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
@@ -90,7 +90,7 @@ namespace Nethermind.AuRa.Validators
             if (isProducingBlock && TryGetLastValidator(block.Number - 1, out var validatorInfo))
             {
                 AuRaParameters.Validator validator = validatorInfo?.Value;
-                if (CanChangeImmediately(validator.ValidatorType))
+                if (validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(block.Number, validator);
                 }
@@ -98,16 +98,6 @@ namespace Nethermind.AuRa.Validators
 
             _currentValidator?.PreProcess(block, options);
         }
-
-        private bool CanChangeImmediately(AuRaParameters.ValidatorType validatorType) =>
-            validatorType switch
-            {
-                AuRaParameters.ValidatorType.Contract => false,
-                AuRaParameters.ValidatorType.ReportingContract => false,
-                AuRaParameters.ValidatorType.List => true,
-                AuRaParameters.ValidatorType.Multi => true,
-                _ => false
-            };
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
         
@@ -119,7 +109,7 @@ namespace Nethermind.AuRa.Validators
 
             if (TryGetValidator(block.Number, out var validator))
             {
-                if (CanChangeImmediately(validator.ValidatorType))
+                if (validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(block.Number, validator);
                     if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
@@ -158,7 +148,5 @@ namespace Nethermind.AuRa.Validators
             _currentValidator = _validatorFactory.CreateValidatorProcessor(validator, finalizedAtBlockNumber + 1);
             _currentValidator.SetFinalizationManager(_blockFinalizationManager, _isProducing);
         }
-
-        public AuRaParameters.ValidatorType Type => AuRaParameters.ValidatorType.Multi;
     }
 }

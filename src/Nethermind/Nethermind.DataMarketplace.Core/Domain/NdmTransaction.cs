@@ -22,13 +22,15 @@ namespace Nethermind.DataMarketplace.Core.Domain
     public class NdmTransaction
     {
         public Transaction Transaction { get; }
+        public bool IsPending { get; }
         public long BlockNumber { get; }
         public Keccak BlockHash { get; }
         public long GasUsed { get; set; }
 
-        public NdmTransaction(Transaction transaction, long blockNumber, Keccak blockHash, long gasUsed)
+        public NdmTransaction(Transaction transaction, bool isPending, long blockNumber, Keccak blockHash, long gasUsed)
         {
             Transaction = transaction;
+            IsPending = isPending;
             BlockNumber = blockNumber;
             BlockHash = blockHash;
             GasUsed = gasUsed;

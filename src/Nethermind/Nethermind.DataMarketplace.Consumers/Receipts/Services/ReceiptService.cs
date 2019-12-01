@@ -156,7 +156,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
         }
 
         private async Task<(DepositDetails deposit, ConsumerSession session)> TryGetDepositAndSessionAsync(
-            Keccak depositId, int fetchSessionRetries = 3, int fetchSessionRetryDelayMilliseconds = 3000)
+            Keccak depositId, int fetchSessionRetries = 5, int fetchSessionRetryDelayMilliseconds = 3000)
         {
             var deposit = await _depositProvider.GetAsync(depositId);
             if (deposit is null)

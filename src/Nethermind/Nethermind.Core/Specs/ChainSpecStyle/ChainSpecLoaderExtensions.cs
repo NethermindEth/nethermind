@@ -50,7 +50,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 }
             }
 
-            return chainSpecLoader.Load(File.ReadAllBytes(filePath));
+            return chainSpecLoader.Load(File.ReadAllText(filePath));
         }
     }
 }

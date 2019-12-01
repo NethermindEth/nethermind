@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
@@ -120,7 +121,7 @@ namespace Ethereum.Test.Base
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value);
+                    storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);

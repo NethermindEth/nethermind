@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,7 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -42,7 +44,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         ResultWrapper<ConsumerSessionForRpc[]> ndm_getActiveConsumerSessions();
         Task<ResultWrapper<PagedResult<DepositDetailsForRpc>>> ndm_getDeposits(GetDeposits query = null);
         Task<ResultWrapper<DepositDetailsForRpc>> ndm_getDeposit(Keccak depositId);
-        Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit);
+        Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null);
         Task<ResultWrapper<string>> ndm_sendDataRequest(Keccak depositId);
         Task<ResultWrapper<Keccak>> ndm_finishSession(Keccak depositId);
         Task<ResultWrapper<Keccak>> ndm_enableDataStream(Keccak depositId, string client, string[] args);
@@ -58,6 +60,13 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<FaucetResponseForRpc>> ndm_requestEth(Address address);
         Task<ResultWrapper<NdmProxyResponseForRpc>> ndm_getProxy();
         Task<ResultWrapper<bool>> ndm_setProxy(string[] urls);
-        ResultWrapper<decimal> ndm_getEthUsdPrice();
+        ResultWrapper<EthUsdPriceForRpc> ndm_getEthUsdPrice();
+        ResultWrapper<GasPriceTypesForRpc> ndm_getGasPrice();
+        Task<ResultWrapper<bool>> ndm_setGasPrice(string gasPriceOrType);
+        Task<ResultWrapper<Keccak>> ndm_updateDepositGasPrice(Keccak depositId, UInt256 gasPrice);
+        Task<ResultWrapper<Keccak>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice);
+        Task<ResultWrapper<Keccak>> ndm_cancelDeposit(Keccak depositId);
+        Task<ResultWrapper<Keccak>> ndm_cancelRefund(Keccak depositId);
+        Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions();
     }
 }

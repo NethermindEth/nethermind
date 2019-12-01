@@ -21,5 +21,6 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
     public interface IChainSpecLoader
     {
         ChainSpec Load(byte[] data);
+        ChainSpec Load(string jsonData);
     }
 }

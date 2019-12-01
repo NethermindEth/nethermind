@@ -19,25 +19,16 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.AuRa
 {
-    public class AuraDifficultyCalculator
+    public static class AuraDifficultyCalculator
     {
-        private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private static readonly UInt256 maxDifficulty;
-        
+        public static readonly UInt256 MaxDifficulty;
+
         static AuraDifficultyCalculator()
         {
-            UInt256.Create(out maxDifficulty, UInt128.MaxValue, UInt128.Zero);
+            UInt256.Create(out MaxDifficulty, UInt128.MaxValue, UInt128.Zero);
         }
 
-        public AuraDifficultyCalculator(IAuRaStepCalculator auRaStepCalculator)
-        {
-            _auRaStepCalculator = auRaStepCalculator;
-        }
-
-        public UInt256 CalculateDifficulty(BlockHeader parent) =>
-            maxDifficulty + (UInt256)parent.AuRaStep.Value - (UInt256)_auRaStepCalculator.CurrentStep; // TODO: + empty_steps
-        
-
-        public UInt256 MaxDifficulty => maxDifficulty;
+        public static UInt256 CalculateDifficulty(long parentStep, long currentStep, long emptyStepsCount = 0L) =>
+            MaxDifficulty + (UInt256)parentStep - (UInt256)currentStep + (UInt256)emptyStepsCount;
     }
 }

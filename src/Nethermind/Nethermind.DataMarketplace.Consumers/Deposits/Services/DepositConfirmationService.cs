@@ -49,17 +49,31 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         
         public async Task TryConfirmAsync(DepositDetails deposit)
         {
-            if (deposit.Confirmed || deposit.Rejected)
+            if (deposit.Transaction is null || deposit.Confirmed || deposit.Rejected ||
+                deposit.Transaction.State == TransactionState.Canceled)
             {
                 return;
             }
 
-            var transactionHash = deposit.TransactionHash;
-            var transaction = await _blockchainBridge.GetTransactionAsync(deposit.TransactionHash);                        
+            var transactionHash = deposit.Transaction.Hash;
+            var transaction = await _blockchainBridge.GetTransactionAsync(transactionHash);                        
             if (transaction is null)
             {
                 if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
                 return;
+            }
+
+            if (transaction.IsPending)
+            {
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' is still pending.");
+                return;
+            }
+
+            if (deposit.Transaction.State == TransactionState.Pending)
+            {
+                deposit.Transaction.SetIncluded();
+                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' was included into block: {transaction.BlockNumber}.");
+                await _depositRepository.UpdateAsync(deposit);
             }
 
             var headNumber = await _blockchainBridge.GetLatestBlockNumberAsync();
@@ -97,6 +111,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return (0, false);
             }
             
+            var transactionHash = deposit.Transaction.Hash;
             var confirmations = 0u;
             var block = await _blockchainBridge.FindBlockAsync(headNumber);
             do
@@ -111,7 +126,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 if (confirmationTimestamp > 0)
                 {
                     confirmations++;
-                    if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}', transaction hash: '{deposit.TransactionHash}', timestamp: {confirmationTimestamp}.");
+                    if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has been confirmed in block number: {block.Number}, hash: '{block.Hash}', transaction hash: '{transactionHash}', timestamp: {confirmationTimestamp}.");
                     if (deposit.ConfirmationTimestamp == 0)
                     {
                         deposit.SetConfirmationTimestamp(confirmationTimestamp);
@@ -141,7 +156,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             var blocksDifference = latestBlockNumber - transaction.BlockNumber;
             if (blocksDifference >= _requiredBlockConfirmations && confirmations < _requiredBlockConfirmations)
             {
-                if (_logger.IsError) _logger.Error($"Deposit: '{deposit.Id}' has been rejected - missing confirmation in block number: {block.Number}, hash: {block.Hash}' (transaction hash: '{deposit.TransactionHash}').");
+                if (_logger.IsError) _logger.Error($"Deposit: '{deposit.Id}' has been rejected - missing confirmation in block number: {block.Number}, hash: {block.Hash}' (transaction hash: '{transactionHash}').");
                 return (confirmations, true);
             }
 

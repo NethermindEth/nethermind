@@ -18,10 +18,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Json;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Test.Runner
@@ -30,12 +31,16 @@ namespace Nethermind.State.Test.Runner
     {
         private IBlockchainTestsSource _testsSource;
         private readonly bool _alwaysTrace;
+        private readonly bool _traceMemory;
+        private readonly bool _traceStack;
         private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace)
+        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace, bool traceMemory, bool traceStack)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
             _alwaysTrace = alwaysTrace;
+            _traceMemory = traceMemory;
+            _traceStack = traceStack;
             Setup(null);
         }
 
@@ -55,6 +60,8 @@ namespace Nethermind.State.Test.Runner
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
+        private IntrinsicGasCalculator _calculator = new IntrinsicGasCalculator();
+        
         public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
@@ -70,12 +77,14 @@ namespace Nethermind.State.Test.Runner
                 if (!(result?.Pass ?? false))
                 {
                     StateTestTxTracer txTracer = new StateTestTxTracer();
+                    txTracer.IsTracingMemory = _traceMemory;
+                    txTracer.IsTracingStack = _traceStack;
                     result = RunTest(test, txTracer);
 
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
-                
+                    txTrace.Result.GasUsed -= _calculator.Calculate(test.Transaction, test.Fork);
                     WriteErr(txTrace);    
                 }
                 
@@ -83,7 +92,8 @@ namespace Nethermind.State.Test.Runner
             }
             
             WriteOut(results);
-            
+
+            Console.ReadLine();
             return results;
         }
     }

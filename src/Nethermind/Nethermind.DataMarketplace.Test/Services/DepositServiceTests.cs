@@ -48,7 +48,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Deposit deposit = new Deposit(new Keccak("0x7b1a21b95d2564c0e65807e921470575b20215d5430644014640009776d2fe04"), 336, 1549531335u, UInt256.Parse("33600000000000000000"));
             Address address = new Address("2b5ad5c4795c026514f8317c7a215e218dccd6cf");
-            Keccak depositTxHash = await depositService.MakeDepositAsync(address, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(address, deposit, 20.GWei());
             _bridge.IncrementNonce(address);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
-            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -72,7 +72,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
-            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -84,7 +84,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
-            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -136,7 +136,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             DepositService depositService = new DepositService(_ndmBridge, _abiEncoder, _wallet, _contractAddress);
             Deposit deposit = new Deposit(Keccak.Compute("a secret"), 10, (uint) new Timestamper().EpochSeconds + 86000, 1.Ether());
-            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
             _bridge.IncrementNonce(_consumerAccount);
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             UInt256 balance = await depositService.ReadDepositBalanceAsync(_consumerAccount, deposit.Id);

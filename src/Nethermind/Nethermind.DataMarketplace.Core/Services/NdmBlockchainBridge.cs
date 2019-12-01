@@ -67,13 +67,15 @@ namespace Nethermind.DataMarketplace.Core.Services
         public Task<NdmTransaction> GetTransactionAsync(Keccak transactionHash)
         {
             var (receipt, transaction) = _blockchainBridge.GetTransaction(transactionHash);
-            if (receipt is null || transaction is null)
+            if (transaction is null)
             {
                 return Task.FromResult<NdmTransaction>(null);
             }
 
-            return Task.FromResult(new NdmTransaction(transaction, receipt.BlockNumber, receipt.BlockHash,
-                receipt.GasUsed));
+            var isPending = receipt is null;
+
+            return Task.FromResult(new NdmTransaction(transaction, isPending, receipt?.BlockNumber ?? 0,
+                receipt?.BlockHash, receipt?.GasUsed ?? 0));
         }
 
         public Task<int> GetNetworkIdAsync() => Task.FromResult(_blockchainBridge.GetNetworkId());
