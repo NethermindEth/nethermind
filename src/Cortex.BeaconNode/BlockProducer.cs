@@ -7,17 +7,18 @@ namespace Cortex.BeaconNode
 {
     public class BlockProducer
     {
-        private readonly IStore _store;
+        private readonly IStoreProvider _storeProvider;
 
-        public BlockProducer(IStore store)
+        public BlockProducer(IStoreProvider storeProvider)
         {
-            _store = store;
+            _storeProvider = storeProvider;
         }
 
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
         {
+            var store = _storeProvider.GetStore();
 
-            var head = await _store.GetHeadAsync();
+            var head = await store.GetHeadAsync();
 
             // get previous head block, based on the fork choice
             // get latest state

@@ -34,5 +34,21 @@ namespace Cortex.BeaconNode.Data
                 _beaconChainUtility);
             return store;
         }
+
+        public IStore GetStore()
+        {
+            // TODO: Implement this; for now, just return a dummy genesis store;
+
+            var dummy = CreateStore(
+                0,
+                0,
+                new Checkpoint(Epoch.Zero, Hash32.Zero),
+                new Checkpoint(Epoch.Zero, Hash32.Zero),
+                new Checkpoint(Epoch.Zero, Hash32.Zero),
+                new Dictionary<Hash32, BeaconBlock>(),
+                new Dictionary<Hash32, BeaconState>(),
+                new Dictionary<Checkpoint, BeaconState>());
+            return dummy;
+        }
     }
 }
