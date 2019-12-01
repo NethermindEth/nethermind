@@ -128,10 +128,10 @@ namespace Nethermind.Bls
             {
                 blsHashWithDomainToFp2(signatureBytesRef, hashWithDomainRef);
                 int bytesRead = blsSignatureDeserialize(blsSignatureBytesRef, signatureBytesRef, SignatureLength);
-                if (bytesRead != SignatureLength)
-                {
-                    throw new CryptographicException($"Bytes read was {bytesRead} when deserializing signature");
-                }
+//                if (bytesRead != SignatureLength)
+//                {
+//                    throw new CryptographicException($"Bytes read was {bytesRead} when deserializing signature");
+//                }
             }
         }
         
