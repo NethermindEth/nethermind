@@ -92,9 +92,9 @@ namespace Nethermind.AuRa
             }
 
             // Report malice if the validator produced other sibling blocks in the same step.
-            if (_receivedSteps.ContainsOrInsert(header.AuRaStep.Value, header.Beneficiary, _validator.CurrentSealersCount))
+            if (_receivedSteps.ContainsOrInsert(header, _validator.CurrentSealersCount))
             {
-                if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
+                if (_logger.IsWarn) _logger.Warn($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 // report malicious
             }
             
@@ -144,27 +144,41 @@ namespace Nethermind.AuRa
 
         private class ReceivedSteps
         {
-            private readonly List<(long Step, Address Author, ISet<Address> Authors)> _list = new List<(long Step, Address Author, ISet<Address> Authors)>();
+            private readonly List<(long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks)> _list 
+                = new List<(long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks)>();
+            
             private const int CacheSizeFullRoundsMultiplier = 4;
 
-            public bool ContainsOrInsert(long step, Address author, int validatorCount)
+            public bool ContainsOrInsert(BlockHeader header, int validatorCount)
             {
+                long step = header.AuRaStep.Value;
+                Address author = header.Beneficiary;
+                var hash = header.Hash;
                 int index = BinarySearch(step);
                 bool contains = index > 0;
+                var item = (author, hash);
                 if (contains)
                 {
                     var stepElement = _list[index];
-                    contains = stepElement.Authors?.Contains(author) ?? stepElement.Author == author;
+                    contains = stepElement.AuthorBlocks?.Contains(item) ?? stepElement.AthtorBlock == item;
                     if (!contains)
                     {
-                        stepElement.Author = null;
-                        stepElement.Authors ??= new HashSet<Address>();
-                        stepElement.Authors.Add(author);
+                        if (stepElement.AuthorBlocks == null)
+                        {
+                            stepElement.AuthorBlocks = new HashSet<(Address Author, Keccak Block)>
+                            {
+                                stepElement.AthtorBlock.Value
+                            };
+                            
+                            stepElement.AthtorBlock = null;
+                        }
+
+                        stepElement.AuthorBlocks.Add(item);
                     }
                 }
                 else
                 {
-                    _list.Add((step, author, null));
+                    _list.Add((step, item, null));
                 }
                 
                 ClearOldCache(step, validatorCount);
@@ -192,10 +206,13 @@ namespace Nethermind.AuRa
             }
         }
         
-        private class StepElementComparer : IComparer<(long Step, Address Author, ISet<Address> Authors)>
+        private class StepElementComparer : IComparer<(long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks)>
         {
             public static readonly StepElementComparer Instance = new StepElementComparer();
-            public int Compare((long Step, Address Author, ISet<Address> Authors) x, (long Step, Address Author, ISet<Address> Authors) y) => x.Step.CompareTo(y.Step);
+            
+            public int Compare((long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks) x,
+                (long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks) y) => 
+                x.Step.CompareTo(y.Step);
         }
     }
 }
