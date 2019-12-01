@@ -150,7 +150,7 @@ namespace Nethermind.AuRa
                     // as the 1st seal or some seal between 1st seal and current one would already finalize some of them
                     bool OriginalBlockSealerSignedOnlyOnce() => !validators.Contains(originalBlockSealer) || block.Beneficiary != originalBlockSealer;
                     
-                    while (!blockInfo.IsFinalized && OriginalBlockSealerSignedOnlyOnce())
+                    while (!blockInfo.IsFinalized && (isConsecutiveBlock || OriginalBlockSealerSignedOnlyOnce()))
                     {
                         validators.Add(block.Beneficiary);
                         if (validators.Count >= minSealersForFinalization)
@@ -282,7 +282,7 @@ namespace Nethermind.AuRa
 
             public void RemoveAncestors(long blockNumber)
             {
-                for (int i = 0; i < _blocks.Count; i++)
+                for (int i = _blocks.Count - 1; i >= 0; i--)
                 {
                     var item = _blocks[i];
                     if (item.Number <= blockNumber)
@@ -314,7 +314,7 @@ namespace Nethermind.AuRa
             public BlockHeader GetBlockThatWillBeFinalized(out HashSet<Address> validators, int minSealersForFinalization)
             {
                 validators = new HashSet<Address>();
-                for (int i = _blocks.Count - 1; i >= 0; i++)
+                for (int i = 0; i < _blocks.Count; i++)
                 {
                     var block = _blocks[i];
                     validators.Add(block.Beneficiary);
