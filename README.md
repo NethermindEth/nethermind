@@ -40,11 +40,20 @@ To build a release version, with a gitversion based version number:
 ./build.ps1
 ```
 
-Then run the DLL that was created:
+Then run the DLL that was created (still the Development version):
 
 ```
 dotnet ./src/Cortex.BeaconNode.Host/bin/Release/netcoreapp3.0/publish/Cortex.BeaconNode.Host.dll
 ```
+
+The files are also copied to a release directory, configured with default host settings as Production:
+
+```
+dotnet ./release/latest/Cortex.BeaconNode.Host.dll
+```
+
+The published version also includes a published Windows platform executable.
+
 
 ## Development
 
