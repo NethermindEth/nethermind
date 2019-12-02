@@ -94,7 +94,7 @@ namespace Nethermind.AuRa
             // Report malice if the validator produced other sibling blocks in the same step.
             if (_receivedSteps.ContainsOrInsert(header, _validator.CurrentSealersCount))
             {
-                if (_logger.IsWarn) _logger.Warn($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
+                if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 // report malicious
             }
             
