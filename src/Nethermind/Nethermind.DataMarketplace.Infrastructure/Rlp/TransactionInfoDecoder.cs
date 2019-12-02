@@ -47,10 +47,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var hash = rlpStream.DecodeKeccak();
             var value = rlpStream.DecodeUInt256();
             var gasPrice = rlpStream.DecodeUInt256();
+            var gasLimit = rlpStream.DecodeUlong();
             var timestamp = rlpStream.DecodeUlong();
             var state = (TransactionState) rlpStream.DecodeInt();
 
-            return new TransactionInfo(hash, value, gasPrice, timestamp, state);
+            return new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, state);
         }
 
         public Nethermind.Core.Encoding.Rlp Encode(TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -64,6 +65,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.Hash),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Value),
                 Nethermind.Core.Encoding.Rlp.Encode(item.GasPrice),
+                Nethermind.Core.Encoding.Rlp.Encode(item.GasLimit),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Timestamp),
                 Nethermind.Core.Encoding.Rlp.Encode((int) item.State));
         }

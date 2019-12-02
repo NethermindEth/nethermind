@@ -163,14 +163,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var ethPriceService = new EthPriceService(httpClient, timestamper, logManager);
             var consumerTransactionsService = new ConsumerTransactionsService(transactionService, depositRepository,
                 timestamper, logManager);
-
+            var gasLimitService = new ConsumerGasLimitsService(depositService, refundService);
+            
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
                 ? new PersonalBridge(ecdsa, wallet)
                 : null;
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService,
-                    gasPriceService, consumerTransactionsService, personalBridge, timestamper), true));
+                    gasPriceService, consumerTransactionsService, gasLimitService, personalBridge, timestamper), true));
 
             var useDepositTimer = ndmConfig.ProxyEnabled;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,

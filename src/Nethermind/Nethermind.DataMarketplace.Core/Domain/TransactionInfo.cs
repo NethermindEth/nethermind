@@ -24,15 +24,17 @@ namespace Nethermind.DataMarketplace.Core.Domain
         public Keccak Hash { get; private set; }
         public UInt256 Value { get; private set; }
         public UInt256 GasPrice { get; private set; }
+        public ulong GasLimit { get; private set; }
         public ulong Timestamp { get; private set; }
         public TransactionState State { get; private set; }
 
-        public TransactionInfo(Keccak hash, UInt256 value, UInt256 gasPrice, ulong timestamp,
+        public TransactionInfo(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
             TransactionState state = TransactionState.Pending)
         {
             Hash = hash;
             Value = value;
             GasPrice = gasPrice;
+            GasLimit = gasLimit;
             Timestamp = timestamp;
             State = state;
         }

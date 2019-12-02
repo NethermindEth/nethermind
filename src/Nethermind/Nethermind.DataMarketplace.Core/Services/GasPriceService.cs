@@ -102,7 +102,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 if (_logger.IsWarn) _logger.Warn($"There was an error when fetching the data from ETH Gas Station - using the latest gas price: {config.GasPrice} wei, type: {config.GasPriceType} as {CustomType}.");
                 Types = new GasPriceTypes(GasPriceDetails.Empty, GasPriceDetails.Empty, GasPriceDetails.Empty,
                     GasPriceDetails.Empty, new GasPriceDetails(config.GasPrice, 0), CustomType,
-                    _timestamper.EpochSeconds);
+                    _updatedAt);
                 return;
             }
 
@@ -112,12 +112,16 @@ namespace Nethermind.DataMarketplace.Core.Services
                 : GasPriceDetails.Empty;
 
             _updatedAt = _timestamper.EpochSeconds;
-            Types = new GasPriceTypes(new GasPriceDetails(((int) result.SafeLow).GWei(), result.SafeLowWait),
-                new GasPriceDetails(((int) result.Average).GWei(), result.AvgWait),
-                new GasPriceDetails(((int) result.Fast).GWei(), result.FastWait),
-                new GasPriceDetails(((int) result.Fastest).GWei(), result.FastestWait), custom, type, _updatedAt);
+            Types = new GasPriceTypes(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait),
+                new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait),
+                new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait),
+                new GasPriceDetails(GetGasPriceGwei(result.Fastest), result.FastestWait),
+                custom, type, _updatedAt);
             
-            if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, , fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
+            if (_logger.IsInfo) _logger.Info($"Updated gas price, safeLow: {Types.SafeLow.Price} wei, average: {Types.Average.Price} wei, fast: {Types.Fast.Price} wei, fastest: {Types.Fastest.Price} wei, updated at: {_updatedAt}.");
+            
+            // ETH Gas Station returns 10xGwei value.
+            UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
         }
 
         private UInt256 GetForType(string type)

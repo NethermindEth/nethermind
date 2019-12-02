@@ -77,10 +77,11 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             }
 
             var currentHash = deposit.Transaction.Hash;
+            var gasLimit = deposit.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
             var transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price.");
-            deposit.SetTransaction(new TransactionInfo(transactionHash, deposit.Deposit.Value, gasPrice, _timestamper.EpochSeconds));
+            deposit.SetTransaction(new TransactionInfo(transactionHash, deposit.Deposit.Value, gasPrice, gasLimit, _timestamper.EpochSeconds));
             await _depositRepository.UpdateAsync(deposit);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
@@ -106,10 +107,11 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 throw new InvalidOperationException($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
             }
             
+            var gasLimit = deposit.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for refund claim for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
             var transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price for refund claim.");
-            deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice, _timestamper.EpochSeconds));
+            deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice, gasLimit, _timestamper.EpochSeconds));
             await _depositRepository.UpdateAsync(deposit);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for refund claim for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
