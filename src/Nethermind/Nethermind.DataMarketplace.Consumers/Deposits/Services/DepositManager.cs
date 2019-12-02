@@ -177,7 +177,8 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             if (_logger.IsInfo) _logger.Info($"Created a deposit with id: '{depositId}', for data asset: '{assetId}', address: '{address}'.");
             var transactionHash = await _depositService.MakeDepositAsync(address, deposit, gasPriceValue);
             if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{address}', gas price: {gasPriceValue} wei.");
-            depositDetails.SetTransaction(new TransactionInfo(transactionHash, deposit.Value, gasPriceValue, now));
+            depositDetails.SetTransaction(new TransactionInfo(transactionHash, deposit.Value, gasPriceValue,
+                _depositService.GasLimit, now));
             await _depositRepository.UpdateAsync(depositDetails);
                 
             return depositId;

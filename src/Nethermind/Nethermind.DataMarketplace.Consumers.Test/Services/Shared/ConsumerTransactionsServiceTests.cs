@@ -307,10 +307,10 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             Keccak claimedRefundTransactionHash = null)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                transactionHash is null ? null : new TransactionInfo(transactionHash, 1, 1, 1),
+                transactionHash is null ? null : new TransactionInfo(transactionHash, 1, 1, 1, 1),
                 claimedRefundTransaction: claimedRefundTransactionHash is null
                     ? null
-                    : new TransactionInfo(claimedRefundTransactionHash, 1, 1, 1));
+                    : new TransactionInfo(claimedRefundTransactionHash, 1, 1, 1, 1));
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

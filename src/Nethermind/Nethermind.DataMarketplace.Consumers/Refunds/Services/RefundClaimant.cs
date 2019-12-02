@@ -79,9 +79,9 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     if (_logger.IsError) _logger.Error("There was an error when trying to claim refund (no transaction hash returned).");
                     return RefundClaimStatus.Empty;
                 }
-                
+
                 deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice,
-                    _timestamper.EpochSeconds));
+                    _refundService.GasLimit, _timestamper.EpochSeconds));
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed a refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }
@@ -124,9 +124,9 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
                     if (_logger.IsError) _logger.Error("There was an error when trying to claim early refund (no transaction hash returned).");
                     return RefundClaimStatus.Empty;
                 }
-                
+
                 deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice,
-                    _timestamper.EpochSeconds));
+                    _refundService.GasLimit, _timestamper.EpochSeconds));
                 await _depositRepository.UpdateAsync(deposit);
                 if (_logger.IsInfo) _logger.Info($"Claimed an early refund for deposit: '{depositId}', gas price: {gasPrice} wei, transaction hash: '{transactionHash}' (awaits a confirmation).");
             }
