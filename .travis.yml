@@ -4,7 +4,7 @@ sudo: required
 dist: bionic
 dotnet: 3.0.100
 env:
-  NETHERMIND_TEST_PROJECTS="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*"
+  NETHERMIND_TEST_PROJECTS="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*"
   ETHEREUM_TEST_PROJECTS="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"
 git:
   depth: false
