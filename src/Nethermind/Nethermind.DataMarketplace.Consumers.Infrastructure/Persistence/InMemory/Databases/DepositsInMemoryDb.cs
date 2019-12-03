@@ -14,23 +14,20 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
+using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
+namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.InMemory.Databases
 {
-    public class GasLimitsForRpc
+    public class DepositsInMemoryDb
     {
-        public ulong Deposit { get; set; }
-        public ulong Refund { get; set; }
+        private readonly ConcurrentDictionary<Keccak, DepositDetails> _db =
+            new ConcurrentDictionary<Keccak, DepositDetails>();
 
-        public GasLimitsForRpc()
-        {
-        }
-
-        public GasLimitsForRpc(GasLimits gasLimits)
-        {
-            Deposit = gasLimits.Deposit;
-            Refund = gasLimits.Refund;
-        }
+        public DepositDetails Get(Keccak id) => _db.TryGetValue(id, out var deposit) ? deposit : null;
+        public ICollection<DepositDetails> GetAll() => _db.Values;
+        public void Add(DepositDetails deposit) => _db.TryAdd(deposit.Id, deposit);
     }
 }
