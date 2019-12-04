@@ -25,17 +25,17 @@ using NUnit.Framework;
 namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.All)]
-    public class DifficultyFrontierTests : TestsBase
-    {
-        public static IEnumerable<DifficultyTests> LoadFrontierTests()
+    public class DifficultyEIP2384RandomTests : TestsBase
+    {     
+        public static IEnumerable<DifficultyTests> LoadEIP2384Tests()
         {
-            return LoadHex("difficultyFrontier.json");
+            return LoadHex("difficultyEIP2384_random.json");
         }
 
-        [TestCaseSource(nameof(LoadFrontierTests))]
+        [TestCaseSource(nameof(LoadEIP2384Tests))]
         public void Test(DifficultyTests test)
         {
             RunTest(test, new SingleReleaseSpecProvider(Berlin.Instance, 1));
-        }    
+        }
     }
 }

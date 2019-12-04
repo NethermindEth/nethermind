@@ -192,7 +192,7 @@ namespace Nethermind.Core.Specs
         /// Istanbul net-metered SSTORE
         /// </summary>
         bool IsEip2200Enabled { get; }
-		
+        
         /// <summary>
         /// Should EIP158 be ignored for this account.
         /// </summary>
