@@ -146,12 +146,13 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                         if (_logger.IsInfo) _logger.Info($"Disabling an existing data stream for deposit: '{depositId}', client: '{client}'.");
                         provider.SendDisableDataStream(depositId, client);
                     }
-                
+
                     if (_logger.IsInfo) _logger.Info($"Sending enable data stream for deposit: '{depositId}', client: '{client}'.");
                     break;
                 }
                 case QueryType.Query:
                 {
+                    Metrics.SentQueries++;
                     if (_logger.IsInfo) _logger.Info($"Sending the data query for deposit: '{depositId}', client: '{client}'.");
                     break;
                 }

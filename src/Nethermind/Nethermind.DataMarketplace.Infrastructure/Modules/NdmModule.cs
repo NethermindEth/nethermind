@@ -82,8 +82,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             var depositService = new DepositService(ndmBlockchainBridge, encoder, wallet, contractAddress);
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
-            var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
-//            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
+            var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel(logManager);
+            if (config.JsonRpcDataChannelEnabled)
+            {
+                ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
+            }
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
                 depositService, gasPriceService, transactionService, ndmDataPublisher, jsonRpcNdmConsumerChannel,

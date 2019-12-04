@@ -74,6 +74,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
                 case DataAssetUnitType.Unit:
                     session.IncrementConsumedUnits();
                     session.IncrementUnpaidUnits();
+                    Metrics.ConsumedUnits++;
                     break;
             }
             
@@ -94,6 +95,7 @@ namespace Nethermind.DataMarketplace.Consumers.DataStreams.Services
 //                session.SubtractUnpaidUnits(unpaidUnits);
 //                session.SubtractUnpaidUnits(unitsDifference);
             }
+
             
             await _sessionRepository.UpdateAsync(session);
         }

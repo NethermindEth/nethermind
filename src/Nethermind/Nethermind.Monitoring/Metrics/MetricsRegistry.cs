@@ -40,6 +40,7 @@ namespace Nethermind.Monitoring.Metrics
             RegisterMetrics(typeof(JsonRpc.Metrics));
             RegisterMetrics(typeof(InteropMetrics));
             RegisterMetrics(typeof(BeaconChain.Metrics));
+            RegisterMetrics(typeof(DataMarketplace.Consumers.Metrics));
         }
         
         private void RegisterMetrics(Type type)

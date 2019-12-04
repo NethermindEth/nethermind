@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -12,27 +13,28 @@ namespace Nethermind.DataMarketplace.EndToEnd.Test
     {
         public static async Task Main(string[] args)
         {
-            var logsManager = LimboLogs.Instance;
-            var client = new JsonRpcClientProxy(new DefaultHttpClient(new HttpClient(), new EthereumJsonSerializer(),
-                logsManager, 0), new[] {"http://localhost:8545"}, logsManager);
+            Console.WriteLine(Figgle.FiggleFonts.Doom.Render("NDM E2E Scenario"));
+            
+            var jsonRpcUrl = args?.FirstOrDefault();
+            if (string.IsNullOrWhiteSpace(jsonRpcUrl))
+            {
+                jsonRpcUrl = "http://localhost:8545";
+            }
 
-            Console.WriteLine("Press any key to start the tests.");
+            Console.WriteLine($"JSON RPC URL: {jsonRpcUrl}");
+            Console.WriteLine("Press any key to start the scenario.");
             Console.ReadKey();
 
-            Console.WriteLine("* Creating an account *");
-            var password = "test";
-            var accountResult = await client.SendAsync<Address>("personal_newAccount", password);
-            var account = accountResult.Result;
-            Console.WriteLine($"* Created an account: {account} *");
-
-            Console.WriteLine($"* Unlocking an account: {account} *");
-            var unlockedResult = await client.SendAsync<bool>("personal_unlockAccount", account, password);
-            Console.WriteLine($"* Unlocked an account: {account}, {unlockedResult.Result} *");
-
-            Console.WriteLine($"* Changing NDM account: {account} *");
-            var changeAddress = await client.SendAsync<Address>("ndm_changeConsumerAddress", account);
-            Console.WriteLine($"* Changed NDM account: {account}, {changeAddress.IsValid} *");
-
+            try
+            {
+                var scenario = new Scenario(jsonRpcUrl);
+                await scenario.RunAsync();
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex);
+            }
+            
             Console.WriteLine("Press any key to quit.");
             Console.ReadKey();
         }

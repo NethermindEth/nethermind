@@ -84,6 +84,8 @@ namespace Nethermind.DataMarketplace.Core.Configs
         [ConfigItem(Description = "Gas price type ('custom', 'safeLow', 'average', 'fast', 'fastest').", DefaultValue = "custom")]
         string GasPriceType { get; }
         [ConfigItem(Description = "Percentage multiplier (by default 110%) for calculating gas price when canceling transaction.", DefaultValue = "110")]
-        uint CancelTransactionGasPricePercentageMultiplier { get; set; } 
+        uint CancelTransactionGasPricePercentageMultiplier { get; set; }
+        [ConfigItem(Description = "If 'true', data stream results can be fetched via 'ndm_pullData('depositId')' method.", DefaultValue = "false")]
+        bool JsonRpcDataChannelEnabled { get; }
     }
 }

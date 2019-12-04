@@ -49,6 +49,7 @@ namespace Nethermind.Monitoring.Metrics
             _metrics.UpdateMetrics(typeof(Store.Metrics));
             _metrics.UpdateMetrics(typeof(Network.Metrics));
             _metrics.UpdateMetrics(typeof(JsonRpc.Metrics));
+            _metrics.UpdateMetrics(typeof(DataMarketplace.Consumers.Metrics));
         }
     }
 }
