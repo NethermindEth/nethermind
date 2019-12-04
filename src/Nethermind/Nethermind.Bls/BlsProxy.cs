@@ -55,6 +55,8 @@ namespace Nethermind.Bls
 
         static BlsProxy()
         {
+            Platform = GetPlatform();
+            
             int initResult = Platform switch
             {
                 OsPlatform.Windows => Win64Lib.blsInit(MclBls12_381CurveId, MclBnCompileTimeVar),
@@ -82,8 +84,6 @@ namespace Nethermind.Bls
                 default:
                     throw new ArgumentOutOfRangeException(Platform.ToString());
             }
-
-            Platform = GetPlatform();
         }
 
         private static OsPlatform GetPlatform()
