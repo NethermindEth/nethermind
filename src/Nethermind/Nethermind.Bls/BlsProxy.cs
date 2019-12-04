@@ -351,154 +351,154 @@ namespace Nethermind.Bls
 
         private static class Win64Lib
         {
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe void blsGetPublicKey(byte* blsPublicKey, byte* blsPrivateKey);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern int blsInit(int curveId, int compiledTimeVar);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe void blsPublicKeyAdd(byte* blsPublicKeyA, byte* blsPublicKeyB);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsPublicKeyDeserialize(byte* blsPublicKey, byte* publicKeyBytes, int publicKeyLength);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsPublicKeySerialize(byte* publicKeyBytes, int publicKeyLength, byte* blsPublicKey);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsSecretKeyDeserialize(byte* blsPrivateKey, byte* privateKeyBytes, int privateKeyLength);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsSecretKeySerialize(byte* privateKeyBytes, int privateKeyLength, byte* blsPrivateKey);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern void blsSetETHserialization(int ETHserialization);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe void blsHashWithDomainToFp2(byte* signature, byte* hashWithDomain);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsSignHash(byte* blsSignature, byte* blsPrivateKey, byte* hash, int size);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsSignHashWithDomain(byte* blsSignature, byte* blsPrivateKey, byte* hashWithDomain);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe void blsSignatureAdd(byte* blsSignatureA, byte* blsSignatureB);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsSignatureDeserialize(byte* blsSignatureBytes, byte* signatureBytes, int bufferSize);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsSignatureSerialize(byte* signatureBytes, int signatureLength, byte* blsSignature);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsVerifyHash(byte* blsSignature, byte* blsPublicKey, byte* hash, int size);
 
-            [DllImport("bls384_256.dll")]
+            [DllImport("runtimes\\win-x64\\native\\bls384_256.dll")]
             public static extern unsafe int blsVerifyHashWithDomain(byte* blsSignature, byte* blsPublicKey, byte* hashWithDomain);
         }
 
         private static class PosixLib
         {
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe void blsGetPublicKey(byte* blsPublicKey, byte* blsPrivateKey);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern int blsInit(int curveId, int compiledTimeVar);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe void blsPublicKeyAdd(byte* blsPublicKeyA, byte* blsPublicKeyB);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsPublicKeyDeserialize(byte* blsPublicKey, byte* publicKeyBytes, int publicKeyLength);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsPublicKeySerialize(byte* publicKeyBytes, int publicKeyLength, byte* blsPublicKey);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsSecretKeyDeserialize(byte* blsPrivateKey, byte* privateKeyBytes, int privateKeyLength);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsSecretKeySerialize(byte* privateKeyBytes, int privateKeyLength, byte* blsPrivateKey);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern void blsSetETHserialization(int ETHserialization);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe void blsHashWithDomainToFp2(byte* signature, byte* hashWithDomain);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsSignHash(byte* blsSignature, byte* blsPrivateKey, byte* hash, int size);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsSignHashWithDomain(byte* blsSignature, byte* blsPrivateKey, byte* hashWithDomain);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe void blsSignatureAdd(byte* blsSignatureA, byte* blsSignatureB);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsSignatureDeserialize(byte* blsSignatureBytes, byte* signatureBytes, int bufferSize);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsSignatureSerialize(byte* signatureBytes, int signatureLength, byte* blsSignature);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsVerifyHash(byte* blsSignature, byte* blsPublicKey, byte* hash, int size);
 
-            [DllImport("bls384_256.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libbls384_256.so")]
             public static extern unsafe int blsVerifyHashWithDomain(byte* blsSignature, byte* blsPublicKey, byte* hashWithDomain);
         }
 
         private static class MacLib
         {
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe void blsGetPublicKey(byte* blsPublicKey, byte* blsPrivateKey);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern int blsInit(int curveId, int compiledTimeVar);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe void blsPublicKeyAdd(byte* blsPublicKeyA, byte* blsPublicKeyB);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsPublicKeyDeserialize(byte* blsPublicKey, byte* publicKeyBytes, int publicKeyLength);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsPublicKeySerialize(byte* publicKeyBytes, int publicKeyLength, byte* blsPublicKey);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsSecretKeyDeserialize(byte* blsPrivateKey, byte* privateKeyBytes, int privateKeyLength);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsSecretKeySerialize(byte* privateKeyBytes, int privateKeyLength, byte* blsPrivateKey);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern void blsSetETHserialization(int ETHserialization);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe void blsHashWithDomainToFp2(byte* signature, byte* hashWithDomain);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsSignHash(byte* blsSignature, byte* blsPrivateKey, byte* hash, int size);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsSignHashWithDomain(byte* blsSignature, byte* blsPrivateKey, byte* hashWithDomain);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe void blsSignatureAdd(byte* blsSignatureA, byte* blsSignatureB);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsSignatureDeserialize(byte* blsSignatureBytes, byte* signatureBytes, int bufferSize);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsSignatureSerialize(byte* signatureBytes, int signatureLength, byte* blsSignature);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsVerifyHash(byte* blsSignature, byte* blsPublicKey, byte* hash, int size);
 
-            [DllImport("bls384_256.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\bls384_256.dylib")]
             public static extern unsafe int blsVerifyHashWithDomain(byte* blsSignature, byte* blsPublicKey, byte* hashWithDomain);
         }
     }
