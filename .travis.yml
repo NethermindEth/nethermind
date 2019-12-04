@@ -155,6 +155,14 @@ jobs:
     - script: 
       - git submodule update --init src/Dirichlet src/rocksdb-sharp
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test;
+        else 
+          dotnet test -c Release src/Nethermind/Nethermind.Core2.Test;
+        fi
+      name: "Nethermind.Core2.Test"
+    - script: 
+      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Store.Test;
         else 
           dotnet test -c Release src/Nethermind/Nethermind.Store.Test;
@@ -231,3 +239,13 @@ jobs:
       - ./scripts/docker-publish.sh
       if: branch = master OR type = pull_request
       name: "Ethereum.Trie.Test"
+    - stage: Ethereum 2 Tests
+      if: branch = master OR type = pull_request
+      script:
+      - git -c submodule."src/tests".update=none submodule update --init && dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$ETHEREUM_TEST_PROJECTS src/Nethermind/Ethereum2.Bls.Test
+      if: branch = master OR type = pull_request
+      name: "Ethereum2.Bls.Test"
+    - script:
+      - git -c submodule."src/tests".update=none submodule update --init && dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$ETHEREUM_TEST_PROJECTS src/Nethermind/Ethereum2.Ssz.Test
+      if: branch = master OR type = pull_request
+      name: "Ethereum2.Ssz.Block.Test"
