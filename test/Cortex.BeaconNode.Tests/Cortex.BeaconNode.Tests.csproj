@@ -45,6 +45,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Cortex.BeaconNode\Cortex.BeaconNode.csproj" />
+    <ProjectReference Include="..\..\src\Cortex.BeaconNode.Storage\Cortex.BeaconNode.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>

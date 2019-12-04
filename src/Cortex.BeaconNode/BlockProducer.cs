@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Data;
+using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 
 namespace Cortex.BeaconNode

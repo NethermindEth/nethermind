@@ -2,7 +2,7 @@
 using System.Threading.Tasks;
 using Cortex.Containers;
 
-namespace Cortex.BeaconNode.Data
+namespace Cortex.BeaconNode.Storage
 {
     public interface IStore
     {

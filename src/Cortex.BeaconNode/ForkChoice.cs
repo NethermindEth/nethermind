@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Data;
+using Cortex.BeaconNode.Storage;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,7 +12,7 @@ namespace Cortex.BeaconNode.Tests
 {
     public static class TestSystem
     {
-        public static IServiceProvider BuildTestServiceProvider(bool useBls = true)
+        public static IServiceProvider BuildTestServiceProvider(bool useBls = true, bool useStore = false)
         {
             var services = new ServiceCollection();
             services.AddLogging(configure => configure.AddConsole());
@@ -25,6 +26,11 @@ namespace Cortex.BeaconNode.Tests
                 // NOTE: Can't mock ByRef Span<T>
                 var testCryptographyService = new TestCryptographyService();
                 services.AddSingleton<ICryptographyService>(testCryptographyService);
+            }
+
+            if (useStore)
+            {
+                services.AddSingleton<IStoreProvider, StoreProvider>();
             }
 
             var options = new ServiceProviderOptions() { ValidateOnBuild = false };

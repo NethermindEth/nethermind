@@ -1,6 +1,5 @@
 ﻿using System;
 using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Data;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,7 +18,6 @@ namespace Cortex.BeaconNode
             services.AddSingleton<BeaconStateAccessor>();
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();
-            services.AddSingleton<IStoreProvider, StoreProvider>();
             services.AddSingleton<ForkChoice>();
 
             services.AddSingleton<BeaconNodeConfiguration>();

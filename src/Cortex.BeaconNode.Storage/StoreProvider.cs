@@ -4,7 +4,7 @@ using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Cortex.BeaconNode.Data
+namespace Cortex.BeaconNode.Storage
 {
     public class StoreProvider : IStoreProvider
     {
