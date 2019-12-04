@@ -15,8 +15,6 @@
       <Content Include="runtimes\win-x64\native\bls384_256.dll">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <None Remove="libbls384_256.so" />
-      <None Remove="libbls384_256.dylib" />
     </ItemGroup>
 
 </Project>

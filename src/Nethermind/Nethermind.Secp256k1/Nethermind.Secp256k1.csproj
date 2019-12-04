@@ -5,15 +5,12 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <None Remove="runtimes\linux-x64\native\libsecp256k1.so" />
     <Content Include="runtimes\linux-x64\native\libsecp256k1.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="runtimes\osx-x64\native\libsecp256k1.dylib" />
     <Content Include="runtimes\osx-x64\native\libsecp256k1.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <None Remove="runtimes\win-x64\native\secp256k1.dll" />
     <Content Include="runtimes\win-x64\native\secp256k1.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
