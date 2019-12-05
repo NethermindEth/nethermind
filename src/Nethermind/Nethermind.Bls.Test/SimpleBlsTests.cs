@@ -4,7 +4,7 @@
  *
  * The Nethermind library is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundationeither version 3 of the Licenseor
  * (at your option) any later version.
  *
  * The Nethermind library is distributed in the hope that it will be useful,
@@ -13,10 +13,10 @@
  * GNU Lesser General Public License for more details.
  *
  * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ * along with the Nethermind. If notsee <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Bls.Test
@@ -26,24 +26,14 @@ namespace Nethermind.Bls.Test
         [Test]
         public void TestPrivateKeyToPublic()
         {
-            var privateKeyBytes = new byte[] {
-                0x47, 0xb8, 0x19, 0x2d, 0x77, 0xbf, 0x87, 0x1b,
-                0x62, 0xe8, 0x78, 0x59, 0xd6, 0x53, 0x92, 0x27,
-                0x25, 0x72, 0x4a, 0x5c, 0x03, 0x1a, 0xfe, 0xab,
-                0xc6, 0x0b, 0xce, 0xf5, 0xff, 0x66, 0x51, 0x38 };
+            var privateKeyBytes = Bytes.FromHexString("47b8192d77bf871b62e87859d653922725724a5c031afeabc60bcef5ff665138");
 
-            Console.WriteLine("Serialized private key: {0}", BitConverter.ToString(privateKeyBytes));
+            TestContext.Out.WriteLine("Serialized private key: {0}", privateKeyBytes.ToHexString());
 
             BlsProxy.GetPublicKey(privateKeyBytes, out var publicKeySpan);
             var publicKeyBytes = publicKeySpan.ToArray();
 
-            Console.WriteLine("Expecting public key b301803f...");
-            Console.WriteLine("Serialized public key: {0}", BitConverter.ToString(publicKeyBytes));
-
-            Assert.AreEqual((byte)0xb3, publicKeyBytes[0]);
-            Assert.AreEqual((byte)0x01, publicKeyBytes[1]);
-            Assert.AreEqual((byte)0x80, publicKeyBytes[2]);
-            Assert.AreEqual((byte)0x3f, publicKeyBytes[3]);
+            Assert.AreEqual("b301803f8b5ac4a1133581fc676dfedc60d891dd5fa99028805e5ea5b08d3491af75d0707adab3b70c6a6a580217bf81", publicKeyBytes.ToHexString());
         }
     }
 }
