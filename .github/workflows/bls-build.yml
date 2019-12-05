@@ -49,6 +49,7 @@ jobs:
       run: |
         cd mcl/
         make lib/libmcl.a
+        cd ..
         cd bls/
         make BLS_ETH=1 lib/libbls384_256.so
     - name: Stripping Linux file
@@ -65,6 +66,7 @@ jobs:
       run: |
         cd mcl/
         make lib/libmcl.a
+        cd ..
         cd bls/
         make BLS_ETH=1 lib/libbls384_256.dylib
     - uses: actions/upload-artifact@v1
