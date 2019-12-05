@@ -47,8 +47,10 @@ jobs:
     - name: Building BLS for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
+        cd mcl/
+        make lib/libmcl.a
         cd bls/
-        make all
+        make BLS_ETH=1 lib/libbls384_256.so
     - name: Stripping Linux file
       if: matrix.os == 'ubuntu-latest'
       run: strip /home/runner/work/nethermind/nethermind/bls/lib/libbls384_256.so
@@ -61,8 +63,10 @@ jobs:
     - name: Building BLS for OSX
       if: matrix.os == 'macOS-latest'
       run: |
+        cd mcl/
+        make lib/libmcl.a
         cd bls/
-        make all
+        make BLS_ETH=1 lib/libbls384_256.dylib
     - uses: actions/upload-artifact@v1
       name: Uploading Darwin artifact
       if: matrix.os == 'macOS-latest'
