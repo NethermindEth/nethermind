@@ -7,10 +7,12 @@ namespace Cortex.BeaconNode
 {
     public class BlockProducer
     {
+        private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
 
-        public BlockProducer(IStoreProvider storeProvider)
+        public BlockProducer(ForkChoice forkChoice, IStoreProvider storeProvider)
         {
+            _forkChoice = forkChoice;
             _storeProvider = storeProvider;
         }
 
@@ -18,7 +20,7 @@ namespace Cortex.BeaconNode
         {
             var store = _storeProvider.GetStore();
 
-            var head = await store.GetHeadAsync();
+            var head = await _forkChoice.GetHeadAsync(store);
 
             // get previous head block, based on the fork choice
             // get latest state

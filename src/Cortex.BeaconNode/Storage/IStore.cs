@@ -16,8 +16,6 @@ namespace Cortex.BeaconNode.Storage
         IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; }
         ulong Time { get; }
 
-        Task<Hash32> GetHeadAsync();
-
         void SetBestJustifiedCheckpoint(Checkpoint checkpoint);
 
         void SetBlock(Hash32 signingRoot, BeaconBlock block);

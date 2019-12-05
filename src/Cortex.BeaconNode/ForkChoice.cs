@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.BeaconNode.Storage;
@@ -15,11 +17,11 @@ namespace Cortex.BeaconNode
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
-        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
@@ -127,6 +129,61 @@ namespace Cortex.BeaconNode
                 new Dictionary<ValidatorIndex, LatestMessage>()
                 );
             return store;
+        }
+
+        public async Task<Hash32> GetHeadAsync(IStore store)
+        {
+            return await Task.Run(() =>
+            {
+                // Execute the LMD-GHOST fork choice
+                var head = store.JustifiedCheckpoint.Root;
+                var justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
+                while (true)
+                {
+                    var children = store.Blocks
+                        .Where(kvp =>
+                            kvp.Value.ParentRoot.Equals(head)
+                            && kvp.Value.Slot > justifiedSlot)
+                        .Select(kvp => kvp.Key);
+                    if (children.Count() == 0)
+                    {
+                        return head;
+                    }
+                    head = children
+                        .OrderBy(x => GetLatestAttestingBalance(store, x))
+                        .ThenBy(x => x)
+                        .First();
+                }
+            });
+        }
+
+        public Gwei GetLatestAttestingBalance(IStore store, Hash32 root)
+        {
+            if (!store.TryGetCheckpointState(store.JustifiedCheckpoint, out var state))
+            {
+                throw new Exception();
+            }
+            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            var activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
+            if (!store.TryGetBlock(root, out var rootBlock))
+            {
+                throw new Exception();
+            }
+            var rootSlot = rootBlock.Slot;
+            var balance = new Gwei(0);
+            foreach (var index in activeIndexes)
+            {
+                if (store.TryGetLatestMessage(index, out var latestMessage))
+                {
+                    var ancestor = GetAncestor(store, latestMessage.Root, rootSlot);
+                    if (ancestor == root)
+                    {
+                        var validator = state.Validators[(int)(ulong)index];
+                        balance += validator.EffectiveBalance;
+                    }
+                }
+            }
+            return balance;
         }
 
         /// <summary>

@@ -56,31 +56,6 @@ namespace Cortex.BeaconNode.Storage
         public IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get { return _latestMessages; } }
         public ulong Time { get; private set; }
 
-        public async Task<Hash32> GetHeadAsync()
-        {
-            return await Task.Run(() =>
-            {
-                var head = JustifiedCheckpoint.Root;
-                var justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(JustifiedCheckpoint.Epoch);
-                while (true)
-                {
-                    var children = Blocks
-                        .Where(kvp =>
-                            kvp.Value.ParentRoot.Equals(head)
-                            && kvp.Value.Slot > justifiedSlot)
-                        .Select(kvp => kvp.Key);
-                    if (children.Count() == 0)
-                    {
-                        return head;
-                    }
-                    head = children
-                        .OrderBy(x => GetLatestAttestingBalance(x))
-                        .ThenBy(x => x)
-                        .First();
-                }
-            });
-        }
-
         public void SetBestJustifiedCheckpoint(Checkpoint checkpoint) => BestJustifiedCheckpoint = checkpoint;
 
         public void SetBlock(Hash32 signingRoot, BeaconBlock block) => _blocks[signingRoot] = block;
@@ -104,29 +79,5 @@ namespace Cortex.BeaconNode.Storage
         public bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState state) => _checkpointStates.TryGetValue(checkpoint, out state);
 
         public bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage latestMessage) => _latestMessages.TryGetValue(validatorIndex, out latestMessage);
-
-        private Gwei GetLatestAttestingBalance(Hash32 root)
-        {
-            var state = CheckpointStates[JustifiedCheckpoint];
-            //var currentEpoch = GetCurrentEpoch(state);
-            //var activeIndexes = GetActiveValidatorIndices(state, currentEpoch);
-            var rootSlot = Blocks[root].Slot;
-            var balance = new Gwei(0);
-            /*
-            foreach (var index in activeIndexes)
-            {
-                if (LatestMessages.Contains(index))
-                {
-                    var latestMessage = LatestMessages[index];
-                    var ancestor = GetAncestor(latestMessage.Root, rootSlot);
-                    if (ancestor == root)
-                    {
-                        balance += state.Validators[index].EffectiveBalance;
-                    }
-                }
-            }
-            */
-            return balance;
-        }
     }
 }
