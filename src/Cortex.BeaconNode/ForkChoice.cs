@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Storage;
 using Cortex.BeaconNode.Ssz;
+using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -12,11 +12,13 @@ namespace Cortex.BeaconNode
     public class ForkChoice
     {
         private readonly BeaconChainUtility _beaconChainUtility;
+        private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
+        private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
-        private readonly IOptionsMonitor<ForkChoiceConfiguration> _forkChoiceConfigurationOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IStoreProvider _storeProvider;
@@ -30,7 +32,9 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions,
+            IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             BeaconChainUtility beaconChainUtility,
+            BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
             IStoreProvider storeProvider)
         {
@@ -41,7 +45,9 @@ namespace Cortex.BeaconNode
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _forkChoiceConfigurationOptions = forkChoiceConfigurationOptions;
+            _signatureDomainOptions = signatureDomainOptions;
             _beaconChainUtility = beaconChainUtility;
+            _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
             _storeProvider = storeProvider;
         }
@@ -117,9 +123,106 @@ namespace Cortex.BeaconNode
                 justifiedCheckpoint,
                 blocks,
                 blockStates,
-                checkpointStates
+                checkpointStates,
+                new Dictionary<ValidatorIndex, LatestMessage>()
                 );
             return store;
+        }
+
+        /// <summary>
+        /// Run ``on_attestation`` upon receiving a new ``attestation`` from either within a block or directly on the wire.
+        /// An ``attestation`` that is asserted as invalid may be valid at a later time,
+        /// consider scheduling it for later processing in such case.
+        /// </summary>
+        public void OnAttestation(IStore store, Attestation attestation)
+        {
+            var initialValues = _initialValueOptions.CurrentValue;
+            var timeParameters = _timeParameterOptions.CurrentValue;
+
+            var target = attestation.Data.Target;
+
+            // Attestations must be from the current or previous epoch
+            var currentSlot = GetCurrentSlot(store);
+            var currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
+
+            // Use GENESIS_EPOCH for previous when genesis to avoid underflow
+            var previousEpoch = currentEpoch > initialValues.GenesisEpoch
+                ? currentEpoch - new Epoch(1)
+                : initialValues.GenesisEpoch;
+
+            if (target.Epoch != currentEpoch && target.Epoch != previousEpoch)
+            {
+                throw new ArgumentOutOfRangeException("attestation.Target.Epoch", target.Epoch, $"Attestation target epoch must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
+            }
+            // Cannot calculate the current shuffling if have not seen the target
+            if (!store.TryGetBlock(target.Root, out var targetBlock))
+            {
+                throw new ArgumentOutOfRangeException("attestation.Target.Root", target.Root, "Attestation target root not found in the block history.");
+            }
+
+            // Attestations target be for a known block. If target block is unknown, delay consideration until the block is found
+            if (!store.TryGetBlockState(target.Root, out var targetStoredState))
+            {
+                throw new ArgumentOutOfRangeException("attestation.Target.Root", target.Root, "Attestation target root not found in the block stores history.");
+            }
+
+            // Attestations cannot be from future epochs. If they are, delay consideration until the epoch arrives
+            var baseState = BeaconState.Clone(targetStoredState);
+            var targetEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(target.Epoch);
+            var targetEpochStartSlotTime = baseState.GenesisTime + (ulong)targetEpochStartSlot * timeParameters.SecondsPerSlot;
+            if (store.Time < targetEpochStartSlotTime)
+            {
+                throw new Exception($"Ättestation target state time {targetEpochStartSlotTime} should not be larger than the store time {store.Time}).");
+            }
+
+            // Attestations must be for a known block. If block is unknown, delay consideration until the block is found
+            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out var attestationBlock))
+            {
+                throw new ArgumentOutOfRangeException("attestation.Data.BeaconBlockRoot", attestation.Data.BeaconBlockRoot, "Attestation data root not found in the block history.");
+            }
+            // Attestations must not be for blocks in the future. If not, the attestation should not be considered
+            if (attestationBlock.Slot > attestation.Data.Slot)
+            {
+                throw new Exception($"Ättestation data root slot {attestationBlock.Slot} should not be larger than the attestation data slot {attestation.Data.Slot}).");
+            }
+
+            // Store target checkpoint state if not yet seen
+
+            if (!store.TryGetCheckpointState(target, out var targetState))
+            {
+                _beaconStateTransition.ProcessSlots(baseState, targetEpochStartSlot);
+                store.SetCheckpointState(target, baseState);
+                targetState = baseState;
+            }
+
+            // Attestations can only affect the fork choice of subsequent slots.
+            // Delay consideration in the fork choice until their slot is in the past.
+            //var attestationDataSlotTime = ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
+            var attestationDataSlotTime = targetState.GenesisTime + ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
+            if (store.Time < attestationDataSlotTime)
+            {
+                throw new Exception($"Ättestation data time {attestationDataSlotTime} should not be larger than the store time {store.Time}).");
+            }
+
+            // Get state at the `target` to validate attestation and calculate the committees
+            var indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(targetState, attestation);
+            var domain = _beaconStateAccessor.GetDomain(targetState, _signatureDomainOptions.CurrentValue.BeaconAttester, indexedAttestation.Data.Target.Epoch);
+            var isValid = _beaconChainUtility.IsValidIndexedAttestation(targetState, indexedAttestation, domain);
+            if (!isValid)
+            {
+                throw new Exception($"Indexed attestation {indexedAttestation} is not valid.");
+            }
+
+            // Update latest messages
+            var attestingIndices = _beaconStateAccessor.GetAttestingIndices(targetState, attestation.Data, attestation.AggregationBits);
+            foreach (var index in attestingIndices)
+            {
+                if (!store.TryGetLatestMessage(index, out var latestMessage) || target.Epoch > latestMessage.Epoch)
+                {
+                    var newLatestMessage = new LatestMessage(target.Epoch, attestation.Data.BeaconBlockRoot);
+                    store.SetLatestMessage(index, newLatestMessage);
+                }
+            }
         }
 
         public void OnBlock(IStore store, BeaconBlock block)
@@ -140,7 +243,7 @@ namespace Cortex.BeaconNode
 
             // Add new block to the store
             var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            store.AddBlock(signingRoot, block);
+            store.SetBlock(signingRoot, block);
 
             // Check block is a descendant of the finalized block
             if (!store.TryGetBlock(store.FinalizedCheckpoint.Root, out var finalizedCheckpointBlock))
@@ -164,7 +267,7 @@ namespace Cortex.BeaconNode
             var state = _beaconStateTransition.StateTransition(preState, block, validateStateRoot: true);
 
             // Add new state for this block to the store
-            store.AddBlockState(signingRoot, state);
+            store.SetBlockState(signingRoot, state);
 
             _logger.LogInformation(Event.CreateGenesisStore, "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}",
                 block, state, signingRoot);
@@ -193,43 +296,6 @@ namespace Cortex.BeaconNode
             }
         }
 
-        /// <summary>
-        /// To address the bouncing attack, only update conflicting justified
-        /// checkpoints in the fork choice if in the early slots of the epoch.
-        /// Otherwise, delay incorporation of new justified checkpoint until next epoch boundary.
-        /// See https://ethresear.ch/t/prevention-of-bouncing-attack-on-ffg/6114 for more detailed analysis and discussion.
-        /// </summary>
-        public bool ShouldUpdateJustifiedCheckpoint(IStore store, Checkpoint newJustifiedCheckpoint)
-        {
-            var currentSlot = GetCurrentSlot(store);
-            var slotsSinceEpochStart = ComputeSlotsSinceEpochStart(currentSlot);
-            if (slotsSinceEpochStart < _forkChoiceConfigurationOptions.CurrentValue.SafeSlotsToUpdateJustified)
-            {
-                return true;
-            }
-
-            if (!store.TryGetBlock(newJustifiedCheckpoint.Root, out var newJustifiedBlock))
-            {
-
-            }
-            var justifiedCheckpointEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
-            if (newJustifiedBlock.Slot <= justifiedCheckpointEpochStartSlot)
-            {
-                return false;
-            }
-            if (!store.TryGetBlock(store.JustifiedCheckpoint.Root, out var justifiedCheckPointBlock))
-            {
-
-            }
-            var ancestorOfNewCheckpointAtOldCheckpointSlot = GetAncestor(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot);
-            if (ancestorOfNewCheckpointAtOldCheckpointSlot != store.JustifiedCheckpoint.Root)
-            {
-                return false;
-            }
-            // i.e. new checkpoint is descendent of old checkpoint
-            return true;
-        }
-
         public void OnTick(IStore store, ulong time)
         {
             var previousSlot = GetCurrentSlot(store);
@@ -249,6 +315,41 @@ namespace Cortex.BeaconNode
             {
                 store.SetJustifiedCheckpoint(store.BestJustifiedCheckpoint);
             }
+        }
+
+        /// <summary>
+        /// To address the bouncing attack, only update conflicting justified
+        /// checkpoints in the fork choice if in the early slots of the epoch.
+        /// Otherwise, delay incorporation of new justified checkpoint until next epoch boundary.
+        /// See https://ethresear.ch/t/prevention-of-bouncing-attack-on-ffg/6114 for more detailed analysis and discussion.
+        /// </summary>
+        public bool ShouldUpdateJustifiedCheckpoint(IStore store, Checkpoint newJustifiedCheckpoint)
+        {
+            var currentSlot = GetCurrentSlot(store);
+            var slotsSinceEpochStart = ComputeSlotsSinceEpochStart(currentSlot);
+            if (slotsSinceEpochStart < _forkChoiceConfigurationOptions.CurrentValue.SafeSlotsToUpdateJustified)
+            {
+                return true;
+            }
+
+            if (!store.TryGetBlock(newJustifiedCheckpoint.Root, out var newJustifiedBlock))
+            {
+            }
+            var justifiedCheckpointEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
+            if (newJustifiedBlock.Slot <= justifiedCheckpointEpochStartSlot)
+            {
+                return false;
+            }
+            if (!store.TryGetBlock(store.JustifiedCheckpoint.Root, out var justifiedCheckPointBlock))
+            {
+            }
+            var ancestorOfNewCheckpointAtOldCheckpointSlot = GetAncestor(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot);
+            if (ancestorOfNewCheckpointAtOldCheckpointSlot != store.JustifiedCheckpoint.Root)
+            {
+                return false;
+            }
+            // i.e. new checkpoint is descendent of old checkpoint
+            return true;
         }
     }
 }
