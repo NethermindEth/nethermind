@@ -164,7 +164,7 @@ namespace Nethermind.JsonRpc
                 parameters = DeserializeParameters(expectedParameters, providedParameters, missingParamsCount);
                 if (parameters == null)
                 {
-                    if (_logger.IsError) _logger.Error($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters)}");
+                    if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters ?? new string[0])}");
                     return GetErrorResponse(ErrorType.InvalidParams, "Incorrect parameters", request.Id, methodName);
                 }
             }
@@ -198,9 +198,13 @@ namespace Nethermind.JsonRpc
             }
 
             Result result = resultWrapper.GetResult();
-            if (result == null || result.ResultType == ResultType.Failure)
+            if (result == null)
             {
-                if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: {result?.Error ?? "no result"}");
+                if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");   
+            }
+            
+            if (result.ResultType == ResultType.Failure)
+            {
                 return GetErrorResponse(resultWrapper.GetErrorType(), resultWrapper.GetResult().Error, request.Id, methodName, resultWrapper.GetData());
             }
 

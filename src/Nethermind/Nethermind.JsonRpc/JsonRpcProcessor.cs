@@ -148,25 +148,25 @@ namespace Nethermind.JsonRpc
 
             if (rpcRequest.Model != null)
             {
-                if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model.Method}");
+                if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
 
                 Metrics.JsonRpcRequests++;
                 JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
                 JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                 if (localErrorResponse != null)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Error when handling {rpcRequest.Model.Method} | {_jsonSerializer.Serialize(localErrorResponse)}");
+                    if (_logger.IsWarn) _logger.Warn($"Error when handling {rpcRequest.Model} | {_jsonSerializer.Serialize(localErrorResponse)}");
                     Metrics.JsonRpcErrors++;
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Responded to {rpcRequest.Model.Method}");
+                    if (_logger.IsDebug) _logger.Debug($"Responded to {rpcRequest.Model}");
                     Metrics.JsonRpcSuccesses++;
                 }
 
                 TraceResult(response);
                 stopwatch.Stop();
-                if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model.Method} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+                if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
                 return JsonRpcResult.Single(response);
             }
 
@@ -186,17 +186,17 @@ namespace Nethermind.JsonRpc
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                     if (localErrorResponse != null)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest.Method} | {_jsonSerializer.Serialize(localErrorResponse)}");
+                        if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest} | {_jsonSerializer.Serialize(localErrorResponse)}");
                         Metrics.JsonRpcErrors++;
                     }
                     else
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Responded to {jsonRpcRequest.Method}");
+                        if (_logger.IsDebug) _logger.Debug($"Responded to {jsonRpcRequest}");
                         Metrics.JsonRpcSuccesses++;
                     }
 
                     singleRequestWatch.Stop();
-                    if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
+                    if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
                     responses.Add(response);
                 }
 
@@ -261,7 +261,7 @@ namespace Nethermind.JsonRpc
             {
                 if (!_recorderBaseFilePath.Contains("{counter}"))
                 {
-                    _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
+                    if(_logger.IsError) _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
                     _isEnabled = false;
                     return;
                 }
