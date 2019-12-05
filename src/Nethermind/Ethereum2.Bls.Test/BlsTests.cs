@@ -31,9 +31,9 @@ namespace Ethereum2.Bls.Test
         [Test]
         public void Bls_aggregate_pubkeys()
         {
-            string[] valid = Directory.GetDirectories(Path.Combine("aggregate_pubkeys", "small"));
+            string[] smallDir = Directory.GetDirectories(Path.Combine("aggregate_pubkeys", "small"));
             bool allFine = true;
-            foreach (string testCase in valid)
+            foreach (string testCase in smallDir)
             {
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(testCase, "data.yaml"));
                 string[] inputHex = node.ArrayProp<string>("input");
@@ -57,9 +57,9 @@ namespace Ethereum2.Bls.Test
         [Test]
         public void Bls_aggregate_sigs()
         {
-            string[] valid = Directory.GetDirectories(Path.Combine("aggregate_sigs", "small"));
+            string[] smallDir = Directory.GetDirectories(Path.Combine("aggregate_sigs", "small"));
             bool allFine = true;
-            foreach (string testCase in valid)
+            foreach (string testCase in smallDir)
             {
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(testCase, "data.yaml"));
                 string[] inputHex = node.ArrayProp<string>("input");
@@ -106,8 +106,8 @@ namespace Ethereum2.Bls.Test
         [Test]
         public void Bls_priv_to_pub()
         {
-            string[] valid = Directory.GetDirectories(Path.Combine("priv_to_pub", "small"));
-            foreach (string testCase in valid)
+            string[] smallDir = Directory.GetDirectories(Path.Combine("priv_to_pub", "small"));
+            foreach (string testCase in smallDir)
             {
                 Console.WriteLine(testCase);
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(testCase, "data.yaml"));
@@ -124,13 +124,16 @@ namespace Ethereum2.Bls.Test
         [Test]
         public void Bls_sign_msg()
         {
-            string[] valid = Directory.GetDirectories(Path.Combine("sign_msg", "small"));
-            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
-            var input = new {PrivateKey = node["input"].Prop<string>("privkey"), Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
-            string outputHex = node.Prop<string>("output");
+            string[] smallDir = Directory.GetDirectories(Path.Combine("sign_msg", "small"));
+            foreach (string caseDir in smallDir)
+            {
+                (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(caseDir, "data.yaml"));
+                var input = new {PrivateKey = node["input"].Prop<string>("privkey"), Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
+                string outputHex = node.Prop<string>("output");
 
-            BlsProxy.Sign(out Span<byte> signatureBytes, Bytes.FromHexString(input.PrivateKey), Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
-            Assert.AreEqual(outputHex, signatureBytes.ToHexString(true));
+                BlsProxy.Sign(out Span<byte> signatureBytes, Bytes.FromHexString(input.PrivateKey), Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
+                Assert.AreEqual(outputHex, signatureBytes.ToHexString(true));   
+            }
         }
 
         private static (YamlNode rootNode, YamlNodeType nodeType) LoadValue(string file)

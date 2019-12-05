@@ -83,12 +83,12 @@ namespace Ethereum2.Ssz.Test
             {
                 TestContext.Out.WriteLine(validDir);
                 string[] files = Directory.GetFiles(validDir);
-                (YamlNode valueNode, YamlNodeType valueType) = LoadValue(files[2]); // value.yaml
-                (YamlNode merkleRootYaml, _) = LoadValue(files[0]); // meta.yaml
+                (YamlNode valueNode, YamlNodeType valueType) = LoadValue(Path.Combine(validDir, "value.yaml"));
+                (YamlNode merkleRootYaml, _) = LoadValue(Path.Combine(validDir, "meta.yaml"));
                 UInt256.CreateFromLittleEndian(out UInt256 expectedMerkleRoot, Bytes.FromHexString(((YamlScalarNode) merkleRootYaml["root"]).Value));
 
                 Span<byte> output = null;
-                Span<byte> ssz = File.ReadAllBytes(files[1]);
+                Span<byte> ssz = File.ReadAllBytes(Path.Combine(validDir, "serialized.ssz"));
 
                 if (valueType == YamlNodeType.Sequence)
                 {

@@ -198,8 +198,8 @@ namespace Ethereum2.Ssz.Test
             string[] cases = Directory.GetDirectories(Path.Combine("static", category, "ssz_random"));
             foreach (string testCaseDir in cases)
             {
-                byte[] serialized = File.ReadAllBytes(Directory.GetFiles(testCaseDir)[1]);
-                (YamlNode merkleRootYaml, _) = LoadValue(Directory.GetFiles(testCaseDir)[0]); // meta.yaml
+                byte[] serialized = File.ReadAllBytes(Path.Combine(testCaseDir, "serialized.ssz"));
+                (YamlNode merkleRootYaml, _) = LoadValue(Path.Combine(testCaseDir, "roots.yaml")); // meta.yaml
                 string expectedMerkleRootHex = ((YamlScalarNode) merkleRootYaml["root"]).Value;
                 UInt256.CreateFromLittleEndian(out UInt256 expectedMerkleRoot, Bytes.FromHexString(expectedMerkleRootHex));
                 Console.WriteLine(category + "." + testCaseDir);
