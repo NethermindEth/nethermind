@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a block by number", IsReadOnly = true)]
-        ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);
+        ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects = false);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a transaction by hash", IsReadOnly = true)]
         ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash);
