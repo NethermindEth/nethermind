@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Cortex.BeaconNode.Storage;
 
 namespace Cortex.BeaconNode
 {
@@ -52,6 +53,7 @@ namespace Cortex.BeaconNode
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddBeaconNode(hostContext.Configuration);
+                    services.AddBeaconNodeStorage(hostContext.Configuration);
                     services.AddHostedService<Worker>();
                 })
                 .ConfigureWebHostDefaults(webBuilder =>

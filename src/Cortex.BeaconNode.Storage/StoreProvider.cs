@@ -4,7 +4,7 @@ using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Cortex.BeaconNode.Data
+namespace Cortex.BeaconNode.Storage
 {
     public class StoreProvider : IStoreProvider
     {
@@ -26,9 +26,10 @@ namespace Cortex.BeaconNode.Data
             Checkpoint bestJustifiedCheckpoint,
             IDictionary<Hash32, BeaconBlock> blocks,
             IDictionary<Hash32, BeaconState> blockStates,
-            IDictionary<Checkpoint, BeaconState> checkpointStates)
+            IDictionary<Checkpoint, BeaconState> checkpointStates,
+            IDictionary<ValidatorIndex, LatestMessage> latestMessages)
         {
-            var store = new Store(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, blockStates, checkpointStates,
+            var store = new Store(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, blockStates, checkpointStates, latestMessages,
                 _loggerFactory.CreateLogger<Store>(),
                 _timeParameterOptions,
                 _beaconChainUtility);
@@ -47,7 +48,8 @@ namespace Cortex.BeaconNode.Data
                 new Checkpoint(Epoch.Zero, Hash32.Zero),
                 new Dictionary<Hash32, BeaconBlock>(),
                 new Dictionary<Hash32, BeaconState>(),
-                new Dictionary<Checkpoint, BeaconState>());
+                new Dictionary<Checkpoint, BeaconState>(),
+                new Dictionary<ValidatorIndex, LatestMessage>());
             return dummy;
         }
     }

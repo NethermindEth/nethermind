@@ -3,7 +3,7 @@ using System.Linq;
 
 namespace Cortex.Containers
 {
-    public class Hash32 : IEquatable<Hash32>
+    public class Hash32 : IEquatable<Hash32>, IComparable<Hash32>
     {
         public const int Length = 32;
 
@@ -58,6 +58,12 @@ namespace Cortex.Containers
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(_bytes);
+        }
+
+        public int CompareTo(Hash32 other)
+        {
+            // lexicographic compare
+            return AsSpan().SequenceCompareTo(other._bytes);
         }
 
         public override bool Equals(object obj)

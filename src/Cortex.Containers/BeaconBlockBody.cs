@@ -46,13 +46,15 @@ namespace Cortex.Containers
         public IReadOnlyList<AttesterSlashing> AttesterSlashings { get { return _attesterSlashings; } }
         public IReadOnlyList<Deposit> Deposits { get { return _deposits; } }
         public Eth1Data Eth1Data { get; }
-        public Bytes32 Graffiti { get; }
+        public Bytes32 Graffiti { get; private set; }
         public IReadOnlyList<ProposerSlashing> ProposerSlashings { get { return _proposerSlashings; } }
         public BlsSignature RandaoReveal { get; private set; }
 
         public IReadOnlyList<VoluntaryExit> VoluntaryExits { get { return _voluntaryExits; } }
 
         public void AddAttestations(Attestation attestation) => _attestations.Add(attestation);
+
+        public void SetGraffiti(Bytes32 graffiti) => Graffiti = graffiti;
 
         public void SetRandaoReveal(BlsSignature randaoReveal) => RandaoReveal = randaoReveal;
 

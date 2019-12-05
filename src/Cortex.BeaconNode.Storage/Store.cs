@@ -6,7 +6,7 @@ using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
-namespace Cortex.BeaconNode.Data
+namespace Cortex.BeaconNode.Storage
 {
     // Data Class
     public class Store : IStore
@@ -15,6 +15,7 @@ namespace Cortex.BeaconNode.Data
         private readonly Dictionary<Hash32, BeaconBlock> _blocks;
         private readonly Dictionary<Hash32, BeaconState> _blockStates;
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates;
+        private readonly Dictionary<ValidatorIndex, LatestMessage> _latestMessages;
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
@@ -26,6 +27,7 @@ namespace Cortex.BeaconNode.Data
             IDictionary<Hash32, BeaconBlock> blocks,
             IDictionary<Hash32, BeaconState> blockStates,
             IDictionary<Checkpoint, BeaconState> checkpointStates,
+            IDictionary<ValidatorIndex, LatestMessage> latestMessages,
             ILogger<Store> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             BeaconChainUtility beaconChainUtility)
@@ -38,6 +40,7 @@ namespace Cortex.BeaconNode.Data
             _blocks = new Dictionary<Hash32, BeaconBlock>(blocks);
             _blockStates = new Dictionary<Hash32, BeaconState>(blockStates);
             _checkpointStates = new Dictionary<Checkpoint, BeaconState>(checkpointStates);
+            _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>(latestMessages);
             _logger = logger;
             _timeParameterOptions = timeParameterOptions;
             _beaconChainUtility = beaconChainUtility;
@@ -50,43 +53,22 @@ namespace Cortex.BeaconNode.Data
         public Checkpoint FinalizedCheckpoint { get; private set; }
         public ulong GenesisTime { get; }
         public Checkpoint JustifiedCheckpoint { get; private set; }
-        public IDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; } = new Dictionary<ValidatorIndex, LatestMessage>();
+        public IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get { return _latestMessages; } }
         public ulong Time { get; private set; }
 
-        public void AddBlock(Hash32 signingRoot, BeaconBlock block) => _blocks[signingRoot] = block;
-
-        public void AddBlockState(Hash32 signingRoot, BeaconState state) => _blockStates[signingRoot] = state;
-
-        public async Task<Hash32> GetHeadAsync()
-        {
-            return await Task.Run(() =>
-            {
-                var head = JustifiedCheckpoint.Root;
-                var justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(JustifiedCheckpoint.Epoch);
-                while (true)
-                {
-                    var children = Blocks
-                        .Where(kvp =>
-                            kvp.Value.ParentRoot.Equals(head)
-                            && kvp.Value.Slot > justifiedSlot)
-                        .Select(kvp => kvp.Key);
-                    if (children.Count() == 0)
-                    {
-                        return head;
-                    }
-                    head = children
-                        .OrderBy(x => GetLatestAttestingBalance(x))
-                        .ThenBy(x => x)
-                        .First();
-                }
-            });
-        }
-
         public void SetBestJustifiedCheckpoint(Checkpoint checkpoint) => BestJustifiedCheckpoint = checkpoint;
+
+        public void SetBlock(Hash32 signingRoot, BeaconBlock block) => _blocks[signingRoot] = block;
+
+        public void SetBlockState(Hash32 signingRoot, BeaconState state) => _blockStates[signingRoot] = state;
+
+        public void SetCheckpointState(Checkpoint checkpoint, BeaconState state) => _checkpointStates[checkpoint] = state;
 
         public void SetFinalizedCheckpoint(Checkpoint checkpoint) => FinalizedCheckpoint = checkpoint;
 
         public void SetJustifiedCheckpoint(Checkpoint checkpoint) => JustifiedCheckpoint = checkpoint;
+
+        public void SetLatestMessage(ValidatorIndex validatorIndex, LatestMessage latestMessage) => _latestMessages[validatorIndex] = latestMessage;
 
         public void SetTime(ulong time) => Time = time;
 
@@ -94,28 +76,8 @@ namespace Cortex.BeaconNode.Data
 
         public bool TryGetBlockState(Hash32 signingRoot, out BeaconState state) => _blockStates.TryGetValue(signingRoot, out state);
 
-        private Gwei GetLatestAttestingBalance(Hash32 root)
-        {
-            var state = CheckpointStates[JustifiedCheckpoint];
-            //var currentEpoch = GetCurrentEpoch(state);
-            //var activeIndexes = GetActiveValidatorIndices(state, currentEpoch);
-            var rootSlot = Blocks[root].Slot;
-            var balance = new Gwei(0);
-            /*
-            foreach (var index in activeIndexes)
-            {
-                if (LatestMessages.Contains(index))
-                {
-                    var latestMessage = LatestMessages[index];
-                    var ancestor = GetAncestor(latestMessage.Root, rootSlot);
-                    if (ancestor == root)
-                    {
-                        balance += state.Validators[index].EffectiveBalance;
-                    }
-                }
-            }
-            */
-            return balance;
-        }
+        public bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState state) => _checkpointStates.TryGetValue(checkpoint, out state);
+
+        public bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage latestMessage) => _latestMessages.TryGetValue(validatorIndex, out latestMessage);
     }
 }

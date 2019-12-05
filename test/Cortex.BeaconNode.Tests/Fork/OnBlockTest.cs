@@ -1,6 +1,6 @@
 ﻿using System;
 using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Data;
+using Cortex.BeaconNode.Storage;
 using Cortex.BeaconNode.Ssz;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
@@ -18,7 +18,7 @@ namespace Cortex.BeaconNode.Tests.Fork
         public void BasicOnBlock()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             var state = TestState.PrepareTestState(testServiceProvider);
 
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;

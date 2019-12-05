@@ -21,11 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Cortex.BeaconNode.Api\Cortex.BeaconNode.Api.csproj" />
     <ProjectReference Include="..\Cortex.BeaconNode\Cortex.BeaconNode.csproj" />
+    <ProjectReference Include="..\Cortex.BeaconNode.Storage\Cortex.BeaconNode.Storage.csproj" />
   </ItemGroup>
-
-  <ItemGroup>
-    <None Update="minimal.yaml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
+  
 </Project>

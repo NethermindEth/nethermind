@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Data;
+using Cortex.BeaconNode.Storage;
 using Cortex.BeaconNode.Tests.Helpers;
 using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
@@ -18,7 +18,7 @@ namespace Cortex.BeaconNode.Tests.Fork
         public void BasicOnTick()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             var state = TestState.PrepareTestState(testServiceProvider);
 
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
@@ -34,7 +34,7 @@ namespace Cortex.BeaconNode.Tests.Fork
         public void UpdateJustifiedSingle()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
+            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
             var state = TestState.PrepareTestState(testServiceProvider);
 
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
