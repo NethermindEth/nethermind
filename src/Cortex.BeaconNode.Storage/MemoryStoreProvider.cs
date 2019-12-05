@@ -6,13 +6,15 @@ using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.Storage
 {
-    public class StoreProvider : IStoreProvider
+    public class MemoryStoreProvider : IStoreProvider
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly ILoggerFactory _loggerFactory;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public StoreProvider(ILoggerFactory loggerFactory, IOptionsMonitor<TimeParameters> timeParameterOptions, BeaconChainUtility beaconChainUtility)
+        private IStore? _store;
+
+        public MemoryStoreProvider(ILoggerFactory loggerFactory, IOptionsMonitor<TimeParameters> timeParameterOptions, BeaconChainUtility beaconChainUtility)
         {
             _loggerFactory = loggerFactory;
             _timeParameterOptions = timeParameterOptions;
@@ -29,28 +31,17 @@ namespace Cortex.BeaconNode.Storage
             IDictionary<Checkpoint, BeaconState> checkpointStates,
             IDictionary<ValidatorIndex, LatestMessage> latestMessages)
         {
-            var store = new Store(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, blockStates, checkpointStates, latestMessages,
-                _loggerFactory.CreateLogger<Store>(),
+            _store = new MemoryStore(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, blockStates, checkpointStates, latestMessages,
+                _loggerFactory.CreateLogger<MemoryStore>(),
                 _timeParameterOptions,
                 _beaconChainUtility);
-            return store;
+            return _store;
         }
 
-        public IStore GetStore()
+        public IStore? GetStore()
         {
-            // TODO: Implement this; for now, just return a dummy genesis store;
-
-            var dummy = CreateStore(
-                0,
-                0,
-                new Checkpoint(Epoch.Zero, Hash32.Zero),
-                new Checkpoint(Epoch.Zero, Hash32.Zero),
-                new Checkpoint(Epoch.Zero, Hash32.Zero),
-                new Dictionary<Hash32, BeaconBlock>(),
-                new Dictionary<Hash32, BeaconState>(),
-                new Dictionary<Checkpoint, BeaconState>(),
-                new Dictionary<ValidatorIndex, LatestMessage>());
-            return dummy;
+            // NOTE: For MemoryStoreProvider, this needs ot have been initialised via CreateStore.
+            return _store;
         }
     }
 }

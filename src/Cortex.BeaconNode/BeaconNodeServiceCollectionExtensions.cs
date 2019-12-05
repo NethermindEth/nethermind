@@ -1,5 +1,4 @@
-﻿using System;
-using Cortex.BeaconNode.Configuration;
+﻿using Cortex.BeaconNode.Configuration;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -196,54 +195,6 @@ namespace Cortex.BeaconNode
                     configuration.GetValue<ulong>("ForkChoiceConfiguration:SafeSlotsToUpdateJustified",
                         () => configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED")));
             });
-        }
-
-        private static void Bind(this IConfiguration configuration, string key, Action<IConfiguration> bindSection)
-        {
-            var configurationSection = configuration.GetSection(key);
-            bindSection(configurationSection);
-        }
-
-        private static byte[] GetBytesFromPrefixedHex(this IConfiguration configuration, string key)
-        {
-            var hex = configuration.GetValue<string>(key);
-            if (string.IsNullOrWhiteSpace(hex))
-            {
-                return Array.Empty<byte>();
-            }
-
-            var bytes = new byte[(hex.Length - 2) / 2];
-            var hexIndex = 2;
-            for (var byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
-            {
-                bytes[byteIndex] = Convert.ToByte(hex.Substring(hexIndex, 2), 16);
-                hexIndex += 2;
-            }
-            return bytes;
-        }
-
-        private static byte[] GetBytesFromPrefixedHex(this IConfiguration configuration, string key, Func<byte[]> defaultValue)
-        {
-            if (configuration.GetSection(key).Exists())
-            {
-                return configuration.GetBytesFromPrefixedHex(key);
-            }
-            else
-            {
-                return defaultValue();
-            }
-        }
-
-        private static T GetValue<T>(this IConfiguration configuration, string key, Func<T> defaultValue)
-        {
-            if (configuration.GetSection(key).Exists())
-            {
-                return configuration.GetValue<T>(key);
-            }
-            else
-            {
-                return defaultValue();
-            }
         }
     }
 }

@@ -30,7 +30,7 @@ namespace Cortex.BeaconNode.Tests
 
             if (useStore)
             {
-                services.AddSingleton<IStoreProvider, StoreProvider>();
+                services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
             }
 
             var options = new ServiceProviderOptions() { ValidateOnBuild = false };
