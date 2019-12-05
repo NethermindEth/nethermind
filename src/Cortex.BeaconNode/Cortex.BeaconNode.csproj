@@ -5,7 +5,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cortex.Cryptography.Bls" Version="0.2.2" />
+    <PackageReference Include="Cortex.Cryptography.Bls" Version="0.3.1" />
     <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
@@ -17,7 +17,8 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <Product>Cortex Eth2.0 blockchain</Product>
-    <Authors>Gryphon Technology</Authors>
+    <Authors>sgryphon</Authors>
+    <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
     <Version>0.0.1</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
