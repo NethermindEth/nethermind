@@ -89,7 +89,7 @@ namespace Nethermind.JsonRpc.Test
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_call", serialized);
-            Assert.AreEqual(1, (response.Result as byte[]).Length);
+            Assert.AreEqual("0x1", response.Result);
         }
         
         [Test]
