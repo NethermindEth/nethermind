@@ -78,6 +78,7 @@ Impelmented so far:
 Phase 0:
 
 * The Beacon Chain
+* Fork Choice -- main spec implemented, alternate algorithms are not
 
 Supporting components:
 
@@ -86,15 +87,15 @@ Supporting components:
 
 ### In Progress
 
-* Fork Choice
+* Honest Validator
 * Eth2 APIs
+* Interop Standards in Eth2 PM -- QuickStart
 
 ### To Do
 
 Phase 0:
 
 * Deposit Contract
-* Honest Validator
 
 Phase 1:
 
@@ -111,7 +112,6 @@ Supporting:
 Other: 
 
 * Eth2 Metrics
-* Interop Standards in Eth2 PM
 
 Project-specific:
 
@@ -120,16 +120,10 @@ Project-specific:
 
 https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/windows-service?view=aspnetcore-3.0&tabs=netcore-cli
 
-## Contributions
-
-Donations (ETH) can be sent to 0x1a474C09EE765C17fbf35B8B0fcb28a2B0E6e6db
-
-Help me try and reach the 32 Eth needed to be a validator.
-
 
 ## License
 
-Copyright (C) 2019 Gryphon Technology Pty Ltd
+Copyright (C) 2019 Demerzel Solutions Limited
 
 This library is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
 
