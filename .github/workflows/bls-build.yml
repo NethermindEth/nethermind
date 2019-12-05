@@ -15,7 +15,7 @@ jobs:
     steps:
     - name: Cloning required repositories
       run: |
-        git clone git://github.com/NethermindEth/bls.git
+        git clone git://github.com/herumi/bls.git
         git clone git://github.com/herumi/mcl.git
     - name: Installing GMP for ubuntu
       if: matrix.os == 'ubuntu-latest'
