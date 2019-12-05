@@ -277,7 +277,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
+        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
             BlockHeader block = _blockchainBridge.GetHeader(blockParameter ?? BlockParameter.Latest);
 
@@ -292,10 +292,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             if (result.Error != null)
             {
-                return ResultWrapper<byte[]>.Success(Bytes.Empty);
+                return ResultWrapper<string>.Fail("VM execution error.", ErrorType.ExecutionError, result.Error);
             }
 
-            return ResultWrapper<byte[]>.Success(result.OutputData);
+            return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)

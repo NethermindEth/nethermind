@@ -390,7 +390,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             transaction.Data = new byte[] {1, 2, 3};
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"Error\",\"error\":{\"code\":-32015,\"message\":\"VM execution error.\",\"data\":null}}", serialized);
         }
 
         [Test]
