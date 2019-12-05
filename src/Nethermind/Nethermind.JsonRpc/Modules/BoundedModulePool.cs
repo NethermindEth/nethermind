@@ -48,7 +48,7 @@ namespace Nethermind.JsonRpc.Modules
                 return _shared;
             }
             
-            if (!_semaphore.Wait(10000))
+            if (!_semaphore.Wait(1000))
             {
                 throw new TimeoutException($"Unable to rent an instance of {typeof(T).Name}");
             }
@@ -59,6 +59,11 @@ namespace Nethermind.JsonRpc.Modules
 
         public void ReturnModule(T module)
         {
+            if(ReferenceEquals(module, _shared))
+            {
+                return;
+            }
+            
             _bag.Add(module);
             _semaphore.Release();
         }
