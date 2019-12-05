@@ -287,17 +287,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 tx.GasLimit = 10000000;
             }
-
-            if (tx.To == null)
-            {
-                return ResultWrapper<byte[]>.Fail($"Recipient address not specified on the transaction.", ErrorType.InvalidParams);
-            }
             
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(block, tx);
 
             if (result.Error != null)
             {
-                return ResultWrapper<byte[]>.Fail($"VM Exception while processing transaction: {result.Error}", ErrorType.ExecutionError, result.OutputData);
+                return ResultWrapper<byte[]>.Success(Bytes.Empty);
             }
 
             return ResultWrapper<byte[]>.Success(result.OutputData);

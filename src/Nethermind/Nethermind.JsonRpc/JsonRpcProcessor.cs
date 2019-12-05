@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc
                 JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                 if (localErrorResponse != null)
                 {
-                    if (_logger.IsError) _logger.Error($"Failed to respond to {rpcRequest.Model.Method} {localErrorResponse.Error.Message}");
+                    if (_logger.IsWarn) _logger.Warn($"Error when handling {rpcRequest.Model.Method} | {_jsonSerializer.Serialize(localErrorResponse)}");
                     Metrics.JsonRpcErrors++;
                 }
                 else
@@ -186,7 +186,7 @@ namespace Nethermind.JsonRpc
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                     if (localErrorResponse != null)
                     {
-                        if (_logger.IsError) _logger.Error($"Failed to respond to {jsonRpcRequest.Method} {localErrorResponse.Error.Message}");
+                        if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest.Method} | {_jsonSerializer.Serialize(localErrorResponse)}");
                         Metrics.JsonRpcErrors++;
                     }
                     else

@@ -342,6 +342,13 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", blockParameter, "false");
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
         }
+        
+//        [Test]
+//        public void Eth_get_block_by_number_null()
+//        {
+//            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", string.Empty, "false");
+//            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Invalid params: invalid type: null, expected a block number or 'latest', 'earliest' or 'pending'.\"}}", serialized);
+//        }
 
         [Test]
         public void Eth_get_code()
@@ -380,9 +387,10 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
+            transaction.Data = new byte[] {1,2,3};
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Recipient address not specified on the transaction.\",\"data\":null}}", serialized);
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
         }
 
         [Test]
@@ -407,7 +415,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void Eth_get_block_by_number_empty_param()
         {
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", "", "true");
-            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Incorrect parameters count, expected: 2, actual: 1\",\"data\":null}}", serialized);
+            Assert.True(serialized.StartsWith("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\""));
         }
 
         [Test]

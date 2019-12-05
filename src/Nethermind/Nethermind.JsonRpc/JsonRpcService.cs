@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc
                 _serializer.Converters.Add(converter);
                 converterList.Add(converter);
             }
-            
+
             BlockParameterConverter blockParameterConverter = new BlockParameterConverter();
             _serializer.Converters.Add(blockParameterConverter);
             converterList.Add(blockParameterConverter);
@@ -261,7 +261,7 @@ namespace Nethermind.JsonRpc
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error("Error while parsing parameters", e);
+                if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
                 return null;
             }
         }
