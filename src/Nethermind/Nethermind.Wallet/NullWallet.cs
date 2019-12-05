@@ -34,6 +34,10 @@ namespace Nethermind.Wallet
         {
         }
 
+        private NullWallet()
+        {
+        }
+
         private static NullWallet _instance;
         
         public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullWallet());

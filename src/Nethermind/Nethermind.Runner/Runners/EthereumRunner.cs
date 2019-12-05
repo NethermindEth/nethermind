@@ -265,7 +265,7 @@ namespace Nethermind.Runner.Runners
                     _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
                     break;
                 default:
-                    _wallet = new NullWallet();
+                    _wallet = NullWallet.Instance;
                     break;
             }
 
