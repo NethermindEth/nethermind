@@ -132,13 +132,13 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var result = new GasPriceService.Result
             {
-                SafeLow = 1,
+                SafeLow = 10,
                 SafeLowWait = 1000,
-                Average = 10,
+                Average = 100,
                 AvgWait = 100,
-                Fast = 100,
+                Fast = 1000,
                 FastWait = 10,
-                Fastest = 1000,
+                Fastest = 10000,
                 FastestWait = 1
             };
             _client.GetAsync<GasPriceService.Result>(Arg.Any<string>()).Returns(result);
@@ -169,13 +169,13 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var result = new GasPriceService.Result
             {
-                SafeLow = 1,
+                SafeLow = 10,
                 SafeLowWait = 1000,
-                Average = 10,
+                Average = 100,
                 AvgWait = 100,
-                Fast = 100,
+                Fast = 1000,
                 FastWait = 10,
-                Fastest = 1000,
+                Fastest = 10000,
                 FastestWait = 1
             };
             _client.GetAsync<GasPriceService.Result>(Arg.Any<string>()).Returns(result);

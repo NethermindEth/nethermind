@@ -20,5 +20,6 @@ namespace Nethermind.DataMarketplace.Consumers
     {
         public static long SentQueries { get; set; }
         public static long ConsumedUnits { get; set; }
+        public static long ReceivedData { get; set; }
     }
 }

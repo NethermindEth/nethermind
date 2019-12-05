@@ -27,14 +27,15 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
 
-namespace Nethermind.DataMarketplace.EndToEnd.Test
+namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
 {
     public class Scenario
     {
+        private long _sentQueries;
+        private long _receivedResults;
         private readonly IJsonSerializer _serializer;
         private readonly IJsonRpcClientProxy _client;
         private const string Password = "test";
-        private const string Client = "ndm";
 
         public Scenario(string jsonRpcUrl)
         {
@@ -47,6 +48,26 @@ namespace Nethermind.DataMarketplace.EndToEnd.Test
         public async Task RunAsync()
         {
             Separator();
+
+            var jsonRpcAvailable = false;
+            while (!jsonRpcAvailable)
+            {
+                Log("* Verifying JSON RPC availability *");
+                var chainId = await ExecuteAsync<long>("eth_chainId");
+                if (chainId > 0)
+                {
+                    jsonRpcAvailable = true;
+                    Log($"* JSON RPC is available *");
+                    Separator();
+                }
+                else
+                {
+                    const int delay = 2000;
+                    Log($"* JSON RPC is not responding, retrying in: {delay} ms *");
+                    await Task.Delay(delay);
+                    Separator();
+                }
+            }
             
             Log("* Creating an account *");
             var account = await ExecuteAsync<Address>("personal_newAccount", Password);
@@ -134,11 +155,15 @@ namespace Nethermind.DataMarketplace.EndToEnd.Test
                 }
             }
 
+            var client = Environment.GetEnvironmentVariable("HOSTNAME") ?? "ndm";
+            Log($"Queries will be sent using the client name: {client}");
+            
             while (true)
             {
                 Log("* Sending a query *");
                 var queryArgs = Array.Empty<string>();
-                await ExecuteAsync<string>("ndm_enableDataStream", depositId, Client, queryArgs);
+                await ExecuteAsync<string>("ndm_enableDataStream", depositId, client, queryArgs);
+                _sentQueries++;
                 Log("* Query sent *");
                 Separator();
 
@@ -148,7 +173,21 @@ namespace Nethermind.DataMarketplace.EndToEnd.Test
                 var data = await ExecuteAsync<string>("ndm_pullData", depositId);
                 Log("* Data pulled *");
                 Separator();
-                Log(_serializer.Serialize(data, true));
+                
+                if (string.IsNullOrWhiteSpace(data))
+                {
+                    Log("! Received an empty data !");
+                }
+                else
+                {
+                    _receivedResults++;
+                    Log(_serializer.Serialize(data, true));
+                }
+                
+                Separator();
+                
+                Log($"- Queries/Results ratio: {_sentQueries}/{_receivedResults} -");
+                
                 Separator();
             }
         }

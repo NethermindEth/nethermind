@@ -60,6 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             AddDecoders();
             var logManager = services.RequiredServices.LogManager;
             var logger = logManager.GetClassLogger();
+            
             var disableSendingDepositTransaction = HasEnabledVariable("SENDING_DEPOSIT_TRANSACTION_DISABLED");
             var instantDepositVerificationEnabled = HasEnabledVariable("INSTANT_DEPOSIT_VERIFICATION_ENABLED");
             var backgroundServicesDisabled = HasEnabledVariable("BACKGROUND_SERVICES_DISABLED");

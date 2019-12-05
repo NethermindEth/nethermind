@@ -12,7 +12,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <Content Include="static-nodes.json">
+      <Content Include="static-nodes-e2e.json">
         <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>

@@ -43,7 +43,7 @@ namespace Nethermind.Monitoring.Metrics
             RegisterMetrics(typeof(DataMarketplace.Consumers.Metrics));
         }
         
-        private void RegisterMetrics(Type type)
+        public void RegisterMetrics(Type type)
         {
             EnsurePropertiesCached(type);
             foreach (PropertyInfo propertyInfo in _propertiesCache[type])
