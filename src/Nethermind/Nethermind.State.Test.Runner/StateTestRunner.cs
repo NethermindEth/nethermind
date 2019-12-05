@@ -27,18 +27,25 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Test.Runner
 {
+    public enum WhenTrace
+    {
+        WhenFailing,
+        Always,
+        Never
+    }
+    
     public class StateTestsRunner : BlockchainTestBase, IStateTestRunner
     {
         private IBlockchainTestsSource _testsSource;
-        private readonly bool _alwaysTrace;
+        private readonly WhenTrace _whenTrace;
         private readonly bool _traceMemory;
         private readonly bool _traceStack;
         private IJsonSerializer _serializer = new EthereumJsonSerializer();
 
-        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace, bool traceMemory, bool traceStack)
+        public StateTestsRunner(IBlockchainTestsSource testsSource, WhenTrace whenTrace, bool traceMemory, bool traceStack)
         {
             _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
-            _alwaysTrace = alwaysTrace;
+            _whenTrace = whenTrace;
             _traceMemory = traceMemory;
             _traceStack = traceStack;
             Setup(null);
@@ -69,12 +76,12 @@ namespace Nethermind.State.Test.Runner
             foreach (BlockchainTest test in tests)
             {
                 EthereumTestResult result = null;
-                if (!_alwaysTrace)
+                if (_whenTrace != WhenTrace.Always)
                 {
                     result = RunTest(test, NullTxTracer.Instance);
                 }
 
-                if (!(result?.Pass ?? false))
+                if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
                 {
                     StateTestTxTracer txTracer = new StateTestTxTracer();
                     txTracer.IsTracingMemory = _traceMemory;

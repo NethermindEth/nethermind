@@ -35,6 +35,9 @@ namespace Nethermind.State.Test.Runner
             [Option('t', "trace", Required = false, HelpText = "Set to always trace (by default traces are only generated for failing tests).")]
             public bool TraceAlways { get; set; }
             
+            [Option('n', "neverTrace", Required = false, HelpText = "Set to never trace (by default traces are only generated for failing tests).")]
+            public bool TraceNever { get; set; }
+            
             [Option('w', "wait", Required = false, HelpText = "Wait for input after the test run.")]
             public bool Wait { get; set; }
 
@@ -57,9 +60,20 @@ namespace Nethermind.State.Test.Runner
 
         private static void Run(Options options)
         {
+            WhenTrace whenTrace = WhenTrace.WhenFailing;
+            if (options.TraceNever)
+            {
+                whenTrace = WhenTrace.Never;
+            }
+
+            if (options.TraceAlways)
+            {
+                whenTrace = WhenTrace.Always;
+            }
+            
             if (!string.IsNullOrWhiteSpace(options.Input))
             {
-                RunSingleTest(options.Input, source => new StateTestsRunner(source, options.TraceAlways, !options.ExcludeMemory, !options.ExcludeStack));
+                RunSingleTest(options.Input, source => new StateTestsRunner(source, whenTrace, !options.ExcludeMemory, !options.ExcludeStack));
             }
 
             if (options.Wait)
