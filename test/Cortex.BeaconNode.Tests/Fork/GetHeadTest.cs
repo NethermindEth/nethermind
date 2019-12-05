@@ -80,6 +80,47 @@ namespace Cortex.BeaconNode.Tests.Fork
             headRoot.ShouldBe(expectedRoot);
         }
 
+        [TestMethod]
+        public async Task SplitTieBreakerNoAttestations()
+        {
+            // Arrange
+            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
+            var state = TestState.PrepareTestState(testServiceProvider);
+
+            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+
+            // Initialization
+            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+            var store = forkChoice.GetGenesisStore(state);
+            var genesisState = BeaconState.Clone(state);
+
+            // block at slot 1
+            var block1State = BeaconState.Clone(genesisState);
+            var block1 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, block1State, signed: true);
+            TestState.StateTransitionAndSignBlock(testServiceProvider, block1State, block1);
+            AddBlockToStore(testServiceProvider, store, block1);
+            var block1Root = block1.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+
+            // build short tree
+            var block2State = BeaconState.Clone(genesisState);
+            var block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, block2State, signed: true);
+            block2.Body.SetGraffiti(new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray()));
+            TestBlock.SignBlock(testServiceProvider, block2State, block2, ValidatorIndex.None);
+            TestState.StateTransitionAndSignBlock(testServiceProvider, block2State, block2);
+            AddBlockToStore(testServiceProvider, store, block2);
+            var block2Root = block2.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+
+            // Act
+            var headRoot = await forkChoice.GetHeadAsync(store);
+
+            // Assert
+            Console.WriteLine("block1 {0}", block1Root);
+            Console.WriteLine("block2 {0}", block2Root);
+            var highestRoot = block1Root.CompareTo(block2Root) > 0 ? block1Root : block2Root;
+            Console.WriteLine("highest {0}", highestRoot);
+            headRoot.ShouldBe(highestRoot);
+        }
 
         [TestMethod]
         public async Task ShorterChainButHeavierWeight()
@@ -97,18 +138,24 @@ namespace Cortex.BeaconNode.Tests.Fork
             var genesisState = BeaconState.Clone(state);
 
             // build longer tree
+            Hash32 longRoot = default;
             var longState = BeaconState.Clone(genesisState);
             for (var i = 0; i < 3; i++)
             {
                 var longBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, longState, signed: true);
                 TestState.StateTransitionAndSignBlock(testServiceProvider, longState, longBlock);
                 AddBlockToStore(testServiceProvider, store, longBlock);
+                if (i == 2)
+                {
+                    longRoot = longBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+                }
             }
 
             // build short tree
             var shortState = BeaconState.Clone(genesisState);
             var shortBlock = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, shortState, signed: true);
             shortBlock.Body.SetGraffiti(new Bytes32(Enumerable.Repeat((byte)0x42, 32).ToArray()));
+            TestBlock.SignBlock(testServiceProvider, shortState, shortBlock, ValidatorIndex.None);
             TestState.StateTransitionAndSignBlock(testServiceProvider, shortState, shortBlock);
             AddBlockToStore(testServiceProvider, store, shortBlock);
 
@@ -121,6 +168,7 @@ namespace Cortex.BeaconNode.Tests.Fork
             // Assert
             var expectedRoot = shortBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
             headRoot.ShouldBe(expectedRoot);
+            headRoot.ShouldNotBe(longRoot);
         }
 
         private void AddAttestationToStore(IServiceProvider testServiceProvider, IStore store, Attestation attestation)

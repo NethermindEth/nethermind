@@ -150,8 +150,8 @@ namespace Cortex.BeaconNode
                         return head;
                     }
                     head = children
-                        .OrderBy(x => GetLatestAttestingBalance(store, x))
-                        .ThenBy(x => x)
+                        .OrderByDescending(x => GetLatestAttestingBalance(store, x))
+                        .ThenByDescending(x => x)
                         .First();
                 }
             });
