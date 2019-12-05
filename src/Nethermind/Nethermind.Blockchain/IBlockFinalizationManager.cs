@@ -22,5 +22,6 @@ namespace Nethermind.Blockchain
     {
         long LastFinalizedBlockLevel { get; }
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
+        long GetLastFinalizedBy(in long blockNumber);
     }
 }

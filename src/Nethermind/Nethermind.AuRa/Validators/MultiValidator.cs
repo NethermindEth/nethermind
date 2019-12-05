@@ -34,6 +34,7 @@ namespace Nethermind.AuRa.Validators
         private readonly ILogger _logger;
         private IAuRaValidatorProcessor _currentValidator;
         private bool _isProducing;
+        private long _lastProcessedBlock = 0;
 
         public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, ILogManager logManager)
         {
@@ -49,10 +50,8 @@ namespace Nethermind.AuRa.Validators
 
         private void InitCurrentValidator(long blockNumber)
         {
-            if (TryGetLastValidator(blockNumber, out var validator))
-            {
-                SetCurrentValidator(validator.Value.Key, validator.Value.Value);
-            }
+            TrySetLastValidator(blockNumber, true);
+            _lastProcessedBlock = blockNumber;
         }
         
         private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator>? val)
@@ -86,17 +85,45 @@ namespace Nethermind.AuRa.Validators
         public void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
             bool isProducingBlock = options.IsProducingBlock();
+            long previousBlockNumber = block.Number - 1;
+            bool isNotConsecutive = previousBlockNumber != _lastProcessedBlock;
 
-            if (isProducingBlock && TryGetLastValidator(block.Number - 1, out var validatorInfo))
+            if (isProducingBlock || isNotConsecutive)
             {
-                AuRaParameters.Validator validator = validatorInfo?.Value;
-                if (validator.ValidatorType.CanChangeImmediately())
+                var result = TrySetLastValidator(previousBlockNumber, false);
+                if (!result.ValidatorSet && result.Validator.HasValue)
                 {
-                    SetCurrentValidator(block.Number, validator);
+                    var validatorInfo = result.Validator.Value;
+                    var lastFinalizedBlock = _blockFinalizationManager.GetLastFinalizedBy(previousBlockNumber);
+                    if (lastFinalizedBlock >= validatorInfo.Key)
+                    {
+                        SetCurrentValidator(previousBlockNumber, validatorInfo.Value);
+                    }
+                    else if (lastFinalizedBlock != _lastProcessedBlock)
+                    {
+                        TrySetLastValidator(lastFinalizedBlock, true);
+                    }
                 }
             }
 
             _currentValidator?.PreProcess(block, options);
+        }
+
+        private (bool ValidatorSet, KeyValuePair<long, AuRaParameters.Validator>? Validator) TrySetLastValidator(long processedBlockNumber, bool forceImmediateChange)
+        {
+            if (TryGetLastValidator(processedBlockNumber, out var validatorInfo))
+            {
+                var validator = validatorInfo.Value;
+                if (forceImmediateChange || validator.Value.ValidatorType.CanChangeImmediately())
+                {
+                    SetCurrentValidator(validator.Key, validator.Value);
+                    return (true, validatorInfo);
+                }
+                
+                return (false, validatorInfo);
+            }
+            
+            return (false, null);
         }
 
         private bool TryGetValidator(long blockNumber, out AuRaParameters.Validator validator) => _validators.TryGetValue(blockNumber, out validator);
@@ -116,6 +143,8 @@ namespace Nethermind.AuRa.Validators
                 }
                 else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
             }
+
+            _lastProcessedBlock = block.Number;
         }
         
         public bool IsValidSealer(Address address, long step) => _currentValidator?.IsValidSealer(address, step) == true;

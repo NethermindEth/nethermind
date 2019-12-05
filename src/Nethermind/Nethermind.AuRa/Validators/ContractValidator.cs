@@ -25,6 +25,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.AuRa.Contracts;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -54,6 +55,7 @@ namespace Nethermind.AuRa.Validators
         private long _lastProcessedBlockNumber = -1;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IBlockTree _blockTree;
+        private readonly IReceiptStorage _receiptStorage;
         private Address[] _validators;
         private bool _isProducing;
 
@@ -86,7 +88,8 @@ namespace Nethermind.AuRa.Validators
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
-            ILogManager logManager,            
+            ILogManager logManager, 
+            //IReceiptStorage receiptStorage,
             long startBlockNumber) : base(validator, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -94,6 +97,7 @@ namespace Nethermind.AuRa.Validators
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            //_receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             InitBlockNumber = startBlockNumber;
@@ -147,6 +151,10 @@ namespace Nethermind.AuRa.Validators
 
                         SetPendingValidators(pendingValidators);
                     }
+                    else if (block.Number > _lastProcessedBlockNumber + 1) // blocks skipped, like fast sync
+                    {
+                        // SetPendingValidators(TryGetInitChangeFromPastBlocks(_blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None), block.Number - 1), true);
+                    }
                 }
                 else
                 {
@@ -162,7 +170,24 @@ namespace Nethermind.AuRa.Validators
             
             _lastProcessedBlockNumber = block.Number;
         }
-        
+
+        private PendingValidators TryGetInitChangeFromPastBlocks(Block blockToCheck, long blockNumber)
+        {
+            PendingValidators pendingValidators = null;
+            var lastFinalized = _blockFinalizationManager.GetLastFinalizedBy(blockNumber);
+            var toBlock = Math.Max(lastFinalized, InitBlockNumber);
+            while (blockToCheck?.Number >= toBlock)
+            {
+                var receipts = blockToCheck.Transactions.Select(t => _receiptStorage.Find(t.Hash)).Where(r => r != null).ToArray();
+                if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, blockToCheck.Header, receipts, out var potentialValidators))
+                {
+                    pendingValidators = new PendingValidators(blockToCheck.Number, blockToCheck.Hash, potentialValidators);
+                }
+            }
+
+            return pendingValidators;
+        }
+
         public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             base.PostProcess(block, receipts, options);

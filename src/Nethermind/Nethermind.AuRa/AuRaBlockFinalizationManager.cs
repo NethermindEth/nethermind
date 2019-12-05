@@ -91,8 +91,8 @@ namespace Nethermind.AuRa
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)} : {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
                 
+                LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
-                LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
             }
         }
         
@@ -234,6 +234,11 @@ namespace Nethermind.AuRa
         */
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
+        
+        public long GetLastFinalizedBy(in long blockNumber)
+        {
+            return GetFinalizedBlocks(_blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.None)).LastOrDefault()?.Number ?? LastFinalizedBlockLevel;
+        }
 
         public long LastFinalizedBlockLevel
         {

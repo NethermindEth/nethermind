@@ -27,7 +27,7 @@
     },
     "Sokol": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db"
+      "commandLineArgs": "--JsonRpc.Enabled false --config configs\\sokol.cfg --baseDbPath C:\\nethermind_db --Network.DiscoveryPort 30304 --Network.P2PPort 30304"
     },
     "Poacore": {
       "commandName": "Project",
@@ -51,7 +51,7 @@
     },
     "Volta": {
       "commandName": "Project",
-      "commandLineArgs": "--JsonRpc.Enabled true --config configs\\volta.cfg --baseDbPath C:\\nethermind_db"  
+      "commandLineArgs": "--JsonRpc.Enabled false --config configs\\volta.cfg --baseDbPath C:\\nethermind_db --Network.DiscoveryPort 30304 --Network.P2PPort 30304"  
     }    
   }
 }
