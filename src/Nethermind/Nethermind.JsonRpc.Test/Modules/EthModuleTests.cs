@@ -139,7 +139,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\"}}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_balance_default_block()
         {
@@ -156,7 +156,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getTransactionCount", TestItem.AddressA.Bytes.ToHexString(true), blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\"}}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_tx_count_default_block()
         {
@@ -173,7 +173,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1", blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"{expectedResult}\"}}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_storage_at_default_block()
         {
@@ -327,7 +327,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", blockParameter, "true");
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
-            
+
             string serialized2 = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", blockParameter);
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized2);
         }
@@ -342,7 +342,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getBlockByNumber", blockParameter, "false");
             Assert.AreEqual($"{{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":{expectedResult}}}", serialized);
         }
-        
+
 //        [Test]
 //        public void Eth_get_block_by_number_null()
 //        {
@@ -356,7 +356,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_getCode", TestItem.AddressA.ToString(), "latest");
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0xabcd\"}", serialized);
         }
-        
+
         [Test]
         public void Eth_get_code_default()
         {
@@ -387,10 +387,17 @@ namespace Nethermind.JsonRpc.Test.Modules
         {
             var transaction = new TransactionForRpc(Keccak.Zero, 1L, 1, new Transaction());
             transaction.From = TestItem.AddressA;
-            transaction.Data = new byte[] {1,2,3};
+            transaction.Data = new byte[] {1, 2, 3};
 
             string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", _ethSerializer.Serialize(transaction), "latest");
             Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x\"}", serialized);
+        }
+
+        [Test]
+        public void Eth_call_ethereum_recipient()
+        {
+            string serialized = RpcTest.TestSerializedRequest(EthModuleFactory.Converters, _ethModule, "eth_call", "{\"data\":\"0x12\",\"from\":\"0x7301cfa0e1756b71869e93d4e4dca5c7d0eb0aa6\",\"to\":\"ethereum\"}", "latest");
+            Assert.True(serialized.StartsWith("{\"id\":67,\"jsonrpc\":\"2.0\",\"error\""));
         }
 
         [Test]
