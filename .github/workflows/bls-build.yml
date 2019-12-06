@@ -3,7 +3,7 @@ name: BLS Build
 on:
   push:
     branches:
-      - workflows
+      - master
 
 jobs:
   bls-building:

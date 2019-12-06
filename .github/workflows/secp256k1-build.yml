@@ -3,7 +3,7 @@ name: Secp256k1 Build
 on:
   push:
     branches:
-      - workflows
+      - master
 
 jobs:
   secp256k1-building:

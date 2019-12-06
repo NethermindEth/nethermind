@@ -1,9 +1,6 @@
 name: Tests workflow - standard
 
-on:
-  push:
-    branches:
-    - workflows
+on: push
 
 jobs:
   neth-tests:
