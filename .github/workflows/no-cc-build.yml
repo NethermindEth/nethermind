@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v2-beta
       with:
         submodules: true
     - name: Installing Linux packages
@@ -83,7 +83,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v2-beta
       with:
         submodules: true
     - name: Ethereum.Basic.Test
@@ -119,3 +119,19 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
+  eth2.0-tests:
+    name: Ethereum 2.0 Tests
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS]
+    steps:
+    - uses: actions/checkout@v2-beta
+      with:
+        submodules: true
+    - name: Ethereum.Bls.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum2.Bls.Test
+    - name: Ethereum.Ssz.Test
+      run: |
+        dotnet test -c Release src/Nethermind/Ethereum2.Ssz.Test
