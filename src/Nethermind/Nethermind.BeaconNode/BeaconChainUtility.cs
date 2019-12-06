@@ -8,6 +8,10 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
+using DomainType = Nethermind.BeaconNode.Containers.DomainType;
+using ForkVersion = Nethermind.BeaconNode.Containers.ForkVersion;
+using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode
 {
@@ -175,7 +179,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
-            return _timeParameterOptions.CurrentValue.SlotsPerEpoch * (ulong)epoch;
+            return (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number;
         }
 
         /// <summary>

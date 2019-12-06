@@ -7,7 +7,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
+using CommitteeIndex = Nethermind.BeaconNode.Containers.CommitteeIndex;
+using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode.Tests.EpochProcessing
 {
@@ -154,7 +157,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             }
 
             var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValues.GenesisEpoch + new Epoch(1));
+            stateEpoch.ShouldBe(initialValues.GenesisEpoch + 1);
 
             state.PreviousEpochAttestations.Count.ShouldBe((int)(ulong)timeParameters.SlotsPerEpoch);
 

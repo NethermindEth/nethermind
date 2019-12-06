@@ -77,7 +77,7 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             var currentSlot = forkChoice.GetCurrentSlot(store);
             var currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe(initialValues.GenesisEpoch + new Epoch(1));
+            currentEpoch.ShouldBe(initialValues.GenesisEpoch + 1);
 
             RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: true);
         }
@@ -113,7 +113,7 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
             var currentSlot = forkChoice.GetCurrentSlot(store);
             var currentEpoch = beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            currentEpoch.ShouldBe(initialValues.GenesisEpoch + new Epoch(2));
+            currentEpoch.ShouldBe(initialValues.GenesisEpoch + 2);
 
             RunOnAttestation(testServiceProvider, state, store, attestation, expectValid: false);
         }

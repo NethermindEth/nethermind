@@ -4,6 +4,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
+using CommitteeIndex = Nethermind.BeaconNode.Containers.CommitteeIndex;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {

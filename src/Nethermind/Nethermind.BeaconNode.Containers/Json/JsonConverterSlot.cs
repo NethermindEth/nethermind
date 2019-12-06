@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers.Json
 {
@@ -13,7 +14,7 @@ namespace Nethermind.BeaconNode.Containers.Json
 
         public override void Write(Utf8JsonWriter writer, Slot value, JsonSerializerOptions options)
         {
-            writer.WriteNumberValue((ulong)value);
+            writer.WriteNumberValue(value);
         }
     }
 }

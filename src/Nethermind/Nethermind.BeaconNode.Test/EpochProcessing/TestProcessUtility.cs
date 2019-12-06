@@ -19,7 +19,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             var slot = state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
 
             // transition state to slot before epoch state transition
-            beaconStateTransition.ProcessSlots(state, slot - new Slot(1));
+            beaconStateTransition.ProcessSlots(state, slot - 1);
 
             // start transitioning, do one slot update before the epoch itself.
             beaconStateTransition.ProcessSlot(state);

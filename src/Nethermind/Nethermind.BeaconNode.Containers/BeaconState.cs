@@ -69,7 +69,7 @@ namespace Nethermind.BeaconNode.Containers
         }
 
         public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader,
-            Slot slotsPerHistoricalRoot, Epoch epochsPerHistoricalVector, Epoch epochsPerSlashingsVector, int justificationBitsLength)
+            uint slotsPerHistoricalRoot, uint epochsPerHistoricalVector, uint epochsPerSlashingsVector, int justificationBitsLength)
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;
@@ -78,11 +78,11 @@ namespace Nethermind.BeaconNode.Containers
             LatestBlockHeader = latestBlockHeader;
             _validators = new List<Validator>();
             _balances = new List<Gwei>();
-            _blockRoots = Enumerable.Repeat(Hash32.Zero, (int)(ulong)slotsPerHistoricalRoot).ToArray();
-            _stateRoots = Enumerable.Repeat(Hash32.Zero, (int)(ulong)slotsPerHistoricalRoot).ToArray();
+            _blockRoots = Enumerable.Repeat(Hash32.Zero, (int)slotsPerHistoricalRoot).ToArray();
+            _stateRoots = Enumerable.Repeat(Hash32.Zero, (int)slotsPerHistoricalRoot).ToArray();
             _historicalRoots = new List<Hash32>();
-            _randaoMixes = Enumerable.Repeat(Hash32.Zero, (int)(ulong)epochsPerHistoricalVector).ToArray();
-            _slashings = Enumerable.Repeat(Gwei.Zero, (int)(ulong)epochsPerSlashingsVector).ToArray();
+            _randaoMixes = Enumerable.Repeat(Hash32.Zero, (int)epochsPerHistoricalVector).ToArray();
+            _slashings = Enumerable.Repeat(Gwei.Zero, (int)epochsPerSlashingsVector).ToArray();
             _previousEpochAttestations = new List<PendingAttestation>();
             _currentEpochAttestations = new List<PendingAttestation>();
             JustificationBits = new BitArray(justificationBitsLength);
@@ -181,7 +181,7 @@ namespace Nethermind.BeaconNode.Containers
 
         public void IncreaseEth1DepositIndex() => Eth1DepositIndex++;
 
-        public void IncreaseSlot() => Slot = new Slot((ulong)Slot + 1);
+        public void IncreaseSlot() => Slot++;
 
         public void JustificationBitsShift()
         {
@@ -192,7 +192,7 @@ namespace Nethermind.BeaconNode.Containers
 
         public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)(ulong)validatorIndex] = balance;
 
-        public void SetBlockRoot(Slot index, Hash32 blockRoot) => _blockRoots[(int)(ulong)index] = blockRoot;
+        public void SetBlockRoot(Slot index, Hash32 blockRoot) => _blockRoots[index] = blockRoot;
 
         public void SetCurrentEpochAttestations(IReadOnlyList<PendingAttestation> attestations)
         {
@@ -224,13 +224,13 @@ namespace Nethermind.BeaconNode.Containers
 
         public void SetPreviousJustifiedCheckpoint(Checkpoint checkpoint) => PreviousJustifiedCheckpoint = checkpoint;
 
-        public void SetRandaoMix(Epoch randaoIndex, Hash32 mix) => _randaoMixes[(int)(ulong)randaoIndex] = mix;
+        public void SetRandaoMix(Epoch randaoIndex, Hash32 mix) => _randaoMixes[randaoIndex] = mix;
 
-        public void SetSlashings(Epoch slashingsIndex, Gwei amount) => _slashings[(int)(ulong)slashingsIndex] += amount;
+        public void SetSlashings(Epoch slashingsIndex, Gwei amount) => _slashings[slashingsIndex] += amount;
 
         public void SetSlot(Slot slot) => Slot = slot;
 
-        public void SetStateRoot(Slot index, Hash32 stateRoot) => _stateRoots[(int)(ulong)index] = stateRoot;
+        public void SetStateRoot(Slot index, Hash32 stateRoot) => _stateRoots[index] = stateRoot;
 
         public override string ToString() => $"G:{GenesisTime} S:{Slot} F:({Fork})";
     }

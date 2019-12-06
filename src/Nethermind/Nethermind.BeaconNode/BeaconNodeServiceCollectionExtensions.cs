@@ -4,8 +4,6 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
 using DomainType = Nethermind.BeaconNode.Containers.DomainType;
-using Epoch = Nethermind.BeaconNode.Containers.Epoch;
-using Slot = Nethermind.BeaconNode.Containers.Slot;
 
 namespace Nethermind.BeaconNode
 {
@@ -89,26 +87,26 @@ namespace Nethermind.BeaconNode
             {
                 configuration.Bind("BeaconChain:TimeParameters", section =>
                 {
-                    x.SecondsPerSlot = section.GetValue<ulong>("SecondsPerSlot",
-                        () => configuration.GetValue<ulong>("SECONDS_PER_SLOT"));
+                    x.SecondsPerSlot = section.GetValue("SecondsPerSlot",
+                        () => configuration.GetValue<uint>("SECONDS_PER_SLOT"));
                     x.MinimumAttestationInclusionDelay = new Slot(
                         section.GetValue("MinimumAttestationInclusionDelay",
                             () => configuration.GetValue<ulong>("MIN_ATTESTATION_INCLUSION_DELAY")));
-                    x.SlotsPerEpoch = new Slot(
+                    x.SlotsPerEpoch = 
                         section.GetValue("SlotsPerEpoch",
-                            () => configuration.GetValue<ulong>("SLOTS_PER_EPOCH")));
+                            () => configuration.GetValue<uint>("SLOTS_PER_EPOCH"));
                     x.MinimumSeedLookahead = new Epoch(
                         section.GetValue("MinimumSeedLookahead",
                             () => configuration.GetValue<ulong>("MIN_SEED_LOOKAHEAD")));
                     x.MaximumSeedLookahead = new Epoch(
                         section.GetValue("MaximumSeedLookahead",
                             () => configuration.GetValue<ulong>("MAX_SEED_LOOKAHEAD")));
-                    x.SlotsPerEth1VotingPeriod = new Slot(
+                    x.SlotsPerEth1VotingPeriod = 
                         section.GetValue("SlotsPerEth1VotingPeriod",
-                            () => configuration.GetValue<ulong>("SLOTS_PER_ETH1_VOTING_PERIOD")));
-                    x.SlotsPerHistoricalRoot = new Slot(
+                            () => configuration.GetValue<uint>("SLOTS_PER_ETH1_VOTING_PERIOD"));
+                    x.SlotsPerHistoricalRoot = 
                         section.GetValue("SlotsPerHistoricalRoot",
-                            () => configuration.GetValue<ulong>("SLOTS_PER_HISTORICAL_ROOT")));
+                            () => configuration.GetValue<uint>("SLOTS_PER_HISTORICAL_ROOT"));
                     x.MinimumValidatorWithdrawabilityDelay = new Epoch(
                         section.GetValue("MinimumValidatorWithdrawabilityDelay",
                             () => configuration.GetValue<ulong>("MIN_VALIDATOR_WITHDRAWABILITY_DELAY")));
@@ -124,12 +122,12 @@ namespace Nethermind.BeaconNode
             {
                 configuration.Bind("BeaconChain:StateListLengths", section =>
                 {
-                    x.EpochsPerHistoricalVector = new Epoch(
+                    x.EpochsPerHistoricalVector = 
                         section.GetValue("EpochsPerHistoricalVector",
-                            () => configuration.GetValue<ulong>("EPOCHS_PER_HISTORICAL_VECTOR")));
-                    x.EpochsPerSlashingsVector = new Epoch(
+                            () => configuration.GetValue<uint>("EPOCHS_PER_HISTORICAL_VECTOR"));
+                    x.EpochsPerSlashingsVector = 
                         section.GetValue("EpochsPerSlashingsVector",
-                            () => configuration.GetValue<ulong>("EPOCHS_PER_SLASHINGS_VECTOR")));
+                            () => configuration.GetValue<uint>("EPOCHS_PER_SLASHINGS_VECTOR"));
                     x.HistoricalRootsLimit = section.GetValue("HistoricalRootsLimit",
                         () => configuration.GetValue<ulong>("HISTORICAL_ROOTS_LIMIT"));
                     x.ValidatorRegistryLimit = section.GetValue("ValidatorRegistryLimit",

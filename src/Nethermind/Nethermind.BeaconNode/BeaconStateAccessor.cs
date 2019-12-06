@@ -9,9 +9,7 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
 using CommitteeIndex = Nethermind.BeaconNode.Containers.CommitteeIndex;
 using DomainType = Nethermind.BeaconNode.Containers.DomainType;
-using Epoch = Nethermind.BeaconNode.Containers.Epoch;
 using ForkVersion = Nethermind.BeaconNode.Containers.ForkVersion;
-using Slot = Nethermind.BeaconNode.Containers.Slot;
 using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode

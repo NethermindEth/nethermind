@@ -8,7 +8,6 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Types;
 using Shouldly;
-using Slot = Nethermind.BeaconNode.Containers.Slot;
 using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode.Tests.EpochProcessing

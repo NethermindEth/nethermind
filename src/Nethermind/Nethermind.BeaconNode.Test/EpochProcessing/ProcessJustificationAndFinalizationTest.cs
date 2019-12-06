@@ -10,8 +10,6 @@ using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Types;
 using Shouldly;
 using CommitteeIndex = Nethermind.BeaconNode.Containers.CommitteeIndex;
-using Epoch = Nethermind.BeaconNode.Containers.Epoch;
-using Slot = Nethermind.BeaconNode.Containers.Slot;
 using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode.Tests.EpochProcessing

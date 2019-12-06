@@ -1,4 +1,6 @@
-﻿namespace Nethermind.BeaconNode.Containers
+﻿using Nethermind.Core2.Types;
+
+namespace Nethermind.BeaconNode.Containers
 {
     public class Fork
     {

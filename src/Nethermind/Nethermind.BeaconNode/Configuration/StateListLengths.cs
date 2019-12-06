@@ -1,11 +1,11 @@
-﻿using Nethermind.BeaconNode.Containers;
+﻿using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Configuration
 {
     public class StateListLengths
     {
-        public Epoch EpochsPerHistoricalVector { get; set; }
-        public Epoch EpochsPerSlashingsVector { get; set; }
+        public uint EpochsPerHistoricalVector { get; set; }
+        public uint EpochsPerSlashingsVector { get; set; }
         public ulong HistoricalRootsLimit { get; set; }
         public ulong ValidatorRegistryLimit { get; set; }
     }

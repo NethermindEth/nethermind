@@ -62,7 +62,7 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
         private void PrepareStateForHeaderProcessing(BeaconState state,
             BeaconStateTransition beaconStateTransition)
         {
-            beaconStateTransition.ProcessSlots(state, state.Slot + new Slot(1));
+            beaconStateTransition.ProcessSlots(state, state.Slot + 1);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using Nethermind.BeaconNode.Containers;
+﻿using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Configuration
 {
@@ -12,9 +12,9 @@ namespace Nethermind.BeaconNode.Configuration
         public Epoch MinimumSeedLookahead { get; set; }
         public Epoch MinimumValidatorWithdrawabilityDelay { get; set; }
         public Epoch PersistentCommitteePeriod { get; set; }
-        public ulong SecondsPerSlot { get; set; }
-        public Slot SlotsPerEpoch { get; set; }
-        public Slot SlotsPerEth1VotingPeriod { get; set; }
-        public Slot SlotsPerHistoricalRoot { get; set; }
+        public uint SecondsPerSlot { get; set; }
+        public uint SlotsPerEpoch { get; set; }
+        public uint SlotsPerEth1VotingPeriod { get; set; }
+        public uint SlotsPerHistoricalRoot { get; set; }
     }
 }

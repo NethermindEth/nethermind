@@ -6,8 +6,6 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.Core2.Types;
 using Shouldly;
-using Epoch = Nethermind.BeaconNode.Containers.Epoch;
-using Slot = Nethermind.BeaconNode.Containers.Slot;
 
 namespace Nethermind.BeaconNode.Tests.Configuration
 {
@@ -60,13 +58,13 @@ namespace Nethermind.BeaconNode.Tests.Configuration
             timeParameters.MinimumSeedLookahead.ShouldNotBe(Epoch.Zero);
             timeParameters.MinimumValidatorWithdrawabilityDelay.ShouldNotBe(Epoch.Zero);
             timeParameters.PersistentCommitteePeriod.ShouldNotBe(Epoch.Zero);
-            timeParameters.SecondsPerSlot.ShouldNotBe(0uL);
-            timeParameters.SlotsPerEpoch.ShouldNotBe(Slot.Zero);
-            timeParameters.SlotsPerEth1VotingPeriod.ShouldNotBe(Slot.Zero);
-            timeParameters.SlotsPerHistoricalRoot.ShouldNotBe(Slot.Zero);
+            timeParameters.SecondsPerSlot.ShouldNotBe(0U);
+            timeParameters.SlotsPerEpoch.ShouldNotBe(0U);
+            timeParameters.SlotsPerEth1VotingPeriod.ShouldNotBe(0U);
+            timeParameters.SlotsPerHistoricalRoot.ShouldNotBe(0U);
 
-            stateListLengths.EpochsPerHistoricalVector.ShouldNotBe(Epoch.Zero);
-            stateListLengths.EpochsPerSlashingsVector.ShouldNotBe(Epoch.Zero);
+            stateListLengths.EpochsPerHistoricalVector.ShouldNotBe(0U);
+            stateListLengths.EpochsPerSlashingsVector.ShouldNotBe(0U);
             stateListLengths.HistoricalRootsLimit.ShouldNotBe(0uL);
             stateListLengths.ValidatorRegistryLimit.ShouldNotBe(0uL);
 
@@ -137,13 +135,13 @@ namespace Nethermind.BeaconNode.Tests.Configuration
             timeParameters.MinimumSeedLookahead.ShouldNotBe(Epoch.Zero);
             timeParameters.MinimumValidatorWithdrawabilityDelay.ShouldNotBe(Epoch.Zero);
             timeParameters.PersistentCommitteePeriod.ShouldNotBe(Epoch.Zero);
-            timeParameters.SecondsPerSlot.ShouldNotBe(0uL);
-            timeParameters.SlotsPerEpoch.ShouldNotBe(Slot.Zero);
-            timeParameters.SlotsPerEth1VotingPeriod.ShouldNotBe(Slot.Zero);
-            timeParameters.SlotsPerHistoricalRoot.ShouldNotBe(Slot.Zero);
+            timeParameters.SecondsPerSlot.ShouldNotBe(0U);
+            timeParameters.SlotsPerEpoch.ShouldNotBe(0U);
+            timeParameters.SlotsPerEth1VotingPeriod.ShouldNotBe(0U);
+            timeParameters.SlotsPerHistoricalRoot.ShouldNotBe(0U);
 
-            stateListLengths.EpochsPerHistoricalVector.ShouldNotBe(Epoch.Zero);
-            stateListLengths.EpochsPerSlashingsVector.ShouldNotBe(Epoch.Zero);
+            stateListLengths.EpochsPerHistoricalVector.ShouldNotBe(0U);
+            stateListLengths.EpochsPerSlashingsVector.ShouldNotBe(0U);
             stateListLengths.HistoricalRootsLimit.ShouldNotBe(0uL);
             stateListLengths.ValidatorRegistryLimit.ShouldNotBe(0uL);
 
@@ -197,7 +195,7 @@ namespace Nethermind.BeaconNode.Tests.Configuration
             // json only, different section
             gweiValues.MaximumEffectiveBalance.ShouldBe(new Gwei(24uL));
             // yaml only, no section in json
-            timeParameters.SecondsPerSlot.ShouldBe(15uL);
+            timeParameters.SecondsPerSlot.ShouldBe(15U);
         }
     }
 }

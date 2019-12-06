@@ -61,7 +61,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             for (var index = 0; index < mockActivations; index++)
             {
                 MockDeposit(testServiceProvider, state, index);
-                state.Validators[index].SetEligible(currentEpoch + new Epoch(1));
+                state.Validators[index].SetEligible(currentEpoch + 1);
             }
 
             // give the last priority over the others

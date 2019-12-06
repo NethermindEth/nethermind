@@ -6,6 +6,8 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
+using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {
@@ -84,7 +86,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
                 else
                 {
                     var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-                    if (stateEpoch + new Epoch(1) > blockEpoch)
+                    if (stateEpoch + 1 > blockEpoch)
                     {
                         Console.WriteLine("WARNING: Block slot far away, and no proposer index manually given."
                             + " Signing block is slow due to transition for proposer index calculation.");

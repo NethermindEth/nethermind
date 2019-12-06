@@ -1,4 +1,5 @@
 ﻿using System;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers
 {

@@ -1,4 +1,5 @@
 ﻿using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers
 {

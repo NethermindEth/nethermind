@@ -5,6 +5,7 @@ using Cortex.BeaconNode.Api;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 using BeaconBlock = Cortex.BeaconNode.Api.BeaconBlock;
 using BeaconBlockBody = Cortex.BeaconNode.Api.BeaconBlockBody;
 using IndexedAttestation = Cortex.BeaconNode.Api.IndexedAttestation;
