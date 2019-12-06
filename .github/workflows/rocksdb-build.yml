@@ -1,4 +1,4 @@
-name: RocksDB Build TEST
+name: RocksDB Build
 
 on:
   push:

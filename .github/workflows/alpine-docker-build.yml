@@ -8,7 +8,9 @@ jobs:
   publish-to-docker:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
+    - uses: actions/checkout@v1
+      with:
+        submodules: true
     - name: Publish to Docker
       uses: elgohr/Publish-Docker-Github-Action@master
       env:
