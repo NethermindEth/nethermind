@@ -13,13 +13,17 @@ namespace Cortex.BeaconNode.Tests
 {
     public static class TestSystem
     {
-        public static IServiceProvider BuildTestServiceProvider(bool useBls = true, bool useStore = false)
+        public static IServiceCollection BuildTestServiceCollection(bool useBls = true, bool useStore = false)
         {
             var services = new ServiceCollection();
-            services.AddLogging(configure => configure.AddConsole());
+            
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.Development.json")
                 .Build();
+            services.AddSingleton<IConfiguration>(configuration);
+
+            services.AddLogging(configure => configure.AddConsole());
+            
             services.AddBeaconNode(configuration);
 
             if (!useBls)
@@ -34,8 +38,13 @@ namespace Cortex.BeaconNode.Tests
                 services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
             }
 
-            var options = new ServiceProviderOptions() { ValidateOnBuild = false };
+            return services;
+        }
 
+        public static IServiceProvider BuildTestServiceProvider(bool useBls = true, bool useStore = false)
+        {
+            var services = BuildTestServiceCollection(useBls, useStore);
+            var options = new ServiceProviderOptions() { ValidateOnBuild = false };
             return services.BuildServiceProvider(options);
         }
 

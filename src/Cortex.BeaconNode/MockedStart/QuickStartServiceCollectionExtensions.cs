@@ -13,7 +13,7 @@ namespace Cortex.BeaconNode.MockedStart
 
         public static void AddQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<QuickStart>();
+            services.AddSingleton<INodeStart, QuickStart>();
             services.Configure<QuickStartParameters>(x =>
             {
                 configuration.Bind("QuickStart", section =>

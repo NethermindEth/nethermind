@@ -13,7 +13,7 @@ using Shouldly;
 namespace Cortex.BeaconNode.Tests
 {
     [TestClass]
-    public class BeaconChainTest
+    public class ChainStartTest
     {
         //[TestMethod]
         //public void InitialDefaultGenesisTimeShouldBeCorrect()

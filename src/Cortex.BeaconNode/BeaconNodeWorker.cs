@@ -10,7 +10,6 @@ using Microsoft.Extensions.Logging;
 
 namespace Cortex.BeaconNode
 {
-    // TODO: Move to worker / services library
     public class BeaconNodeWorker : BackgroundService
     {
         private const string ConfigKey = "config";
@@ -19,7 +18,7 @@ namespace Cortex.BeaconNode
         private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
         private readonly IStoreProvider _storeProvider;
         private readonly ForkChoice _forkChoice;
-        private readonly QuickStart? _quickStart;
+        private readonly INodeStart _nodeStart;
         private readonly ILogger _logger;
         private readonly IClock _clock;
         private readonly IHostEnvironment _environment;
@@ -32,7 +31,7 @@ namespace Cortex.BeaconNode
             BeaconNodeConfiguration beaconNodeConfiguration,
             IStoreProvider storeProvider,
             ForkChoice forkChoice,
-            QuickStart? quickStart)
+            INodeStart nodeStart)
         {
             _logger = logger;
             _clock = clock;
@@ -41,8 +40,7 @@ namespace Cortex.BeaconNode
             _beaconNodeConfiguration = beaconNodeConfiguration;
             _storeProvider = storeProvider;
             _forkChoice = forkChoice;
-            // Replace QuickStart with IChainStartup, which can be replaced by real/mocked
-            _quickStart = quickStart;
+            _nodeStart = nodeStart;
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
@@ -62,16 +60,12 @@ namespace Cortex.BeaconNode
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var version = _beaconNodeConfiguration.Version;
-            var yamlConfig = _configuration[ConfigKey];
+            var environmentName = _environment.EnvironmentName;
+            var configName = _configuration[ConfigKey];
             _logger.LogInformation(Event.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
-                version, _environment.EnvironmentName, yamlConfig, Thread.CurrentThread.ManagedThreadId);
+                version, environmentName, configName, Thread.CurrentThread.ManagedThreadId);
 
-            //await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
-
-            if (_quickStart != null)
-            {
-                _quickStart.QuickStartGenesis();
-            }
+            await _nodeStart.InitializeNodeAsync();
 
             IStore? store = null;
             while (!stoppingToken.IsCancellationRequested && !_stopped)
@@ -97,7 +91,6 @@ namespace Cortex.BeaconNode
                 {
                     await Task.Delay(remaining, stoppingToken);
                 }
-                //await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
 
             _logger.LogDebug("Worker execute thread exiting [{ThreadId}].", Thread.CurrentThread.ManagedThreadId);

@@ -14,6 +14,7 @@ namespace Cortex.BeaconNode
 
             services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<ICryptographyService, CortexCryptographyService>();
+            services.AddSingleton<INodeStart, NodeStart>();
             services.AddSingleton<Genesis>();
             services.AddSingleton<BeaconChainUtility>();
             services.AddSingleton<BeaconStateAccessor>();

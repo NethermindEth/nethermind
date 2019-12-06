@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Services;
 using Cortex.BeaconNode.Ssz;
@@ -13,7 +14,7 @@ using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode.MockedStart
 {
-    public class QuickStart
+    public class QuickStart : INodeStart
     {
         private readonly static BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
 
@@ -35,6 +36,7 @@ namespace Cortex.BeaconNode.MockedStart
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+
         static QuickStart()
         {
             s_zeroHashes[0] = new byte[32];
@@ -73,6 +75,11 @@ namespace Cortex.BeaconNode.MockedStart
             _beaconChainUtility = beaconChainUtility;
             _beaconChain = beaconChain;
             _forkChoice = forkChoice;
+        }
+
+        public Task InitializeNodeAsync()
+        {
+            return Task.Run(() => QuickStartGenesis());
         }
 
         public void QuickStartGenesis()
@@ -209,6 +216,7 @@ namespace Cortex.BeaconNode.MockedStart
             b.CopyTo(combined.Slice(32));
             return s_hashAlgorithm.ComputeHash(combined.ToArray());
         }
+
         private byte[] GeneratePrivateKey(ulong index)
         {
             var input = new Span<byte>(new byte[32]);
