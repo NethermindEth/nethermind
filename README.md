@@ -25,12 +25,12 @@ dotnet run --project src/Cortex.BeaconNode.Host --environment Production
 
 ### Test it works
 
-Open a browser to ```http://localhost:5000/node/version``` and it should respond with the name and version.
+Open a browser to ```https://localhost:5001/node/version``` and it should respond with the name and version.
 
 Other GET queries:
 
-* genesis time: ```http://localhost:5000/node/genesis_time```
-* block (unsigned): ```http://localhost:5000/validator/block```
+* genesis time: ```https://localhost:5001/node/genesis_time```
+* get an unsigned block, ready for signing: ```https://localhost:5001/validator/block?slot=10&randao_reveal=0x0102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f10```
 
 ### Optional requirements
 
