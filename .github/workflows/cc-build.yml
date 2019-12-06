@@ -81,6 +81,8 @@ jobs:
         name: codecov-nethermind 
   eth-tests:
     name: Ethereum Tests
+    env:
+      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -131,6 +133,8 @@ jobs:
         name: codecov-nethermind
   eth2-tests:
     name: Ethereum 2.0 Tests
+    env:
+      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
