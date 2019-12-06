@@ -33,7 +33,7 @@ namespace Cortex.BeaconNode
                 {
                     configureLogging.AddConsole(consoleLoggerOptions => {
                         //consoleLoggerOptions.Format = ConsoleLoggerFormat.Systemd;
-                        consoleLoggerOptions.TimestampFormat = "HH:mm:ss.fff ";
+                        consoleLoggerOptions.TimestampFormat = "HH:mm:ss ";
                         consoleLoggerOptions.IncludeScopes = true;
                     });
                 })
