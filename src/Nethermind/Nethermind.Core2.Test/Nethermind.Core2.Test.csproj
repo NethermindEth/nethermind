@@ -12,4 +12,8 @@
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
     </ItemGroup>
 
+    <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
+    </ItemGroup>
+
 </Project>

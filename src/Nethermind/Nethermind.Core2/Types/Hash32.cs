@@ -23,12 +23,13 @@ namespace Nethermind.Core2.Types
                 span.CopyTo(output);
             }
             
+            // simpler but keeping above for easier testing of fixed
             // _bytes = span.ToArray();
         } 
 
+        // tests are not passing when using fixed
         //        private fixed byte Bytes[32];
-
-//        public Span<byte> AsSpan() => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+        //        public Span<byte> AsSpan() => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
         
         private readonly byte[] _bytes;
         
@@ -72,7 +73,7 @@ namespace Nethermind.Core2.Types
 
         public override string ToString()
         {
-            return AsSpan().ToHexString();
+            return AsSpan().ToHexString(true);
         }
 
         public Hash32 Xor(Hash32 other)
