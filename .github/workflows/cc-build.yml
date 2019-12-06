@@ -126,7 +126,7 @@ jobs:
       with:
         token: ${{secrets.CODECOV_TOKEN}}
         name: codecov-nethermind
-  eth2.0-tests:
+  eth2-tests:
     name: Ethereum 2.0 Tests
     runs-on: ${{ matrix.os }}
     strategy:

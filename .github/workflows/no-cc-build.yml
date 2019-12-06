@@ -115,7 +115,7 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
-  eth2.0-tests:
+  eth2-tests:
     name: Ethereum 2.0 Tests
     runs-on: ${{ matrix.os }}
     strategy:
