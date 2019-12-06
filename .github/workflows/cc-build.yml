@@ -1,6 +1,6 @@
 name: Tests workflow
 
-on: pull-request
+on: pull_request
 
 jobs:
   neth-tests:
