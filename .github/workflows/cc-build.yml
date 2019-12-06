@@ -9,14 +9,14 @@ jobs:
   neth-tests:
     name: Nethermind Tests
     env:
-      EXCLUDE_TEST_PROJECTS: "/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"
+      EXCLUDE_TEST_PROJECTS: '/p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*%2c[Ethereum.Test.Base]*"'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1.0.0
+    - uses: actions/checkout@v1
       with:
         submodules: true
     - name: Installing Linux packages
@@ -89,7 +89,7 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1.0.0
+    - uses: actions/checkout@v1
       with:
         submodules: true
     - name: Ethereum.Basic.Test
@@ -138,7 +138,7 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1.0.0
+    - uses: actions/checkout@v1
       with:
         submodules: true
     - name: Ethereum.Bls.Test

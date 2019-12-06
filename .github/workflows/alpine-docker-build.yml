@@ -2,7 +2,7 @@ name: Publish Alpine Linux Image to Docker Registry
 on: 
   push:
     branches: 
-      - github-actions
+      - workflows
       
 jobs:
   publish-to-docker:

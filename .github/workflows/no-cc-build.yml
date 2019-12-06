@@ -13,7 +13,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@v1.0.0
+    - uses: actions/checkout@v1
       with:
         submodules: true
     - name: Installing Linux packages
@@ -83,7 +83,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@v1.0.0
+    - uses: actions/checkout@v1
       with:
         submodules: true
     - name: Ethereum.Basic.Test
@@ -126,7 +126,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@v1.0.0
+    - uses: actions/checkout@v1
       with:
         submodules: true
     - name: Ethereum.Bls.Test
