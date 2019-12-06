@@ -1,4 +1,5 @@
 ﻿using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Services;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -11,6 +12,7 @@ namespace Cortex.BeaconNode
         {
             AddConfiguration(services, configuration);
 
+            services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<ICryptographyService, CryptographyService>();
             services.AddSingleton<Genesis>();
             services.AddSingleton<BeaconChainUtility>();
@@ -18,7 +20,6 @@ namespace Cortex.BeaconNode
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();
             services.AddSingleton<ForkChoice>();
-
             services.AddSingleton<BeaconNodeConfiguration>();
 
             services.AddScoped<BlockProducer>();
