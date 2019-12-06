@@ -377,7 +377,7 @@ namespace Nethermind.Ssz.Test
 
             Deposit deposit = new Deposit();
             deposit.Data = depositData;
-            deposit.Proof = new Sha256[Deposit.ContractTreeDepth + 1];
+            deposit.Proof = new Hash32[Deposit.ContractTreeDepth + 1];
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;
@@ -491,17 +491,17 @@ namespace Nethermind.Ssz.Test
             container.Slashings = new Gwei[Time.EpochsPerSlashingsVector];
             container.Slot = new Slot(1);
             container.Validators = new Validator[7];
-            container.BlockRoots = new Sha256[Time.SlotsPerHistoricalRoot];
-            container.StateRoots = new Sha256[Time.SlotsPerHistoricalRoot];
+            container.BlockRoots = new Hash32[Time.SlotsPerHistoricalRoot];
+            container.StateRoots = new Hash32[Time.SlotsPerHistoricalRoot];
             container.Eth1Data = eth1Data;
             container.Eth1DataVotes = new Eth1Data[2];
             container.PreviousJustifiedCheckpoint = new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString);
             container.CurrentJustifiedCheckpoint = new Checkpoint(new Epoch(5), Sha256.OfAnEmptyString);
             container.FinalizedCheckpoint = new Checkpoint(new Epoch(7), Sha256.OfAnEmptyString);
             container.GenesisTime = 123;
-            container.HistoricalRoots = new Sha256[13];
+            container.HistoricalRoots = new Hash32[13];
             container.JustificationBits = 9;
-            container.RandaoMixes = new Sha256[Time.EpochsPerHistoricalVector];
+            container.RandaoMixes = new Hash32[Time.EpochsPerHistoricalVector];
             container.PreviousEpochAttestations = new PendingAttestation[1];
             container.CurrentEpochAttestations = new PendingAttestation[11];
             container.Eth1DepositIndex = 1234;

@@ -22,12 +22,12 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockHeader
     {
-        public const int SszLength = Slot.SszLength + 3 * Sha256.SszLength + BlsSignature.SszLength;
+        public const int SszLength = Slot.SszLength + 3 * Hash32.SszLength + BlsSignature.SszLength;
         
         public Slot Slot { get; set; }
-        public Sha256 ParentRoot { get; set; }
-        public Sha256 StateRoot { get; set; }
-        public Sha256 BodyRoot { get; set; }
+        public Hash32 ParentRoot { get; set; }
+        public Hash32 StateRoot { get; set; }
+        public Hash32 BodyRoot { get; set; }
         public BlsSignature Signature { get; set; }
         
         public bool Equals(BeaconBlockHeader other)

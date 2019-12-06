@@ -15,7 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
@@ -23,11 +25,11 @@ namespace Nethermind.Core2.Containers
     {
         public const int ContractTreeDepth = 32;
         
-        public const int SszLengthOfProof = (ContractTreeDepth + 1) * Sha256.SszLength;
+        public const int SszLengthOfProof = (ContractTreeDepth + 1) * Hash32.SszLength;
         
         public const int SszLength = SszLengthOfProof + DepositData.SszLength;
         
-        public Sha256[] Proof = new Sha256[ContractTreeDepth + 1];
+        public Hash32[] Proof = Enumerable.Repeat(Hash32.Zero, ContractTreeDepth + 1).ToArray();
         public DepositData Data { get; set; }
         
         public bool Equals(Deposit other)

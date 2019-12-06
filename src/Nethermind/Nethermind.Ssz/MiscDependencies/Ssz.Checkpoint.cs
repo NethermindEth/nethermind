@@ -17,7 +17,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -53,7 +52,7 @@ namespace Nethermind.Ssz
             if (span.Length != Checkpoint.SszLength) ThrowSourceLength<Checkpoint>(span.Length, Checkpoint.SszLength);
             int offset = 0;
             Epoch epoch = DecodeEpoch(span, ref offset);
-            Sha256 root = DecodeSha256(span, ref offset);
+            Hash32 root = DecodeSha256(span, ref offset);
             return new Checkpoint(epoch, root);
         }
     }

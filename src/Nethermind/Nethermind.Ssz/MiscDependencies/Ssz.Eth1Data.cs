@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
@@ -62,9 +63,9 @@ namespace Nethermind.Ssz
         {
             if (span.Length != Eth1Data.SszLength) ThrowSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             Eth1Data container = new Eth1Data();
-            container.DepositRoot = DecodeSha256(span.Slice(0, Sha256.SszLength));
-            container.DepositCount = DecodeULong(span.Slice(Sha256.SszLength, sizeof(ulong)));
-            container.BlockHash = DecodeSha256(span.Slice(Sha256.SszLength + sizeof(ulong), Sha256.SszLength));
+            container.DepositRoot = DecodeSha256(span.Slice(0, Hash32.SszLength));
+            container.DepositCount = DecodeULong(span.Slice(Hash32.SszLength, sizeof(ulong)));
+            container.BlockHash = DecodeSha256(span.Slice(Hash32.SszLength + sizeof(ulong), Hash32.SszLength));
             return container;
         }
 

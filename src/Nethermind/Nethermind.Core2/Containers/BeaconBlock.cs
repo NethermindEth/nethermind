@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
-        public const int SszDynamicOffset = Slot.SszLength + 2 * Sha256.SszLength + sizeof(uint) + BlsSignature.SszLength;
+        public const int SszDynamicOffset = Slot.SszLength + 2 * Hash32.SszLength + sizeof(uint) + BlsSignature.SszLength;
         
         public static int SszLength(BeaconBlock container)
         {
@@ -30,8 +30,8 @@ namespace Nethermind.Core2.Containers
         }
         
         public Slot Slot { get; set; }
-        public Sha256 ParentRoot { get; set; }
-        public Sha256 StateRoot { get; set; }
+        public Hash32 ParentRoot { get; set; }
+        public Hash32 StateRoot { get; set; }
         public BeaconBlockBody Body { get; set; }
         public BlsSignature Signature { get; set; }
 

@@ -15,8 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Extensions;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
@@ -27,13 +25,13 @@ namespace Nethermind.Core2.Containers
                                             Slot.SszLength +
                                             Fork.SszLength +
                                             BeaconBlockHeader.SszLength +
-                                            2 * Time.SlotsPerHistoricalRoot * Sha256.Size +
+                                            2 * Time.SlotsPerHistoricalRoot * Hash32.SszLength +
                                             sizeof(uint) +
                                             Eth1Data.SszLength +
                                             sizeof(uint) +
                                             sizeof(ulong) +
                                             2 * sizeof(uint) +
-                                            Time.EpochsPerHistoricalVector * Sha256.SszLength +
+                                            Time.EpochsPerHistoricalVector * Hash32.SszLength +
                                             Time.EpochsPerSlashingsVector * Gwei.SszLength +
                                             2 * sizeof(uint) +
                                             1 + // not sure
@@ -44,7 +42,7 @@ namespace Nethermind.Core2.Containers
         public static int SszLength(BeaconState container)
         {
             int result = SszDynamicOffset;
-            result += Sha256.SszLength * container.HistoricalRoots.Length;
+            result += Hash32.SszLength * container.HistoricalRoots.Length;
             result += Validator.SszLength * container.Validators.Length;
             result += Gwei.SszLength * container.Balances.Length;
             result += Eth1Data.SszLength * container.Eth1DataVotes.Length;
@@ -68,15 +66,15 @@ namespace Nethermind.Core2.Containers
         public Slot Slot { get; set; }
         public Fork Fork { get; set; }
         public BeaconBlockHeader LatestBlockHeader { get; set; }
-        public Sha256[] BlockRoots { get; set; } = new Sha256[Time.SlotsPerHistoricalRoot]; 
-        public Sha256[] StateRoots { get; set; } = new Sha256[Time.SlotsPerHistoricalRoot];
-        public Sha256[] HistoricalRoots { get; set; }
+        public Hash32[] BlockRoots { get; set; } = new Hash32[Time.SlotsPerHistoricalRoot]; 
+        public Hash32[] StateRoots { get; set; } = new Hash32[Time.SlotsPerHistoricalRoot];
+        public Hash32[] HistoricalRoots { get; set; }
         public Eth1Data Eth1Data { get; set; }
         public Eth1Data[] Eth1DataVotes { get; set; }
         public ulong Eth1DepositIndex { get; set; }
         public Validator[] Validators { get; set; }
         public Gwei[] Balances { get; set; }
-        public Sha256[] RandaoMixes { get; set; } = new Sha256[Time.EpochsPerHistoricalVector];
+        public Hash32[] RandaoMixes { get; set; } = new Hash32[Time.EpochsPerHistoricalVector];
         public Gwei[] Slashings { get; set; } = new Gwei[Time.EpochsPerSlashingsVector];
         public PendingAttestation[] PreviousEpochAttestations { get; set; }
         public PendingAttestation[] CurrentEpochAttestations { get; set; }

@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
@@ -248,7 +247,7 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
-        public void Feed(Sha256[] value, ulong maxLength)
+        public void Feed(Hash32[] value, ulong maxLength)
         {
             UInt256[] subRoots = new UInt256[value.Length];
             for (int i = 0; i < value.Length; i++)
@@ -339,17 +338,17 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
-        public void Feed(Sha256 value)
+        public void Feed(Hash32 value)
         {
             Feed(MemoryMarshal.Cast<byte, UInt256>(value.Bytes)[0]);
         }
         
-        public void Feed(Span<Sha256> value)
+        public void Feed(Span<Hash32> value)
         {
             UInt256[] input = new UInt256[value.Length];
             for (int i = 0; i < value.Length; i++)
             {
-                UInt256.CreateFromLittleEndian(out input[i], value[i]?.Bytes ?? Bytes.Zero32);
+                UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes ?? Bytes.Zero32);
             }
             
             Merkle.Ize(out _chunks[^1], input);

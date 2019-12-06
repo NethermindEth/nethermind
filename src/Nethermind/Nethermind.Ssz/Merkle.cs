@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using Chunk = Nethermind.Dirichlet.Numerics.UInt256;
 
@@ -34,7 +35,7 @@ namespace Nethermind.Ssz
         private static void BuildZeroHashes()
         {
             Span<UInt256> concatenation = stackalloc UInt256[2];
-            UInt256.CreateFromLittleEndian(out ZeroHashes[0], Sha256.Zero.Bytes);
+            UInt256.CreateFromLittleEndian(out ZeroHashes[0], Hash32.Zero.Bytes);
             for (int i = 1; i < 64; i++)
             {
                 var previous = ZeroHashes[i - 1];
@@ -168,9 +169,9 @@ namespace Nethermind.Ssz
             root = value;
         }
 
-        public static void Ize(out UInt256 root, Sha256 value)
+        public static void Ize(out UInt256 root, Hash32 value)
         {
-            UInt256.CreateFromLittleEndian(out root, value?.Bytes ?? Bytes.Zero32);
+            UInt256.CreateFromLittleEndian(out root, value.Bytes ?? Bytes.Zero32);
         }
 
         public static void Ize(out UInt256 root, Span<bool> value)

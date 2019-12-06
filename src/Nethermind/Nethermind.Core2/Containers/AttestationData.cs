@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
@@ -43,11 +42,11 @@ namespace Nethermind.Core2.Containers
             throw new NotSupportedException();
         }
 
-        public const int SszLength = Slot.SszLength + CommitteeIndex.SszLength + Sha256.SszLength + 2 * Checkpoint.SszLength; 
+        public const int SszLength = Slot.SszLength + CommitteeIndex.SszLength + Hash32.SszLength + 2 * Checkpoint.SszLength; 
         
         public Slot Slot { get; set; }
         public CommitteeIndex CommitteeIndex { get; set; }
-        public Sha256 BeaconBlockRoot { get; set; }
+        public Hash32 BeaconBlockRoot { get; set; }
         public Checkpoint Source { get; set; }
         public Checkpoint Target { get; set; }
 

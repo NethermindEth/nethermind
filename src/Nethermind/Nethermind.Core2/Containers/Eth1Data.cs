@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
@@ -43,17 +43,17 @@ namespace Nethermind.Core2.Containers
             }
         }
 
-        public const int SszLength = 2 * Sha256.SszLength + sizeof(ulong);
+        public const int SszLength = 2 * Hash32.SszLength + sizeof(ulong);
         
         /// <summary>
         /// Is it Keccak?
         /// </summary>
-        public Sha256 DepositRoot { get; set; }
+        public Hash32 DepositRoot { get; set; }
         public ulong DepositCount { get; set; }
         
         /// <summary>
         /// Is it Keccak?
         /// </summary>
-        public Sha256 BlockHash { get; set; }
+        public Hash32 BlockHash { get; set; }
     }
 }

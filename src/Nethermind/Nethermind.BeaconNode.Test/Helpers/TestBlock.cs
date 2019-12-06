@@ -15,6 +15,7 @@ using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
+using Hash32 = Nethermind.Core2.Types.Hash32;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode.Tests.Helpers

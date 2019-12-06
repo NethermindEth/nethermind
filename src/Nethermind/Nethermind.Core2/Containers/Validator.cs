@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Containers
     {
         public const ulong ValidatorRegistryLimit = 1_099_511_627_776;
 
-        public const int SszLength = BlsPublicKey.SszLength + Sha256.SszLength + Gwei.SszLength + 1 + 4 * Epoch.SszLength;
+        public const int SszLength = BlsPublicKey.SszLength + Hash32.SszLength + Gwei.SszLength + 1 + 4 * Epoch.SszLength;
 
         public Validator(BlsPublicKey publicKey)
         {
@@ -34,7 +34,7 @@ namespace Nethermind.Core2.Containers
         public BlsPublicKey PublicKey { get; }
 
         /// <summary>Gets the public key commitment for withdrawals and transfers</summary>
-        public Sha256 WithdrawalCredentials { get; set; }
+        public Hash32 WithdrawalCredentials { get; set; }
 
         /// <summary>
         ///     Balance at stake

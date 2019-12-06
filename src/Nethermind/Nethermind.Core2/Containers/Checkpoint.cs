@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Diagnostics;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
@@ -23,16 +22,16 @@ namespace Nethermind.Core2.Containers
     [DebuggerDisplay("{Epoch}_{Root}")]
     public struct Checkpoint
     {
-        public const int SszLength = Sha256.SszLength + Epoch.SszLength; 
+        public const int SszLength = Hash32.SszLength + Epoch.SszLength; 
         
-        public Checkpoint(Epoch epoch, Sha256 root)
+        public Checkpoint(Epoch epoch, Hash32 root)
         {
             Epoch = epoch;
             Root = root;
         }
 
         public Epoch Epoch { get; }
-        public Sha256 Root { get; }
+        public Hash32 Root { get; }
         
         public static bool operator ==(Checkpoint a, Checkpoint b)
         {

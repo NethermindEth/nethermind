@@ -9,6 +9,8 @@ namespace Nethermind.Core2.Types
     {
         public const int Length = 32;
         
+        public const int SszLength = 32;
+        
         public Hash32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)
@@ -16,8 +18,8 @@ namespace Nethermind.Core2.Types
                 throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
             }
 
-            _bytes = new byte[32];
-            fixed (byte* ptr = _bytes)
+            Bytes = new byte[32];
+            fixed (byte* ptr = Bytes)
             {
                 var output = new Span<byte>(ptr, Length);
                 span.CopyTo(output);
@@ -31,11 +33,11 @@ namespace Nethermind.Core2.Types
         //        private fixed byte Bytes[32];
         //        public Span<byte> AsSpan() => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
         
-        private readonly byte[] _bytes;
+        public readonly byte[] Bytes;
         
         public Span<byte> AsSpan()
         {
-            return new Span<byte>(_bytes);
+            return new Span<byte>(Bytes);
         }
 
         public bool Equals(Hash32 other)
