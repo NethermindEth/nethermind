@@ -36,10 +36,10 @@ namespace Nethermind.BeaconNode.Containers
         {
             var clone = new Crosslink(
                 other.Shard,
-                Hash32.Clone(other.ParentRoot),
+                other.ParentRoot,
                 other.StartEpoch,
                 other.EndEpoch,
-                Hash32.Clone(other.DataRoot)
+                other.DataRoot
                 );
             return clone;
         }

@@ -19,7 +19,7 @@ namespace Nethermind.BeaconNode.Containers
         {
             var clone = new Checkpoint(
                 other.Epoch,
-                Hash32.Clone(other.Root));
+                other.Root);
             return clone;
         }
 

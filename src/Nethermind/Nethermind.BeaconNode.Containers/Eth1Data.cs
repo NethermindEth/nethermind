@@ -25,9 +25,9 @@ namespace Nethermind.BeaconNode.Containers
         public static Eth1Data Clone(Eth1Data other)
         {
             var clone = new Eth1Data(
-                Hash32.Clone(other.DepositRoot),
+                other.DepositRoot,
                 other.DepositCount,
-                Hash32.Clone(other.BlockHash));
+                other.BlockHash);
             return clone;
         }
 

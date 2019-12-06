@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using Cortex.SimpleSerialize;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 
 namespace Nethermind.BeaconNode.Ssz
 {

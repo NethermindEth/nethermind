@@ -4,11 +4,23 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Attestation = Nethermind.BeaconNode.Containers.Attestation;
+using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
+using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
+using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
+using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
+using Checkpoint = Nethermind.BeaconNode.Containers.Checkpoint;
+using Deposit = Nethermind.BeaconNode.Containers.Deposit;
+using HistoricalBatch = Nethermind.BeaconNode.Containers.HistoricalBatch;
+using PendingAttestation = Nethermind.BeaconNode.Containers.PendingAttestation;
+using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
+using Validator = Nethermind.BeaconNode.Containers.Validator;
 
 namespace Nethermind.BeaconNode
 {
@@ -408,7 +420,7 @@ namespace Nethermind.BeaconNode
                 state.Eth1Data.DepositRoot);
             if (!isValid)
             {
-                throw new Exception($"Invalid Merle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
+                throw new Exception($"Invalid Merkle branch for deposit for validator poublic key {deposit.Data.PublicKey}");
             }
 
             // Deposits must be processed in order

@@ -3,9 +3,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Containers;
 using Shouldly;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Tests.BlockProcessing
 {

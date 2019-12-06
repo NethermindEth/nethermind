@@ -2,10 +2,11 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {
@@ -28,7 +29,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
 
             var domain = beaconStateAccessor.GetDomain(state, signatureDomains.VoluntaryExit, voluntaryExit.Epoch);
             var signature = TestSecurity.BlsSign(voluntaryExit.SigningRoot(), privateKey, domain);
-            voluntaryExit.SetSignature(signature);
+            voluntaryExit.Signature = signature;
         }
     }
 }

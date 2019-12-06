@@ -40,6 +40,21 @@ namespace Nethermind.Core2.Crypto
             return other != null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
         
+        public static bool operator !=(BlsSignature? left, BlsSignature? right)
+        {
+            return !(left == right);
+        }
+
+        public static bool operator ==(BlsSignature? left, BlsSignature? right)
+        {
+            if (left is null)
+            {
+                return right is null;
+            }
+            
+            return left.Equals(right);
+        }
+
         public ReadOnlySpan<byte> AsSpan()
         {
             return new ReadOnlySpan<byte>(Bytes);

@@ -30,7 +30,7 @@ namespace Nethermind.BeaconNode.Containers
             var clone = new AttestationData(
                 other.Slot,
                 other.Index,
-                Hash32.Clone(other.BeaconBlockRoot),
+                other.BeaconBlockRoot,
                 Checkpoint.Clone(other.Source),
                 Checkpoint.Clone(other.Target)
                 );

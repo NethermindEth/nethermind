@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -36,12 +37,12 @@ namespace Nethermind.BeaconNode.Containers
         /// </summary>
         public static BeaconBlockHeader Clone(BeaconBlockHeader other)
         {
-            var clone = new BeaconBlockHeader(Hash32.Clone(other.BodyRoot))
+            var clone = new BeaconBlockHeader(other.BodyRoot)
             {
                 Slot = other.Slot,
-                ParentRoot = Hash32.Clone(other.ParentRoot),
-                StateRoot = Hash32.Clone(other.StateRoot),
-                BodyRoot = Hash32.Clone(other.BodyRoot),
+                ParentRoot = other.ParentRoot,
+                StateRoot = other.StateRoot,
+                BodyRoot = other.BodyRoot,
                 Signature = new BlsSignature(other.Signature.Bytes)
             };
             return clone;
@@ -59,6 +60,16 @@ namespace Nethermind.BeaconNode.Containers
 
         public bool Equals(BeaconBlockHeader other)
         {
+            if (ReferenceEquals(other, null))
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(other, this))
+            {
+                return true;
+            }
+            
             return BodyRoot == other.BodyRoot
                 && ParentRoot == other.ParentRoot
                 && Signature == other.Signature

@@ -1,5 +1,7 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core2.Types
 {
@@ -55,9 +57,9 @@ namespace Nethermind.Core2.Types
             return left.Equals(right);
         }
 
-        public ReadOnlySpan<byte> AsSpan()
+        public Span<byte> AsSpan()
         {
-            return new ReadOnlySpan<byte>(_bytes);
+            return new Span<byte>(_bytes);
         }
 
         public int CompareTo(Hash32 other)
@@ -79,12 +81,7 @@ namespace Nethermind.Core2.Types
 
         public override int GetHashCode()
         {
-            var hash = new HashCode();
-            foreach (var b in _bytes)
-            {
-                hash.Add(b);
-            }
-            return hash.ToHashCode();
+            return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
         }
 
         public override string ToString()
@@ -94,8 +91,87 @@ namespace Nethermind.Core2.Types
 
         public Hash32 Xor(Hash32 other)
         {
-            var xorBytes = _bytes.Zip(other._bytes, (a, b) => (byte)(a ^ b)).ToArray();
-            return new Hash32(xorBytes);
+            return new Hash32(other.AsSpan().Xor(AsSpan()));
         }
     }
+    
+//     public unsafe struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
+//    {
+//        public const int Length = 32;
+//        
+//        private fixed byte Bytes[32];
+//
+//        public Hash32(ReadOnlySpan<byte> span)
+//        {
+//            if (span.Length != Length)
+//            {
+//                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
+//            }
+//            
+//            fixed (byte* ptr = Bytes)
+//            {
+//                var output = new Span<byte>(ptr, Length);
+//                span.CopyTo(output);
+//            }
+//        }
+//        
+//        public Hash32(Span<byte> span)
+//        {
+//            if (span.Length != Length)
+//            {
+//                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
+//            }
+//            
+//            fixed (byte* ptr = Bytes)
+//            {
+//                var output = new Span<byte>(ptr, Length);
+//                span.CopyTo(output);
+//            }
+//        }
+//
+//        public static Hash32 Zero = default;
+//
+//        public static bool operator !=(Hash32? left, Hash32? right)
+//        {
+//            return !(left == right);
+//        }
+//
+//        public static bool operator ==(Hash32? left, Hash32? right)
+//        {
+//            if (left is null)
+//            {
+//                return right is null;
+//            }
+//            
+//            return left.Equals(right);
+//        }
+//        
+//        public Span<byte> AsSpan() => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+//
+//        public int CompareTo(Hash32 other)
+//        {
+//            // lexicographic compare
+//            return AsSpan().SequenceCompareTo(other.AsSpan());
+//        }
+//
+//        public override int GetHashCode()
+//        {
+//            return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
+//        }
+//
+//        public override string ToString()
+//        {
+//            return AsSpan().ToHexString();
+//        }
+//
+//        public Hash32 Xor(Hash32 other)
+//        {
+//            return new Hash32(other.AsSpan().Xor(AsSpan()));
+//        }
+//
+//        public bool Equals(Hash32 other)
+//        {
+//            return AsSpan().SequenceEqual(other.AsSpan());
+//        }
+//    }
 }

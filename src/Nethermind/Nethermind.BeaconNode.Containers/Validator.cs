@@ -48,7 +48,7 @@ namespace Nethermind.BeaconNode.Containers
         {
             var clone = new Validator(
                  other.PublicKey,
-                 Hash32.Clone(other.WithdrawalCredentials),
+                 other.WithdrawalCredentials,
                  other.EffectiveBalance,
                  other.ActivationEligibilityEpoch,
                  other.ActivationEpoch,

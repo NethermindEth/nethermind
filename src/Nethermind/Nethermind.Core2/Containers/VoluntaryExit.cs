@@ -24,10 +24,24 @@ namespace Nethermind.Core2.Containers
     {
         public const int SszLength = Epoch.SszLength + ValidatorIndex.SszLength + BlsSignature.SszLength;
 
+        /// <summary>
+        /// The earliest epoch when voluntary exit can be processed
+        /// </summary>
         public Epoch Epoch { get; set; }
         public ValidatorIndex ValidatorIndex { get; set; }
         public BlsSignature Signature { get; set; }
 
+        public VoluntaryExit()
+        {
+        }
+        
+        public VoluntaryExit(Epoch epoch, ValidatorIndex validatorIndex, BlsSignature signature)
+        {
+            Epoch = epoch;
+            ValidatorIndex = validatorIndex;
+            Signature = signature;
+        }
+        
         public bool Equals(VoluntaryExit other)
         {
             return Epoch == other.Epoch && ValidatorIndex == other.ValidatorIndex && Equals(Signature, other.Signature);
@@ -43,6 +57,11 @@ namespace Nethermind.Core2.Containers
         public override int GetHashCode()
         {
             throw new NotImplementedException();
+        }
+        
+        public override string ToString()
+        {
+            return $"V:{ValidatorIndex} E:{Epoch}";
         }
     }
 }

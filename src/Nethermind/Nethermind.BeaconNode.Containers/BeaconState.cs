@@ -1,6 +1,7 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers
@@ -105,12 +106,12 @@ namespace Nethermind.BeaconNode.Containers
         public Checkpoint CurrentJustifiedCheckpoint { get; private set; }
 
         public Eth1Data Eth1Data { get; private set; }
-        public IReadOnlyList<Eth1Data> Eth1DataVotes { get { return _eth1DataVotes; } }
+        public IReadOnlyList<Eth1Data> Eth1DataVotes => _eth1DataVotes;
         public ulong Eth1DepositIndex { get; private set; }
         public Checkpoint FinalizedCheckpoint { get; private set; }
         public Fork Fork { get; }
         public ulong GenesisTime { get; private set; }
-        public IReadOnlyList<Hash32> HistoricalRoots { get { return _historicalRoots; } }
+        public IReadOnlyList<Hash32> HistoricalRoots => _historicalRoots;
         public BitArray JustificationBits { get; private set; }
 
         public BeaconBlockHeader LatestBlockHeader { get; private set; }
@@ -139,17 +140,17 @@ namespace Nethermind.BeaconNode.Containers
             var clone = new BeaconState(
                 other.GenesisTime,
                 other.Slot,
-                Fork.Clone(other.Fork),
+                other.Fork,
                 BeaconBlockHeader.Clone(other.LatestBlockHeader),
-                other.BlockRoots.Select(x => Hash32.Clone(x)).ToArray(),
-                other.StateRoots.Select(x => Hash32.Clone(x)).ToArray(),
-                other.HistoricalRoots.Select(x => Hash32.Clone(x)).ToList(),
+                other.BlockRoots.ToArray(),
+                other.StateRoots.ToArray(),
+                other.HistoricalRoots.ToArray(),
                 Eth1Data.Clone(other.Eth1Data),
                 other.Eth1DataVotes.Select(x => Eth1Data.Clone(x)).ToList(),
                 other.Eth1DepositIndex,
                 other.Validators.Select(x => Validator.Clone(x)).ToList(),
                 other.Balances.Select(x => x).ToList(),
-                other.RandaoMixes.Select(x => Hash32.Clone(x)).ToArray(),
+                other.RandaoMixes.Select(x => x).ToArray(),
                 other.Slashings.Select(x => x).ToArray(),
                 other.PreviousEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),
                 other.CurrentEpochAttestations.Select(x => PendingAttestation.Clone(x)).ToList(),

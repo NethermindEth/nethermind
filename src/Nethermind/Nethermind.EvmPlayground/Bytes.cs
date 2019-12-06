@@ -14,13 +14,28 @@ namespace Nethermind.EvmPlayground
         {
             return ToHexString(bytes, false, false);
         }
+        
+        public static string ToHexString(this Span<byte> bytes)
+        {
+            return ToHexString(bytes, false, false);
+        }
 
         public static string ToHexString(this byte[] bytes, bool withZeroX)
         {
             return ToHexString(bytes, withZeroX, false);
         }
+        
+        public static string ToHexString(this Span<byte> bytes, bool withZeroX)
+        {
+            return ToHexString(bytes, withZeroX, false);
+        }
 
         private static string ToHexString(byte[] bytes, bool withZeroX, bool skipLeadingZeros)
+        {
+            return ToHexString(bytes.AsSpan(), withZeroX, skipLeadingZeros);
+        }
+
+        private static string ToHexString(Span<byte> bytes, bool withZeroX, bool skipLeadingZeros)
         {
             int leadingZeros = skipLeadingZeros ? CountLeadingZeroNibbles(bytes) : 0;
             var result = new char[bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
@@ -59,7 +74,7 @@ namespace Nethermind.EvmPlayground
             return result;
         }
 
-        private static int CountLeadingZeroNibbles(byte[] bytes)
+        private static int CountLeadingZeroNibbles(Span<byte> bytes)
         {
             int leadingZeros = 0;
             for (int i = 0; i < bytes.Length; i++)
