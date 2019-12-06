@@ -13,7 +13,7 @@
 To run with default Development settings (minimal config):
 
 ```
-dotnet run --project src/Cortex.BeaconNode.Host
+dotnet run --project src/Cortex.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 3
 ```
 
 To run with Production settings (mainnet config):

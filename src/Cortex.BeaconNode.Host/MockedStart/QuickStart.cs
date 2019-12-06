@@ -91,6 +91,11 @@ namespace Cortex.BeaconNode.MockedStart
 
         public void QuickStartGenesis()
         {
+            var quickStartParameters = _quickStartParameterOptions.CurrentValue;
+
+            _logger.LogWarning(0, "Mocked quick start with genesis time {GenesisTime} and {ValidatorCount} validators.",
+                quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount);
+
             var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             var gweiValues = _gweiValueOptions.CurrentValue;
             var initialValues = _initialValueOptions.CurrentValue;
@@ -98,7 +103,6 @@ namespace Cortex.BeaconNode.MockedStart
             var stateListLengths = _stateListLengthOptions.CurrentValue;
             var maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
             var signatureDomains = _signatureDomainOptions.CurrentValue;
-            var quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
             // Fixed amount
             var amount = gweiValues.MaximumEffectiveBalance;
@@ -162,13 +166,18 @@ namespace Cortex.BeaconNode.MockedStart
                 _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
                 var deposit = new Deposit(proof, depositData);
 
+                _logger.LogDebug("Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.",
+                    validatorIndex, publicKey);
+
                 deposits.Add(deposit);
             }
 
             var genesisState = _beaconChain.InitializeBeaconStateFromEth1(quickStartParameters.Eth1BlockHash, quickStartParameters.Eth1Timestamp, deposits);
             // We use the state directly, and don't test IsValid
             genesisState.SetGenesisTime(quickStartParameters.GenesisTime);
-            _ = _forkChoice.GetGenesisStore(genesisState);
+            var store = _forkChoice.GetGenesisStore(genesisState);
+
+            _logger.LogDebug("Quick start genesis store created with genesis time {GenesisTime}.", store.GenesisTime);
         }
 
         private byte[] GeneratePrivateKey(ulong index)
@@ -176,7 +185,7 @@ namespace Cortex.BeaconNode.MockedStart
             var input = new Span<byte>(new byte[32]);
             var bigIndex = new BigInteger(index);
             var success = bigIndex.TryWriteBytes(input, out var bytesWritten);
-            if (!success || bytesWritten != 32)
+            if (!success || bytesWritten == 0)
             {
                 throw new Exception("Error getting input for quick start private key generation.");
             }

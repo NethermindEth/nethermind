@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Cortex.BeaconNode.Storage;
+using Cortex.BeaconNode.MockedStart;
 
 namespace Cortex.BeaconNode
 {
@@ -55,6 +56,11 @@ namespace Cortex.BeaconNode
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
                     services.AddHostedService<Worker>();
+
+                    if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
+                    {
+                        services.AddQuickStart(hostContext.Configuration);
+                    }
                 })
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
