@@ -3,7 +3,7 @@ name: Tests workflow - standard
 on:
   push:
     branches:
-    - github-actions
+    - workflows
 
 jobs:
   neth-tests:
@@ -13,7 +13,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@v2-beta
+    - uses: actions/checkout@v1.0.0
+      with:
+        submodules: true
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -81,7 +83,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@v2-beta
+    - uses: actions/checkout@v1.0.0
+      with:
+        submodules: true
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
@@ -122,12 +126,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
-    - uses: actions/checkout@v2-beta
-<<<<<<< HEAD:.github/workflows/no-cc-build.yml
+    - uses: actions/checkout@v1.0.0
       with:
         submodules: true
-=======
->>>>>>> b96e7c44811436ec82d5c34361585e1036ac6334:.github/workflows/no-cc-build.yml
     - name: Ethereum.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum2.Bls.Test
