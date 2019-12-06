@@ -1,14 +1,13 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.MockedStart;
-using Cortex.BeaconNode.Services;
-using Cortex.BeaconNode.Storage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.Services;
+using Nethermind.BeaconNode.Storage;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class BeaconNodeWorker : BackgroundService
     {

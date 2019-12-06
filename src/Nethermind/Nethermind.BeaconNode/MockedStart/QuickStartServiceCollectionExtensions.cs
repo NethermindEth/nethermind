@@ -1,10 +1,10 @@
 ﻿using System.Linq;
-using Cortex.BeaconNode.Services;
-using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
 
-namespace Cortex.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.MockedStart
 {
     public static class QuickStartServiceCollectionExtensions
     {

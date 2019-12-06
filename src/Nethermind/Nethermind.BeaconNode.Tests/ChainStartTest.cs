@@ -1,16 +1,16 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Services;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
 using Shouldly;
 
-namespace Cortex.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Tests
 {
     [TestClass]
     public class ChainStartTest

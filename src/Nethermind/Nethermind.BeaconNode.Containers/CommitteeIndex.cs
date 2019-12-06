@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public struct CommitteeIndex : IEquatable<CommitteeIndex>, IComparable<CommitteeIndex>
     {

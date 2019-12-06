@@ -1,7 +1,7 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cortex.BeaconNode.Storage
+namespace Nethermind.BeaconNode.Storage
 {
     public static class BeaconNodeStorageServiceCollectionExtensions
     {

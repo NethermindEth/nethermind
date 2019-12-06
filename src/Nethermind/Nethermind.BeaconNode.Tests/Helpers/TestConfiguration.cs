@@ -1,9 +1,4 @@
-﻿using System.Collections.Generic;
-using Cortex.BeaconNode.Configuration;
-using Cortex.Containers;
-using Microsoft.Extensions.Options;
-
-namespace Cortex.BeaconNode.Tests.Helpers
+﻿namespace Nethermind.BeaconNode.Tests.Helpers
 {
     public static class TestConfiguration
     {

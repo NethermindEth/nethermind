@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Services;
-using Cortex.BeaconNode.Ssz;
-using Cortex.Containers;
-using Cortex.Containers.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
+using Nethermind.BeaconNode.Ssz;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class BeaconStateTransition
     {

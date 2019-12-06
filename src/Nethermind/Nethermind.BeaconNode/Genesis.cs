@@ -1,12 +1,12 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Ssz;
-using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Ssz;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class Genesis
     {

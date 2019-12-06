@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.BeaconChain
+namespace Nethermind.BeaconNode
 {
     public static class InteropMetrics
     {

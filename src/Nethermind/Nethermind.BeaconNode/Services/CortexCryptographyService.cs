@@ -2,10 +2,10 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
-using Cortex.Containers;
 using Cortex.Cryptography;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Services
+namespace Nethermind.BeaconNode.Services
 {
     /// <summary>
     /// Implementation of ICryptographyService that uses the Cortex BLS nuget package

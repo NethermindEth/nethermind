@@ -4,7 +4,7 @@ using System.Reflection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class BeaconNodeConfiguration
     {

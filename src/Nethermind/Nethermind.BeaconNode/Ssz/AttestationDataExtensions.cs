@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
-using Cortex.Containers;
 using Cortex.SimpleSerialize;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Ssz
+namespace Nethermind.BeaconNode.Ssz
 {
     public static class AttestationDataExtensions
     {

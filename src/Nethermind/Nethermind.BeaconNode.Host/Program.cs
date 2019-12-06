@@ -5,11 +5,10 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Cortex.BeaconNode.Storage;
-using Cortex.BeaconNode.MockedStart;
-using Microsoft.Extensions.Logging.Console;
+using Nethermind.BeaconNode.MockedStart;
+using Nethermind.BeaconNode.Storage;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode.Host
 {
     public class Program
     {
@@ -18,7 +17,7 @@ namespace Cortex.BeaconNode
         private const string YamlConfigKey = "config";
 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
-            Host.CreateDefaultBuilder(args)
+            Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
                 // Default loads host configuration from DOTNET_ and command line,
                 // app configuration from appsettings.json, user secrets, environment variables, and command line,
                 // configure logging to console, debug, and event source,

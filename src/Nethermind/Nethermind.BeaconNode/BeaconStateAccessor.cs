@@ -2,12 +2,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Services;
-using Cortex.Containers;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class BeaconStateAccessor
     {

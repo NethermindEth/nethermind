@@ -1,7 +1,7 @@
-﻿using Cortex.Containers;
-using Cortex.SimpleSerialize;
+﻿using Cortex.SimpleSerialize;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Ssz
+namespace Nethermind.BeaconNode.Ssz
 {
     public static class EpochExtensions
     {

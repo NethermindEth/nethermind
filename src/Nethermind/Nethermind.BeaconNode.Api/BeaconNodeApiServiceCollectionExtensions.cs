@@ -1,7 +1,8 @@
 ﻿using System.Reflection;
+using Cortex.BeaconNode.Api;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Cortex.BeaconNode.Api
+namespace Nethermind.BeaconNode.Api
 {
     public static class BeaconNodeServiceCollectionExtensions
     {

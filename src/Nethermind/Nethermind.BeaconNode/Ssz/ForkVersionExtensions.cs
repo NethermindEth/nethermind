@@ -1,10 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using Cortex.Containers;
-using Cortex.SimpleSerialize;
+﻿using Cortex.SimpleSerialize;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Ssz
+namespace Nethermind.BeaconNode.Ssz
 {
     public static class ForkVersionExtensions
     {

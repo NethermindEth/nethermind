@@ -1,9 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Threading.Tasks;
-using Cortex.Containers;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class ChainStart
     {

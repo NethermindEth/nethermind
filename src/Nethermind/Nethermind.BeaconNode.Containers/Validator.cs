@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Cortex.Containers
+﻿namespace Nethermind.BeaconNode.Containers
 {
     public class Validator
     {

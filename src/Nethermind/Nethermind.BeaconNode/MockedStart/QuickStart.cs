@@ -4,15 +4,15 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Services;
-using Cortex.BeaconNode.Ssz;
-using Cortex.Containers;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
+using Nethermind.BeaconNode.Ssz;
 
-namespace Cortex.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.MockedStart
 {
     public class QuickStart : INodeStart
     {

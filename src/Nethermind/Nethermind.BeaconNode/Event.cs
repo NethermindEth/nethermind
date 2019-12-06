@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.Logging;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public static class Event
     {

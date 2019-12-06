@@ -1,16 +1,15 @@
 ﻿using System;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Storage;
-using Cortex.BeaconNode.Ssz;
-using Cortex.BeaconNode.Tests.Helpers;
-using Cortex.Containers;
+using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Storage;
+using Nethermind.BeaconNode.Tests.Helpers;
 using Shouldly;
-using System.Linq;
 
-namespace Cortex.BeaconNode.Tests.Fork
+namespace Nethermind.BeaconNode.Tests.Fork
 {
     [TestClass]
     public class OnAttestationTest

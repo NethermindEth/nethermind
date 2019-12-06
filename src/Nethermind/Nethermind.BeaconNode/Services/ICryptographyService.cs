@@ -1,8 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using Cortex.Containers;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Services
+namespace Nethermind.BeaconNode.Services
 {
     public interface ICryptographyService
     {

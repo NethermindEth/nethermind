@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Cortex.BeaconNode.Tests.EpochProcessing
+﻿namespace Nethermind.BeaconNode.Tests.EpochProcessing
 {
     public enum TestProcessStep
     {

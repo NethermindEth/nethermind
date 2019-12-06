@@ -1,9 +1,9 @@
 ﻿using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.Containers;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class BeaconStateMutator
     {

@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.Extensions.Options;
 
-namespace Cortex.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Tests
 {
     public static class TestOptionsMonitor
     {

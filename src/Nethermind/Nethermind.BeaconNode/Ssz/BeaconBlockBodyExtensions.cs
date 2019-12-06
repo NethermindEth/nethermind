@@ -1,10 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using Cortex.BeaconNode.Configuration;
-using Cortex.Containers;
+﻿using System.Collections.Generic;
 using Cortex.SimpleSerialize;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Ssz
+namespace Nethermind.BeaconNode.Ssz
 {
     public static class BeaconBlockBodyExtensions
     {

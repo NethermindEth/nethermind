@@ -1,15 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Tests.Helpers;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Tests.Helpers;
 using Shouldly;
 
-namespace Cortex.BeaconNode.Tests.EpochProcessing
+namespace Nethermind.BeaconNode.Tests.EpochProcessing
 {
     [TestClass]
     public class ProcessSlashingsTest
@@ -32,7 +32,7 @@ namespace Cortex.BeaconNode.Tests.EpochProcessing
             SlashValidators(testServiceProvider, state, slashedIndices, Enumerable.Repeat(outEpoch, slashedCount));
 
             var totalBalance = beaconStateAccessor.GetTotalActiveBalance(state);
-            var totalPenalties = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
+            Gwei totalPenalties = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
 
             (totalBalance / 3).ShouldBeLessThanOrEqualTo(totalPenalties);
 

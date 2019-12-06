@@ -1,6 +1,6 @@
-﻿using Cortex.Containers;
+﻿using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.MockedStart
 {
     public class QuickStartParameters
     {

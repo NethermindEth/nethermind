@@ -1,6 +1,6 @@
-﻿using Cortex.Containers;
+﻿using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Configuration
+namespace Nethermind.BeaconNode.Configuration
 {
     public class ChainConstants
     {

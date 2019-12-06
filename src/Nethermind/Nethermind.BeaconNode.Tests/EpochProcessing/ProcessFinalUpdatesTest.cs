@@ -1,14 +1,14 @@
 ﻿using System;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Tests.Helpers;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Tests.Helpers;
 using Shouldly;
 
-namespace Cortex.BeaconNode.Tests.EpochProcessing
+namespace Nethermind.BeaconNode.Tests.EpochProcessing
 {
     [TestClass]
     public class ProcessFinalUpdatesTest

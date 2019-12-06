@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public class Eth1Data : IEquatable<Eth1Data>
     {

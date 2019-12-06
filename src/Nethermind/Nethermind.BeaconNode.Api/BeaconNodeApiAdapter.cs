@@ -1,11 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Storage;
-using Cortex.Containers;
+using Cortex.BeaconNode.Api;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.Containers;
+using BeaconBlock = Cortex.BeaconNode.Api.BeaconBlock;
+using BeaconBlockBody = Cortex.BeaconNode.Api.BeaconBlockBody;
+using IndexedAttestation = Cortex.BeaconNode.Api.IndexedAttestation;
 
-namespace Cortex.BeaconNode.Api
+namespace Nethermind.BeaconNode.Api
 {
     public class BeaconNodeApiAdapter : IBeaconNodeApiController
     {

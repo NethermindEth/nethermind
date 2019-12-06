@@ -1,15 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
-using Cortex.BeaconNode.Services;
-using Cortex.BeaconNode.Storage;
-using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using NSubstitute;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
+using Nethermind.BeaconNode.Storage;
 
-namespace Cortex.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Tests
 {
     public static class TestSystem
     {

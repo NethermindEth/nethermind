@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
-using Cortex.Containers;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Storage
+namespace Nethermind.BeaconNode.Storage
 {
     public interface IStoreProvider
     {

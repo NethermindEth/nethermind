@@ -1,7 +1,7 @@
 ﻿using System;
-using Cortex.BeaconNode.Services;
+using Nethermind.BeaconNode.Services;
 
-namespace Cortex.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.MockedStart
 {
     /// <summary>
     /// Clock that runs at normal pace, but starting at the specified unix time.

@@ -1,10 +1,10 @@
 ﻿using System;
-using Cortex.BeaconNode.Configuration;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Tests.EpochProcessing
+namespace Nethermind.BeaconNode.Tests.EpochProcessing
 {
     public static class TestProcessUtility
     {

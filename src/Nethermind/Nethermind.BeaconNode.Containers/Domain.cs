@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Runtime.InteropServices;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public struct Domain : IEquatable<Domain>
     {

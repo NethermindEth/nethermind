@@ -1,6 +1,6 @@
 ﻿using System.Threading.Tasks;
 
-namespace Cortex.BeaconNode.Services
+namespace Nethermind.BeaconNode.Services
 {
     public class NodeStart : INodeStart
     {

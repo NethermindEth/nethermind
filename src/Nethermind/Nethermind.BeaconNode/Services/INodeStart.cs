@@ -1,9 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 
-namespace Cortex.BeaconNode.Services
+namespace Nethermind.BeaconNode.Services
 {
     public interface INodeStart
     {

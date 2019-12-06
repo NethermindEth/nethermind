@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public class HistoricalBatch
     {

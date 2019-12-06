@@ -2,13 +2,13 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Ssz;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Ssz;
 
-namespace Cortex.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Tests.Helpers
 {
     public static class TestAttestation
     {

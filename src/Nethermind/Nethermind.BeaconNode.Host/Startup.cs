@@ -1,11 +1,11 @@
-﻿using Cortex.BeaconNode.Api;
-using Microsoft.AspNetCore.Builder;
+﻿using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Nethermind.BeaconNode.Api;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode.Host
 {
     public class Startup
     {

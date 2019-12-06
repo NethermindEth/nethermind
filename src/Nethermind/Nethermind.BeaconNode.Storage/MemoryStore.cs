@@ -1,12 +1,10 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
-using Cortex.BeaconNode.Configuration;
-using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Storage
+namespace Nethermind.BeaconNode.Storage
 {
     // Data Class
     public class MemoryStore : IStore

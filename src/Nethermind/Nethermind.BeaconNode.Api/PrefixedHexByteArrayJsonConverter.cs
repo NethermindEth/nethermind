@@ -3,7 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Cortex.BeaconNode.Api
+namespace Nethermind.BeaconNode.Api
 {
     internal class PrefixedHexByteArrayJsonConverter : JsonConverter<byte[]>
     {

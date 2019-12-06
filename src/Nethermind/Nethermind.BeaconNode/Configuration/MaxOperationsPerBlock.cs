@@ -1,4 +1,4 @@
-﻿namespace Cortex.BeaconNode.Configuration
+﻿namespace Nethermind.BeaconNode.Configuration
 {
     public class MaxOperationsPerBlock
     {

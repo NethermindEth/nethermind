@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
-namespace Cortex.BeaconNode.Api
+namespace Nethermind.BeaconNode.Api
 {
     public class PrefixedHexByteArrayModelBinderProvider : IModelBinderProvider
     {

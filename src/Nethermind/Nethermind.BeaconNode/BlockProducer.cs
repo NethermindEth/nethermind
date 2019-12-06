@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Storage;
-using Cortex.Containers;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Storage;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class BlockProducer
     {

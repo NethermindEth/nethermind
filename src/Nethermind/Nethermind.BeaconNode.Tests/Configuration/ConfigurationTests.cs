@@ -1,13 +1,13 @@
-﻿using Cortex.BeaconNode.Configuration;
-using Cortex.Containers;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
 using Shouldly;
 
-namespace Cortex.BeaconNode.Tests.Configuration
+namespace Nethermind.BeaconNode.Tests.Configuration
 {
     [TestClass]
     public class ConfigurationTests

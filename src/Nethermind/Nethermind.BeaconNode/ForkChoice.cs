@@ -2,14 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Ssz;
-using Cortex.BeaconNode.Storage;
-using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Ssz;
+using Nethermind.BeaconNode.Storage;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public class ForkChoice
     {

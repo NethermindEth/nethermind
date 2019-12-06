@@ -3,7 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
-namespace Cortex.BeaconNode.Api
+namespace Nethermind.BeaconNode.Api
 {
     public class PrefixedHexByteArrayModelBinder : IModelBinder
     {

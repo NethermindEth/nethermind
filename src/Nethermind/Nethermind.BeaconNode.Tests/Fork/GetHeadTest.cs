@@ -1,18 +1,18 @@
 ﻿using System;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Storage;
-using Cortex.BeaconNode.Ssz;
-using Cortex.BeaconNode.Tests.Helpers;
-using Cortex.Containers;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Containers.Json;
+using Nethermind.BeaconNode.Ssz;
+using Nethermind.BeaconNode.Storage;
+using Nethermind.BeaconNode.Tests.Helpers;
 using Shouldly;
-using System.Linq;
-using System.Threading.Tasks;
-using Cortex.Containers.Json;
 
-namespace Cortex.BeaconNode.Tests.Fork
+namespace Nethermind.BeaconNode.Tests.Fork
 {
     [TestClass]
     public class GetHeadTest

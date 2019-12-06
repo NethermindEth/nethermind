@@ -2,7 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Cortex.Containers.Json
+namespace Nethermind.BeaconNode.Containers.Json
 {
     public class JsonConverterShard : JsonConverter<Shard>
     {

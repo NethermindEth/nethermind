@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public struct Epoch : IEquatable<Epoch>, IComparable<Epoch>
     {

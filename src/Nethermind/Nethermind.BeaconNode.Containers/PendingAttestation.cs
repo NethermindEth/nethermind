@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public class PendingAttestation
     {

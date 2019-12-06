@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cortex.BeaconNode.Services;
+using Nethermind.BeaconNode.Services;
 
-namespace Cortex.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Tests.Helpers
 {
     public class FastTestClock : IClock
     {

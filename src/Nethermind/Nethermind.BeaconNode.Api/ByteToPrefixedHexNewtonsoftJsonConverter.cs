@@ -1,8 +1,4 @@
-﻿using System;
-using System.Linq;
-using Newtonsoft.Json;
-
-namespace Cortex.BeaconNode.Api
+﻿namespace Nethermind.BeaconNode.Api
 {
     //internal class ByteToPrefixedHexNewtonsoftJsonConverter : JsonConverter
     //{

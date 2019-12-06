@@ -1,6 +1,6 @@
-﻿using Cortex.Containers;
+﻿using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Storage
+namespace Nethermind.BeaconNode.Storage
 {
     // Data Class
     public class LatestMessage

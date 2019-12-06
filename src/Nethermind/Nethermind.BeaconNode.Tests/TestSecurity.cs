@@ -1,10 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
-using Cortex.Containers;
 using Cortex.Cryptography;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Tests
 {
     public static class TestSecurity
     {

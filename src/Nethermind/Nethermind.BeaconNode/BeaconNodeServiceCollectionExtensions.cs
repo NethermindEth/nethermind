@@ -1,10 +1,10 @@
-﻿using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Services;
-using Cortex.Containers;
-using Microsoft.Extensions.Configuration;
+﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Services;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public static class BeaconNodeServiceCollectionExtensions
     {

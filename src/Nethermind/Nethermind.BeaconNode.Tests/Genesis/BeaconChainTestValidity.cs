@@ -1,14 +1,14 @@
 ﻿using System;
 using System.Linq;
-using Cortex.BeaconNode.Configuration;
-using Cortex.BeaconNode.Tests.Helpers;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Tests.Helpers;
 using Shouldly;
 
-namespace Cortex.BeaconNode.Tests.Genesis
+namespace Nethermind.BeaconNode.Tests.Genesis
 {
     [TestClass]
     public class BeaconChainTestValidity

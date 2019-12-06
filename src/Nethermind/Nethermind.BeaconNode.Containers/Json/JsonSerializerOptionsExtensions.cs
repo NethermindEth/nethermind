@@ -1,6 +1,6 @@
 ﻿using System.Text.Json;
 
-namespace Cortex.Containers.Json
+namespace Nethermind.BeaconNode.Containers.Json
 {
     public static class JsonSerializerOptionsExtensions
     {

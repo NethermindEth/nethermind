@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Cortex.BeaconNode.Services
+namespace Nethermind.BeaconNode.Services
 {
     public interface IClock
     {

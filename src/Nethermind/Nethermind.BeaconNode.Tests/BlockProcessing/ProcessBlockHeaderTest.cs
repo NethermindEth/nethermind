@@ -1,11 +1,11 @@
 ﻿using System;
-using Cortex.BeaconNode.Tests.Helpers;
-using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Tests.Helpers;
 using Shouldly;
 
-namespace Cortex.BeaconNode.Tests.BlockProcessing
+namespace Nethermind.BeaconNode.Tests.BlockProcessing
 {
     [TestClass]
     public class ProcessBlockHeaderTest

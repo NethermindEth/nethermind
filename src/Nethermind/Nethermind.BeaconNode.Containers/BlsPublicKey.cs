@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public class BlsPublicKey : IEquatable<BlsPublicKey>
     {

@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.Extensions.Configuration;
 
-namespace Cortex.BeaconNode
+namespace Nethermind.BeaconNode
 {
     public static class ConfigurationExtensions
     {

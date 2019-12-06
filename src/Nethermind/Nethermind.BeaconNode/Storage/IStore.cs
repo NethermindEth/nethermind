@@ -1,8 +1,7 @@
 ﻿using System.Collections.Generic;
-using System.Threading.Tasks;
-using Cortex.Containers;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Storage
+namespace Nethermind.BeaconNode.Storage
 {
     public interface IStore
     {
@@ -11,7 +10,7 @@ namespace Cortex.BeaconNode.Storage
         IReadOnlyDictionary<Hash32, BeaconState> BlockStates { get; }
         IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
         Checkpoint FinalizedCheckpoint { get; }
-        public ulong GenesisTime { get; }
+        ulong GenesisTime { get; }
         Checkpoint JustifiedCheckpoint { get; }
         IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; }
         ulong Time { get; }

@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using Cortex.Containers;
+using Nethermind.BeaconNode.Containers;
 
-namespace Cortex.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Tests.Helpers
 {
     public static class TestCheckpoint
     {

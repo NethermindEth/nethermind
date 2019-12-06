@@ -1,9 +1,8 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
-namespace Cortex.Containers
+namespace Nethermind.BeaconNode.Containers
 {
     public class BeaconState
     {
