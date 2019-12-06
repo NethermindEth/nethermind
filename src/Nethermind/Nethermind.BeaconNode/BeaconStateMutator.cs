@@ -2,6 +2,9 @@
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
+using Epoch = Nethermind.BeaconNode.Containers.Epoch;
+using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode
 {

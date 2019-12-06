@@ -6,6 +6,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests.Genesis
@@ -74,7 +75,7 @@ namespace Nethermind.BeaconNode.Tests.Genesis
 
             // Act
             var state = CreateValidBeaconState(testServiceProvider);
-            state.Validators[0].SetEffectiveBalance(gweiValues.MaximumEffectiveBalance + (Gwei)1);
+            state.Validators[0].SetEffectiveBalance(gweiValues.MaximumEffectiveBalance + 1);
 
             // Assert
             IsValidGenesisState(testServiceProvider, state, true);

@@ -4,8 +4,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
 using Shouldly;
+using Epoch = Nethermind.BeaconNode.Containers.Epoch;
+using Slot = Nethermind.BeaconNode.Containers.Slot;
 
 namespace Nethermind.BeaconNode.Tests.Configuration
 {

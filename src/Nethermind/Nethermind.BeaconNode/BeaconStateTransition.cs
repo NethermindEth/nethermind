@@ -8,6 +8,10 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
+using Epoch = Nethermind.BeaconNode.Containers.Epoch;
+using Slot = Nethermind.BeaconNode.Containers.Slot;
+using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode
 {

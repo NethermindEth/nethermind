@@ -1,8 +1,11 @@
 ﻿using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2.Types;
+using DomainType = Nethermind.BeaconNode.Containers.DomainType;
+using Epoch = Nethermind.BeaconNode.Containers.Epoch;
+using Slot = Nethermind.BeaconNode.Containers.Slot;
 
 namespace Nethermind.BeaconNode
 {

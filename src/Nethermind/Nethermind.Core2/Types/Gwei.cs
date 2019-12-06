@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Amount}")]
-    public struct Gwei
+    public struct Gwei : IComparable<Gwei>
     {
         public const int SszLength = sizeof(ulong);
 
@@ -78,11 +79,6 @@ namespace Nethermind.Core2.Types
         {
             return Amount.GetHashCode();
         }
-        
-        public static implicit operator Gwei(ulong amount)
-        {
-            return new Gwei(amount);
-        }
 
         public static Gwei MinDepositAmount { get; set; } = 1_000_000_000UL;
 
@@ -91,5 +87,54 @@ namespace Nethermind.Core2.Types
         public static Gwei EjectionBalance { get; set; } = 16_000_000_000UL;
 
         public static Gwei EffectiveBalanceIncrement { get; set; } = 1_000_000_000UL;
+
+        public static implicit operator Gwei(ulong value) => new Gwei(value);
+
+        public static explicit operator ulong(Gwei slot) => slot.Amount;
+
+        public static Gwei Min(Gwei val1, Gwei val2)
+        {
+            return new Gwei(Math.Min(val1.Amount, val2.Amount));
+        }
+        
+        public static Gwei Max(Gwei val1, Gwei val2)
+        {
+            return new Gwei(Math.Max(val1.Amount, val2.Amount));
+        }
+
+        public static Gwei operator -(Gwei left, Gwei right)
+        {
+            return new Gwei(left.Amount - right.Amount);
+        }
+
+        public static Gwei operator %(Gwei left, Gwei right)
+        {
+            return new Gwei(left.Amount % right.Amount);
+        }
+
+        public static Gwei operator *(Gwei left, ulong right)
+        {
+            return new Gwei(left.Amount * right);
+        }
+
+        public static Gwei operator /(Gwei left, ulong right)
+        {
+            return new Gwei(left.Amount / right);
+        }
+
+        public static Gwei operator +(Gwei left, Gwei right)
+        {
+            return new Gwei(left.Amount + right.Amount);
+        }
+
+        public override string ToString()
+        {
+            return Amount.ToString();
+        }
+
+        public int CompareTo(Gwei other)
+        {
+            return Amount.CompareTo(other.Amount);
+        }
     }
 }
