@@ -27,12 +27,14 @@ namespace Nethermind.Core2.Crypto
 {
     public class BlsPublicKey : IEquatable<BlsPublicKey>
     {
-        private const int PublicKeyLengthInBytes = 48;
+        public const int Length = 48;
 
-        public const int SszLength = PublicKeyLengthInBytes;
+        public const int SszLength = Length;
 
         private Address _address;
 
+        public static BlsPublicKey Empty = new BlsPublicKey(new byte[Length]);
+        
         public static BlsPublicKey TestKey1 = new BlsPublicKey(
             "0x000102030405060708090a0b0c0d0e0f" +
             "101112131415161718191a1b1c1d1e1f" +
@@ -42,6 +44,11 @@ namespace Nethermind.Core2.Crypto
             : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
+        
+        public ReadOnlySpan<byte> AsSpan()
+        {
+            return new ReadOnlySpan<byte>(Bytes);
+        }
 
         public BlsPublicKey(byte[] bytes)
         {
@@ -50,9 +57,9 @@ namespace Nethermind.Core2.Crypto
                 throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (bytes.Length != PublicKeyLengthInBytes)
+            if (bytes.Length != Length)
             {
-                throw new ArgumentException($"{nameof(BlsPublicKey)} should be {PublicKeyLengthInBytes} bytes long", nameof(bytes));
+                throw new ArgumentException($"{nameof(BlsPublicKey)} should be {Length} bytes long", nameof(bytes));
             }
 
             Bytes = bytes;

@@ -7,7 +7,6 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Crypto;
-using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.Tests
 {
@@ -54,7 +53,7 @@ namespace Nethermind.BeaconNode.Tests
 
             public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
             {
-                return new BlsPublicKey();
+                return BlsPublicKey.Empty;
             }
 
             public bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain)

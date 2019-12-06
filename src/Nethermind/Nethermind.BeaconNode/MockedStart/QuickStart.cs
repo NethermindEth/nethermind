@@ -12,13 +12,12 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
-using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
     public class QuickStart : INodeStart
     {
-        private readonly static BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
+        private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
 
         private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
@@ -81,7 +80,7 @@ namespace Nethermind.BeaconNode.MockedStart
 
         public Task InitializeNodeAsync()
         {
-            return Task.Run(() => QuickStartGenesis());
+            return Task.Run(QuickStartGenesis);
         }
 
         public void QuickStartGenesis()
@@ -115,8 +114,8 @@ namespace Nethermind.BeaconNode.MockedStart
                     PrivateKey = privateKey
                 };
                 using var bls = BLS.Create(blsParameters);
-                var publicKeyBytes = new Span<byte>(new byte[BlsPublicKey.Length]);
-                bls.TryExportBLSPublicKey(publicKeyBytes, out var publicKeybytesWritten);
+                var publicKeyBytes = new byte[BlsPublicKey.Length];
+                bls.TryExportBLSPublicKey(publicKeyBytes, out var publicKeyBytesWritten);
                 var publicKey = new BlsPublicKey(publicKeyBytes);
 
                 // Withdrawal Credentials

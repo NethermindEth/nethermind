@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
-using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.Services
 {

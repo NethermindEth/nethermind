@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {

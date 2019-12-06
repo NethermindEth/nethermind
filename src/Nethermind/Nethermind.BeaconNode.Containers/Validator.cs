@@ -1,4 +1,6 @@
-﻿namespace Nethermind.BeaconNode.Containers
+﻿using Nethermind.Core2.Crypto;
+
+namespace Nethermind.BeaconNode.Containers
 {
     public class Validator
     {
@@ -44,7 +46,7 @@
         public static Validator Clone(Validator other)
         {
             var clone = new Validator(
-                 BlsPublicKey.Clone(other.PublicKey),
+                 other.PublicKey,
                  Hash32.Clone(other.WithdrawalCredentials),
                  other.EffectiveBalance,
                  other.ActivationEligibilityEpoch,

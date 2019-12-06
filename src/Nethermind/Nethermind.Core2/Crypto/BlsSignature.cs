@@ -16,6 +16,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core2.Crypto
 {
@@ -54,6 +55,11 @@ namespace Nethermind.Core2.Crypto
         public override int GetHashCode()
         {
             return Bytes != null ? BinaryPrimitives.ReadInt32LittleEndian(Bytes) : 0;
-        }   
+        }
+
+        public override string ToString()
+        {
+            return Bytes.ToHexString(true);
+        }
     }
 }

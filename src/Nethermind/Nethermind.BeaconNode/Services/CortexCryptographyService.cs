@@ -5,7 +5,6 @@ using System.Security.Cryptography;
 using Cortex.Cryptography;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
-using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.Services
 {
@@ -28,7 +27,7 @@ namespace Nethermind.BeaconNode.Services
                 publicKeysSpanIndex += BlsPublicKey.Length;
             }
             using var signatureAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
-            var aggregatePublicKey = new Span<byte>(new byte[BlsPublicKey.Length]);
+            var aggregatePublicKey = new byte[BlsPublicKey.Length];
             var success = signatureAlgorithm.TryAggregatePublicKeys(publicKeysSpan, aggregatePublicKey, out var bytesWritten);
             if (!success || bytesWritten != BlsPublicKey.Length)
             {
