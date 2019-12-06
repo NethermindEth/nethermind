@@ -13,7 +13,7 @@
 To run with default Development settings (minimal config):
 
 ```
-dotnet run --project src/Cortex.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 3
+dotnet run --project src/Cortex.BeaconNode.Host --QuickStart:GenesisTime ([DateTimeOffset]::Now.ToUnixTimeSeconds()) --QuickStart:ValidatorCount 3
 ```
 
 To run with Production settings (mainnet config):
@@ -26,6 +26,11 @@ dotnet run --project src/Cortex.BeaconNode.Host --environment Production
 ### Test it works
 
 Open a browser to ```http://localhost:5000/node/version``` and it should respond with the name and version.
+
+Other GET queries:
+
+* genesis time: ```http://localhost:5000/node/genesis_time```
+* block (unsigned): ```http://localhost:5000/validator/block```
 
 ### Optional requirements
 

@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Cortex.BeaconNode.Storage;
 using Cortex.BeaconNode.MockedStart;
+using Microsoft.Extensions.Logging.Console;
 
 namespace Cortex.BeaconNode
 {
@@ -26,6 +28,14 @@ namespace Cortex.BeaconNode
                     config.SetBasePath(AppDomain.CurrentDomain.BaseDirectory);
                     config.AddJsonFile("hostsettings.json");
                     config.AddCommandLine(args);
+                })
+                .ConfigureLogging((hostContext, configureLogging) =>
+                {
+                    configureLogging.AddConsole(consoleLoggerOptions => {
+                        //consoleLoggerOptions.Format = ConsoleLoggerFormat.Systemd;
+                        consoleLoggerOptions.TimestampFormat = "HH:mm:ss.fff ";
+                        consoleLoggerOptions.IncludeScopes = true;
+                    });
                 })
                 .ConfigureAppConfiguration((hostContext, config) =>
                 {

@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
-using System.Text;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
-using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Logging;
@@ -22,22 +20,20 @@ namespace Cortex.BeaconNode.MockedStart
 
         private static readonly byte[][] s_zeroHashes = new byte[32][];
 
-        private readonly ILogger<QuickStart> _logger;
+        private readonly Genesis _beaconChain;
+        private readonly BeaconChainUtility _beaconChainUtility;
         private readonly ChainConstants _chainConstants;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
+        private readonly ICryptographyService _cryptographyService;
+        private readonly ForkChoice _forkChoice;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
-        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
+        private readonly ILogger<QuickStart> _logger;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
-        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
+        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
-        private readonly ICryptographyService _cryptographyService;
-        private readonly BeaconChainUtility _beaconChainUtility;
-        private readonly Genesis _beaconChain;
-        private readonly IStoreProvider _storeProvider;
-        private readonly ForkChoice _forkChoice;
-
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
+        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         static QuickStart()
         {
             s_zeroHashes[0] = new byte[32];
@@ -47,14 +43,6 @@ namespace Cortex.BeaconNode.MockedStart
             }
         }
 
-        private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
-        {
-            var combined = new Span<byte>(new byte[64]);
-            a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
-            return s_hashAlgorithm.ComputeHash(combined.ToArray());
-        }
-
         public QuickStart(ILogger<QuickStart> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
@@ -62,14 +50,12 @@ namespace Cortex.BeaconNode.MockedStart
             IOptionsMonitor<InitialValues> initialValueOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<RewardsAndPenalties> rewardsAndPenaltiesOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             Genesis beaconChain,
-            IStoreProvider storeProvider,
             ForkChoice forkChoice)
         {
             _logger = logger;
@@ -85,7 +71,6 @@ namespace Cortex.BeaconNode.MockedStart
             _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconChain = beaconChain;
-            _storeProvider = storeProvider;
             _forkChoice = forkChoice;
         }
 
@@ -180,31 +165,6 @@ namespace Cortex.BeaconNode.MockedStart
             _logger.LogDebug("Quick start genesis store created with genesis time {GenesisTime}.", store.GenesisTime);
         }
 
-        private byte[] GeneratePrivateKey(ulong index)
-        {
-            var input = new Span<byte>(new byte[32]);
-            var bigIndex = new BigInteger(index);
-            var success = bigIndex.TryWriteBytes(input, out var bytesWritten);
-            if (!success || bytesWritten == 0)
-            {
-                throw new Exception("Error getting input for quick start private key generation.");
-            }
-
-            var hash = _cryptographyService.Hash(input).AsSpan();
-
-            var value = new BigInteger(hash.ToArray());
-            var privateKey = value % s_curveOrder;
-
-            var privateKeySpan = new Span<byte>(new byte[32]);
-            var success2 = privateKey.TryWriteBytes(privateKeySpan, out var bytesWritten2);
-            if (!success2 || bytesWritten2 != 32)
-            {
-                throw new Exception("Error generating quick start private key.");
-            }
-
-            return privateKeySpan.ToArray();
-        }
-
         private static IList<IList<Hash32>> CalculateMerkleTreeFromLeaves(IEnumerable<Hash32> values, int layerCount = 32)
         {
             var workingValues = new List<Hash32>(values);
@@ -239,6 +199,38 @@ namespace Cortex.BeaconNode.MockedStart
                 proof.Add(value);
             }
             return proof;
+        }
+
+        private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        {
+            var combined = new Span<byte>(new byte[64]);
+            a.CopyTo(combined);
+            b.CopyTo(combined.Slice(32));
+            return s_hashAlgorithm.ComputeHash(combined.ToArray());
+        }
+        private byte[] GeneratePrivateKey(ulong index)
+        {
+            var input = new Span<byte>(new byte[32]);
+            var bigIndex = new BigInteger(index);
+            var success = bigIndex.TryWriteBytes(input, out var bytesWritten);
+            if (!success || bytesWritten == 0)
+            {
+                throw new Exception("Error getting input for quick start private key generation.");
+            }
+
+            var hash = _cryptographyService.Hash(input).AsSpan();
+
+            var value = new BigInteger(hash.ToArray());
+            var privateKey = value % s_curveOrder;
+
+            var privateKeySpan = new Span<byte>(new byte[32]);
+            var success2 = privateKey.TryWriteBytes(privateKeySpan, out var bytesWritten2);
+            if (!success2 || bytesWritten2 != 32)
+            {
+                throw new Exception("Error generating quick start private key.");
+            }
+
+            return privateKeySpan.ToArray();
         }
     }
 }

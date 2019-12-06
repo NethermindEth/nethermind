@@ -45,25 +45,28 @@ namespace Cortex.BeaconNode
             _quickStart = quickStart;
         }
 
-        public override Task StopAsync(CancellationToken cancellationToken)
+        public override async Task StopAsync(CancellationToken cancellationToken)
         {
             _logger.LogDebug("Worker stopping.");
             _stopped = true;
-            return base.StopAsync(cancellationToken);
+            await base.StopAsync(cancellationToken);
         }
 
-        public override Task StartAsync(CancellationToken cancellationToken)
+        public override async Task StartAsync(CancellationToken cancellationToken)
         {
             _logger.LogDebug("Worker starting.");
-            return base.StartAsync(cancellationToken);
+            await base.StartAsync(cancellationToken);
+            _logger.LogDebug("Worker started.");
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var version = _beaconNodeConfiguration.Version;
             var yamlConfig = _configuration[ConfigKey];
-            _logger.LogInformation(HostEvent.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}')",
-                version, _environment.EnvironmentName, yamlConfig);
+            _logger.LogInformation(HostEvent.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
+                version, _environment.EnvironmentName, yamlConfig, Thread.CurrentThread.ManagedThreadId);
+
+            //await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
 
             if (_quickStart != null)
             {
@@ -79,8 +82,8 @@ namespace Cortex.BeaconNode
                     store = _storeProvider.GetStore();
                     if (store != null)
                     {
-                        _logger.LogInformation(0, "Store found with genesis time {GenesisTime}, starting clock tick",
-                            store.GenesisTime);
+                        _logger.LogInformation(0, "Store found with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
+                            store.GenesisTime, Thread.CurrentThread.ManagedThreadId);
                     }
                 }
                 if (store != null)
@@ -88,12 +91,16 @@ namespace Cortex.BeaconNode
                     _forkChoice.OnTick(store, (ulong)time.ToUnixTimeSeconds());
                 }
                 // Wait for remaining time, if any
-                var remaining = _clock.Now() - (time.AddSeconds(1));
+                // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
+                var remaining = time.AddSeconds(1) - _clock.Now();
                 if (remaining > TimeSpan.Zero)
                 {
                     await Task.Delay(remaining, stoppingToken);
                 }
+                //await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
+
+            _logger.LogDebug("Worker execute thread exiting [{ThreadId}].", Thread.CurrentThread.ManagedThreadId);
         }
     }
 }
