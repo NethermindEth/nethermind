@@ -3,12 +3,13 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
     public static class QuickStartServiceCollectionExtensions
     {
-        private const ulong DefaultEth1Timestamp = 1 << 40;
+        private const ulong DefaultEth1Timestamp = (ulong)1 << 40;
         private static readonly byte[] s_defaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
 
         public static void AddQuickStart(this IServiceCollection services, IConfiguration configuration)

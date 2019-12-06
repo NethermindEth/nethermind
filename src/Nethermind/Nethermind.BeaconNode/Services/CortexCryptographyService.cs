@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using Cortex.Cryptography;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Services
 {

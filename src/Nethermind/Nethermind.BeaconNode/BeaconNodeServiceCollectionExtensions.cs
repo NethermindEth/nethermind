@@ -1,9 +1,9 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using System.Buffers.Binary;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
-using DomainType = Nethermind.BeaconNode.Containers.DomainType;
 
 namespace Nethermind.BeaconNode
 {
@@ -170,23 +170,23 @@ namespace Nethermind.BeaconNode
             {
                 configuration.Bind("BeaconChain:SignatureDomains", section =>
                 {
-                    x.BeaconProposer = new DomainType(
+                    x.BeaconProposer =  (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
                         section.GetBytesFromPrefixedHex("DomainBeaconProposer",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_PROPOSER",
                                 () => new byte[4])));
-                    x.BeaconAttester = new DomainType(
+                    x.BeaconAttester = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
                         section.GetBytesFromPrefixedHex("DomainBeaconAttester",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_ATTESTER",
                                 () => new byte[4])));
-                    x.Randao = new DomainType(
+                    x.Randao = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
                         section.GetBytesFromPrefixedHex("DomainRandao",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_RANDAO",
                                 () => new byte[4])));
-                    x.Deposit = new DomainType(
+                    x.Deposit = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
                         section.GetBytesFromPrefixedHex("DomainDeposit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_DEPOSIT",
                                 () => new byte[4])));
-                    x.VoluntaryExit = new DomainType(
+                    x.VoluntaryExit = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
                         section.GetBytesFromPrefixedHex("DomainVoluntaryExit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT",
                                 () => new byte[4])));

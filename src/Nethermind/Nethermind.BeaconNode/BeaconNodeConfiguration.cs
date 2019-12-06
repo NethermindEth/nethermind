@@ -3,6 +3,7 @@ using System.Linq;
 using System.Reflection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core;
 
 namespace Nethermind.BeaconNode
 {
@@ -19,12 +20,13 @@ namespace Nethermind.BeaconNode
 
         public string Version { get; }
 
+        [Todo(Improve.Review, "Compare with Nethermind.Core.ClientVersion that follows the Eth1 clients format")]
         private string BuildVersionString(string productToken, string environmentName)
         {
             var parts = new List<string>();
 
-            var assembley = typeof(BeaconNodeConfiguration).Assembly;
-            var versionAttribute = assembley.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+            var assembly = typeof(BeaconNodeConfiguration).Assembly;
+            var versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             var version = versionAttribute.InformationalVersion;
             var product1 = $"{productToken}/{version}";
             parts.Add(product1);

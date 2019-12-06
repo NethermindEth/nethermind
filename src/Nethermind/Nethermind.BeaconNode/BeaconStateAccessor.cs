@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -7,10 +8,6 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
-using CommitteeIndex = Nethermind.BeaconNode.Containers.CommitteeIndex;
-using DomainType = Nethermind.BeaconNode.Containers.DomainType;
-using ForkVersion = Nethermind.BeaconNode.Containers.ForkVersion;
-using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode
 {
@@ -280,7 +277,7 @@ namespace Nethermind.BeaconNode
             // # Avoid underflow
             var mix = GetRandaoMix(state, mixEpoch);
             var seedHashInput = new Span<byte>(new byte[4 + 8 + 32]);
-            domainType.AsSpan().CopyTo(seedHashInput);
+            BinaryPrimitives.WriteUInt32LittleEndian(seedHashInput, (uint)domainType);
             var epochBytes = BitConverter.GetBytes((ulong)epoch);
             if (!BitConverter.IsLittleEndian)
             {

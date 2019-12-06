@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Storage
 {

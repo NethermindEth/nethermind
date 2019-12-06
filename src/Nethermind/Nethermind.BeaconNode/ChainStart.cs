@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode
 {

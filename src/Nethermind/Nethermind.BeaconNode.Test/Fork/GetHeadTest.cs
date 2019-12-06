@@ -10,6 +10,7 @@ using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests.Fork

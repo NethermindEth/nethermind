@@ -9,6 +9,7 @@ using Nethermind.BeaconNode.Storage;
 
 namespace Nethermind.BeaconNode
 {
+    // ReSharper disable once ClassNeverInstantiated.Global
     public class BeaconNodeWorker : BackgroundService
     {
         private const string ConfigKey = "config";

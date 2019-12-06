@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
@@ -7,11 +8,7 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using DomainType = Nethermind.BeaconNode.Containers.DomainType;
-using ForkVersion = Nethermind.BeaconNode.Containers.ForkVersion;
-using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode
 {
@@ -41,7 +38,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Epoch ComputeActivationExitEpoch(Epoch epoch)
         {
-            return epoch + new Epoch(1) + _timeParameterOptions.CurrentValue.MaximumSeedLookahead;
+            return epoch + 1 + _timeParameterOptions.CurrentValue.MaximumSeedLookahead;
         }
 
         /// <summary>
@@ -49,15 +46,16 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public IReadOnlyList<ValidatorIndex> ComputeCommittee(IList<ValidatorIndex> indices, Hash32 seed, ulong index, ulong count)
         {
-            var start = ((ulong)indices.Count * (ulong)index) / count;
-            var end = ((ulong)indices.Count * ((ulong)index + 1)) / count;
+            var start = (ulong) indices.Count * index / count;
+            var end = (ulong) indices.Count * (index + 1) / count;
             var shuffled = new List<ValidatorIndex>();
             for (var i = start; i < end; i++)
             {
-                var shuffledLookup = ComputeShuffledIndex(new ValidatorIndex(i), (ulong)indices.Count, seed);
-                var shuffledIndex = indices[(int)(ulong)shuffledLookup];
+                var shuffledLookup = ComputeShuffledIndex(new ValidatorIndex(i), (ulong) indices.Count, seed);
+                var shuffledIndex = indices[(int) (ulong) shuffledLookup];
                 shuffled.Add(shuffledIndex);
             }
+
             return shuffled;
         }
 
@@ -67,8 +65,8 @@ namespace Nethermind.BeaconNode
         public Domain ComputeDomain(DomainType domainType, ForkVersion forkVersion = new ForkVersion())
         {
             var combined = new Span<byte>(new byte[Domain.Length]);
-            domainType.AsSpan().CopyTo(combined);
-            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
+            BinaryPrimitives.WriteUInt32LittleEndian(combined, (uint) domainType);
+            forkVersion.AsSpan().CopyTo(combined.Slice(sizeof(DomainType)));
             return new Domain(combined);
         }
 
@@ -91,13 +89,13 @@ namespace Nethermind.BeaconNode
             }
 
             const ulong maxRandomByte = (1 << 8) - 1;
-            var indexCount = (ulong)indices.Count();
-            var index = (ulong)0;
+            var indexCount = (ulong) indices.Count;
+            var index = (ulong) 0;
             while (true)
             {
                 var initialValidatorIndex = new ValidatorIndex(index % indexCount);
                 var shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
-                var candidateIndex = indices[(int)(ulong)shuffledIndex];
+                var candidateIndex = indices[(int) (ulong) shuffledIndex];
 
                 var randomInputBytes = new Span<byte>(new byte[40]);
                 seed.AsSpan().CopyTo(randomInputBytes);
@@ -106,15 +104,17 @@ namespace Nethermind.BeaconNode
                 {
                     randomInputBytes.Slice(32).Reverse();
                 }
-                var randomHash = _cryptographyService.Hash(randomInputBytes);
-                var random = randomHash.AsSpan()[(int)(index % 32)];
 
-                var effectiveBalance = state.Validators[(int)(ulong)candidateIndex].EffectiveBalance;
+                var randomHash = _cryptographyService.Hash(randomInputBytes);
+                var random = randomHash.AsSpan()[(int) (index % 32)];
+
+                var effectiveBalance = state.Validators[(int) (ulong) candidateIndex].EffectiveBalance;
                 if ((effectiveBalance * maxRandomByte) >=
                     (_gweiValueOptions.CurrentValue.MaximumEffectiveBalance * random))
                 {
                     return candidateIndex;
                 }
+
                 index++;
             }
         }
@@ -124,7 +124,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public ValidatorIndex ComputeShuffledIndex(ValidatorIndex index, ulong indexCount, Hash32 seed)
         {
-            if ((ulong)index >= indexCount)
+            if (index >= indexCount)
             {
                 throw new ArgumentOutOfRangeException(nameof(index), index, $"Index should be less than indexCount {indexCount}");
             }
@@ -138,7 +138,7 @@ namespace Nethermind.BeaconNode
             seed.AsSpan().CopyTo(sourceHashInput);
             for (var currentRound = 0; currentRound < _miscellaneousParameterOptions.CurrentValue.ShuffleRoundCount; currentRound++)
             {
-                var roundByte = (byte)(currentRound & 0xFF);
+                var roundByte = (byte) (currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
                 var pivotHash = _cryptographyService.Hash(pivotHashInput);
                 var pivotBytes = pivotHash.AsSpan().Slice(0, 8).ToArray();
@@ -146,24 +146,26 @@ namespace Nethermind.BeaconNode
                 {
                     pivotBytes = pivotBytes.Reverse().ToArray();
                 }
+
                 var pivot = BitConverter.ToUInt64(pivotBytes.ToArray()) % indexCount;
 
-                var flip = new ValidatorIndex((pivot + indexCount - (ulong)index) % indexCount);
+                var flip = new ValidatorIndex((pivot + indexCount - (ulong) index) % indexCount);
 
                 var position = ValidatorIndex.Max(index, flip);
 
                 sourceHashInput[32] = roundByte;
-                var positionBytes = BitConverter.GetBytes((uint)(ulong)position / 256);
+                var positionBytes = BitConverter.GetBytes((uint) (ulong) position / 256);
                 if (!BitConverter.IsLittleEndian)
                 {
                     positionBytes = positionBytes.Reverse().ToArray();
                 }
+
                 positionBytes.CopyTo(sourceHashInput.Slice(33));
                 var source = _cryptographyService.Hash(sourceHashInput.ToArray());
 
-                var flipByte = source.AsSpan().Slice((int)(((uint)(ulong)position % 256) / 8), 1).ToArray()[0];
+                var flipByte = source.AsSpan().Slice((int) ((uint) position % 256 / 8), 1).ToArray()[0];
 
-                var flipBit = (flipByte >> (int)((ulong)position % 8)) % 2;
+                var flipBit = (flipByte >> (int) (position % 8)) % 2;
 
                 if (flipBit == 1)
                 {
@@ -179,7 +181,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
-            return (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number;
+            return (ulong) _timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number;
         }
 
         /// <summary>
@@ -194,6 +196,7 @@ namespace Nethermind.BeaconNode
                 x = y;
                 y = (x + (value / x)) / 2;
             }
+
             return x;
         }
 
@@ -203,7 +206,7 @@ namespace Nethermind.BeaconNode
         public bool IsActiveValidator(Validator validator, Epoch epoch)
         {
             return validator.ActivationEpoch <= epoch
-                && epoch < validator.ExitEpoch;
+                   && epoch < validator.ExitEpoch;
         }
 
         /// <summary>
@@ -225,8 +228,8 @@ namespace Nethermind.BeaconNode
         public bool IsSlashableValidator(Validator validator, Epoch epoch)
         {
             return (!validator.IsSlashed)
-                && (validator.ActivationEpoch <= epoch)
-                && (epoch < validator.WithdrawableEpoch);
+                   && (validator.ActivationEpoch <= epoch)
+                   && (epoch < validator.WithdrawableEpoch);
         }
 
         /// <summary>
@@ -249,7 +252,7 @@ namespace Nethermind.BeaconNode
 
             // Verify max number of indices
             var totalIndices = bit0Indices.Count() + bit1Indices.Count();
-            if ((ulong)totalIndices > miscellaneousParameters.MaximumValidatorsPerCommittee)
+            if ((ulong) totalIndices > miscellaneousParameters.MaximumValidatorsPerCommittee)
             {
                 _logger.LogWarning(Event.InvalidIndexedAttestation,
                     "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has total indices {TotalIndices}, more than the maximum validators per committe {MaximumValidatorsPerCommittee}.",
@@ -281,6 +284,7 @@ namespace Nethermind.BeaconNode
                     }
                 }
             }
+
             if (bit1Indices.Count() > 1)
             {
                 for (var index = 0; index < bit1Indices.Count() - 1; index++)
@@ -296,17 +300,17 @@ namespace Nethermind.BeaconNode
             }
 
             // Verify aggregate signature
-            var bit0PublicKeys = bit0Indices.Select(x => state.Validators[(int)(ulong)x].PublicKey);
+            var bit0PublicKeys = bit0Indices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
             var bit0AggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(bit0PublicKeys);
-            var bit1PublicKeys = bit1Indices.Select(x => state.Validators[(int)(ulong)x].PublicKey);
+            var bit1PublicKeys = bit1Indices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
             var bit1AggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(bit1PublicKeys);
-            var publicKeys = new BlsPublicKey[] { bit0AggregatePublicKey, bit1AggregatePublicKey };
+            var publicKeys = new [] {bit0AggregatePublicKey, bit1AggregatePublicKey};
 
             var attestationDataAndCustodyBit0 = new AttestationDataAndCustodyBit(indexedAttestation.Data, false);
             var messageHashBit0 = attestationDataAndCustodyBit0.HashTreeRoot();
             var attestationDataAndCustodyBit1 = new AttestationDataAndCustodyBit(indexedAttestation.Data, true);
             var messageHashBit1 = attestationDataAndCustodyBit1.HashTreeRoot();
-            var messageHashes = new Hash32[] { messageHashBit0, messageHashBit1 };
+            var messageHashes = new [] {messageHashBit0, messageHashBit1};
 
             var signature = indexedAttestation.Signature;
 
@@ -331,7 +335,7 @@ namespace Nethermind.BeaconNode
             for (var testDepth = 0; testDepth < depth; testDepth++)
             {
                 var branchValue = branch[testDepth];
-                var indexAtDepth = index / ((ulong)1 << testDepth);
+                var indexAtDepth = index / ((ulong) 1 << testDepth);
                 if (indexAtDepth % 2 == 0)
                 {
                     // Branch on right
@@ -343,6 +347,7 @@ namespace Nethermind.BeaconNode
                     value = _cryptographyService.Hash(branchValue, value);
                 }
             }
+
             return value.Equals(root);
         }
     }

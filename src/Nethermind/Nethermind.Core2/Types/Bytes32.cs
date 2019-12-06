@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Types
 {
     public class Bytes32 : IEquatable<Bytes32>
     {

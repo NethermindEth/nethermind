@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers.Json
 {

@@ -9,7 +9,6 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using ValidatorIndex = Nethermind.BeaconNode.Containers.ValidatorIndex;
 
 namespace Nethermind.BeaconNode
 {

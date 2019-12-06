@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Types
 {
     public class Hash32 : IEquatable<Hash32>, IComparable<Hash32>
     {

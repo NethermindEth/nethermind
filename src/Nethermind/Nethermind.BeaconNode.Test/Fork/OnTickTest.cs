@@ -7,6 +7,7 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests.Fork

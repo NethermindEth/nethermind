@@ -7,7 +7,6 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Types;
 using Shouldly;
-using CommitteeIndex = Nethermind.BeaconNode.Containers.CommitteeIndex;
 
 namespace Nethermind.BeaconNode.Tests.BlockProcessing
 {

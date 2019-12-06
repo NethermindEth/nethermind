@@ -5,6 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests.Genesis

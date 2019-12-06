@@ -55,6 +55,7 @@ namespace Nethermind.Core
         MissingFunctionality = 64,
         Documentation = 128,
         Security = 256,
-        All = 511
+        Review = 512,
+        All = 1023
     }
 }
