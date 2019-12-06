@@ -4,6 +4,7 @@ using System.Linq;
 using System.Numerics;
 using System.Security.Cryptography;
 using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Services;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
 using Cortex.Cryptography;

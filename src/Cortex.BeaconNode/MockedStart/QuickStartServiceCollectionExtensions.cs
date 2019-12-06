@@ -9,7 +9,7 @@ namespace Cortex.BeaconNode.MockedStart
     public static class QuickStartServiceCollectionExtensions
     {
         private const ulong DefaultEth1Timestamp = 1 << 40;
-        private static byte[] DefaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
+        private static readonly byte[] s_defaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
 
         public static void AddQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
@@ -20,7 +20,7 @@ namespace Cortex.BeaconNode.MockedStart
                 {
                     x.GenesisTime = section.GetValue<ulong>("GenesisTime");
                     x.ValidatorCount = section.GetValue<ulong>("ValidatorCount");
-                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => DefaultEth1BlockHash));
+                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
                     x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
                     x.UseSystemClock = section.GetValue<bool>("UseSystemClock");
                 });

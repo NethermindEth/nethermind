@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
 using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Services;
 using Cortex.Containers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -52,7 +53,7 @@ namespace Cortex.BeaconNode.Tests
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
             });
 
-            var cryptographyService = new CryptographyService();
+            var cryptographyService = new CortexCryptographyService();
             var beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
                 miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
                 cryptographyService);

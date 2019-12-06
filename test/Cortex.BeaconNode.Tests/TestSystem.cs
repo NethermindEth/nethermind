@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using Cortex.BeaconNode.Services;
 using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
@@ -40,7 +41,7 @@ namespace Cortex.BeaconNode.Tests
 
         public class TestCryptographyService : ICryptographyService
         {
-            ICryptographyService _cryptographyService = new CryptographyService();
+            ICryptographyService _cryptographyService = new CortexCryptographyService();
 
             public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
             {

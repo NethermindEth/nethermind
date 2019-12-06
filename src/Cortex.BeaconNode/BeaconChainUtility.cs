@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Services;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
