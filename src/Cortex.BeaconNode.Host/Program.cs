@@ -65,7 +65,7 @@ namespace Cortex.BeaconNode
                 {
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
-                    services.AddHostedService<Worker>();
+                    services.AddHostedService<BeaconNodeWorker>();
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
                     {

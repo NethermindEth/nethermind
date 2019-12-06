@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace Cortex.BeaconNode
 {
     // TODO: Move to worker / services library
-    public class Worker : BackgroundService
+    public class BeaconNodeWorker : BackgroundService
     {
         private const string ConfigKey = "config";
 
@@ -25,7 +25,7 @@ namespace Cortex.BeaconNode
         private readonly IHostEnvironment _environment;
         private bool _stopped;
 
-        public Worker(ILogger<Worker> logger,
+        public BeaconNodeWorker(ILogger<BeaconNodeWorker> logger,
             IClock clock,
             IHostEnvironment environment,
             IConfiguration configuration,
@@ -82,7 +82,7 @@ namespace Cortex.BeaconNode
                     store = _storeProvider.GetStore();
                     if (store != null)
                     {
-                        _logger.LogInformation(0, "Store found with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
+                        _logger.LogInformation(0, "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
                             store.GenesisTime, Thread.CurrentThread.ManagedThreadId);
                     }
                 }
