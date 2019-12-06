@@ -1,6 +1,10 @@
 name: Build with Code Coverage
 
+<<<<<<< HEAD
 on: [push, pull_request]
+=======
+on: pull-request
+>>>>>>> fixing pull_request trigger
 
 jobs:
   neth-tests:
