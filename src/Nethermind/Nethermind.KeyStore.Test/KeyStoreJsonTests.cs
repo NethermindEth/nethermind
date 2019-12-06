@@ -89,6 +89,7 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.EvilNonce;
             RunTest(testModel);
         }
+<<<<<<< HEAD
         
         [Test]
         public void MyCryptoTest()
@@ -96,6 +97,8 @@ namespace Nethermind.KeyStore.Test
             var testModel = _testsModel.MyCrypto;
             RunTest(testModel);
         }
+=======
+>>>>>>> test squash
 
         private void RunTest(KeyStoreTestModel testModel)
         {
@@ -126,7 +129,10 @@ namespace Nethermind.KeyStore.Test
             public KeyStoreTestModel Test2 { get; set; }
             public KeyStoreTestModel Python_generated_test_with_odd_iv { get; set; }
             public KeyStoreTestModel EvilNonce { get; set; }
+<<<<<<< HEAD
             public KeyStoreTestModel MyCrypto { get; set; }
+=======
+>>>>>>> test squash
             
             public KeyStoreTestModel Sealer0 { get; set; }
         }

@@ -73,7 +73,11 @@ namespace Nethermind.Runner.Config
         [ConfigItem(Description = "If set to 'false' then transaction receipts will not be stored in the database.", DefaultValue = "true")]
         bool StoreReceipts { get; set; }
         
+<<<<<<< HEAD
         [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB", DefaultValue = "false")]
         bool UseMemDb { get; set; }
+=======
+        bool EnableRc7Fix { get; set; }
+>>>>>>> test squash
     }
 }

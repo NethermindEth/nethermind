@@ -148,25 +148,41 @@ namespace Nethermind.JsonRpc
 
             if (rpcRequest.Model != null)
             {
+<<<<<<< HEAD
                 if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model}");
+=======
+                if (_logger.IsDebug) _logger.Debug($"JSON RPC request {rpcRequest.Model.Method}");
+>>>>>>> test squash
 
                 Metrics.JsonRpcRequests++;
                 JsonRpcResponse response = await _jsonRpcService.SendRequestAsync(rpcRequest.Model);
                 JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                 if (localErrorResponse != null)
                 {
+<<<<<<< HEAD
                     if (_logger.IsWarn) _logger.Warn($"Error when handling {rpcRequest.Model} | {_jsonSerializer.Serialize(localErrorResponse)}");
+=======
+                    if (_logger.IsError) _logger.Error($"Failed to respond to {rpcRequest.Model.Method} {localErrorResponse.Error.Message}");
+>>>>>>> test squash
                     Metrics.JsonRpcErrors++;
                 }
                 else
                 {
+<<<<<<< HEAD
                     if (_logger.IsDebug) _logger.Debug($"Responded to {rpcRequest.Model}");
+=======
+                    if (_logger.IsDebug) _logger.Debug($"Responded to {rpcRequest.Model.Method}");
+>>>>>>> test squash
                     Metrics.JsonRpcSuccesses++;
                 }
 
                 TraceResult(response);
                 stopwatch.Stop();
+<<<<<<< HEAD
                 if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+=======
+                if (_logger.IsDebug) _logger.Debug($"  {rpcRequest.Model.Method} handled in {stopwatch.Elapsed.TotalMilliseconds}ms");
+>>>>>>> test squash
                 return JsonRpcResult.Single(response);
             }
 
@@ -186,17 +202,29 @@ namespace Nethermind.JsonRpc
                     JsonRpcErrorResponse localErrorResponse = response as JsonRpcErrorResponse;
                     if (localErrorResponse != null)
                     {
+<<<<<<< HEAD
                         if (_logger.IsWarn) _logger.Warn($"Error when handling {jsonRpcRequest} | {_jsonSerializer.Serialize(localErrorResponse)}");
+=======
+                        if (_logger.IsError) _logger.Error($"Failed to respond to {jsonRpcRequest.Method} {localErrorResponse.Error.Message}");
+>>>>>>> test squash
                         Metrics.JsonRpcErrors++;
                     }
                     else
                     {
+<<<<<<< HEAD
                         if (_logger.IsDebug) _logger.Debug($"Responded to {jsonRpcRequest}");
+=======
+                        if (_logger.IsDebug) _logger.Debug($"Responded to {jsonRpcRequest.Method}");
+>>>>>>> test squash
                         Metrics.JsonRpcSuccesses++;
                     }
 
                     singleRequestWatch.Stop();
+<<<<<<< HEAD
                     if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
+=======
+                    if (_logger.IsDebug) _logger.Debug($"  {requestIndex++}/{rpcRequest.Collection.Count} JSON RPC request - {jsonRpcRequest.Method} handled after {singleRequestWatch.Elapsed.TotalMilliseconds}");
+>>>>>>> test squash
                     responses.Add(response);
                 }
 
@@ -261,7 +289,11 @@ namespace Nethermind.JsonRpc
             {
                 if (!_recorderBaseFilePath.Contains("{counter}"))
                 {
+<<<<<<< HEAD
                     if(_logger.IsError) _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
+=======
+                    _logger.Error("Disabling recorder because of an invalid recorder file path - it should contain '{counter}'");
+>>>>>>> test squash
                     _isEnabled = false;
                     return;
                 }

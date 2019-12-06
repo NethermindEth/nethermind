@@ -156,8 +156,13 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         public Task<PagedResult<DepositDetails>> GetDepositsAsync(GetDeposits query)
             => _depositManager.BrowseAsync(query);
 
+<<<<<<< HEAD
         public Task<Keccak> MakeDepositAsync(Keccak assetId, uint units, UInt256 value, UInt256? gasPrice = null)
             => _depositManager.MakeAsync(assetId, units, value, _accountService.GetAddress(), gasPrice);
+=======
+        public Task<Keccak> MakeDepositAsync(Keccak assetId, uint units, UInt256 value)
+            => _depositManager.MakeAsync(assetId, units, value, _accountService.GetAddress());
+>>>>>>> test squash
 
         public Task<PagedResult<DepositApproval>> GetDepositApprovalsAsync(GetConsumerDepositApprovals query)
             => _depositApprovalService.BrowseAsync(query);

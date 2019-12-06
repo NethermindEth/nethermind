@@ -206,8 +206,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataRequets
         private static DepositDetails GetDepositDetails(uint confirmationTimestamp = 0, uint expiryTime = 1,
             bool kycRequired = false)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, expiryTime, 1),
+<<<<<<< HEAD
                 GetDataAsset(kycRequired), TestItem.AddressB, Array.Empty<byte>(), 1,
                 new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1), confirmationTimestamp);
+=======
+                GetDataAsset(kycRequired), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA,
+                confirmationTimestamp);
+>>>>>>> test squash
 
         private static DataAsset GetDataAsset(bool kycRequired = false)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

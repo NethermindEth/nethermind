@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 Docker (Ubuntu)
+=======
+Docker
+>>>>>>> test squash
 ******
 
 Using an existing image

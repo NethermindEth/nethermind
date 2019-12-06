@@ -40,11 +40,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 ? Address.Zero
                 : new Address(config.ContractAddress);
 
+<<<<<<< HEAD
             var configId = config.Id;
             var configManager = services.ConfigManager;
             var logManager = services.LogManager;
             var timestamper = services.Timestamper;
             var wallet = services.Wallet;
+=======
+            var logManager = services.LogManager;
+>>>>>>> test squash
             var readOnlyTree = new ReadOnlyBlockTree(services.BlockTree);
             var readOnlyDbProvider = new ReadOnlyDbProvider(services.RocksProvider, false);
             var readOnlyTxProcessingEnv = new ReadOnlyTxProcessingEnv(readOnlyDbProvider, readOnlyTree,
@@ -58,7 +62,11 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.ReceiptStorage,
                 services.FilterStore,
                 services.FilterManager,
+<<<<<<< HEAD
                 wallet,
+=======
+                services.Wallet,
+>>>>>>> test squash
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 services.Ecdsa);
             var dataAssetRlpDecoder = new DataAssetDecoder();
@@ -74,20 +82,30 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             {
                 ndmBlockchainBridge = new NdmBlockchainBridge(blockchainBridge, services.TransactionPool);
             }
+<<<<<<< HEAD
 
             var gasPriceService = new GasPriceService(services.HttpClient, configManager, configId, timestamper,
                 logManager);
             var transactionService = new TransactionService(ndmBlockchainBridge, wallet, configManager, configId,
                 logManager);
             var depositService = new DepositService(ndmBlockchainBridge, encoder, wallet, contractAddress);
+=======
+            
+            var depositService = new DepositService(ndmBlockchainBridge, encoder, services.Wallet, contractAddress);
+>>>>>>> test squash
             var ndmConsumerChannelManager = services.NdmConsumerChannelManager;
             var ndmDataPublisher = services.NdmDataPublisher;
             var jsonRpcNdmConsumerChannel = new JsonRpcNdmConsumerChannel();
 //            ndmConsumerChannelManager.Add(jsonRpcNdmConsumerChannel);
 
             return new Services(services, new NdmCreatedServices(consumerAddress, encoder, dataAssetRlpDecoder,
+<<<<<<< HEAD
                 depositService, gasPriceService, transactionService, ndmDataPublisher, jsonRpcNdmConsumerChannel,
                 ndmConsumerChannelManager, ndmBlockchainBridge));
+=======
+                depositService, ndmDataPublisher, jsonRpcNdmConsumerChannel, ndmConsumerChannelManager,
+                ndmBlockchainBridge));
+>>>>>>> test squash
         }
 
         private static void AddDecoders()
@@ -108,7 +126,10 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
             FaucetResponseDecoder.Init();
             FaucetRequestDetailsDecoder.Init();
             SessionDecoder.Init();
+<<<<<<< HEAD
             TransactionInfoDecoder.Init();
+=======
+>>>>>>> test squash
             UnitsRangeDecoder.Init();
         }
 

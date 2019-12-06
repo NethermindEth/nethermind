@@ -21,7 +21,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Security;
+<<<<<<< HEAD
 using FluentAssertions;
+=======
+>>>>>>> test squash
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -243,6 +246,7 @@ namespace Nethermind.KeyStore.Test
             Result deleteResult = _store.DeleteKey(key.Address);
             Assert.AreEqual(ResultType.Success, deleteResult.ResultType);
         }
+<<<<<<< HEAD
 
         [Test]
         public void ShouldSaveFileWithoutBom()
@@ -259,5 +263,7 @@ namespace Nethermind.KeyStore.Test
             bytesHex.Should().NotStartWith(bomBytesHex);
             bytesHex.Should().StartWith(validBytesHex);
         }
+=======
+>>>>>>> test squash
     }
 }

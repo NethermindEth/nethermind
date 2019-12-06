@@ -17,11 +17,16 @@
  */
 
 using System;
+<<<<<<< HEAD
 using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using Nethermind.Core.Extensions;
+=======
+using System.IO;
+using System.Security.Cryptography;
+>>>>>>> test squash
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 
@@ -34,14 +39,20 @@ namespace Nethermind.KeyStore
 
         public AesEncrypter(IKeyStoreConfig keyStoreConfig, ILogManager logManager)
         {
+<<<<<<< HEAD
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+=======
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _config = keyStoreConfig;
+>>>>>>> test squash
         }
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
         {
             try
             {
+<<<<<<< HEAD
                 switch (cipherType)
                 {
                     case "aes-128-cbc":
@@ -67,6 +78,12 @@ namespace Nethermind.KeyStore
                     }
                     default:
                         throw new Exception($"Unsupported cipherType: {cipherType}");
+=======
+                using (var aes = CreateAesCryptoServiceProvider(key, iv, cipherType))
+                {
+                    var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
+                    return Execute(encryptor, content);
+>>>>>>> test squash
                 }
             }
             catch (Exception ex)
@@ -80,6 +97,7 @@ namespace Nethermind.KeyStore
         {
             try
             {
+<<<<<<< HEAD
                 switch (cipherType)
                 {
                     case "aes-128-cbc":
@@ -105,11 +123,21 @@ namespace Nethermind.KeyStore
                     }
                     default:
                         throw new Exception($"Unsupported cipherType: {cipherType}");
+=======
+                using (var aes = CreateAesCryptoServiceProvider(key, iv, cipherType))
+                {
+                    var decryptor = aes.CreateDecryptor(key, aes.IV);
+                    return Execute(decryptor, cipher);
+>>>>>>> test squash
                 }
             }
             catch (Exception ex)
             {
+<<<<<<< HEAD
                 _logger.Error("Error during encryption", ex);
+=======
+                _logger.Error("Error during decryption", ex);
+>>>>>>> test squash
                 return null;
             }
         }
@@ -127,6 +155,7 @@ namespace Nethermind.KeyStore
             }
         }
 
+<<<<<<< HEAD
         private static void AesCtr(byte[] key, byte[] salt, Stream inputStream, Stream outputStream)
         {
             using var aes = new AesManaged {Mode = CipherMode.ECB, Padding = PaddingMode.None};
@@ -165,6 +194,26 @@ namespace Nethermind.KeyStore
 
                 var mask = xorMask.Dequeue();
                 outputStream.WriteByte((byte) ((byte) @byte ^ mask));
+=======
+        private SymmetricAlgorithm CreateAesCryptoServiceProvider(byte[] key, byte[] iv, string cipherType)
+        {
+            switch (cipherType)
+            {
+                case "aes-128-ctr":
+                    //Custom impl for AES128 CTR
+                    return new Aes128CounterMode(iv);
+                case "aes-128-cbc":
+                    return new AesCryptoServiceProvider
+                    {
+                        BlockSize = _config.SymmetricEncrypterBlockSize,
+                        KeySize = _config.SymmetricEncrypterKeySize,
+                        Padding = PaddingMode.PKCS7,
+                        Key = key,
+                        IV = iv
+                    };
+                default:
+                    throw new Exception($"Unsupported cipherType: {cipherType}");
+>>>>>>> test squash
             }
         }
     }

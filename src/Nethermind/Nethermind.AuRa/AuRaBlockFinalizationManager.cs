@@ -87,8 +87,13 @@ namespace Nethermind.AuRa
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
+<<<<<<< HEAD
                         ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)} : {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
+=======
+                        ? $"Finalizing block {finalizedBlocks[0].Number} ({finalizedBlocks[0].Hash}) by block {finalizingBlock.Number} ({finalizingBlock.Hash})."
+                        : $"Finalizing blocks {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} ({string.Join(",", finalizedBlocks.Select(b => b.Hash))}) by block {finalizingBlock.Number} ({finalizingBlock.Hash}).");
+>>>>>>> test squash
                 
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
                 LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
@@ -107,8 +112,21 @@ namespace Nethermind.AuRa
             var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
             var originalBlock = block;
             
+<<<<<<< HEAD
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
             bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.CountWith(block) >= minSealersForFinalization;
+=======
+            bool IsConsecutiveBlock()
+            {
+                return originalBlock.ParentHash == _lastProcessedBlockHash;
+            }
+
+            bool ConsecutiveBlockWillFinalizeBlocks()
+            {
+                _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
+                return _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
+            }
+>>>>>>> test squash
 
             List<BlockHeader> finalizedBlocks;
             var isConsecutiveBlock = IsConsecutiveBlock();
@@ -119,7 +137,10 @@ namespace Nethermind.AuRa
             if (isConsecutiveBlock && !ConsecutiveBlockWillFinalizeBlocks())
             {
                 finalizedBlocks = Empty;
+<<<<<<< HEAD
                 _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
+=======
+>>>>>>> test squash
             }
             else
             {
@@ -131,7 +152,10 @@ namespace Nethermind.AuRa
                 finalizedBlocks = new List<BlockHeader>();
                 var validators = new HashSet<Address>();
                 var originalBlockSealer = originalBlock.Beneficiary;
+<<<<<<< HEAD
                 bool ancestorsNotYetRemoved = true;
+=======
+>>>>>>> test squash
 
                 using (var batch = _chainLevelInfoRepository.StartBatch())
                 {
@@ -151,11 +175,15 @@ namespace Nethermind.AuRa
                             _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
 
                             finalizedBlocks.Add(block);
+<<<<<<< HEAD
                             if (ancestorsNotYetRemoved)
                             {
                                 _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
                                 ancestorsNotYetRemoved = false;
                             }
+=======
+                            _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
+>>>>>>> test squash
                         }
                         else
                         {
@@ -244,6 +272,7 @@ namespace Nethermind.AuRa
         [DebuggerDisplay("Count = {Count}")]
         private class ValidationStampCollection
         {
+<<<<<<< HEAD
             private readonly IDictionary<Address, int> _validatorCount = new Dictionary<Address, int>();
             [Todo("Optimization: circular sorted list?")]
             private readonly SortedDictionary<long, Address> _blockValidator = new SortedDictionary<long, Address>();
@@ -257,11 +286,24 @@ namespace Nethermind.AuRa
                     _blockValidator[blockHeader.Number] = blockHeader.Beneficiary;
                     int count = _validatorCount.TryGetValue(blockHeader.Beneficiary, out count) ? count + 1 : 1;
                     _validatorCount[blockHeader.Beneficiary] = count;
+=======
+            private readonly ISet<Address> _set = new HashSet<Address>();
+            private readonly SortedList<long, Address> _list = new SortedList<long, Address>(Comparer<long>.Create((x, y) => y.CompareTo(x)));
+
+            public int Count => _set.Count;
+            
+            public void Add(BlockHeader blockHeader)
+            {
+                if (_set.Add(blockHeader.Beneficiary))
+                {
+                    _list.Add(blockHeader.Number, blockHeader.Beneficiary);
+>>>>>>> test squash
                 }
             }
 
             public void RemoveAncestors(long blockNumber)
             {
+<<<<<<< HEAD
                 var itemsToDelete = _blockValidator.TakeWhile(k => k.Key <= blockNumber).ToArray();
                 for (int i = 0; i < itemsToDelete.Length; i++)
                 {
@@ -277,13 +319,25 @@ namespace Nethermind.AuRa
                     }
 
                     _blockValidator.Remove(item.Key);
+=======
+                IEnumerable<long> toDelete = _list.Keys.SkipWhile(k => k > blockNumber).ToArray();
+                foreach (var number in toDelete)
+                {
+                    _set.Remove(_list[number]);
+                    _list.Remove(number);
+>>>>>>> test squash
                 }
             }
 
             public void Clear()
             {
+<<<<<<< HEAD
                 _validatorCount.Clear();;
                 _blockValidator.Clear();
+=======
+                _set.Clear();;
+                _list.Clear();
+>>>>>>> test squash
             }
         }
     }

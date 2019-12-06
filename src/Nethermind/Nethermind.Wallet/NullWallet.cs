@@ -34,10 +34,13 @@ namespace Nethermind.Wallet
         {
         }
 
+<<<<<<< HEAD
         private NullWallet()
         {
         }
 
+=======
+>>>>>>> test squash
         private static NullWallet _instance;
         
         public static NullWallet Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullWallet());

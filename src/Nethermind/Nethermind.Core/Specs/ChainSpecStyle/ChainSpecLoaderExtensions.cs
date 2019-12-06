@@ -50,7 +50,11 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 }
             }
 
+<<<<<<< HEAD
             return chainSpecLoader.Load(File.ReadAllText(filePath));
+=======
+            return chainSpecLoader.Load(File.ReadAllBytes(filePath));
+>>>>>>> test squash
         }
     }
 }

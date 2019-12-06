@@ -9,12 +9,20 @@ namespace Nethermind.Overseer.Test.Framework
 {
     public abstract class TestContextBase<TContext, TState> : ITestContext where TState : ITestState where TContext : TestContextBase<TContext, TState>
     {
+<<<<<<< HEAD
         protected TState State { get; }
+=======
+        private TState _state;
+>>>>>>> test squash
         protected TestBuilder TestBuilder;
 
         protected TestContextBase(TState state)
         {
+<<<<<<< HEAD
             State = state;
+=======
+            _state = state;
+>>>>>>> test squash
         }
 
         public TContext SwitchNode(string node)
@@ -41,7 +49,11 @@ namespace Nethermind.Overseer.Test.Framework
                     var result = await ExecuteJsonRpcAsync(methodName, func);
                     if (result.IsValid)
                     {
+<<<<<<< HEAD
                         stateUpdater?.Invoke(State, result);
+=======
+                        stateUpdater?.Invoke(_state, result);
+>>>>>>> test squash
                     }
 
                     return result;

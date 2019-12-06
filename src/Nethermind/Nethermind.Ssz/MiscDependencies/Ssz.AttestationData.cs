@@ -65,7 +65,39 @@ namespace Nethermind.Ssz
             container.Target = DecodeCheckpoint(span, ref offset);
             return container;
         }
+<<<<<<< HEAD
         
+=======
+
+        public static void Encode(Span<byte> span, AttestationDataAndCustodyBit container)
+        {
+            if (span.Length != AttestationDataAndCustodyBit.SszLength)
+            {
+                ThrowTargetLength<AttestationDataAndCustodyBit>(span.Length, AttestationDataAndCustodyBit.SszLength);
+            }
+
+            int offset = 0;
+            Encode(span.Slice(0, AttestationData.SszLength), container.Data);
+            offset += AttestationData.SszLength;
+            Encode(span.Slice(offset, 1), container.CustodyBit);
+        }
+
+        public static AttestationDataAndCustodyBit DecodeAttestationDataAndCustodyBit(Span<byte> span)
+        {
+            if (span.Length != AttestationDataAndCustodyBit.SszLength)
+            {
+                ThrowSourceLength<AttestationDataAndCustodyBit>(span.Length, AttestationDataAndCustodyBit.SszLength);
+            }
+
+            AttestationDataAndCustodyBit container = new AttestationDataAndCustodyBit();
+            int offset = 0;
+            container.Data = DecodeAttestationData(span.Slice(offset, AttestationData.SszLength));
+            offset += AttestationData.SszLength;
+            container.CustodyBit = DecodeBool(span.Slice(offset, 1));
+            return container;
+        }
+
+>>>>>>> test squash
         private static void Encode(Span<byte> span, AttestationData value, ref int offset)
         {
             Encode(span.Slice(offset, AttestationData.SszLength), value);

@@ -45,8 +45,11 @@ namespace Nethermind.DataMarketplace.Core.Services
             _wallet = wallet ?? throw new ArgumentNullException(nameof(wallet));
             _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
+<<<<<<< HEAD
         
         public ulong GasLimit { get; } = 70000;
+=======
+>>>>>>> test squash
 
         public async Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId)
         {
@@ -87,24 +90,39 @@ namespace Nethermind.DataMarketplace.Core.Services
             }
         }
 
+<<<<<<< HEAD
 
         public async Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit, UInt256 gasPrice)
         {
             var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig,
                 deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);
+=======
+        public async Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit)
+        {
+            var txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.DepositAbiSig, deposit.Id.Bytes, deposit.Units, deposit.ExpiryTime);
+>>>>>>> test squash
             Transaction transaction = new Transaction
             {
                 Value = deposit.Value,
                 Data = txData,
                 To = _contractAddress,
                 SenderAddress = onBehalfOf,
+<<<<<<< HEAD
                 GasLimit = (long) GasLimit,
                 GasPrice = gasPrice,
+=======
+                GasLimit = 70000,
+                GasPrice = 20.GWei(),
+>>>>>>> test squash
                 Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf)
             };
             // check  
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> test squash
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
 
@@ -113,15 +131,26 @@ namespace Nethermind.DataMarketplace.Core.Services
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction);
 
+<<<<<<< HEAD
             return data.AsSpan().ReadEthUInt32();
         }
 
+=======
+            return data.AsSpan().ReadEthUInt32LittleEndian();
+            
+        }
+        
+>>>>>>> test squash
         public async Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId, long blockNumber)
         {
             var transaction = await GetTransactionAsync(onBehalfOf, depositId);
             var data = await _blockchainBridge.CallAsync(transaction, blockNumber);
 
+<<<<<<< HEAD
             return data.AsSpan().ReadEthUInt32();
+=======
+            return data.AsSpan().ReadEthUInt32LittleEndian();
+>>>>>>> test squash
         }
 
         private async Task<Transaction> GetTransactionAsync(Address onBehalfOf, Keccak depositId)

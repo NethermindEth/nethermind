@@ -71,17 +71,25 @@ namespace Nethermind.KeyStore
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
 
+<<<<<<< HEAD
         public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer,
             ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
+=======
+        public FileKeyStore(IKeyStoreConfig keyStoreConfig, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
+>>>>>>> test squash
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _config = keyStoreConfig ?? throw new ArgumentNullException(nameof(keyStoreConfig));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+<<<<<<< HEAD
             _keyStoreEncoding = _config.KeyStoreEncoding.Equals("UTF-8", StringComparison.InvariantCultureIgnoreCase)
                 ? new UTF8Encoding(false)
                 : Encoding.GetEncoding(_config.KeyStoreEncoding);
+=======
+            _keyStoreEncoding = Encoding.GetEncoding(_config.KeyStoreEncoding);
+>>>>>>> test squash
             _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
@@ -214,6 +222,7 @@ namespace Nethermind.KeyStore
 
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _config.KdfparamsN, _config.KdfparamsR, _config.KdfparamsP, null, _config.KdfparamsDklen);
 
+<<<<<<< HEAD
             byte[] encryptKey;
             var kdf = _config.Kdf;
             var cipherType = _config.Cipher;
@@ -226,6 +235,9 @@ namespace Nethermind.KeyStore
                 encryptKey = derivedKey.Take(16).ToArray();
             }
 
+=======
+            var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
+>>>>>>> test squash
             var encryptContent = key.KeyBytes;
             var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
@@ -260,7 +272,12 @@ namespace Nethermind.KeyStore
                     },
                     MAC = mac.ToHexString(false),
                 },
+<<<<<<< HEAD
                 Id = Guid.NewGuid().ToString(),
+=======
+                
+                Id = addressString,
+>>>>>>> test squash
                 Version = Version
             };
             
@@ -272,7 +289,11 @@ namespace Nethermind.KeyStore
             try
             {
                 var files = Directory.GetFiles(GetStoreDirectory(), "UTC--*--*");
+<<<<<<< HEAD
                 var addresses = files.Select(Path.GetFileName).Select(fn => fn.Split("--").LastOrDefault()).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
+=======
+                var addresses = files.Select(Path.GetFileName).Select(fn => fn.Substring("UTC--2019-01-03T17-14-43.479138000Z--".Length)).Where(x => Address.IsValidAddress(x, false)).Select(x => new Address(x)).ToArray();
+>>>>>>> test squash
                 return (addresses, new Result { ResultType = ResultType.Success });
             }
             catch (Exception e)

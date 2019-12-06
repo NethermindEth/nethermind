@@ -16,6 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+<<<<<<< HEAD
+=======
+using System.Collections.Generic;
+>>>>>>> test squash
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -25,6 +29,10 @@ namespace Nethermind.JsonRpc
     {
         Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
         JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message);
+<<<<<<< HEAD
         JsonConverter[] Converters { get; }
+=======
+        IList<JsonConverter> Converters { get; }
+>>>>>>> test squash
     }
 }

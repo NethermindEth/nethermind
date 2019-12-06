@@ -17,11 +17,17 @@
  */
 
 using System;
+<<<<<<< HEAD
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http.Headers;
 using System.Numerics;
+=======
+using System.Collections.Generic;
+using System.IO;
+using System.Net.Http.Headers;
+>>>>>>> test squash
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
@@ -61,7 +67,11 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexString);
             Assert.AreEqual(bytes[0], expectedResult, "new");
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> test squash
         [TestCase("0x07", "0x7", true, true)]
         [TestCase("0x07", "7", false, true)]
         [TestCase("0x07", "0x07", true, false)]
@@ -210,6 +220,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(hexString);
             Assert.AreEqual(expectedResult, bytes.AsSpan().ReadEthUInt64());
         }
+<<<<<<< HEAD
 
         [TestCase(0, 0)]
         [TestCase(1, 1)]
@@ -280,5 +291,7 @@ namespace Nethermind.Core.Test
             Bytes.ReverseInPlace(input);
             Assert.AreEqual(input, Bytes.FromHexString(expectedResult));
         }
+=======
+>>>>>>> test squash
     }
 }

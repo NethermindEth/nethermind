@@ -11,4 +11,11 @@
       <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj" />
     </ItemGroup>
 
+<<<<<<< HEAD
+=======
+    <ItemGroup>
+      <Folder Include="Receipts\Domain" />
+    </ItemGroup>
+
+>>>>>>> test squash
 </Project>

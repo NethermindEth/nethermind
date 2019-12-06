@@ -103,13 +103,18 @@ namespace Nethermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
+<<<<<<< HEAD
         public static bool GetBit(this byte b, int bitNumber)
+=======
+        private static bool GetBit(this byte b, int bitNumber)
+>>>>>>> test squash
         {
             return (b & (1 << (7 - bitNumber))) != 0;
         }
 
         public static int GetHighestSetBitIndex(this byte b)
         {
+<<<<<<< HEAD
             if ((b & 128) == 128) return 8;
             if ((b & 64) == 64) return 7;
             if ((b & 32) == 32) return 6;
@@ -117,6 +122,15 @@ namespace Nethermind.Core.Extensions
             if ((b & 8) == 8) return 4;
             if ((b & 4) == 4) return 3;
             return (b & 2) == 2 ? 2 : b;
+=======
+            if ((b & 128) == 128) return 7;
+            if ((b & 64) == 64) return 6;
+            if ((b & 32) == 32) return 5;
+            if ((b & 16) == 16) return 4;
+            if ((b & 8) == 8) return 3;
+            if ((b & 4) == 4) return 2;
+            return (b & 2) == 2 ? 1 : 0;
+>>>>>>> test squash
         }
 
         public static bool AreEqual(Span<byte> a1, Span<byte> a2)

@@ -17,9 +17,12 @@
  */
 
 using System;
+<<<<<<< HEAD
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+=======
+>>>>>>> test squash
 using System.Numerics;
 using System.Runtime.Serialization.Formatters;
 using FluentAssertions;
@@ -27,7 +30,10 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpecStyle;
+<<<<<<< HEAD
 using Nethermind.Core.Test.Builders;
+=======
+>>>>>>> test squash
 using Nethermind.Logging;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -37,6 +43,7 @@ namespace Nethermind.AuRa.Test.Validators
 {
     public class ListValidatorTests
     {
+<<<<<<< HEAD
         private ListValidator GetListValidator(params Address[] address)
         {
             var logManager = Substitute.For<ILogManager>();
@@ -89,19 +96,55 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(100, ExpectedResult = 51)]
         public int should_get_min_sealers_for_finalization(int validatorCount) => 
             GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).MinSealersForFinalization;
+=======
+        private ILogManager _logManager;
+        private const string Include1 = "0xffffffffffffffffffffffffffffffffffffffff";
+        private const string Include2 = "0xfffffffffffffffffffffffffffffffffffffffe";
+        
+        [TestCase(Include1, 0L, ExpectedResult = true)]
+        [TestCase(Include1, 1L, ExpectedResult = false)]
+        [TestCase(Include2, 1L, ExpectedResult = true)]
+        [TestCase(Include2, 0L, ExpectedResult = false)]
+        [TestCase("0xAAfffffffffffffffffffffffffffffffffffffe", 0L, ExpectedResult = false)]
+        [TestCase("0xfffffffffffffffffffffffffffffffffffffffd", 1L, ExpectedResult = false)]
+        public bool should_validate_correctly(string address, long index)
+        {
+            _logManager = Substitute.For<ILogManager>();
+            var validator = new ListValidator(
+                new AuRaParameters.Validator()
+                {
+                    Addresses = new[] {new Address(Include1), new Address(Include2), }
+                }, _logManager);
+
+            return validator.IsValidSealer(new Address(address), index);
+        }
+>>>>>>> test squash
 
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
+<<<<<<< HEAD
             var logManager = Substitute.For<ILogManager>();
             Action act = () => new ListValidator(null, logManager); 
+=======
+            Action act = () => new ListValidator(null, _logManager);
+>>>>>>> test squash
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void throws_ArgumentException_on_empty_addresses()
         {
+<<<<<<< HEAD
             Action act = () => GetListValidator();
+=======
+            Action act = () => new ListValidator(
+                new AuRaParameters.Validator()
+                {
+                    ValidatorType = AuRaParameters.ValidatorType.List
+                }, _logManager);
+            
+>>>>>>> test squash
             act.Should().Throw<ArgumentException>();
         }
     }

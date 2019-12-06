@@ -14,10 +14,15 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+<<<<<<< HEAD
 using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+=======
+using System.Threading.Tasks;
+using FluentAssertions;
+>>>>>>> test squash
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
@@ -30,14 +35,21 @@ namespace Nethermind.DataMarketplace.Test.Services
     {
         private IHttpClient _client;
         private IEthPriceService _ethPriceService;
+<<<<<<< HEAD
         private ITimestamper _timestamper;
+=======
+>>>>>>> test squash
 
         [SetUp]
         public void Setup()
         {
             _client = Substitute.For<IHttpClient>();
+<<<<<<< HEAD
             _timestamper = new Timestamper(DateTime.UtcNow);
             _ethPriceService = new EthPriceService(_client, _timestamper, LimboLogs.Instance);
+=======
+            _ethPriceService = new EthPriceService(_client, LimboLogs.Instance);
+>>>>>>> test squash
         }
 
         [Test]
@@ -54,7 +66,10 @@ namespace Nethermind.DataMarketplace.Test.Services
             _client.GetAsync<EthPriceService.Result[]>(Arg.Any<string>()).ReturnsForAnyArgs(results);
             await _ethPriceService.UpdateAsync();
             _ethPriceService.UsdPrice.Should().Be(price);
+<<<<<<< HEAD
             _ethPriceService.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
+=======
+>>>>>>> test squash
             await _client.ReceivedWithAnyArgs().GetAsync<EthPriceService.Result[]>(Arg.Any<string>());
         }
     }

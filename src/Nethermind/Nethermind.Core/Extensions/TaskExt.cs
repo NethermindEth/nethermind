@@ -24,16 +24,29 @@ namespace Nethermind.Core.Extensions
         /// <summary>
         /// Guarantees to delay at least the specified delay. 
         ///  </summary>
+<<<<<<< HEAD
         /// <param name="delay">Time to delay</param>
+=======
+        /// <param name="delay"></param>
+>>>>>>> test squash
         /// <remarks>Due to different resolution of timers on different systems, Task.Delay can return before specified delay.</remarks>
         /// <returns></returns>
         public static async Task DelayAtLeast(TimeSpan delay)
         {
+<<<<<<< HEAD
             while (delay > TimeSpan.Zero)
             {
                 var before = DateTimeOffset.Now;
                 await Task.Delay(delay);
                 delay -= (DateTimeOffset.Now - before);
+=======
+            var before = DateTimeOffset.Now;
+            await Task.Delay(delay);
+            var reminder = delay - (DateTimeOffset.Now - before);
+            if (reminder > TimeSpan.Zero)
+            {
+                await Task.Delay(reminder);
+>>>>>>> test squash
             }
         }
     }

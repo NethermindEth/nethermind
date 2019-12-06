@@ -68,6 +68,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             }
 
             var filteredDeposits = deposits.AsEnumerable();
+<<<<<<< HEAD
             if (query.OnlyPending)
             {
                 filteredDeposits = filteredDeposits.Where(d => !d.Rejected && !d.RefundClaimed &&
@@ -76,6 +77,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
                                                                TransactionState.Pending);
             }
 
+=======
+>>>>>>> test squash
             if (query.OnlyUnconfirmed)
             {
                 filteredDeposits = filteredDeposits.Where(d => d.ConfirmationTimestamp == 0 ||
@@ -86,12 +89,21 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.
             {
                 filteredDeposits = filteredDeposits.Where(d => !d.Rejected);
             }
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> test squash
             if (query.EligibleToRefund)
             {
                 filteredDeposits = filteredDeposits.Where(d => !d.RefundClaimed &&
                                                                (!(d.EarlyRefundTicket is null) ||
+<<<<<<< HEAD
                                                                 query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime));
+=======
+                                                                query.CurrentBlockTimestamp >= d.Deposit.ExpiryTime
+                                                               ));
+>>>>>>> test squash
             }
 
             return Task.FromResult(filteredDeposits.OrderByDescending(d => d.Timestamp).Paginate(query));

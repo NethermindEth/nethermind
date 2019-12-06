@@ -21,7 +21,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
+<<<<<<< HEAD
 using Nethermind.DataMarketplace.Core.Services.Models;
+=======
+>>>>>>> test squash
 
 namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
 {
@@ -206,6 +209,7 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     graceUnits
                 }));
 
+<<<<<<< HEAD
         public Task SendEthUsdPriceAsync(decimal price, ulong updatedAt)
             => _notifier.NotifyAsync(new Notification("eth_usd_price",
                 new
@@ -246,5 +250,14 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers.Services
                     type = types.Type,
                     updatedAt = types.UpdatedAt
                 }));
+=======
+        public void SendEthUsdPriceAsync(decimal price)
+            => _notifier.NotifyAsync(new Notification("eth_usd_price",
+                new
+                {
+                    price
+                }));
+
+>>>>>>> test squash
     }
 }

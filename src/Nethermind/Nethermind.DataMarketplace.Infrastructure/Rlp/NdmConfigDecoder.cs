@@ -67,15 +67,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var databasePath = rlpStream.DecodeString();
             var proxyEnabled = rlpStream.DecodeBool();
             var jsonRpcUrlProxies = rlpStream.DecodeArray(c => c.DecodeString());
+<<<<<<< HEAD
             var gasPriceType = rlpStream.DecodeString();
             var gasPrice = rlpStream.DecodeUInt256();
             var cancelTransactionGasPricePercentageMultiplier = rlpStream.DecodeUInt();
+=======
+>>>>>>> test squash
 
             return new NdmConfig
             {
                 Enabled = enabled,
                 Id = id,
+<<<<<<< HEAD
                 InitializerName = initializerName,
+=======
+                InitializerName =  initializerName,
+>>>>>>> test squash
                 StoreConfigInDatabase = storeConfigInDatabase,
                 VerifyP2PSignature = verifyP2PSignature,
                 Persistence = persistence,
@@ -98,10 +105,14 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 PluginsPath = pluginsPath,
                 DatabasePath = databasePath,
                 ProxyEnabled = proxyEnabled,
+<<<<<<< HEAD
                 JsonRpcUrlProxies = jsonRpcUrlProxies,
                 GasPriceType = gasPriceType,
                 GasPrice = gasPrice,
                 CancelTransactionGasPricePercentageMultiplier = cancelTransactionGasPricePercentageMultiplier
+=======
+                JsonRpcUrlProxies = jsonRpcUrlProxies
+>>>>>>> test squash
             };
         }
 
@@ -138,10 +149,14 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.PluginsPath),
                 Nethermind.Core.Encoding.Rlp.Encode(item.DatabasePath),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ProxyEnabled),
+<<<<<<< HEAD
                 Nethermind.Core.Encoding.Rlp.Encode(item.JsonRpcUrlProxies),
                 Nethermind.Core.Encoding.Rlp.Encode(item.GasPriceType),
                 Nethermind.Core.Encoding.Rlp.Encode(item.GasPrice),
                 Nethermind.Core.Encoding.Rlp.Encode(item.CancelTransactionGasPricePercentageMultiplier));
+=======
+                Nethermind.Core.Encoding.Rlp.Encode(item.JsonRpcUrlProxies));
+>>>>>>> test squash
         }
 
         public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

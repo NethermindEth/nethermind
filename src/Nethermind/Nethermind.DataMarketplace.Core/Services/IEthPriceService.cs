@@ -22,6 +22,9 @@ namespace Nethermind.DataMarketplace.Core.Services
     {
         Task UpdateAsync();
         decimal UsdPrice { get; }
+<<<<<<< HEAD
         ulong UpdatedAt { get; }
+=======
+>>>>>>> test squash
     }
 }

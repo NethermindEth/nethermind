@@ -39,6 +39,7 @@ namespace Nethermind.Core.Specs.GenesisFileStyle
 
         public ChainSpec Load(byte[] data)
         {
+<<<<<<< HEAD
             return Load(System.Text.Encoding.UTF8.GetString(data));
         }
 
@@ -46,6 +47,11 @@ namespace Nethermind.Core.Specs.GenesisFileStyle
         {
             try
             {
+=======
+            try
+            {
+                string jsonData = System.Text.Encoding.UTF8.GetString(data);
+>>>>>>> test squash
                 var genesisJson = _serializer.Deserialize<GenesisFileJson>(jsonData);
                 var chainSpec = new ChainSpec();
 

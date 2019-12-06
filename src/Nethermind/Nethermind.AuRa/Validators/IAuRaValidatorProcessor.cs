@@ -25,5 +25,9 @@ namespace Nethermind.AuRa.Validators
 {
     public interface IAuRaValidatorProcessor : IAuRaValidator, IAdditionalBlockProcessor
     {
+<<<<<<< HEAD
+=======
+        AuRaParameters.ValidatorType Type { get; }
+>>>>>>> test squash
     }
 }

@@ -299,6 +299,10 @@ namespace Nethermind.Runner.Test
 
             Assert.False(initConfig.KeepDevWalletInMemory, nameof(initConfig.KeepDevWalletInMemory));
             Assert.False(initConfig.IsMining, nameof(initConfig.IsMining));
+<<<<<<< HEAD
+=======
+            Assert.False(initConfig.EnableRc7Fix, nameof(initConfig.EnableRc7Fix));
+>>>>>>> test squash
             Assert.True(initConfig.StoreReceipts, nameof(initConfig.StoreReceipts));
             Assert.False(initConfig.StoreTraces, nameof(initConfig.StoreTraces));
             

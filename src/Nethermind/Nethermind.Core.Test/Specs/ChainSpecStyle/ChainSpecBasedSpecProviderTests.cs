@@ -36,7 +36,11 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/rinkeby.json");
+<<<<<<< HEAD
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+=======
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+>>>>>>> test squash
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             RinkebySpecProvider rinkeby = RinkebySpecProvider.Instance;
 
@@ -63,7 +67,11 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/foundation.json");
+<<<<<<< HEAD
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+=======
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+>>>>>>> test squash
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
 

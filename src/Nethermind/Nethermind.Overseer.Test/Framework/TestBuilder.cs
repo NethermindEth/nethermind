@@ -55,6 +55,7 @@ namespace Nethermind.Overseer.Test.Framework
             // queue up the work
             ScenarioCompletion = ScenarioCompletion.ContinueWith(task =>
             {
+<<<<<<< HEAD
                 try
                 {
                     work();
@@ -64,6 +65,9 @@ namespace Nethermind.Overseer.Test.Framework
                     TestContext.WriteLine(e.ToString());
                     throw;
                 }
+=======
+                work();
+>>>>>>> test squash
                 return this;
             }, TaskContinuationOptions.OnlyOnRanToCompletion);
         }
@@ -74,6 +78,7 @@ namespace Nethermind.Overseer.Test.Framework
             ScenarioCompletion = ScenarioCompletion.ContinueWith(async task =>
             {
                 TestContext.WriteLine($"Awaiting step {step.Name}");
+<<<<<<< HEAD
                 try
                 {
                     _results.Add(await step.ExecuteAsync());
@@ -83,6 +88,9 @@ namespace Nethermind.Overseer.Test.Framework
                     TestContext.WriteLine($"Step {step.Name} failed with error: {e}");
                     throw;
                 }
+=======
+                _results.Add(await step.ExecuteAsync());
+>>>>>>> test squash
                 TestContext.WriteLine($"Step {step.Name} complete");
             }, TaskContinuationOptions.OnlyOnRanToCompletion).Unwrap();
         }
@@ -172,6 +180,7 @@ namespace Nethermind.Overseer.Test.Framework
             return StartNode(name, "configs/goerliMiner.cfg");
         }
 
+<<<<<<< HEAD
         public TestBuilder StartAuRaMiner(string name, string key)
         {
             return StartNode(name, "configs/auRaMiner.cfg", key);
@@ -180,12 +189,21 @@ namespace Nethermind.Overseer.Test.Framework
         public TestBuilder StartNode(string name, string baseConfigFile, string key = null)
         {
             CurrentNode = GetOrCreateNode(name, baseConfigFile, key);
+=======
+        public TestBuilder StartNode(string name, string baseConfigFile)
+        {
+            CurrentNode = GetOrCreateNode(name, baseConfigFile);
+>>>>>>> test squash
             var step = new StartProcessTestStep($"Start {name}", CurrentNode);
             QueueWork(step);
             return this;
         }
 
+<<<<<<< HEAD
         private NethermindProcessWrapper GetOrCreateNode(string name, string baseConfigFile, string key)
+=======
+        private NethermindProcessWrapper GetOrCreateNode(string name, string baseConfigFile)
+>>>>>>> test squash
         {
             if (!Nodes.ContainsKey(name))
             {
@@ -197,7 +215,14 @@ namespace Nethermind.Overseer.Test.Framework
 
                 bootnodes = bootnodes.TrimStart(',');
 
+<<<<<<< HEAD
                 var nodeKey = GetNodeKey(key);
+=======
+                byte[] key = new byte[32];
+                key[0] = 1;
+                key[31] = _nodeCounter;
+                string nodeKey = key.ToHexString();
+>>>>>>> test squash
 
                 string dbDir = Path.Combine(_dbsDir, name);
                 string configPath = Path.Combine(_configsDir, $"{name}.cfg");
@@ -212,6 +237,7 @@ namespace Nethermind.Overseer.Test.Framework
             return Nodes[name];
         }
 
+<<<<<<< HEAD
         private string GetNodeKey(string key)
         {
             if (key == null)
@@ -224,6 +250,8 @@ namespace Nethermind.Overseer.Test.Framework
             return key;
         }
 
+=======
+>>>>>>> test squash
         public Dictionary<string, NethermindProcessWrapper> Nodes { get; } = new Dictionary<string, NethermindProcessWrapper>();
 
         public TestBuilder Kill()

@@ -518,9 +518,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
+<<<<<<< HEAD
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
                 new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1), 1);
 
+=======
+                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
+        
+>>>>>>> test squash
         private static DataAsset GetDataAsset()
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,
                 DataAssetUnitType.Unit, 0, 10, new DataAssetRules(new DataAssetRule(1)),

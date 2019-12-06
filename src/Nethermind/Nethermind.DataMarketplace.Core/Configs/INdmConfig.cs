@@ -75,6 +75,7 @@ namespace Nethermind.DataMarketplace.Core.Configs
         string PluginsPath { get; }
         [ConfigItem(Description = "Path to the directory, where NDM databases will be kept, when using RocksDB provider", DefaultValue = "ndm")]
         string DatabasePath { get; }
+<<<<<<< HEAD
         [ConfigItem(Description = "If 'true' then JSON RPC calls will be redirected to the specified proxies.", DefaultValue = "false")]
         bool ProxyEnabled { get; }
         [ConfigItem(Description = "'List of JSON RPC URLs proxies.", DefaultValue = "")]
@@ -85,5 +86,13 @@ namespace Nethermind.DataMarketplace.Core.Configs
         string GasPriceType { get; }
         [ConfigItem(Description = "Percentage multiplier (by default 110%) for calculating gas price when canceling transaction.", DefaultValue = "110")]
         uint CancelTransactionGasPricePercentageMultiplier { get; set; } 
+=======
+        
+        [ConfigItem(Description = "If 'true' then JSON RPC calls will be redirected to the specified proxies.", DefaultValue = "false")]
+        bool ProxyEnabled { get; }
+        
+        [ConfigItem(Description = "'List of JSON RPC URLs proxies.", DefaultValue = "")]
+        string[] JsonRpcUrlProxies { get; }
+>>>>>>> test squash
     }
 }

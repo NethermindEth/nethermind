@@ -19,13 +19,21 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
+<<<<<<< HEAD
 using Nethermind.DataMarketplace.Consumers.Shared.Services.Models;
+=======
+>>>>>>> test squash
 
 namespace Nethermind.DataMarketplace.Consumers.Refunds
 {
     public interface IRefundClaimant
     {
+<<<<<<< HEAD
         Task<RefundClaimStatus> TryClaimRefundAsync(DepositDetails deposit, Address refundTo);
         Task<RefundClaimStatus> TryClaimEarlyRefundAsync(DepositDetails deposit, Address refundTo);
+=======
+        Task TryClaimRefundAsync(DepositDetails deposit, Address refundTo);
+        Task TryClaimEarlyRefundAsync(DepositDetails deposit, Address refundTo);
+>>>>>>> test squash
     }
 }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+<<<<<<< HEAD
 using System.Collections;
 using NUnit.Framework;
 using System.Collections.Generic;
@@ -35,11 +36,17 @@ using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Wallet;
 using NSubstitute;
+=======
+using NUnit.Framework;
+using System.Collections.Generic;
+using FluentAssertions;
+>>>>>>> test squash
 
 namespace Nethermind.AuRa.Test
 {
     public class AuRaSealerTests
     {
+<<<<<<< HEAD
         private AuRaSealer _auRaSealer;
         private IBlockTree _blockTree;
         private int _headStep;
@@ -94,6 +101,17 @@ namespace Nethermind.AuRa.Test
             var recoveredAddress = ecdsa.RecoverAddress(signature, BlockHeader.CalculateHash(block.Header, RlpBehaviors.ForSealing));
 
             recoveredAddress.Should().Be(_address);
+=======
+        [SetUp]
+        public void Setup()
+        {
+        }
+
+        [Test]
+        public void Test()
+        {
+            Assert.Pass();
+>>>>>>> test squash
         }
     }
 }

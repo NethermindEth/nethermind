@@ -70,11 +70,19 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "getBlockByNumber")]
+<<<<<<< HEAD
         public JsValue GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects = false)
         {
             return NodeManager.PostJint("eth_getBlockByNumber", blockParameter, returnFullTransactionObjects).Result;
         }
         
+=======
+        public JsValue GetBlockByNumber(string blockParameter, bool returnFullTransactionObjects)
+        {
+            return NodeManager.PostJint("eth_getBlockByNumber", blockParameter, returnFullTransactionObjects).Result;
+        }
+
+>>>>>>> test squash
         [CliFunction("eth", "sendEth")]
         public string SendEth(string from, string to, decimal amountInEth)
         {

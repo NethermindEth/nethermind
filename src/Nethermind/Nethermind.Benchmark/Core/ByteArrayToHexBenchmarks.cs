@@ -17,7 +17,10 @@
  */
 
 using BenchmarkDotNet.Attributes;
+<<<<<<< HEAD
 using HexMate;
+=======
+>>>>>>> test squash
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Core
@@ -26,7 +29,11 @@ namespace Nethermind.Benchmarks.Core
     [CoreJob(baseline: true)]
     public class ByteArrayToHexBenchmarks
     {
+<<<<<<< HEAD
         private byte[] array = Bytes.FromHexString("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+=======
+        private byte[] array = Bytes.FromHexString("0123456789abcdef");
+>>>>>>> test squash
         
         [GlobalSetup]
         public void Setup()
@@ -34,6 +41,7 @@ namespace Nethermind.Benchmarks.Core
 
         }
 
+<<<<<<< HEAD
         [Benchmark]
         public string SafeLookup()
         {
@@ -44,6 +52,18 @@ namespace Nethermind.Benchmarks.Core
         public string HexMateA()
         {
             return Convert.ToHexString(array, HexFormattingOptions.Lowercase);
+=======
+        [Benchmark(Baseline = true)]
+        public string Current()
+        {
+            return array.ToHexString(true);
+        }
+        
+        [Benchmark]
+        public string Improved()
+        {
+            return Bytes.ByteArrayToHexViaLookup32Safe(array, true);
+>>>>>>> test squash
         }
     }
 }

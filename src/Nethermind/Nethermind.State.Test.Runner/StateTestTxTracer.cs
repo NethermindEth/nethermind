@@ -32,15 +32,25 @@ namespace Nethermind.State.Test.Runner
     {
         private StateTestTxTraceEntry _traceEntry;
         private StateTestTxTrace _trace = new StateTestTxTrace();
+<<<<<<< HEAD
         private bool _gasAlreadySetForCurrentOp;
+=======
+>>>>>>> test squash
 
         public bool IsTracingReceipt => true;
         bool ITxTracer.IsTracingActions => false;
         public bool IsTracingOpLevelStorage => true;
+<<<<<<< HEAD
         public bool IsTracingMemory { get; set; } = true;
         bool ITxTracer.IsTracingInstructions => true;
         public bool IsTracingCode => false;
         public bool IsTracingStack { get; set; } = true;
+=======
+        public bool IsTracingMemory => true;
+        bool ITxTracer.IsTracingInstructions => true;
+        public bool IsTracingCode => false;
+        public bool IsTracingStack => true;
+>>>>>>> test squash
         bool ITxTracer.IsTracingState => false;
         
         public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs)
@@ -59,7 +69,10 @@ namespace Nethermind.State.Test.Runner
         public void StartOperation(int depth, long gas, Instruction opcode, int pc)
         {
 //            var previousTraceEntry = _traceEntry;
+<<<<<<< HEAD
             _gasAlreadySetForCurrentOp = false;
+=======
+>>>>>>> test squash
             _traceEntry = new StateTestTxTraceEntry();
             _traceEntry.Pc = pc;
             _traceEntry.Operation = (byte)opcode;
@@ -117,7 +130,11 @@ namespace Nethermind.State.Test.Runner
                 case EvmExceptionType.AccessViolation:
                     return "AccessViolation";
                 case EvmExceptionType.StaticCallViolation:
+<<<<<<< HEAD
                     return "evm: write protection";
+=======
+                    return "StaticCallViolation";
+>>>>>>> test squash
                 default:
                     return "Error";
             }
@@ -125,22 +142,29 @@ namespace Nethermind.State.Test.Runner
 
         public void ReportOperationRemainingGas(long gas)
         {
+<<<<<<< HEAD
             if (!_gasAlreadySetForCurrentOp)
             {
                 _gasAlreadySetForCurrentOp = true;
                 _traceEntry.GasCost = _traceEntry.Gas - gas;
             }
+=======
+            _traceEntry.GasCost = _traceEntry.Gas - gas;
+>>>>>>> test squash
         }
 
         public void SetOperationMemorySize(ulong newSize)
         {
             _traceEntry.UpdateMemorySize(newSize);
+<<<<<<< HEAD
             int diff = (int) _traceEntry.MemSize * 2 - (_traceEntry.Memory.Length - 2);
             if (diff > 0)
             {
                 _traceEntry.Memory += new string('0', diff);
             }
 
+=======
+>>>>>>> test squash
         }
 
         public void ReportMemoryChange(long offset, Span<byte> data)
@@ -222,6 +246,7 @@ namespace Nethermind.State.Test.Runner
             _traceEntry.Stack = new List<string>();
             foreach (string s in stackTrace)
             {
+<<<<<<< HEAD
                 ReadOnlySpan<char> inProgress = s.AsSpan();
                 if (s.StartsWith("0x"))
                 {
@@ -231,6 +256,15 @@ namespace Nethermind.State.Test.Runner
                 inProgress = inProgress.TrimStart('0');
 
                 _traceEntry.Stack.Add(inProgress.Length == 0 ? "0x0" : "0x" + inProgress.ToString());
+=======
+                string prepared = s.AsSpan().Slice(2).TrimStart('0').ToString();
+                if (prepared == string.Empty)
+                {
+                    prepared = "0x0";
+                }
+                
+                _traceEntry.Stack.Add(prepared);
+>>>>>>> test squash
             }
         }
 
@@ -240,7 +274,11 @@ namespace Nethermind.State.Test.Runner
 
         public void SetOperationMemory(List<string> memoryTrace)
         {
+<<<<<<< HEAD
             _traceEntry.Memory = string.Concat("0x", string.Join("", memoryTrace.Select(mt => mt.Replace("0x", string.Empty))));
+=======
+            _traceEntry.Memory = "0x" + string.Concat(memoryTrace.Select(mt => mt.Replace("0x", string.Empty)));
+>>>>>>> test squash
         }
 
         public StateTestTxTrace BuildResult()

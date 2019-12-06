@@ -53,7 +53,12 @@ namespace Nethermind.AuRa
         private readonly ITxPool _txPool;
         private Task _producerTask;
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+<<<<<<< HEAD
         
+=======
+        private readonly AuraDifficultyCalculator _difficultyCalculator;
+
+>>>>>>> test squash
         public AuRaBlockProducer(ITxPool txPool,
             IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
@@ -75,6 +80,10 @@ namespace Nethermind.AuRa
             _stateProvider = stateProvider  ?? throw new ArgumentNullException(nameof(stateProvider));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+<<<<<<< HEAD
+=======
+            _difficultyCalculator = new AuraDifficultyCalculator(_auRaStepCalculator);
+>>>>>>> test squash
         }
 
         public void Start()
@@ -124,6 +133,7 @@ namespace Nethermind.AuRa
 
         private Block PrepareBlock(BlockHeader parentHeader)
         {
+<<<<<<< HEAD
             UInt256 timestamp = _timestamper.EpochSeconds;
 
             BlockHeader header = new BlockHeader(
@@ -134,13 +144,31 @@ namespace Nethermind.AuRa
                 parentHeader.Number + 1,
                 parentHeader.GasLimit,
                 timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
+=======
+            Block parent = _blockTree.FindBlock(parentHeader.Hash, BlockTreeLookupOptions.None);
+            UInt256 timestamp = _timestamper.EpochSeconds;
+
+            BlockHeader header = new BlockHeader(
+                parent.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                _nodeAddress,
+                _difficultyCalculator.CalculateDifficulty(parent.Header),
+                parent.Number + 1,
+                parent.GasLimit,
+                timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
+>>>>>>> test squash
                 Encoding.UTF8.GetBytes("Nethermind"))
             {
                 AuRaStep = (long) _auRaStepCalculator.CurrentStep,
             };
 
+<<<<<<< HEAD
             header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
             if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentHeader.TotalDifficulty} + {header.Difficulty}.");
+=======
+            header.TotalDifficulty = parent.TotalDifficulty + header.Difficulty;
+            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {header.Difficulty}.");
+>>>>>>> test squash
 
             var transactions = _txPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
 

@@ -18,15 +18,23 @@
 
 using System;
 using System.Collections.Generic;
+<<<<<<< HEAD
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+=======
+using System.Threading.Tasks;
+using Ethereum.Test.Base;
+using Nethermind.Core;
+using Nethermind.Core.Json;
+>>>>>>> test squash
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.State.Test.Runner
 {
+<<<<<<< HEAD
     public enum WhenTrace
     {
         WhenFailing,
@@ -48,6 +56,18 @@ namespace Nethermind.State.Test.Runner
             _whenTrace = whenTrace;
             _traceMemory = traceMemory;
             _traceStack = traceStack;
+=======
+    public class StateTestsRunner : BlockchainTestBase, IStateTestRunner
+    {
+        private IBlockchainTestsSource _testsSource;
+        private readonly bool _alwaysTrace;
+        private IJsonSerializer _serializer = new EthereumJsonSerializer();
+
+        public StateTestsRunner(IBlockchainTestsSource testsSource, bool alwaysTrace)
+        {
+            _testsSource = testsSource ?? throw new ArgumentNullException(nameof(testsSource));
+            _alwaysTrace = alwaysTrace;
+>>>>>>> test squash
             Setup(null);
         }
 
@@ -67,8 +87,11 @@ namespace Nethermind.State.Test.Runner
             Console.Error.WriteLine(_serializer.Serialize(txTrace.State));
         }
 
+<<<<<<< HEAD
         private IntrinsicGasCalculator _calculator = new IntrinsicGasCalculator();
         
+=======
+>>>>>>> test squash
         public IEnumerable<EthereumTestResult> RunTests()
         {
             List<EthereumTestResult> results = new List<EthereumTestResult>();
@@ -76,22 +99,36 @@ namespace Nethermind.State.Test.Runner
             foreach (BlockchainTest test in tests)
             {
                 EthereumTestResult result = null;
+<<<<<<< HEAD
                 if (_whenTrace != WhenTrace.Always)
+=======
+                if (!_alwaysTrace)
+>>>>>>> test squash
                 {
                     result = RunTest(test, NullTxTracer.Instance);
                 }
 
+<<<<<<< HEAD
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
                 {
                     StateTestTxTracer txTracer = new StateTestTxTracer();
                     txTracer.IsTracingMemory = _traceMemory;
                     txTracer.IsTracingStack = _traceStack;
+=======
+                if (!(result?.Pass ?? false))
+                {
+                    StateTestTxTracer txTracer = new StateTestTxTracer();
+>>>>>>> test squash
                     result = RunTest(test, txTracer);
 
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
                     txTrace.State.StateRoot = result.StateRoot;
+<<<<<<< HEAD
                     txTrace.Result.GasUsed -= _calculator.Calculate(test.Transaction, test.Fork);
+=======
+                
+>>>>>>> test squash
                     WriteErr(txTrace);    
                 }
                 
@@ -99,8 +136,12 @@ namespace Nethermind.State.Test.Runner
             }
             
             WriteOut(results);
+<<<<<<< HEAD
 
             Console.ReadLine();
+=======
+            
+>>>>>>> test squash
             return results;
         }
     }

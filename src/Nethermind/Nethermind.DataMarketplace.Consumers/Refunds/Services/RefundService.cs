@@ -21,11 +21,18 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+<<<<<<< HEAD
+=======
+using Nethermind.Core.Extensions;
+>>>>>>> test squash
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
+<<<<<<< HEAD
 using Nethermind.Dirichlet.Numerics;
+=======
+>>>>>>> test squash
 using Nethermind.Logging;
 using Nethermind.Wallet;
 
@@ -51,8 +58,11 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+<<<<<<< HEAD
         public ulong GasLimit { get; } = 90000;
 
+=======
+>>>>>>> test squash
         public async Task SetEarlyRefundTicketAsync(EarlyRefundTicket ticket, RefundReason reason)
         {
             var depositDetails = await _depositRepository.GetAsync(ticket.DepositId);
@@ -66,7 +76,11 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             if (_logger.IsInfo) _logger.Info($"Early refund claim for deposit: '{ticket.DepositId}', reason: '{reason}'.");
         }
 
+<<<<<<< HEAD
         public async Task<Keccak> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim, UInt256 gasPrice)
+=======
+        public async Task<Keccak> ClaimRefundAsync(Address onBehalfOf, RefundClaim refundClaim)
+>>>>>>> test squash
         {
             byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimRefundSig, refundClaim.AssetId.Bytes, refundClaim.Units, refundClaim.Value, refundClaim.ExpiryTime, refundClaim.Pepper, refundClaim.Provider, onBehalfOf);
             Transaction transaction = new Transaction();
@@ -74,8 +88,13 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.Data = txData;
             transaction.To = _contractAddress;
             transaction.SenderAddress = onBehalfOf;
+<<<<<<< HEAD
             transaction.GasLimit = (long) GasLimit;
             transaction.GasPrice = gasPrice;
+=======
+            transaction.GasLimit = 90000; // check  
+            transaction.GasPrice = 20.GWei();
+>>>>>>> test squash
             transaction.Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
             
@@ -87,8 +106,12 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             return await _blockchainBridge.SendOwnTransactionAsync(transaction);
         }
 
+<<<<<<< HEAD
         public async Task<Keccak> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim,
             UInt256 gasPrice)
+=======
+        public async Task<Keccak> ClaimEarlyRefundAsync(Address onBehalfOf, EarlyRefundClaim earlyRefundClaim)
+>>>>>>> test squash
         {
             byte[] txData = _abiEncoder.Encode(AbiEncodingStyle.IncludeSignature, ContractData.ClaimEarlyRefundSig, earlyRefundClaim.AssetId.Bytes, earlyRefundClaim.Units, earlyRefundClaim.Value, earlyRefundClaim.ExpiryTime, earlyRefundClaim.Pepper, earlyRefundClaim.Provider, earlyRefundClaim.ClaimableAfter, earlyRefundClaim.Signature.V, earlyRefundClaim.Signature.R, earlyRefundClaim.Signature.S, onBehalfOf);
             Transaction transaction = new Transaction();
@@ -96,8 +119,13 @@ namespace Nethermind.DataMarketplace.Consumers.Refunds.Services
             transaction.Data = txData;
             transaction.To = _contractAddress;
             transaction.SenderAddress = onBehalfOf;
+<<<<<<< HEAD
             transaction.GasLimit = (long) GasLimit;
             transaction.GasPrice = gasPrice;
+=======
+            transaction.GasLimit = 90000; // check  
+            transaction.GasPrice = 20.GWei();
+>>>>>>> test squash
             transaction.Nonce = await _blockchainBridge.ReserveOwnTransactionNonceAsync(onBehalfOf);
             _wallet.Sign(transaction, await _blockchainBridge.GetNetworkIdAsync());
 

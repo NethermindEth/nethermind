@@ -75,7 +75,11 @@ namespace Nethermind.Overseer.Test.JsonRpc
             }
 
             return await response.Content.ReadAsStringAsync()
+<<<<<<< HEAD
                 .ContinueWith(t => new EthereumJsonSerializer().Deserialize<JsonRpcResponse<T>>(t.Result));
+=======
+                .ContinueWith(t => JsonConvert.DeserializeObject<JsonRpcResponse<T>>(t.Result));
+>>>>>>> test squash
         }
 
         private StringContent GetPayload(JsonRpcRequest request)

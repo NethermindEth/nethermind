@@ -265,7 +265,11 @@ namespace Nethermind.Runner.Runners
                     _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
                     break;
                 default:
+<<<<<<< HEAD
                     _wallet = NullWallet.Instance;
+=======
+                    _wallet = new NullWallet();
+>>>>>>> test squash
                     break;
             }
 
@@ -425,7 +429,11 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
+<<<<<<< HEAD
             _dbProvider = (HiveEnabled || _initConfig.UseMemDb)
+=======
+            _dbProvider = HiveEnabled
+>>>>>>> test squash
                 ? (IDbProvider) new MemDbProvider()
                 : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
             
@@ -447,7 +455,12 @@ namespace Nethermind.Runner.Runners
                 _ethereumEcdsa,
                 _specProvider,
                 _txPoolConfig, _stateProvider, _logManager);
+<<<<<<< HEAD
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
+=======
+            var _rc7FixDb = _initConfig.EnableRc7Fix ? _dbProvider.HeadersDb : NullDb.Instance;
+            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _rc7FixDb, _specProvider, _logManager);
+>>>>>>> test squash
 
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
             

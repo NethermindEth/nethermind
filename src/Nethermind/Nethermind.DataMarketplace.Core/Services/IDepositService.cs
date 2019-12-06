@@ -26,8 +26,12 @@ namespace Nethermind.DataMarketplace.Core.Services
 {
     public interface IDepositService
     {
+<<<<<<< HEAD
         ulong GasLimit { get; }
         Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit, UInt256 gasPrice);
+=======
+        Task<Keccak> MakeDepositAsync(Address onBehalfOf, Deposit deposit);
+>>>>>>> test squash
         Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId);
         Task<uint> VerifyDepositAsync(Address onBehalfOf, Keccak depositId, long blockNumber);
         Task<UInt256> ReadDepositBalanceAsync(Address onBehalfOf, Keccak depositId);

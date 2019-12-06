@@ -8,7 +8,10 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.11.5" />
+<<<<<<< HEAD
     <PackageReference Include="HexMate" Version="0.0.2" />
+=======
+>>>>>>> test squash
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />

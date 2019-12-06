@@ -20,7 +20,10 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Text.RegularExpressions;
+<<<<<<< HEAD
 using Nethermind.BeaconChain;
+=======
+>>>>>>> test squash
 using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
@@ -38,8 +41,11 @@ namespace Nethermind.Monitoring.Metrics
             RegisterMetrics(typeof(Evm.Metrics));
             RegisterMetrics(typeof(Network.Metrics));
             RegisterMetrics(typeof(JsonRpc.Metrics));
+<<<<<<< HEAD
             RegisterMetrics(typeof(InteropMetrics));
             RegisterMetrics(typeof(BeaconChain.Metrics));
+=======
+>>>>>>> test squash
         }
         
         private void RegisterMetrics(Type type)

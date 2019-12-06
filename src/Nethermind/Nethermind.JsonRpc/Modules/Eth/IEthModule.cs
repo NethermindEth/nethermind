@@ -94,7 +94,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         Task<ResultWrapper<Keccak>> eth_sendRawTransaction(byte[] transaction);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Executes a tx call (does not create a transaction)", IsReadOnly = false)]
+<<<<<<< HEAD
         ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null);
+=======
+        ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null);
+>>>>>>> test squash
         
         [JsonRpcMethod(IsImplemented = true, Description = "Executes a tx call and returns gas used (does not create a transaction)", IsReadOnly = false)]
         ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall);
@@ -103,7 +107,11 @@ namespace Nethermind.JsonRpc.Modules.Eth
         ResultWrapper<BlockForRpc> eth_getBlockByHash(Keccak blockHash, bool returnFullTransactionObjects);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a block by number", IsReadOnly = true)]
+<<<<<<< HEAD
         ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects = false);
+=======
+        ResultWrapper<BlockForRpc> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects);
+>>>>>>> test squash
         
         [JsonRpcMethod(IsImplemented = true, Description = "Retrieves a transaction by hash", IsReadOnly = true)]
         ResultWrapper<TransactionForRpc> eth_getTransactionByHash(Keccak transactionHash);

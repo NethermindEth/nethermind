@@ -18,8 +18,11 @@
 
 using System;
 using System.Numerics;
+<<<<<<< HEAD
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+=======
+>>>>>>> test squash
 using BenchmarkDotNet.Attributes;
 
 namespace Nethermind.Benchmarks.Evm
@@ -42,6 +45,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark(Baseline = true)]
         public void Current()
         {
+<<<<<<< HEAD
             ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
             ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
             ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(c);
@@ -50,6 +54,12 @@ namespace Nethermind.Benchmarks.Evm
             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
             Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) & Unsafe.Add(ref refB, 2);
             Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
+=======
+            for (int i = 0; i < 32; i++)
+            {
+                c[i] = (byte)(a[i] & b[i]);
+            }
+>>>>>>> test squash
         }
         
         [Benchmark]

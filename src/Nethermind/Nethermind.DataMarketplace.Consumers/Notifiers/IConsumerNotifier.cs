@@ -20,7 +20,10 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
+<<<<<<< HEAD
 using Nethermind.DataMarketplace.Core.Services.Models;
+=======
+>>>>>>> test squash
 
 namespace Nethermind.DataMarketplace.Consumers.Notifiers
 {
@@ -52,7 +55,11 @@ namespace Nethermind.DataMarketplace.Consumers.Notifiers
         Task SendGraceUnitsExceeded(Keccak depositId, string dataAssetName, uint consumedUnitsFromProvider,
             uint consumedUnits, uint graceUnits);
 
+<<<<<<< HEAD
         Task SendEthUsdPriceAsync(decimal price, ulong updatedAt);
         Task SendGasPriceAsync(GasPriceTypes types);
+=======
+        void SendEthUsdPriceAsync(decimal price);
+>>>>>>> test squash
     }
 }

@@ -62,12 +62,15 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, Eth1Data container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.DepositRoot);
             merkleizer.Feed(container.DepositCount);
@@ -149,12 +152,15 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, Attestation container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.FeedBits(container.AggregationBits, (Attestation.MaxValidatorsPerCommittee + 255) / 256);
             merkleizer.Feed(container.Data);
@@ -173,12 +179,15 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, PendingAttestation container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.FeedBits(container.AggregationBits, (Attestation.MaxValidatorsPerCommittee + 255) / 256);
             merkleizer.Feed(container.Data);
@@ -189,12 +198,15 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, AttesterSlashing container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.Attestation1);
             merkleizer.Feed(container.Attestation2);
@@ -203,17 +215,21 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, Deposit container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(1);
             merkleizer.Feed(container.Proof);
             merkleizer.Feed(container.Data);
             merkleizer.CalculateRoot(out root);
         }
+<<<<<<< HEAD
 
         private static UInt256 RootOfNull;
 
@@ -225,6 +241,11 @@ namespace Nethermind.Ssz
                 return;
             }
             
+=======
+        
+        public static void Ize(out UInt256 root, ProposerSlashing container)
+        {
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.ProposerIndex);
             merkleizer.Feed(container.Header1);
@@ -259,12 +280,15 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, VoluntaryExit container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(2);
             merkleizer.Feed(container.Epoch);
             merkleizer.Feed(container.ValidatorIndex);
@@ -274,12 +298,15 @@ namespace Nethermind.Ssz
         
         public static void Ize(out UInt256 root, Validator container)
         {
+<<<<<<< HEAD
             if (container == null)
             {
                 root = RootOfNull;
                 return;
             }
             
+=======
+>>>>>>> test squash
             Merkleizer merkleizer = new Merkleizer(3);
             merkleizer.Feed(container.PublicKey);
             merkleizer.Feed(container.WithdrawalCredentials);

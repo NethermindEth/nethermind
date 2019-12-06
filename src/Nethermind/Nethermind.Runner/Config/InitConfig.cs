@@ -37,6 +37,10 @@ namespace Nethermind.Runner.Config
         public string LogDirectory { get; set; } = null;
         public bool StoreTraces { get; set; } = false;
         public bool StoreReceipts { get; set; } = true;
+<<<<<<< HEAD
         public bool UseMemDb { get; set; } = false;
+=======
+        public bool EnableRc7Fix { get; set; } = false;
+>>>>>>> test squash
     }
 }

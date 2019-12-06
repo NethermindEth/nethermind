@@ -37,7 +37,10 @@ using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
 using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Consumers.Shared;
+<<<<<<< HEAD
 using Nethermind.DataMarketplace.Consumers.Shared.Domain;
+=======
+>>>>>>> test squash
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
@@ -57,9 +60,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private IEthRequestService _ethRequestService;
         private IEthPriceService _ethPriceService;
+<<<<<<< HEAD
         private IGasPriceService _gasPriceService;
         private IConsumerTransactionsService _consumerTransactionsService;
         private IConsumerGasLimitsService _gasLimitsService;
+=======
+>>>>>>> test squash
         private IPersonalBridge _personalBridge;
         private INdmRpcConsumerModule _rpc;
         private ITimestamper _timestamper;
@@ -74,6 +80,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _jsonRpcNdmConsumerChannel = Substitute.For<IJsonRpcNdmConsumerChannel>();
             _ethRequestService = Substitute.For<IEthRequestService>();
             _ethPriceService = Substitute.For<IEthPriceService>();
+<<<<<<< HEAD
             _gasPriceService = Substitute.For<IGasPriceService>();
             _gasLimitsService = Substitute.For<IConsumerGasLimitsService>();
             _consumerTransactionsService = Substitute.For<IConsumerTransactionsService>();
@@ -82,6 +89,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
                 _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
                 _personalBridge, _timestamper);
+=======
+            _personalBridge = Substitute.For<IPersonalBridge>();
+            _timestamper = new Timestamper(Date);
+            _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
+                _ethRequestService, _ethPriceService, _personalBridge, _timestamper);
+>>>>>>> test squash
         }
 
         [Test]
@@ -108,8 +121,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             _personalBridge = null;
             _rpc = new NdmRpcConsumerModule(_consumerService, _depositReportService, _jsonRpcNdmConsumerChannel,
+<<<<<<< HEAD
                 _ethRequestService, _ethPriceService, _gasPriceService, _consumerTransactionsService, _gasLimitsService,
                 _personalBridge, _timestamper);
+=======
+                _ethRequestService, _ethPriceService, _personalBridge, _timestamper);
+>>>>>>> test squash
             var result = _rpc.ndm_listAccounts();
             result.Data.Should().BeEmpty();
         }
@@ -328,6 +345,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.ErrorType.Should().Be(ErrorType.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
+<<<<<<< HEAD
         
         [Test]
         public async Task disable_data_streams_should_return_deposit_id()
@@ -350,6 +368,8 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             result.ErrorType.Should().Be(ErrorType.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
+=======
+>>>>>>> test squash
 
         [Test]
         public async Task get_deposits_report_should_return_report()
@@ -479,6 +499,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public void get_eth_usd_price_should_return_amount()
         {
             const decimal price = 187;
+<<<<<<< HEAD
             const ulong updatedAt = 123456789;
             _ethPriceService.UsdPrice.Returns(price);
             _ethPriceService.UpdatedAt.Returns(updatedAt);
@@ -602,6 +623,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             rpcGasPrice.WaitTime.Should().Be(gasPrice.WaitTime);
         }
         
+=======
+            _ethPriceService.UsdPrice.Returns(price);
+            var result = _rpc.ndm_getEthUsdPrice();
+            result.Data.Should().Be(price);
+        }
+
+>>>>>>> test squash
         private static void VerifyDepositReportItem(DepositReportItemForRpc rpcItem, DepositReportItem item)
         {
             rpcItem.Id.Should().Be(item.Id);
@@ -685,6 +713,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Deposit.Value.Should().Be(1);
             deposit.Deposit.ExpiryTime.Should().Be(DepositExpiryTime);
             deposit.Timestamp.Should().Be(1);
+<<<<<<< HEAD
             deposit.Transaction.Hash.Should().Be(TestItem.KeccakA);
             deposit.Transaction.Value.Should().Be(1);
             deposit.Transaction.GasPrice.Should().Be(1);
@@ -695,6 +724,13 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             deposit.Expired.Should().Be(false);
             deposit.RefundClaimed.Should().Be(false);
             deposit.ClaimedRefundTransaction.Should().BeNull();
+=======
+            deposit.TransactionHash.Should().Be(TestItem.KeccakA);
+            deposit.Confirmed.Should().Be(false);
+            deposit.Expired.Should().Be(false);
+            deposit.RefundClaimed.Should().Be(false);
+            deposit.ClaimedRefundTransactionHash.Should().BeNull();
+>>>>>>> test squash
             deposit.ConsumedUnits.Should().Be(0);
             deposit.Kyc.Should().BeNullOrEmpty();
             VerifyDataAsset(deposit.DataAsset);
@@ -736,8 +772,12 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
 
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
+<<<<<<< HEAD
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
                 new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1));
+=======
+                GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1, TestItem.KeccakA);
+>>>>>>> test squash
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,

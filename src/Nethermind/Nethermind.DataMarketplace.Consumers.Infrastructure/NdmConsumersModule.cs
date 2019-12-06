@@ -55,7 +55,10 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
         {
             AddDecoders();
             var ndmConfig = services.RequiredServices.NdmConfig;
+<<<<<<< HEAD
             var configId = ndmConfig.Id;
+=======
+>>>>>>> test squash
             var dbConfig = services.RequiredServices.ConfigProvider.GetConfig<IDbConfig>();
             var contractAddress = string.IsNullOrWhiteSpace(ndmConfig.ContractAddress)
                 ? Address.Zero
@@ -106,8 +109,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var configManager = services.RequiredServices.ConfigManager;
             var consumerAddress = services.CreatedServices.ConsumerAddress;
             var cryptoRandom = services.RequiredServices.CryptoRandom;
+<<<<<<< HEAD
             var depositService = services.CreatedServices.DepositService;
             var gasPriceService = services.CreatedServices.GasPriceService;
+=======
+>>>>>>> test squash
             var ecdsa = services.RequiredServices.Ecdsa;
             var ethRequestService = services.RequiredServices.EthRequestService;
             var jsonRpcNdmConsumerChannel = services.CreatedServices.JsonRpcNdmConsumerChannel;
@@ -115,10 +121,15 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var nodePublicKey = services.RequiredServices.Enode.PublicKey;
             var timestamper = services.RequiredServices.Timestamper;
             var wallet = services.RequiredServices.Wallet;
+<<<<<<< HEAD
             var httpClient = services.RequiredServices.HttpClient;
             var jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
             var ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
             var transactionService = services.CreatedServices.TransactionService;
+=======
+            var jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
+            var ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
+>>>>>>> test squash
 
             var dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
             var transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
@@ -126,12 +137,20 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var depositProvider = new DepositProvider(depositRepository, depositUnitsCalculator, logManager);
             var kycVerifier = new KycVerifier(depositApprovalRepository, logManager);
             var consumerNotifier = new ConsumerNotifier(ndmNotifier);
+<<<<<<< HEAD
 
+=======
+            
+>>>>>>> test squash
             var dataAssetService = new DataAssetService(providerRepository, consumerNotifier, logManager);
             var providerService = new ProviderService(providerRepository, consumerNotifier, logManager);
             var dataRequestService = new DataRequestService(dataRequestFactory, depositProvider, kycVerifier, wallet,
                 providerService, timestamper, sessionRepository, consumerNotifier, logManager);
+<<<<<<< HEAD
 
+=======
+            var depositService = new DepositService(blockchainBridge, abiEncoder, wallet, contractAddress);
+>>>>>>> test squash
             var sessionService = new SessionService(providerService, depositProvider, dataAssetService,
                 sessionRepository, timestamper, consumerNotifier, logManager);
             var dataConsumerService = new DataConsumerService(depositProvider, sessionService,
@@ -143,7 +162,11 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var depositConfirmationService = new DepositConfirmationService(blockchainBridge, consumerNotifier,
                 depositRepository, depositService, logManager, requiredBlockConfirmations);
             var depositManager = new DepositManager(depositService, depositUnitsCalculator, dataAssetService,
+<<<<<<< HEAD
                 kycVerifier, providerService, abiEncoder, cryptoRandom, wallet, gasPriceService, depositRepository,
+=======
+                kycVerifier, providerService, abiEncoder, cryptoRandom, wallet, depositRepository, sessionRepository,
+>>>>>>> test squash
                 timestamper, logManager, requiredBlockConfirmations);
             var depositReportService = new DepositReportService(depositRepository, receiptRepository, sessionRepository,
                 timestamper);
@@ -153,6 +176,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var refundService = new RefundService(blockchainBridge, abiEncoder, wallet, depositRepository,
                 contractAddress, logManager);
             var refundClaimant = new RefundClaimant(refundService, blockchainBridge, depositRepository,
+<<<<<<< HEAD
                 transactionVerifier, gasPriceService, timestamper, logManager);
             var accountService = new AccountService(configManager, dataStreamService, providerService,
                 sessionService, consumerNotifier, wallet, configId, consumerAddress, logManager);
@@ -165,18 +189,38 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                 timestamper, logManager);
             var gasLimitService = new ConsumerGasLimitsService(depositService, refundService);
             
+=======
+                transactionVerifier, timestamper, logManager);
+            var accountService = new AccountService(configManager, dataStreamService, providerService,
+                sessionService, consumerNotifier, wallet, ndmConfig.Id, consumerAddress, logManager);
+            var proxyService = new ProxyService(jsonRpcClientProxy, configManager, ndmConfig.Id, logManager);
+            var consumerService = new ConsumerService(accountService, dataAssetService, dataRequestService,
+                dataConsumerService, dataStreamService, depositManager, depositApprovalService, providerService,
+                receiptService, refundService, sessionService, proxyService);
+            var ethPriceService  = new EthPriceService(services.RequiredServices.HttpClient, logManager);
+
+>>>>>>> test squash
             IPersonalBridge personalBridge = services.RequiredServices.EnableUnsecuredDevWallet
                 ? new PersonalBridge(ecdsa, wallet)
                 : null;
             services.RequiredServices.RpcModuleProvider.Register(
                 new SingletonModulePool<INdmRpcConsumerModule>(new NdmRpcConsumerModule(consumerService,
                     depositReportService, jsonRpcNdmConsumerChannel, ethRequestService, ethPriceService,
+<<<<<<< HEAD
                     gasPriceService, consumerTransactionsService, gasLimitService, personalBridge, timestamper), true));
 
             var useDepositTimer = ndmConfig.ProxyEnabled;
             var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
                 refundClaimant, depositConfirmationService, ethPriceService, gasPriceService, blockProcessor,
                 depositRepository, consumerNotifier, logManager, useDepositTimer: useDepositTimer,
+=======
+                    personalBridge, timestamper), true));
+
+            var useDepositTimer = ndmConfig.ProxyEnabled;
+            var consumerServicesBackgroundProcessor = new ConsumerServicesBackgroundProcessor(accountService,
+                refundClaimant, depositConfirmationService, ethPriceService, blockProcessor, depositRepository,
+                consumerNotifier, logManager, useDepositTimer: useDepositTimer,
+>>>>>>> test squash
                 ethJsonRpcClientProxy: ethJsonRpcClientProxy);
 
             consumerServicesBackgroundProcessor.Init();

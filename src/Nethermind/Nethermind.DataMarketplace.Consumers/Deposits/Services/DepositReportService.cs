@@ -90,7 +90,11 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 results = 10;
             }
 
+<<<<<<< HEAD
             var timestamp = (uint) _timestamper.EpochSeconds;
+=======
+            var timestamp = (uint)_timestamper.EpochSeconds;
+>>>>>>> test squash
             var skip = (page - 1) * results;
             var items = new List<DepositReportItem>();
             foreach (var (_, deposit) in foundDeposits.OrderByDescending(d => d.Value.Timestamp).Skip(skip)
@@ -109,9 +113,15 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 items.Add(new DepositReportItem(deposit.Id, deposit.DataAsset.Id, deposit.DataAsset.Name,
                     deposit.DataAsset.Provider.Address, deposit.DataAsset.Provider.Name, deposit.Deposit.Value,
                     deposit.Deposit.Units, deposit.Consumer, deposit.Timestamp, deposit.Deposit.ExpiryTime, expired,
+<<<<<<< HEAD
                     deposit.Transaction?.Hash, deposit.ConfirmationTimestamp, deposit.Confirmations,
                     deposit.RequiredConfirmations, deposit.Confirmed, deposit.Rejected,
                     deposit.ClaimedRefundTransaction?.Hash, deposit.RefundClaimed, consumedUnits, receiptItems));
+=======
+                    deposit.TransactionHash, deposit.ConfirmationTimestamp, deposit.Confirmations,
+                    deposit.RequiredConfirmations, deposit.Confirmed, deposit.Rejected,
+                    deposit.ClaimedRefundTransactionHash, deposit.RefundClaimed, consumedUnits, receiptItems));
+>>>>>>> test squash
             }
 
             var (total, claimed, refunded) = CalculateValues(foundDeposits, depositsReceipts);

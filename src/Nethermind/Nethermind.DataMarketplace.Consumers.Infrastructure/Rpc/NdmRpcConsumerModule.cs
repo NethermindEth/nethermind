@@ -17,7 +17,10 @@
  */
 
 using System;
+<<<<<<< HEAD
 using System.Collections.Generic;
+=======
+>>>>>>> test squash
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -31,7 +34,10 @@ using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
+<<<<<<< HEAD
 using Nethermind.Dirichlet.Numerics;
+=======
+>>>>>>> test squash
 using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -40,31 +46,45 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 {
     public class NdmRpcConsumerModule : INdmRpcConsumerModule
     {
+<<<<<<< HEAD
+=======
+
+>>>>>>> test squash
         private readonly IConsumerService _consumerService;
         private readonly IDepositReportService _depositReportService;
         private readonly IJsonRpcNdmConsumerChannel _jsonRpcNdmConsumerChannel;
         private readonly IEthRequestService _ethRequestService;
         private readonly IEthPriceService _ethPriceService;
+<<<<<<< HEAD
         private readonly IGasPriceService _gasPriceService;
         private readonly IConsumerTransactionsService _transactionsService;
         private readonly IConsumerGasLimitsService _gasLimitsService;
+=======
+>>>>>>> test squash
         private readonly IPersonalBridge _personalBridge;
         private readonly ITimestamper _timestamper;
 
         public NdmRpcConsumerModule(IConsumerService consumerService, IDepositReportService depositReportService,
             IJsonRpcNdmConsumerChannel jsonRpcNdmConsumerChannel, IEthRequestService ethRequestService,
+<<<<<<< HEAD
             IEthPriceService ethPriceService, IGasPriceService gasPriceService,
             IConsumerTransactionsService transactionsService, IConsumerGasLimitsService gasLimitsService,
             IPersonalBridge personalBridge, ITimestamper timestamper)
+=======
+            IEthPriceService ethPriceService, IPersonalBridge personalBridge, ITimestamper timestamper)
+>>>>>>> test squash
         {
             _consumerService = consumerService;
             _depositReportService = depositReportService;
             _jsonRpcNdmConsumerChannel = jsonRpcNdmConsumerChannel;
             _ethRequestService = ethRequestService;
             _ethPriceService = ethPriceService;
+<<<<<<< HEAD
             _gasPriceService = gasPriceService;
             _transactionsService = transactionsService;
             _gasLimitsService = gasLimitsService;
+=======
+>>>>>>> test squash
             _personalBridge = personalBridge;
             _timestamper = timestamper;
         }
@@ -144,10 +164,16 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
                 : ResultWrapper<DepositDetailsForRpc>.Success(new DepositDetailsForRpc(deposit, timestamp));
         }
 
+<<<<<<< HEAD
         public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit, UInt256? gasPrice = null)
         {
             var depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value,
                 gasPrice);
+=======
+        public async Task<ResultWrapper<Keccak>> ndm_makeDeposit(MakeDepositForRpc deposit)
+        {
+            var depositId = await _consumerService.MakeDepositAsync(deposit.DataAssetId, deposit.Units, deposit.Value);
+>>>>>>> test squash
 
             return depositId is null
                 ? ResultWrapper<Keccak>.Fail("Deposit couldn't be made.")
@@ -243,6 +269,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
+<<<<<<< HEAD
         public ResultWrapper<EthUsdPriceForRpc> ndm_getEthUsdPrice()
             => ResultWrapper<EthUsdPriceForRpc>.Success(new EthUsdPriceForRpc(_ethPriceService.UsdPrice,
                 _ethPriceService.UpdatedAt));
@@ -283,5 +310,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
 
         public ResultWrapper<GasLimitsForRpc> ndm_getConsumerGasLimits()
             => ResultWrapper<GasLimitsForRpc>.Success(new GasLimitsForRpc(_gasLimitsService.GasLimits));
+=======
+        public ResultWrapper<decimal> ndm_getEthUsdPrice() => ResultWrapper<decimal>.Success(_ethPriceService.UsdPrice);
+>>>>>>> test squash
     }
 }

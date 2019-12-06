@@ -35,6 +35,10 @@ namespace Nethermind.AuRa
         private readonly IAuRaValidator _validator;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
+<<<<<<< HEAD
+=======
+        private readonly AuraDifficultyCalculator _auraDifficultyCalculator;
+>>>>>>> test squash
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
         
         public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IAuRaValidator validator, IEthereumEcdsa ecdsa, ILogManager logManager)
@@ -44,6 +48,10 @@ namespace Nethermind.AuRa
             _validator = validator ?? throw new ArgumentNullException(nameof(validator));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+<<<<<<< HEAD
+=======
+            _auraDifficultyCalculator = new AuraDifficultyCalculator(stepCalculator);
+>>>>>>> test squash
         }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
@@ -94,6 +102,7 @@ namespace Nethermind.AuRa
             // Report malice if the validator produced other sibling blocks in the same step.
             if (_receivedSteps.ContainsOrInsert(header.AuRaStep.Value, header.Beneficiary, _validator.CurrentSealersCount))
             {
+<<<<<<< HEAD
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 // report malicious
             }
@@ -107,6 +116,21 @@ namespace Nethermind.AuRa
                 }
 
                 var expectedDifficulty = AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, header.AuRaStep.Value, 0);
+=======
+                if (_logger.IsWarn) _logger.Warn($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
+                // report malicious
+            }
+            
+            if (_parameters.ValidateScoreTransition >= header.Number)
+            {
+                if (header.Difficulty >= _auraDifficultyCalculator.MaxDifficulty)
+                {
+                    if (_logger.IsError) _logger.Error($"Difficulty out of bounds for block {header.Number}, hash {header.Hash}, Max value {_auraDifficultyCalculator.MaxDifficulty}, but found {header.Difficulty}.");
+                    return false;
+                }
+
+                var expectedDifficulty = _auraDifficultyCalculator.CalculateDifficulty(parent);
+>>>>>>> test squash
                 if (header.Difficulty != expectedDifficulty)
                 {
                     if (_logger.IsError) _logger.Error($"Invalid difficulty for block {header.Number}, hash {header.Hash}, expected value {expectedDifficulty}, but found {header.Difficulty}.");
@@ -121,7 +145,12 @@ namespace Nethermind.AuRa
         {
             if (header.IsGenesis) return true;
 
+<<<<<<< HEAD
             header.Author ??= GetSealer(header);
+=======
+            header.Author ??= GetSealer(header); 
+            
+>>>>>>> test squash
 
             if (header.Author != header.Beneficiary)
             {
@@ -144,7 +173,11 @@ namespace Nethermind.AuRa
 
         private class ReceivedSteps
         {
+<<<<<<< HEAD
             private readonly List<(long Step, Address Author, ISet<Address> Authors)> _list = new List<(long Step, Address Author, ISet<Address> Authors)>();
+=======
+            private readonly List<(long Step, Address Author, ISet<Address> Authors)> _list = new List<(long, Address, ISet<Address>)>();
+>>>>>>> test squash
             private const int CacheSizeFullRoundsMultiplier = 4;
 
             public bool ContainsOrInsert(long step, Address author, int validatorCount)
@@ -192,10 +225,17 @@ namespace Nethermind.AuRa
             }
         }
         
+<<<<<<< HEAD
         private class StepElementComparer : IComparer<(long Step, Address Author, ISet<Address> Authors)>
         {
             public static readonly StepElementComparer Instance = new StepElementComparer();
             public int Compare((long Step, Address Author, ISet<Address> Authors) x, (long Step, Address Author, ISet<Address> Authors) y) => x.Step.CompareTo(y.Step);
+=======
+        private class StepElementComparer : IComparer<(long, Address, ISet<Address>)>
+        {
+            public static readonly StepElementComparer Instance = new StepElementComparer();
+            public int Compare((long, Address, ISet<Address>) x, (long, Address, ISet<Address>) y) => x.CompareTo(y);
+>>>>>>> test squash
         }
     }
 }

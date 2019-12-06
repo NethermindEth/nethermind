@@ -46,8 +46,13 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
         private readonly IRefundClaimant _refundClaimant;
         private readonly IDepositConfirmationService _depositConfirmationService;
         private readonly IEthPriceService _ethPriceService;
+<<<<<<< HEAD
         private readonly IGasPriceService _gasPriceService;
         private readonly IBlockProcessor _blockProcessor;
+=======
+        private readonly IBlockProcessor _blockProcessor;
+        private readonly Timer _refundClaimTimer;
+>>>>>>> test squash
         private readonly Timer _depositTimer;
         private readonly ILogger _logger;
         private long _currentBlockTimestamp;
@@ -55,29 +60,47 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
 
         public ConsumerServicesBackgroundProcessor(IAccountService accountService, IRefundClaimant refundClaimant,
             IDepositConfirmationService depositConfirmationService, IEthPriceService ethPriceService,
+<<<<<<< HEAD
             IGasPriceService gasPriceService, IBlockProcessor blockProcessor,
             IDepositDetailsRepository depositRepository, IConsumerNotifier consumerNotifier, ILogManager logManager,
             bool useDepositTimer = false, IEthJsonRpcClientProxy ethJsonRpcClientProxy = null,
             uint depositTimer = 10000)
+=======
+            IBlockProcessor blockProcessor, IDepositDetailsRepository depositRepository,
+            IConsumerNotifier consumerNotifier, ILogManager logManager,
+            uint tryClaimRefundsIntervalMilliseconds = 60000, bool useDepositTimer = false, 
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy = null, uint depositTimer = 10000)
+>>>>>>> test squash
         {
             _accountService = accountService;
             _refundClaimant = refundClaimant;
             _depositConfirmationService = depositConfirmationService;
             _ethPriceService = ethPriceService;
+<<<<<<< HEAD
             _gasPriceService = gasPriceService;
+=======
+>>>>>>> test squash
             _blockProcessor = blockProcessor;
             _depositRepository = depositRepository;
             _consumerNotifier = consumerNotifier;
             _useDepositTimer = useDepositTimer;
             _ethJsonRpcClientProxy = ethJsonRpcClientProxy;
             _logger = logManager.GetClassLogger();
+<<<<<<< HEAD
+=======
+            _refundClaimTimer = new Timer(tryClaimRefundsIntervalMilliseconds);
+>>>>>>> test squash
             if (_useDepositTimer)
             {
                 _depositTimer = new Timer(depositTimer);
             }
+<<<<<<< HEAD
 
             _ethPriceService.UpdateAsync();
             _gasPriceService.UpdateAsync();
+=======
+            _ethPriceService.UpdateAsync();
+>>>>>>> test squash
         }
 
         public void Init()
@@ -92,6 +115,11 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 _blockProcessor.BlockProcessed += OnBlockProcessed;
             }
 
+<<<<<<< HEAD
+=======
+            _refundClaimTimer.Elapsed += RefundClaimTimerOnElapsed;
+            _refundClaimTimer.Start();
+>>>>>>> test squash
             if (_logger.IsInfo) _logger.Info("Initialized NDM consumer services background processor.");
         }
 
@@ -120,6 +148,42 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                     await ProcessBlockAsync((long) block.Number, (long) block.Timestamp);
                 });
 
+<<<<<<< HEAD
+=======
+        private void RefundClaimTimerOnElapsed(object sender, ElapsedEventArgs e)
+        {
+            _ethPriceService.UpdateAsync();
+            _consumerNotifier.SendEthUsdPriceAsync(_ethPriceService.UsdPrice);
+            _depositRepository.BrowseAsync(new GetDeposits
+                {
+                    Results = int.MaxValue,
+                    EligibleToRefund = true,
+                    CurrentBlockTimestamp = _currentBlockTimestamp
+                })
+                .ContinueWith(async t =>
+                {
+                    if (t.IsFaulted && _logger.IsError)
+                    {
+                        _logger.Error("Fetching the deposits has failed.", t.Exception);
+                        return;
+                    }
+
+                    if (t.Result.Items.Any())
+                    {
+                        if (_logger.IsInfo) _logger.Info("No claimable refunds have been found.");
+                        return;
+                    }
+
+                    if (_logger.IsInfo) _logger.Info($"Found {t.Result.Items.Count} claimable refunds.");
+                    var refundTo = _accountService.GetAddress();
+                    foreach (var deposit in t.Result.Items)
+                    {
+                        await _refundClaimant.TryClaimEarlyRefundAsync(deposit, refundTo);
+                        await _refundClaimant.TryClaimRefundAsync(deposit, refundTo);
+                    }
+                });
+        }
+>>>>>>> test squash
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
             => ProcessBlockAsync(e.Block.Number, (long) e.Block.Timestamp).ContinueWith(t =>
@@ -135,12 +199,17 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
             Interlocked.Exchange(ref _currentBlockNumber, number);
             Interlocked.Exchange(ref _currentBlockTimestamp, timestamp);
             await _consumerNotifier.SendBlockProcessedAsync(number);
+<<<<<<< HEAD
             var depositsToConfirm = await _depositRepository.BrowseAsync(new GetDeposits
+=======
+            var deposits = await _depositRepository.BrowseAsync(new GetDeposits
+>>>>>>> test squash
             {
                 OnlyUnconfirmed = true,
                 OnlyNotRejected = true,
                 Results = int.MaxValue
             });
+<<<<<<< HEAD
             await TryConfirmDepositsAsync(depositsToConfirm.Items);
             var depositsToRefund = await _depositRepository.BrowseAsync(new GetDeposits
             {
@@ -195,6 +264,23 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                     await _consumerNotifier.SendClaimedRefundAsync(deposit.Id, deposit.DataAsset.Name,
                         refundClaimStatus.TransactionHash);
                 }
+=======
+            await TryConfirmDepositsAsync(deposits.Items);
+        }
+
+        private async Task TryConfirmDepositsAsync(IEnumerable<DepositDetails> deposits)
+        {
+            foreach (var deposit in deposits)
+            {
+                await _depositConfirmationService.TryConfirmAsync(deposit).ContinueWith(t =>
+                {
+                    if (t.IsFaulted && _logger.IsError)
+                    {
+                        _logger.Error($"Confirming a deposit with id: '{deposit.Id}' has failed.",
+                            t.Exception);
+                    }
+                });
+>>>>>>> test squash
             }
         }
     }

@@ -171,7 +171,11 @@ namespace Nethermind.AuRa.Validators
             {
                 var isProcessingBlock = !options.IsProducingBlock();
                 InitiateChange(block, potentialValidators, isProcessingBlock, Validators.Length == 1);
+<<<<<<< HEAD
                 if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.ToString(Block.Format.Short)}. New list of {potentialValidators.Length} : [{string.Join<Address>(", ", potentialValidators)}].");
+=======
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Signal for transition within contract at block {block.Number} ({block.Hash}). New list: [{string.Join<Address>(", ", potentialValidators)}].");
+>>>>>>> test squash
             }
         }
 
@@ -179,7 +183,11 @@ namespace Nethermind.AuRa.Validators
         {
             if (CurrentPendingValidators?.AreFinalized == true)
             {
+<<<<<<< HEAD
                 if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.ToString(BlockHeader.Format.Short)}.");
+=======
+                if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.Number} ({block.Hash}).");
+>>>>>>> test squash
                 if (block.Number == InitBlockNumber)
                 {
                     ValidatorContract.TryInvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
@@ -224,7 +232,11 @@ namespace Nethermind.AuRa.Validators
                 throw new AuRaException("Failed to initialize validators list.");
             }
             
+<<<<<<< HEAD
             if(_logger.IsInfo && !_isProducing) _logger.Info($"Initial contract {validators.Length} validators: [{string.Join<Address>(", ", validators)}].");
+=======
+            if(_logger.IsInfo && !_isProducing) _logger.Info($"Initial contract validators: [{string.Join<Address>(", ", validators)}].");
+>>>>>>> test squash
            
             return validators;
         }
@@ -245,7 +257,11 @@ namespace Nethermind.AuRa.Validators
                     CurrentPendingValidators.AreFinalized = true;
                     Validators = CurrentPendingValidators.Addresses;
                     SetPendingValidators(CurrentPendingValidators, true);
+<<<<<<< HEAD
                     if (_logger.IsInfo && !_isProducing) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
+=======
+                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.Number} ({e.FinalizingBlock.Hash}).");
+>>>>>>> test squash
                 }
             }
         }

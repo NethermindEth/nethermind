@@ -18,12 +18,19 @@
 
 using System;
 using Nethermind.Blockchain.Filters;
+<<<<<<< HEAD
 using Nethermind.Core;
+=======
+>>>>>>> test squash
 using Nethermind.Core.Json;
 
 namespace Nethermind.JsonRpc.Data
 {
+<<<<<<< HEAD
     public class BlockParameter : IEquatable<BlockParameter>
+=======
+    public class BlockParameter : IJsonRpcRequest
+>>>>>>> test squash
     {
         public static BlockParameter Earliest = new BlockParameter(BlockParameterType.Earliest);
 
@@ -32,24 +39,37 @@ namespace Nethermind.JsonRpc.Data
         public static BlockParameter Latest = new BlockParameter(BlockParameterType.Latest);
 
         public BlockParameterType Type { get; set; }
+<<<<<<< HEAD
         public long? BlockNumber { get; }
+=======
+        public long? BlockNumber { get; set; }
+>>>>>>> test squash
 
         public BlockParameter()
         {
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> test squash
         public BlockParameter(BlockParameterType type)
         {
             Type = type;
             BlockNumber = null;
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> test squash
         public BlockParameter(long number)
         {
             Type = BlockParameterType.BlockNumber;
             BlockNumber = number;
         }
 
+<<<<<<< HEAD
         public BlockParameter FromJson(string jsonValue)
         {
             switch (jsonValue)
@@ -66,6 +86,31 @@ namespace Nethermind.JsonRpc.Data
                     return Latest;
                 default:
                     return new BlockParameter(LongConverter.FromString(jsonValue.Trim('"')));
+=======
+        public void FromJson(string jsonValue)
+        {
+            switch (jsonValue)
+            {
+                case string earliest when string.Equals(earliest, "earliest", StringComparison.InvariantCultureIgnoreCase):
+                    Type = BlockParameterType.Earliest;
+                    return;
+                case string pending when string.Equals(pending, "pending", StringComparison.InvariantCultureIgnoreCase):
+                    Type = BlockParameterType.Pending;
+                    return;
+                case string latest when string.Equals(latest, "latest", StringComparison.InvariantCultureIgnoreCase):
+                    Type = BlockParameterType.Latest;
+                    return;
+                case string empty when string.IsNullOrWhiteSpace(empty):
+                    Type = BlockParameterType.Latest;
+                    return;
+                case null:
+                    Type = BlockParameterType.Latest;
+                    return;
+                default:
+                    Type = BlockParameterType.BlockNumber;
+                    BlockNumber = LongConverter.FromString(jsonValue.Trim('"'));
+                    return;
+>>>>>>> test squash
             }
         }
 
@@ -73,11 +118,16 @@ namespace Nethermind.JsonRpc.Data
         {
             return $"{Type}, {BlockNumber}";
         }
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> test squash
         public FilterBlock ToFilterBlock()
             => BlockNumber != null
                 ? new FilterBlock(BlockNumber ?? 0)
                 : new FilterBlock(Type.ToFilterBlockType());
+<<<<<<< HEAD
 
         public bool Equals(BlockParameter other)
         {
@@ -98,5 +148,7 @@ namespace Nethermind.JsonRpc.Data
         {
             throw new NotSupportedException();
         }
+=======
+>>>>>>> test squash
     }
 }

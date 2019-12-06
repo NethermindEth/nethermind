@@ -15,8 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+<<<<<<< HEAD
 using System.Diagnostics;
 using System.Linq;
+=======
+>>>>>>> test squash
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -33,12 +36,21 @@ namespace Nethermind.AuRa.Validators
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+<<<<<<< HEAD
+=======
+            Type = validator.ValidatorType;
+>>>>>>> test squash
         }
         
         protected virtual Address[] Validators { get; set; }
         public int MinSealersForFinalization => Validators.MinSealersForFinalization();
         public int CurrentSealersCount => Validators.Length;
 
+<<<<<<< HEAD
+=======
+        public AuRaParameters.ValidatorType Type { get; }
+        
+>>>>>>> test squash
         public bool IsValidSealer(Address address, long step) => Validators.GetItemRoundRobin(step) == address;
 
         void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
@@ -50,6 +62,7 @@ namespace Nethermind.AuRa.Validators
 
         public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
+<<<<<<< HEAD
             if (!options.IsProducingBlock())
             {
                 var auRaStep = block.Header.AuRaStep.Value;
@@ -58,6 +71,13 @@ namespace Nethermind.AuRa.Validators
                     if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.ToString(Block.Format.FullHashAndNumber)}, step {auRaStep} from author {block.Beneficiary}.");
                     throw new InvalidBlockException(block.Hash);
                 }
+=======
+            var auRaStep = block.Header.AuRaStep.Value;
+            if (!IsValidSealer(block.Beneficiary, auRaStep))
+            {
+                 if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.Number} ({block.Hash}), step {auRaStep} from author {block.Beneficiary}.");
+                 throw new InvalidBlockException(block.Hash);
+>>>>>>> test squash
             }
         }
 

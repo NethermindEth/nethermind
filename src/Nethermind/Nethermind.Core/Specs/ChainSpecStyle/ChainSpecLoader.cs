@@ -44,12 +44,20 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             _serializer = serializer;
         }
 
+<<<<<<< HEAD
         public ChainSpec Load(byte[] data) => Load(System.Text.Encoding.UTF8.GetString(data));
 
         public ChainSpec Load(string jsonData)
         {
             try
             {
+=======
+        public ChainSpec Load(byte[] data)
+        {
+            try
+            {
+                string jsonData = System.Text.Encoding.UTF8.GetString(data);
+>>>>>>> test squash
                 var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
                 var chainSpec = new ChainSpec();
 
@@ -119,8 +127,11 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
             chainSpec.SpuriousDragonBlockNumber = chainSpec.Parameters.Eip160Transition;
             chainSpec.ByzantiumBlockNumber = chainSpec.Parameters.Eip140Transition;
             chainSpec.ConstantinopleBlockNumber = chainSpec.Parameters.Eip145Transition;
+<<<<<<< HEAD
             chainSpec.ConstantinopleFixBlockNumber = chainSpec.Parameters.Eip1283DisableTransition;
             chainSpec.IstanbulBlockNumber = chainSpec.Parameters.Eip2200Transition;
+=======
+>>>>>>> test squash
         }
 
         private void LoadEngine(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

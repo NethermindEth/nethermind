@@ -74,7 +74,11 @@ namespace Nethermind.DataMarketplace.Test.Services
             Keccak depositId = Keccak.Compute(depositData);
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
+<<<<<<< HEAD
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
+=======
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
+>>>>>>> test squash
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -89,7 +93,11 @@ namespace Nethermind.DataMarketplace.Test.Services
             _bridge.NextBlockPlease(expiryTime + 1);
             RefundClaim refundClaim = new RefundClaim(depositId, assetId, units, value, expiryTime, salt, _providerAccount, _consumerAccount);
             UInt256 balanceBefore = _state.GetBalance(_consumerAccount);
+<<<<<<< HEAD
             Keccak refundTxHash = await refundService.ClaimRefundAsync(_consumerAccount, refundClaim, 20.GWei());
+=======
+            Keccak refundTxHash = await refundService.ClaimRefundAsync(_consumerAccount, refundClaim);
+>>>>>>> test squash
             TxReceipt refundReceipt = _bridge.GetReceipt(refundTxHash);
             TestContext.WriteLine("GAS USED FOR REFUND CLAIM: {0}", refundReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, refundReceipt.StatusCode, $"refund claim {refundReceipt.Error} {Encoding.UTF8.GetString(refundReceipt.ReturnValue ?? new byte[0])}");
@@ -123,7 +131,11 @@ namespace Nethermind.DataMarketplace.Test.Services
             Keccak depositId = Keccak.Compute(depositData);
 
             Deposit deposit = new Deposit(depositId, units, expiryTime, value);
+<<<<<<< HEAD
             Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit, 20.GWei());
+=======
+            Keccak depositTxHash = await depositService.MakeDepositAsync(_consumerAccount, deposit);
+>>>>>>> test squash
             TxReceipt depositTxReceipt = _bridge.GetReceipt(depositTxHash);
             TestContext.WriteLine("GAS USED FOR DEPOSIT: {0}", depositTxReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, depositTxReceipt.StatusCode, $"deposit made {depositTxReceipt.Error} {Encoding.UTF8.GetString(depositTxReceipt.ReturnValue ?? new byte[0])}");
@@ -145,7 +157,11 @@ namespace Nethermind.DataMarketplace.Test.Services
             EarlyRefundClaim earlyRefundClaim = new EarlyRefundClaim(depositId, assetId, units, value, expiryTime, pepper, _providerAccount, claimableAfter, earlySig,_consumerAccount);
             UInt256 balanceBefore = _state.GetBalance(_consumerAccount);
             
+<<<<<<< HEAD
             Keccak refundTxHash = await refundService.ClaimEarlyRefundAsync(_consumerAccount, earlyRefundClaim, 20.GWei());
+=======
+            Keccak refundTxHash = await refundService.ClaimEarlyRefundAsync(_consumerAccount, earlyRefundClaim);
+>>>>>>> test squash
             TxReceipt refundReceipt = _bridge.GetReceipt(refundTxHash);
             TestContext.WriteLine("GAS USED FOR EARLY REFUND CLAIM: {0}", refundReceipt.GasUsed);
             Assert.AreEqual(StatusCode.Success, refundReceipt.StatusCode, $"early refund claim {refundReceipt.Error} {Encoding.UTF8.GetString(refundReceipt.ReturnValue ?? new byte[0])}");
@@ -169,7 +185,11 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             const RefundReason reason = RefundReason.DataDiscontinued;
             var deposit = new Deposit(TestItem.KeccakA, 1, 1, 1);
+<<<<<<< HEAD
             var depositDetails = new DepositDetails(deposit, null, null, null, 0, null, 0);
+=======
+            var depositDetails = new DepositDetails(deposit, null, null, null, 0, null);
+>>>>>>> test squash
             var ticket = new EarlyRefundTicket(deposit.Id, 0, null);
             var refundService = new RefundService(_ndmBridge, _abiEncoder, _wallet, _depositRepository, _contractAddress, LimboLogs.Instance);
             _depositRepository.GetAsync(ticket.DepositId).Returns(depositDetails);

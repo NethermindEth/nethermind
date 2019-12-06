@@ -119,6 +119,7 @@ namespace Nethermind.AuRa.Test.Validators
             _innerValidators.Keys.Should().BeEquivalentTo(_validator.Validators.Keys.Select(x => x == 0 ? 1 : x + 2));
         }
         
+<<<<<<< HEAD
         [TestCase(AuRaParameters.ValidatorType.Contract, 1)]
         [TestCase(AuRaParameters.ValidatorType.List, 0)]
         [TestCase(AuRaParameters.ValidatorType.ReportingContract, 2)]
@@ -149,6 +150,26 @@ namespace Nethermind.AuRa.Test.Validators
             }
 
             EnsureInnerValidatorsCalled(i => (_innerValidators[GetFinalizedIndex(i)], callCountPerValidator[i]));
+=======
+        [Test]
+        public void correctly_consecutively_calls_inner_validators()
+        {
+            // Arrange
+            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _logManager);
+            var innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
+            var maxCalls = innerValidatorsFirstBlockCalls.Max() + 10;
+            validator.SetFinalizationManager(_finalizationManager);
+            
+            // Act
+            ProcessBlocks(maxCalls, validator);
+
+            // Assert
+            var callCountPerValidator = innerValidatorsFirstBlockCalls.Zip(
+                innerValidatorsFirstBlockCalls.Skip(1).Union(new[] {maxCalls}), (b0, b1) => (int)(b1 - b0))
+                .ToArray();
+
+            EnsureInnerValidatorsCalled(i => (_innerValidators[innerValidatorsFirstBlockCalls[i]], callCountPerValidator[i]));
+>>>>>>> test squash
         }
 
         [Test]
@@ -159,11 +180,16 @@ namespace Nethermind.AuRa.Test.Validators
             var validator = new MultiValidator(_validator, _factory, _logManager);
             
             // Act
+<<<<<<< HEAD
             ProcessBlocks(_validator.Validators.Keys.Min(), validator, 1);
+=======
+            ProcessBlocks(_validator.Validators.Keys.Min(), validator);
+>>>>>>> test squash
 
             // Assert
             EnsureInnerValidatorsCalled(i => (_innerValidators.ElementAt(i).Value, 0));
         }
+<<<<<<< HEAD
         
         [Test]
         public void initializes_validator_when_producing_block()
@@ -177,6 +203,19 @@ namespace Nethermind.AuRa.Test.Validators
         }
         
         private void ProcessBlocks(long count, IAuRaValidatorProcessor validator, int blocksToFinalization)
+=======
+
+        [Test]
+        public void initializes_with_lastFinalizedBlockLevel()
+        {
+            _finalizationManager.LastFinalizedBlockLevel.Returns(_validator.Validators.Keys.Skip(1).First());
+            IAuRaValidator validator = new MultiValidator(_validator, _factory, _logManager);
+            validator.SetFinalizationManager(_finalizationManager);
+            _innerValidators.Count.Should().Be(1);
+        }
+        
+        private void ProcessBlocks(long count, IAuRaValidatorProcessor validator)
+>>>>>>> test squash
         {
             for (int i = 1; i < count; i++)
             {
@@ -184,6 +223,7 @@ namespace Nethermind.AuRa.Test.Validators
                 validator.PreProcess(_block);
                 validator.IsValidSealer(Address.Zero, i);
                 validator.PostProcess(_block, Array.Empty<TxReceipt>());
+<<<<<<< HEAD
 
                 var finalizedBlock = i - blocksToFinalization;
                 if (finalizedBlock >= 1)
@@ -192,6 +232,8 @@ namespace Nethermind.AuRa.Test.Validators
                         Build.A.BlockHeader.WithNumber(i).TestObject,
                         Build.A.BlockHeader.WithNumber(finalizedBlock).TestObject));
                 }
+=======
+>>>>>>> test squash
             }
         }
         
@@ -219,9 +261,15 @@ namespace Nethermind.AuRa.Test.Validators
             }
         }
         
+<<<<<<< HEAD
         private Dictionary<AuRaParameters.Validator, long> GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
         {
             return validator.Validators.ToDictionary(x => x.Value, x => Math.Max(x.Key + 1, 1));
+=======
+        private long[] GetInnerValidatorsFirstBlockCalls(AuRaParameters.Validator validator)
+        {
+            return validator.Validators.Keys.Select(x => Math.Max(x + 1, 1)).OrderBy(k => k).ToArray();
+>>>>>>> test squash
         }
         
         private static AuRaParameters.Validator GetValidator(AuRaParameters.ValidatorType validatorType)
