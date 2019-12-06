@@ -43,6 +43,7 @@ namespace Cortex.BeaconNode.Tests
             var stateListLengthOptions = testServiceProvider.GetService<IOptionsMonitor<StateListLengths>>();
             var rewardsAndPenaltiesOptions = testServiceProvider.GetService<IOptionsMonitor<RewardsAndPenalties>>();
             var maxOperationsPerBlockOptions = testServiceProvider.GetService<IOptionsMonitor<MaxOperationsPerBlock>>();
+            var forkChoiceConfigurationOptions = testServiceProvider.GetService<IOptionsMonitor<ForkChoiceConfiguration>>();
             var signatureDomainOptions = testServiceProvider.GetService<IOptionsMonitor<SignatureDomains>>();
 
             miscellaneousParameterOptions.CurrentValue.MinimumGenesisActiveValidatorCount = 2;
@@ -62,20 +63,24 @@ namespace Cortex.BeaconNode.Tests
             var beaconStateTransition = new BeaconStateTransition(loggerFactory.CreateLogger<BeaconStateTransition>(),
                 chainConstants, miscellaneousParameterOptions, gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, rewardsAndPenaltiesOptions, maxOperationsPerBlockOptions, signatureDomainOptions,
                 cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator);
-            var beaconChain = new BeaconChain(loggerFactory.CreateLogger<BeaconChain>(),
+            var beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
                 chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateMutator, beaconStateTransition);
+                beaconStateAccessor, beaconStateTransition);
+            var storeProvider = new Storage.MemoryStoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
+            var forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
+                miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
+                beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
+            var chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), beaconChain, forkChoice);
 
             // Act
             var eth1BlockHash = Hash32.Zero;
             var eth1Timestamp = (ulong)106185600; // 1973-05-14
             var deposits = Array.Empty<Deposit>();
-            var success = await beaconChain.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
+            var success = await chainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
 
             // Assert
             success.ShouldBeFalse();
-            beaconChain.State.ShouldBeNull();
         }
     }
 }

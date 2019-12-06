@@ -34,7 +34,7 @@ namespace Cortex.BeaconNode.MockedStart
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
         private readonly ICryptographyService _cryptographyService;
         private readonly BeaconChainUtility _beaconChainUtility;
-        private readonly BeaconChain _beaconChain;
+        private readonly Genesis _beaconChain;
         private readonly IStoreProvider _storeProvider;
         private readonly ForkChoice _forkChoice;
 
@@ -47,7 +47,7 @@ namespace Cortex.BeaconNode.MockedStart
             }
         }
 
-        public static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
+        private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
             var combined = new Span<byte>(new byte[64]);
             a.CopyTo(combined);
@@ -68,7 +68,7 @@ namespace Cortex.BeaconNode.MockedStart
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
-            BeaconChain beaconChain,
+            Genesis beaconChain,
             IStoreProvider storeProvider,
             ForkChoice forkChoice)
         {
@@ -89,7 +89,7 @@ namespace Cortex.BeaconNode.MockedStart
             _forkChoice = forkChoice;
         }
 
-        public void Initialize()
+        public void QuickStartGenesis()
         {
             var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             var gweiValues = _gweiValueOptions.CurrentValue;
@@ -166,8 +166,9 @@ namespace Cortex.BeaconNode.MockedStart
             }
 
             var genesisState = _beaconChain.InitializeBeaconStateFromEth1(quickStartParameters.Eth1BlockHash, quickStartParameters.Eth1Timestamp, deposits);
-
-            var store = _forkChoice.GetGenesisStore(genesisState);
+            // We use the state directly, and don't test IsValid
+            genesisState.SetGenesisTime(quickStartParameters.GenesisTime);
+            _ = _forkChoice.GetGenesisStore(genesisState);
         }
 
         private byte[] GeneratePrivateKey(ulong index)

@@ -1,7 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Cortex.BeaconNode.Configuration;
 using Cortex.BeaconNode.Ssz;
 using Cortex.Containers;
@@ -10,13 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace Cortex.BeaconNode
 {
-    public class BeaconChain
+    public class Genesis
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
         private readonly BeaconStateAccessor _beaconStateAccessor;
         private readonly BeaconStateTransition _beaconStateTransition;
-        private readonly BeaconStateMutator _beaconStateMutator;
-        private readonly ICryptographyService _cryptographyService;
         private readonly ChainConstants _chainConstants;
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
@@ -26,7 +21,7 @@ namespace Cortex.BeaconNode
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public BeaconChain(ILogger<BeaconChain> logger,
+        public Genesis(ILogger<Genesis> logger,
             ChainConstants chainConstants,
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
@@ -34,18 +29,12 @@ namespace Cortex.BeaconNode
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
-            ICryptographyService blsSignatureService,
-            BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
-            BeaconStateMutator beaconStateMutator,
             BeaconStateTransition beaconStateTransition)
         {
             _logger = logger;
-            _cryptographyService = blsSignatureService;
-            _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
-            _beaconStateMutator = beaconStateMutator;
             _chainConstants = chainConstants;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
@@ -54,9 +43,6 @@ namespace Cortex.BeaconNode
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
         }
-
-        public BeaconBlock? GenesisBlock { get; private set; }
-        public BeaconState? State { get; private set; }
 
         public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IEnumerable<Deposit> deposits)
         {
@@ -117,33 +103,5 @@ namespace Cortex.BeaconNode
             }
             return true;
         }
-
-        public async Task<bool> TryGenesisAsync(Hash32 eth1BlockHash, ulong eth1Timestamp, IList<Deposit> deposits)
-        {
-            return await Task.Run(() =>
-            {
-                _logger.LogDebug(Event.TryGenesis, "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.", eth1BlockHash, eth1Timestamp, deposits.Count);
-
-                var candidateState = InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
-                if (IsValidGenesisState(candidateState))
-                {
-                    var genesisState = candidateState;
-                    GenesisBlock = new BeaconBlock(genesisState.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue,
-                        _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue));
-                    State = genesisState;
-                    return true;
-                }
-                return false;
-            });
-        }
-
-        // Update store via... (store processor ?)
-
-        // on_tick
-
-        // on_block(store, block)
-        //          state_transition(pre_state, block)
-
-        // on_attestation
     }
 }
