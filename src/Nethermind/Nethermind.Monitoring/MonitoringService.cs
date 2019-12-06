@@ -77,6 +77,8 @@ namespace Nethermind.Monitoring
             return Task.CompletedTask;
         }
 
+        public void RegisterMetrics(Type type) => _metricsUpdater.RegisterMetrics(type);
+
         private Options GetOptions() 
             => new Options(GetValueFromVariableOrDefault("JOB", "nethermind"), GetGroup(), GetInstance());
 

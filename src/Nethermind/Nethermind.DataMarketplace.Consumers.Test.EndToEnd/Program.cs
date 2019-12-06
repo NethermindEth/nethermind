@@ -8,7 +8,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
     {
         public static async Task Main(string[] args)
         {
-            Console.WriteLine(Figgle.FiggleFonts.Doom.Render("NDM E2E Scenario"));
+            Console.WriteLine(Figgle.FiggleFonts.Doom.Render("NDM Consumer E2E"));
             var jsonRpcUrl = GetValue("JSON_RPC_URL", args?.FirstOrDefault(), "http://localhost:8545");
             var inputDisabled = GetValue("INPUT_DISABLED", args?.Skip(1).FirstOrDefault(), "false") is "true";
             Console.WriteLine($"JSON RPC URL: {jsonRpcUrl}");

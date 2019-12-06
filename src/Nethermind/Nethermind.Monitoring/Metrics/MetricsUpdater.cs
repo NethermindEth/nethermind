@@ -42,6 +42,8 @@ namespace Nethermind.Monitoring.Metrics
             _timer?.Change(Timeout.Infinite, 0);
         }
 
+        public void RegisterMetrics(Type type) => _metrics.RegisterMetrics(type);
+
         private void UpdateMetrics(object state)
         {
             _metrics.UpdateMetrics(typeof(Blockchain.Metrics));

@@ -50,6 +50,7 @@ using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Db.Config;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Monitoring;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure
 {
@@ -222,7 +223,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
                     depositRepository, consumerNotifier, logManager, useDepositTimer, ethJsonRpcClientProxy);
                 consumerServicesBackgroundProcessor.Init();
             }
-
+            
             return new NdmConsumerServices(accountService, consumerService);
         }
 
