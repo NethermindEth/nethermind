@@ -52,6 +52,7 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+**/Properties/launchSettings.json
 
 # StyleCop
 StyleCopReport.xml
@@ -59,7 +60,7 @@ StyleCopReport.xml
 # Files built by Visual Studio
 *_i.c
 *_p.c
-*_h.h
+*_i.h
 *.ilk
 *.meta
 *.obj
@@ -328,24 +329,9 @@ ASALocalRun/
 # MFractors (Xamarin productivity tool) working folder
 .mfractor/
 
-# Local History for Visual Studio
-.localhistory/
-
+# Visual Studio Code configuration
 .vscode/
-ndm/
-ndm_db/
-nethermind_db/
-keystore/
-spaceneth_db/
-docs/build/
-out/
-db/
-plugins/
-logs/
-reports/
-src/Nethermind/Nethermind.Runner/git-hash
-src/Nethermind/Nethermind.Runner/node.key.plain
 
-# Console history
-
-src/Nethermind/Nethermind.Cli/cli.cmd.history
+# Include tool runtime debug files
+!tools/**/*.pdb
+configuration/Output

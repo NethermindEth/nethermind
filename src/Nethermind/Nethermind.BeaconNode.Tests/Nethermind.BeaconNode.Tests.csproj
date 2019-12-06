@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>netcoreapp3.0</TargetFramework>
-    <Product>Cortex Eth2.0 blockchain</Product>
+    <Product>Nethermind Eth2.0 blockchain</Product>
     <Authors>sgryphon</Authors>
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
     <Version>0.0.1</Version>
@@ -12,19 +12,19 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Content Include="..\..\src\Cortex.BeaconNode.Host\appsettings.Development.json" Link="appsettings.Development.json">
+    <Content Include="..\Nethermind.BeaconNode.Host\appsettings.Development.json" Link="appsettings.Development.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="..\..\src\Cortex.BeaconNode.Host\appsettings.Production.json" Link="appsettings.Production.json">
+    <Content Include="..\Nethermind.BeaconNode.Host\appsettings.Production.json" Link="appsettings.Production.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\configuration\mainnet.yaml" Link="mainnet.yaml">
+    <None Include="..\..\..\cortex-extra\mainnet.yaml" Link="mainnet.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\configuration\minimal.yaml" Link="minimal.yaml">
+    <None Include="..\..\..\cortex-extra\minimal.yaml" Link="minimal.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
@@ -45,8 +45,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\Cortex.BeaconNode\Cortex.BeaconNode.csproj" />
-    <ProjectReference Include="..\..\src\Cortex.BeaconNode.Storage\Cortex.BeaconNode.Storage.csproj" />
+    <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
+    <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
   </ItemGroup>
 
   <ItemGroup>

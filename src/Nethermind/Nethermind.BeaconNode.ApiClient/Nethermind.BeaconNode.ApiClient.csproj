@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
-    <Product>Cortex Eth2.0 blockchain</Product>
+    <Product>Nethermind Eth2.0 blockchain</Product>
     <Authors>sgryphon</Authors>
     <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
     <Version>0.0.1</Version>
