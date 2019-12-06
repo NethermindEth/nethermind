@@ -5,6 +5,7 @@ namespace Cortex.BeaconNode
     public static class Event
     {
         // 1bxx preliminary
+        public static readonly EventId WorkerStarted = new EventId(1000, nameof(WorkerStarted));
         public static readonly EventId TryGenesis = new EventId(1100, nameof(TryGenesis));
         public static readonly EventId InitializeBeaconState = new EventId(1101, nameof(InitializeBeaconState));
 
@@ -29,6 +30,7 @@ namespace Cortex.BeaconNode
         public static readonly EventId ProcessSlashings = new EventId(2017, nameof(ProcessSlashings));
 
         public static readonly EventId CreateGenesisStore = new EventId(2100, nameof(CreateGenesisStore));
+        public static readonly EventId WorkerStoreAvailableTickStarted = new EventId(2101, nameof(WorkerStoreAvailableTickStarted));
 
         // 4bxx warning
         public static readonly EventId InvalidIndexedAttestation = new EventId(4100, nameof(InvalidIndexedAttestation));

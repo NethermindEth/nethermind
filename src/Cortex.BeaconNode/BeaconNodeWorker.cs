@@ -63,7 +63,7 @@ namespace Cortex.BeaconNode
         {
             var version = _beaconNodeConfiguration.Version;
             var yamlConfig = _configuration[ConfigKey];
-            _logger.LogInformation(HostEvent.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
+            _logger.LogInformation(Event.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
                 version, _environment.EnvironmentName, yamlConfig, Thread.CurrentThread.ManagedThreadId);
 
             //await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
@@ -82,7 +82,7 @@ namespace Cortex.BeaconNode
                     store = _storeProvider.GetStore();
                     if (store != null)
                     {
-                        _logger.LogInformation(0, "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
+                        _logger.LogInformation(Event.WorkerStoreAvailableTickStarted, "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
                             store.GenesisTime, Thread.CurrentThread.ManagedThreadId);
                     }
                 }
