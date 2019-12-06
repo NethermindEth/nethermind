@@ -48,6 +48,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
+    <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
   </ItemGroup>
 
   <ItemGroup>

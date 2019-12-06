@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {
@@ -60,7 +61,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
             var committeeSize = beaconCommittee.Count;
             var aggregationBits = new BitArray(committeeSize);
             var custodyBits = new BitArray(committeeSize);
-            var attestation = new Attestation(aggregationBits, attestationData, custodyBits, new BlsSignature());
+            var attestation = new Attestation(aggregationBits, attestationData, custodyBits, BlsSignature.Empty);
 
             FillAggregateAttestation(state, attestation, beaconStateAccessor);
 

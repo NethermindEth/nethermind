@@ -1,4 +1,6 @@
-﻿namespace Nethermind.BeaconNode.Containers
+﻿using Nethermind.Core2.Crypto;
+
+namespace Nethermind.BeaconNode.Containers
 {
     public class VoluntaryExit
     {

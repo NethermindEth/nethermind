@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {
@@ -25,7 +26,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
                 new Hash32(Enumerable.Repeat((byte)0x33, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x44, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x45, 32).ToArray()),
-                new BlsSignature()
+                BlsSignature.Empty
                 );
 
             var header2 = new BeaconBlockHeader(
@@ -33,7 +34,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
                 new Hash32(Enumerable.Repeat((byte)0x99, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x44, 32).ToArray()),
                 new Hash32(Enumerable.Repeat((byte)0x45, 32).ToArray()),
-                new BlsSignature()
+                BlsSignature.Empty
                 );
 
             if (signed1)

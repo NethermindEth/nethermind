@@ -1,4 +1,6 @@
-﻿namespace Nethermind.BeaconNode.Containers
+﻿using Nethermind.Core2.Crypto;
+
+namespace Nethermind.BeaconNode.Containers
 {
     public class DepositData
     {
@@ -7,7 +9,7 @@
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;
             Amount = amount;
-            Signature = new BlsSignature();
+            Signature = BlsSignature.Empty;
         }
 
         public Gwei Amount { get; }

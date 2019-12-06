@@ -14,11 +14,11 @@ namespace Nethermind.BeaconNode.Containers
 
         public DepositData Data { get; }
 
-        public IReadOnlyList<Hash32> Proof { get { return _proof.AsReadOnly(); } }
+        public IReadOnlyList<Hash32> Proof => _proof.AsReadOnly();
 
         public override string ToString()
         {           
-            return $"I:{Proof[Proof.Count - 1].ToString().Substring(0, 12)} P:{Data.PublicKey.ToString().Substring(0, 12)} A:{Data.Amount}";
+            return $"I:{Proof[^1].ToString().Substring(0, 12)} P:{Data.PublicKey.ToString().Substring(0, 12)} A:{Data.Amount}";
         }
     }
 }

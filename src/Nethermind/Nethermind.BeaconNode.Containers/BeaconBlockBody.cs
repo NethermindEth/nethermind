@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Containers
 {
@@ -32,7 +33,7 @@ namespace Nethermind.BeaconNode.Containers
 
         public BeaconBlockBody()
         {
-            RandaoReveal = new BlsSignature();
+            RandaoReveal = BlsSignature.Empty;
             Eth1Data = new Eth1Data(0, Hash32.Zero);
             Graffiti = new Bytes32();
             _proposerSlashings = new List<ProposerSlashing>();

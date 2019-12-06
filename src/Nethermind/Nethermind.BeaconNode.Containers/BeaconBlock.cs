@@ -1,4 +1,6 @@
-﻿namespace Nethermind.BeaconNode.Containers
+﻿using Nethermind.Core2.Crypto;
+
+namespace Nethermind.BeaconNode.Containers
 {
     public class BeaconBlock
     {
@@ -8,7 +10,7 @@
             ParentRoot = Hash32.Zero;
             StateRoot = genesisStateRoot;
             Body = new BeaconBlockBody();
-            Signature = new BlsSignature();
+            Signature = BlsSignature.Empty;
         }
 
         public BeaconBlock(Slot slot, Hash32 parentRoot, Hash32 stateRoot, BeaconBlockBody body, BlsSignature signature)

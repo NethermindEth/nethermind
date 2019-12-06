@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using Cortex.Cryptography;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Tests
 {
@@ -30,7 +31,7 @@ namespace Nethermind.BeaconNode.Tests
             {
                 signatures[index].AsSpan().CopyTo(signaturesSpan.Slice(index * 96));
             }
-            var aggregateSignatureSpan = new Span<byte>(new byte[96]);
+            var aggregateSignatureSpan = new byte[96];
             using var signingAlgorithm = SignatureAlgorithmFactory(new BLSParameters());
             var success = signingAlgorithm.TryAggregateSignatures(signaturesSpan, aggregateSignatureSpan, out var bytesWritten);
             var aggregateSignature = new BlsSignature(aggregateSignatureSpan);
@@ -41,7 +42,7 @@ namespace Nethermind.BeaconNode.Tests
         {
             var parameters = new BLSParameters() { PrivateKey = privateKey };
             using var signingAlgorithm = SignatureAlgorithmFactory(parameters);
-            var destination = new Span<byte>(new byte[96]);
+            var destination = new byte[96];
             var success = signingAlgorithm.TrySignHash(messageHash.AsSpan(), destination, out var bytesWritten, domain.AsSpan().ToArray());
             return new BlsSignature(destination);
         }

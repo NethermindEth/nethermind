@@ -6,6 +6,8 @@ using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2.Crypto;
+using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.Tests
 {

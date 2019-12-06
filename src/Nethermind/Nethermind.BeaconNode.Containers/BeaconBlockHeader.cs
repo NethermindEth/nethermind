@@ -1,4 +1,5 @@
 ﻿using System;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Containers
 {
@@ -19,7 +20,7 @@ namespace Nethermind.BeaconNode.Containers
         }
 
         public BeaconBlockHeader(Hash32 bodyRoot)
-            : this(Slot.Zero, Hash32.Zero, Hash32.Zero, bodyRoot, new BlsSignature())
+            : this(Slot.Zero, Hash32.Zero, Hash32.Zero, bodyRoot, BlsSignature.Empty)
         {
         }
 
@@ -40,7 +41,7 @@ namespace Nethermind.BeaconNode.Containers
                 ParentRoot = Hash32.Clone(other.ParentRoot),
                 StateRoot = Hash32.Clone(other.StateRoot),
                 BodyRoot = Hash32.Clone(other.BodyRoot),
-                Signature = BlsSignature.Clone(other.Signature)
+                Signature = new BlsSignature(other.Signature.Bytes)
             };
             return clone;
         }

@@ -7,6 +7,7 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode
 {
@@ -369,7 +370,7 @@ namespace Nethermind.BeaconNode
                 block.ParentRoot,
                 Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
                 bodyRoot,
-                new BlsSignature() //`signature` is zeroed
+                BlsSignature.Empty //`signature` is zeroed
                 );
             state.SetLatestBlockHeader(newBlockHeader);
 

@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Containers
 {

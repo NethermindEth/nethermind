@@ -4,6 +4,8 @@ using System.Linq;
 using System.Security.Cryptography;
 using Cortex.Cryptography;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Crypto;
+using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.Services
 {

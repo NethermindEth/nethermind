@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode
 {
@@ -57,7 +58,7 @@ namespace Nethermind.BeaconNode
                 Array.Empty<Attestation>(),
                 Array.Empty<Deposit>(),
                 Array.Empty<VoluntaryExit>());
-            var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, new BlsSignature());
+            var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, BlsSignature.Empty);
 
             // new block = slot, parent root,
             //  signature = null

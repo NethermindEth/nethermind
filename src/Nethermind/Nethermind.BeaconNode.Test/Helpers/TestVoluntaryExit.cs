@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Tests.Helpers
 {
@@ -11,7 +12,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
     {
         public static VoluntaryExit BuildVoluntaryExit(IServiceProvider testServiceProvider, BeaconState state, Epoch epoch, ValidatorIndex validatorIndex, byte[] privateKey, bool signed)
         {
-            var voluntaryExit = new VoluntaryExit(epoch, validatorIndex, new BlsSignature());
+            var voluntaryExit = new VoluntaryExit(epoch, validatorIndex, BlsSignature.Empty);
             if (signed)
             {
                 SignVoluntaryExit(testServiceProvider, state, voluntaryExit, privateKey);

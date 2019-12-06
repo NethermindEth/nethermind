@@ -11,6 +11,8 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Crypto;
+using BlsPublicKey = Nethermind.BeaconNode.Containers.BlsPublicKey;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
@@ -128,7 +130,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 // Sign deposit data
                 var depositDataSigningRoot = depositData.SigningRoot();
                 var domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
-                var destination = new Span<byte>(new byte[96]);
+                var destination = new byte[96];
                 bls.TrySignHash(depositDataSigningRoot.AsSpan(), destination, out var bytesWritten, domain.AsSpan());
                 var depositDataSignature = new BlsSignature(destination);
                 depositData.SetSignature(depositDataSignature);
