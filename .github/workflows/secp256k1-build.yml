@@ -15,14 +15,14 @@ jobs:
     steps:
     - name: Cloning secp256k1 repository
       run: |
-        git clone https://github.com/bitcoin-core/secp256k1.git
+        git clone https://github.com/NethermindEth/secp256k1
     - name: Building secp256k1 for Linux
       if: matrix.os == 'ubuntu-latest'
       run: |
         sudo apt-get install autoconf libtool
         cd secp256k1/
         ./autogen.sh
-        ./configure -enable-module-recovery --enable-experimental --enable-module-ecdh --enable-shared --with-bignum=no
+        ./configure --enable-module-recovery --enable-experimental --enable-module-ecdh --enable-shared --with-bignum=no
         make
         strip .libs/libsecp256k1.so
     - uses: actions/upload-artifact@v1
@@ -39,7 +39,7 @@ jobs:
         brew install gmp
         cd secp256k1/
         ./autogen.sh
-        ./configure -enable-module-recovery --enable-experimental --enable-module-ecdh --enable-shared --with-bignum=no
+        ./configure --enable-module-recovery --enable-experimental --enable-module-ecdh --enable-shared --with-bignum=no
         make
     - uses: actions/upload-artifact@v1
       name: Uploading Darwin artifact

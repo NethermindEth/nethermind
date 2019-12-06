@@ -16,12 +16,16 @@ jobs:
     - name: Cloning rocksDB repository
       run: |
         git clone git://github.com/warrenfalk/rocksdb-sharp-native.git
+    - name: Checking out the latest rocksdb version for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        sed -i "31s/.*/ROCKSDBVERSION=$(git ls-remote --tags git://github.com/facebook/rocksdb.git | cut -d/ -f3- |  sort -t '/' -k 3 -V | awk '/^[^{]*$/{version=$1}END{print version}')/" /d/a/nethermind/nethermind/rocksdb-sharp-native/build-rocksdb.sh
+      shell: bash
     - name: Building rocksDB for Windows
       if: matrix.os == 'windows-latest'
       run: |
         call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
         call "C:\Program Files\Git\bin\bash.exe"
-        sed -i '28s/ROCKSDBVNUM=`cat rocksdbversion`/ROCKSDBVNUM=6.4.6/' /d/a/nethermind/nethermind/rocksdb-sharp-native/build-rocksdb.sh
         sh /d/a/nethermind/nethermind/rocksdb-sharp-native/build-rocksdb.sh
       shell: cmd
     - uses: actions/upload-artifact@v1
