@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.BeaconNode.Configuration;
+using Cortex.BeaconNode.Services;
 using Cortex.Containers;
 using Microsoft.Extensions.Options;
 

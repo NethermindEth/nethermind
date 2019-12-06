@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using Cortex.BeaconNode.Services;
 using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 using Microsoft.Extensions.Configuration;
@@ -12,13 +13,17 @@ namespace Cortex.BeaconNode.Tests
 {
     public static class TestSystem
     {
-        public static IServiceProvider BuildTestServiceProvider(bool useBls = true, bool useStore = false)
+        public static IServiceCollection BuildTestServiceCollection(bool useBls = true, bool useStore = false)
         {
             var services = new ServiceCollection();
-            services.AddLogging(configure => configure.AddConsole());
+            
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.Development.json")
                 .Build();
+            services.AddSingleton<IConfiguration>(configuration);
+
+            services.AddLogging(configure => configure.AddConsole());
+            
             services.AddBeaconNode(configuration);
 
             if (!useBls)
@@ -30,17 +35,22 @@ namespace Cortex.BeaconNode.Tests
 
             if (useStore)
             {
-                services.AddSingleton<IStoreProvider, StoreProvider>();
+                services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
             }
 
-            var options = new ServiceProviderOptions() { ValidateOnBuild = false };
+            return services;
+        }
 
+        public static IServiceProvider BuildTestServiceProvider(bool useBls = true, bool useStore = false)
+        {
+            var services = BuildTestServiceCollection(useBls, useStore);
+            var options = new ServiceProviderOptions() { ValidateOnBuild = false };
             return services.BuildServiceProvider(options);
         }
 
         public class TestCryptographyService : ICryptographyService
         {
-            ICryptographyService _cryptographyService = new CryptographyService();
+            ICryptographyService _cryptographyService = new CortexCryptographyService();
 
             public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
             {

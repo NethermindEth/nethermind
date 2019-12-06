@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -108,7 +109,7 @@ namespace Cortex.Containers
         public ulong Eth1DepositIndex { get; private set; }
         public Checkpoint FinalizedCheckpoint { get; private set; }
         public Fork Fork { get; }
-        public ulong GenesisTime { get; }
+        public ulong GenesisTime { get; private set; }
         public IReadOnlyList<Hash32> HistoricalRoots { get { return _historicalRoots; } }
         public BitArray JustificationBits { get; private set; }
 
@@ -173,6 +174,8 @@ namespace Cortex.Containers
             _validators.Add(validator);
             _balances.Add(amount);
         }
+
+        public void SetGenesisTime(ulong genesisTime) => GenesisTime = genesisTime;
 
         public void ClearEth1DataVotes() => _eth1DataVotes.Clear();
 

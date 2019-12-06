@@ -16,9 +16,31 @@ namespace Cortex.BeaconNode
             _storeProvider = storeProvider;
         }
 
+        public async Task<BeaconState> GetHeadStateAsync()
+        {
+            var store = _storeProvider.GetStore();
+            if (store == null)
+            {
+                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
+            }
+
+            var head = await _forkChoice.GetHeadAsync(store);
+
+            if (!store.TryGetBlockState(head, out var state))
+            {
+                throw new Exception($"Beacon chain is currently syncing, head state {head} not found.");
+            }
+
+            return state;
+        }
+
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
         {
             var store = _storeProvider.GetStore();
+            if (store == null)
+            {
+                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
+            }
 
             var head = await _forkChoice.GetHeadAsync(store);
 

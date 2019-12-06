@@ -31,7 +31,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var eth1BlockHash = new Hash32(Enumerable.Repeat((byte)0x12, 32).ToArray());
             var eth1Timestamp = miscellaneousParameters.MinimumGenesisTime;
 
-            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+            var beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
 
             // Act
             //# initialize beacon_state

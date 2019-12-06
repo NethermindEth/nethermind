@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Cortex.BeaconNode.Storage;
 using Cortex.Containers;
 using Microsoft.Extensions.Logging;
 
@@ -8,18 +9,15 @@ namespace Cortex.BeaconNode.Api
 {
     public class BeaconNodeApiAdapter : IBeaconNodeApiController
     {
-        private readonly BeaconChain _beaconChain;
         private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
         private readonly BlockProducer _blockProducer;
         private readonly ILogger _logger;
 
         public BeaconNodeApiAdapter(ILogger<BeaconNodeApiAdapter> logger,
-            BeaconChain beaconChain,
             BeaconNodeConfiguration beaconNodeConfiguration,
             BlockProducer blockProducer)
         {
             _logger = logger;
-            _beaconChain = beaconChain;
             _beaconNodeConfiguration = beaconNodeConfiguration;
             _blockProducer = blockProducer;
         }
@@ -96,14 +94,12 @@ namespace Cortex.BeaconNode.Api
         /// <returns>Request successful</returns>
         public async Task<ulong> TimeAsync()
         {
-            return await Task.Run<ulong>(() =>
+            var state = await _blockProducer.GetHeadStateAsync();
+            if (state != null)
             {
-                if (_beaconChain.State != null)
-                {
-                    return _beaconChain.State.GenesisTime;
-                }
-                return 0;
-            });
+                return state.GenesisTime;
+            }
+            return 0;
         }
 
         /// <summary>Get version string of the running beacon node.</summary>

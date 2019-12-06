@@ -18,7 +18,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+            var beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
 
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount;
             (var deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
@@ -30,7 +30,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
 
         public static void IsValidGenesisState(IServiceProvider testServiceProvider, BeaconState state, bool valid)
         {
-            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+            var beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
             var isValid = beaconChain.IsValidGenesisState(state);
             isValid.ShouldBe(valid);
         }
@@ -89,7 +89,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+            var beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
 
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount + 1;
             (var deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);
@@ -112,7 +112,7 @@ namespace Cortex.BeaconNode.Tests.Genesis
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            var beaconChain = testServiceProvider.GetService<BeaconChain>();
+            var beaconChain = testServiceProvider.GetService<BeaconNode.Genesis>();
 
             var depositCount = miscellaneousParameters.MinimumGenesisActiveValidatorCount - 1;
             (var deposits, _) = TestDeposit.PrepareGenesisDeposits(testServiceProvider, depositCount, gweiValues.MaximumEffectiveBalance, signed: true);

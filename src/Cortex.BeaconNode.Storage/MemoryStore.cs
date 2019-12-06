@@ -9,7 +9,7 @@ using Microsoft.Extensions.Options;
 namespace Cortex.BeaconNode.Storage
 {
     // Data Class
-    public class Store : IStore
+    public class MemoryStore : IStore
     {
         private readonly BeaconChainUtility _beaconChainUtility;
         private readonly Dictionary<Hash32, BeaconBlock> _blocks;
@@ -19,7 +19,7 @@ namespace Cortex.BeaconNode.Storage
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        public Store(ulong time,
+        public MemoryStore(ulong time,
             ulong genesisTime,
             Checkpoint justifiedCheckpoint,
             Checkpoint finalizedCheckpoint,
@@ -28,7 +28,7 @@ namespace Cortex.BeaconNode.Storage
             IDictionary<Hash32, BeaconState> blockStates,
             IDictionary<Checkpoint, BeaconState> checkpointStates,
             IDictionary<ValidatorIndex, LatestMessage> latestMessages,
-            ILogger<Store> logger,
+            ILogger<MemoryStore> logger,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             BeaconChainUtility beaconChainUtility)
         {

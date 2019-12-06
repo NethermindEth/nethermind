@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Cortex.Containers;
 
-namespace Cortex.BeaconNode
+namespace Cortex.BeaconNode.Services
 {
     public interface ICryptographyService
     {

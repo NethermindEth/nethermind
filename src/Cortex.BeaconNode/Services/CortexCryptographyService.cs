@@ -5,11 +5,14 @@ using System.Security.Cryptography;
 using Cortex.Containers;
 using Cortex.Cryptography;
 
-namespace Cortex.BeaconNode
+namespace Cortex.BeaconNode.Services
 {
-    public class CryptographyService : ICryptographyService
+    /// <summary>
+    /// Implementation of ICryptographyService that uses the Cortex BLS nuget package
+    /// </summary>
+    public class CortexCryptographyService : ICryptographyService
     {
-        private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
+        private static readonly HashAlgorithm s_hashAlgorithm = SHA256.Create();
 
         public Func<BLSParameters, BLS> SignatureAlgorithmFactory { get; set; } = blsParameters => BLS.Create(blsParameters);
 
@@ -74,7 +77,7 @@ namespace Cortex.BeaconNode
         public Hash32 Hash(ReadOnlySpan<byte> bytes)
         {
             var result = new Span<byte>(new byte[Hash32.Length]);
-            var success = _hashAlgorithm.TryComputeHash(bytes, result, out var bytesWritten);
+            var success = s_hashAlgorithm.TryComputeHash(bytes, result, out var bytesWritten);
             if (!success || bytesWritten != Hash32.Length)
             {
                 throw new Exception("Error generating hash value.");

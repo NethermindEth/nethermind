@@ -7,7 +7,7 @@ namespace Cortex.BeaconNode.Storage
     {
         public static void AddBeaconNodeStorage(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<IStoreProvider, StoreProvider>();
+            services.AddSingleton<IStoreProvider, MemoryStoreProvider>();
         }
     }
 }
