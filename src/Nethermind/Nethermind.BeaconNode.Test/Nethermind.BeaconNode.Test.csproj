@@ -9,6 +9,7 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <RootNamespace>Nethermind.BeaconNode.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>

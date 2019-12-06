@@ -221,7 +221,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Host"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.ApiClient", "Nethermind.BeaconNode.ApiClient\Nethermind.BeaconNode.ApiClient.csproj", "{4E4246A8-0D78-4B2F-A87B-FF34A4E1F42A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Tests", "Nethermind.BeaconNode.Tests\Nethermind.BeaconNode.Tests.csproj", "{452A57AE-D25A-4F27-B297-7D28265134DD}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Test", "Nethermind.BeaconNode.Test\Nethermind.BeaconNode.Test.csproj", "{452A57AE-D25A-4F27-B297-7D28265134DD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
