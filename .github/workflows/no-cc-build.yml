@@ -14,8 +14,6 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
     - uses: actions/checkout@v2-beta
-      with:
-        submodules: true
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -84,8 +82,6 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
     - uses: actions/checkout@v2-beta
-      with:
-        submodules: true
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Basic.Test
@@ -119,7 +115,7 @@ jobs:
     - name: Ethereum.Trie.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum.Trie.Test
-  eth2.0-tests:
+  eth2-tests:
     name: Ethereum 2.0 Tests
     runs-on: ${{ matrix.os }}
     strategy:
@@ -127,8 +123,11 @@ jobs:
         os: [ubuntu-latest, windows-latest, macOS]
     steps:
     - uses: actions/checkout@v2-beta
+<<<<<<< HEAD:.github/workflows/no-cc-build.yml
       with:
         submodules: true
+=======
+>>>>>>> b96e7c44811436ec82d5c34361585e1036ac6334:.github/workflows/no-cc-build.yml
     - name: Ethereum.Bls.Test
       run: |
         dotnet test -c Release src/Nethermind/Ethereum2.Bls.Test
