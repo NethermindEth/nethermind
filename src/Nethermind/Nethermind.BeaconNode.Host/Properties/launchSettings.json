@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "Cortex.BeaconNode": {
+      "commandName": "Project",
+      "commandLineArgs": "--QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 3",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}

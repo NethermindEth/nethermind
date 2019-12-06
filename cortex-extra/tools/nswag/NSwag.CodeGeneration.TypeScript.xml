@@ -1,0 +1,555 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.CodeGeneration.TypeScript</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.CodeGeneration.TypeScript.HttpClass">
+            <summary>The Angular HTTP class.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.HttpClass.Http">
+            <summary>Use the legacy/obsolete Http class (pre Angular 4.3).</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.HttpClass.HttpClient">
+            <summary>Use the new HttpClient class (Angular 4.3+).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.InjectionTokenType">
+            <summary>The Angular token type.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.InjectionTokenType.OpaqueToken">
+            <summary>Use the legacy/obsolete OpaqueToken (pre Angular 4).</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.InjectionTokenType.InjectionToken">
+            <summary>Use the new InjectionToken class (Angular 4+).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel">
+            <summary>The TypeScript client template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.#ctor(System.String,System.String,System.Collections.Generic.IEnumerable{NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel},NJsonSchema.CodeGeneration.TypeScript.TypeScriptExtensionCode,NSwag.OpenApiDocument,NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel" /> class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="controllerClassName">Name of the controller.</param>
+            <param name="operations">The operations.</param>
+            <param name="extensionCode">The extension code.</param>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.Framework">
+            <summary>Gets framework specific information.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.Class">
+            <summary>Gets the class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.HasBaseClass">
+            <summary>Gets a value indicating whether the client class has a base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.BaseClass">
+            <summary>Gets the client base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.UseGetBaseUrlMethod">
+            <summary>Gets or sets a value indicating whether to use the getBaseUrl(defaultUrl: string) from the base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.ConfigurationClass">
+            <summary>Gets the configuration class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.HasConfigurationClass">
+            <summary>Gets a value indicating whether the client class has a base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.UseTransformOptionsMethod">
+            <summary>Gets or sets a value indicating whether to call 'transformOptions' on the base class or extension class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.UseTransformResultMethod">
+            <summary>Gets or sets a value indicating whether to call 'transformResult' on the base class or extension class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.GenerateOptionalParameters">
+            <summary>Gets a value indicating whether to generate optional parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.HasExtensionCode">
+            <summary>Gets a value indicating whether the client is extended with an extension class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.ExtensionCode">
+            <summary>Gets the extension body code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.HasExtendedConstructor">
+            <summary>Gets or sets a value indicating whether the extension code has a constructor and no constructor has to be generated.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.HasOperations">
+            <summary>Gets a value indicating whether the client has operations.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.Operations">
+            <summary>Gets the operations.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.BaseUrl">
+            <summary>Gets the service base URL.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.GenerateClientInterfaces">
+            <summary>Gets a value indicating whether to generate client interfaces.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.PromiseType">
+            <summary>Gets the promise type.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.PromiseConstructor">
+            <summary>Gets the promise constructor code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.UseAureliaHttpInjection">
+            <summary>Gets or sets a value indicating whether to use Aurelia HTTP injection.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.SupportsStrictNullChecks">
+            <summary>Gets a value indicating whether the target TypeScript version supports strict null checks.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.WrapDtoExceptions">
+            <summary>Gets or sets a value indicating whether DTO exceptions are wrapped in a SwaggerException instance.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.QueryNullValue">
+            <summary>Gets or sets the null value used for query parameters which are null.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptClientTemplateModel.ExportTypes">
+            <summary>Gets whether the export keyword should be added to all classes and enums.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel">
+            <summary>The TypeScript file template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.#ctor(System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},NSwag.OpenApiDocument,NJsonSchema.CodeGeneration.TypeScript.TypeScriptExtensionCode,NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings,NJsonSchema.CodeGeneration.TypeScript.TypeScriptTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel" /> class.</summary>
+            <param name="clientTypes">The client types.</param>
+            <param name="dtoTypes">The DTO types.</param>
+            <param name="document">The Swagger document.</param>
+            <param name="extensionCode">The extension code.</param>
+            <param name="settings">The settings.</param>
+            <param name="resolver">The resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.Framework">
+            <summary>Gets framework specific information.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.GenerateClientClasses">
+            <summary>Gets a value indicating whether to generate client classes.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.WrapDtoExceptions">
+            <summary>Gets or sets a value indicating whether DTO exceptions are wrapped in a SwaggerException instance.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.WrapResponses">
+            <summary>Gets or sets a value indicating whether to wrap success responses to allow full response access.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.GenerateResponseClasses">
+            <summary>Gets or sets a value indicating whether to generate the response class (only applied when WrapResponses == true, default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ResponseClassNames">
+            <summary>Gets the response class names.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ImportRequiredTypes">
+            <summary>Gets a value indicating whether required types should be imported.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.UseTransformOptionsMethod">
+            <summary>Gets a value indicating whether to call 'transformOptions' on the base class or extension class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.Clients">
+            <summary>Gets the clients code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.Types">
+            <summary>Gets the types code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ExtensionCodeImport">
+            <summary>Gets or sets the extension code imports.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ExtensionCodeTop">
+            <summary>Gets or sets the extension code to insert at the beginning.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ExtensionCodeBottom">
+            <summary>Gets or sets the extension code to insert at the end.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.HasModuleName">
+            <summary>Gets a value indicating whether the file has module name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ModuleName">
+            <summary>Gets the name of the module.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.HasNamespace">
+            <summary>Gets a value indicating whether the file has a namespace.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.Namespace">
+            <summary>Gets the namespace.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ExportTypes">
+            <summary>Gets whether the export keyword should be added to all classes and enums.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.RequiresFileParameterInterface">
+            <summary>Gets a value indicating whether the FileParameter interface should be rendered.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.RequiresFileResponseInterface">
+            <summary>Gets a value indicating whether the FileResponse interface should be rendered.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.RequiresClientFunctions">
+            <summary>Gets a value indicating whether the client functions are required.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.ExceptionClassName">
+            <summary>Gets the exception class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.RequiresExceptionClass">
+            <summary>Gets a value indicating whether the SwaggerException class is required. Note that if RequiresClientFunctions returns true this returns true since the client functions require it. </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.HandleReferences">
+            <summary>Gets a value indicating whether to handle references.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFileTemplateModel.RequiresMomentJSDuration">
+            <summary>Gets a value indicating whether MomentJS duration format is needed (moment-duration-format package).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel">
+            <summary>Angular specific information.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel.InjectionTokenType">
+            <summary>Gets or sets the injection token type (used in the Angular template).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel.BaseUrlTokenName">
+            <summary>Gets or sets the token name for injecting the API base URL string (used in the Angular template).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel.HttpClass">
+            <summary>Gets the HTTP client class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel.UseHttpClient">
+            <summary>Gets a value indicating whether to use HttpClient with the Angular template.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel.UseSingletonProvider">
+            <summary>Gets a value indicating whether to use the Angular 6 Singleton Provider (Angular template only, default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkAngularModel.ExportTypes">
+            <summary>Gets whether the export keyword should be added to all classes and enums.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel">
+            <summary>Framework specific information.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsAngular">
+            <summary>Gets a value indicating whether the generated code is for Angular 2.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsAurelia">
+            <summary>Gets a value indicating whether the generated code is for Aurelia.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsAngularJS">
+            <summary>Gets a value indicating whether the generated code is for Angular.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsKnockout">
+            <summary>Gets a value indicating whether the generated code is for Knockout.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsJQuery">
+            <summary>Gets a value indicating whether to render for JQuery.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsFetchOrAurelia">
+            <summary>Gets a value indicating whether to render for Fetch or Aurelia</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.IsAxios">
+            <summary>Gets a value indicating whether to render for Axios.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.UseMomentJS">
+            <summary>Gets a value indicating whether MomentJS is required.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.UseRxJs5">
+            <summary>Gets a value indicating whether to use RxJs 5.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.UseRxJs6">
+            <summary>Gets a value indicating whether to use RxJs 6.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.RxJs">
+            <summary>Gets Rxjs information.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkModel.Angular">
+            <summary>Gets Angular information.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkRxJsModel">
+            <summary>RxJs specific information.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkRxJsModel.ObservableMergeMapMethod">
+            <summary>Gets the RxJs observable mergeMap method name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkRxJsModel.ObservableCatchMethod">
+            <summary>Gets the RxJs observable catch method name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkRxJsModel.ObservableOfMethod">
+            <summary>Gets the RxJs observable of method name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkRxJsModel.ObservableFromMethod">
+            <summary>Gets the RxJs observable from method name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptFrameworkRxJsModel.ObservableThrowMethod">
+            <summary>Gets the RxJs observable throw method name.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel">
+            <summary>The TypeScript operation model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.#ctor(NSwag.OpenApiOperation,NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings,NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel" /> class.</summary>
+            <param name="operation">The operation.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.ActualOperationName">
+            <summary>Gets the actual name of the operation (language specific).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.ActualOperationNameUpper">
+            <summary>Gets the actual name of the operation (language specific).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.ResultType">
+            <summary>Gets or sets the type of the result.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.RequiresMappings">
+            <summary>Gets a value indicating whether the operation requires mappings for DTO generation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.SupportsStrictNullChecks">
+            <summary>Gets a value indicating whether the target TypeScript version supports strict null checks.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.HandleReferences">
+            <summary>Gets a value indicating whether to handle references.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.CanRequestBlobs">
+            <summary>Gets a value indicating whether the template can request blobs.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.RequestAngularBlobs">
+            <summary>Gets a value indicating whether to use blobs with Angular.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.RequestAngularJSBlobs">
+            <summary>Gets a value indicating whether to use blobs with AngularJS.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.IsAngularJS">
+            <summary>Gets a value indicating whether to render for AngularJS.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.IsAngular">
+            <summary>Gets a value indicating whether to render for Angular2.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.IsJQuery">
+            <summary>Gets a value indicating whether to render for JQuery.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.IsFetchOrAurelia">
+            <summary>Gets a value indicating whether to render for Fetch or Aurelia</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.UseAngularHttpClient">
+            <summary>Gets a value indicating whether to use HttpClient with the Angular template.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.ExceptionType">
+            <summary>Gets or sets the type of the exception.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.MethodAccessModifier">
+            <summary>Gets the method's access modifier.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.WrapResponses">
+            <summary>Gets a value indicating whether to wrap success responses to allow full response access.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.ResponseClass">
+            <summary>Gets the response class name.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.ResolveParameterType(NSwag.OpenApiParameter)">
+            <summary>Resolves the type of the parameter.</summary>
+            <param name="parameter">The parameter.</param>
+            <returns>The parameter type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel.CreateResponseModel(NSwag.OpenApiOperation,System.String,NSwag.OpenApiResponse,NJsonSchema.JsonSchema,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates the response model.</summary>
+            <param name="operation">The operation.</param>
+            <param name="statusCode">The status code.</param>
+            <param name="response">The response.</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="settings">The settings.</param>
+            <returns></returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptParameterModel">
+            <summary>The TypeScript parameter model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptParameterModel.#ctor(System.String,System.String,System.String,NSwag.OpenApiParameter,System.Collections.Generic.IList{NSwag.OpenApiParameter},NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings,NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptParameterModel" /> class.</summary>
+            <param name="parameterName">Name of the parameter.</param>
+            <param name="variableName">Name of the variable.</param>
+            <param name="typeName">The type name.</param>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The client generator base.</param>
+            <param name="typeResolver">The type resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptParameterModel.TypePostfix">
+            <summary>Gets the type postfix (e.g. ' | null | undefined')</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptResponseModel">
+            <summary>The TypeScript response model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.Models.TypeScriptResponseModel.#ctor(NSwag.CodeGeneration.Models.IOperationModel,NSwag.OpenApiOperation,System.String,NSwag.OpenApiResponse,System.Boolean,NJsonSchema.JsonSchema,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase,NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.Models.TypeScriptResponseModel" /> class.</summary>
+            <param name="operationModel">The operation model.</param>
+            <param name="operation">The operation.</param>
+            <param name="statusCode">The status code.</param>
+            <param name="response">The response.</param>
+            <param name="isPrimarySuccessResponse">if set to <c>true</c> [is success response].</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptResponseModel.DataConversionCode">
+            <summary>Gets or sets the data conversion code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.Models.TypeScriptResponseModel.UseDtoClass">
+            <summary>Gets or sets a value indicating whether to use a DTO class.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.PromiseType">
+            <summary>The promise type.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.PromiseType.Promise">
+            <summary>The standard promise implementation (polyfill may be required).</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.PromiseType.QPromise">
+            <summary>Promise from the Q promises library.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator">
+            <summary>Generates the CSharp service client code. </summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" />.</exception>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings,NJsonSchema.CodeGeneration.TypeScript.TypeScriptTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <param name="resolver">The resolver.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" />.</exception>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.Settings">
+            <summary>Gets or sets the generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.BaseSettings">
+            <summary>Gets the base settings.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.GetTypeName(NJsonSchema.JsonSchema,System.Boolean,System.String)">
+            <summary>Gets the type.</summary>
+            <param name="schema">The schema.</param>
+            <param name="isNullable">Specifies whether the type is nullable..</param>
+            <param name="typeNameHint">The type name hint.</param>
+            <returns>The type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.GetBinaryResponseTypeName">
+            <summary>Gets the file response type name.</summary>
+            <returns>The type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.GenerateFile(System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},NSwag.CodeGeneration.ClientGeneratorOutputType)">
+            <summary>Generates the file.</summary>
+            <param name="clientTypes">The client types.</param>
+            <param name="dtoTypes">The DTO types.</param>
+            <param name="outputType">Type of the output.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.GenerateClientTypes(System.String,System.String,System.Collections.Generic.IEnumerable{NSwag.CodeGeneration.TypeScript.Models.TypeScriptOperationModel})">
+            <summary>Generates the client class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="controllerClassName">Name of the controller class.</param>
+            <param name="operations">The operations.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.GenerateDtoTypes">
+            <summary>Generates all DTO types.</summary>
+            <returns>The code artifact collection.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator.CreateOperationModel(NSwag.OpenApiOperation,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates an operation model.</summary>
+            <param name="operation"></param>
+            <param name="settings">The settings.</param>
+            <returns>The operation model.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings">
+            <summary>Settings for the <see cref="T:NSwag.CodeGeneration.TypeScript.TypeScriptClientGenerator"/>.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.TypeScriptGeneratorSettings">
+            <summary>Gets the TypeScript generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.CodeGeneratorSettings">
+            <summary>Gets the code generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.Template">
+            <summary>Gets or sets the output template.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.PromiseType">
+            <summary>Gets or sets the promise type.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.WrapDtoExceptions">
+            <summary>Gets or sets a value indicating whether DTO exceptions are wrapped in a SwaggerException instance (default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.ClientBaseClass">
+            <summary>Gets or sets the client base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.ConfigurationClass">
+            <summary>Gets or sets the full name of the configuration class (<see cref="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.ClientBaseClass"/> must be set).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.UseTransformOptionsMethod">
+            <summary>Gets or sets a value indicating whether to call 'transformOptions' on the base class or extension class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.UseTransformResultMethod">
+            <summary>Gets or sets a value indicating whether to call 'transformResult' on the base class or extension class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.BaseUrlTokenName">
+            <summary>Gets or sets the token name for injecting the API base URL string (used in the Angular2 template, default: '').</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.ProtectedMethods">
+            <summary>Gets or sets the list of methods with a protected access modifier ("classname.methodname").</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.ImportRequiredTypes">
+            <summary>Gets or sets a value indicating whether required types should be imported (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.UseGetBaseUrlMethod">
+            <summary>Gets or sets a value indicating whether to use the 'getBaseUrl(defaultUrl: string)' from the base class (default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.QueryNullValue">
+            <summary>Gets or sets the null value used for query parameters which are null (default: '').</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.ExceptionClass">
+            <summary>Gets or sets the name of the exception class (default 'ApiException').</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.HttpClass">
+            <summary>Gets or sets the HTTP service class (applies only for the Angular template, default: HttpClient).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.RxJsVersion">
+            <summary>Gets the RxJs version (Angular template only, default: 6.0).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.UseSingletonProvider">
+            <summary>Gets a value indicating whether to use the Angular 6 Singleton Provider (Angular template only, default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.TypeScript.TypeScriptClientGeneratorSettings.InjectionTokenType">
+            <summary>Gets or sets the injection token type (applies only for the Angular template).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate">
+            <summary>The TypeScript output templates.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.JQueryCallbacks">
+            <summary>Uses JQuery with callbacks.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.JQueryPromises">
+            <summary>Uses JQuery with Promises/A+.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.AngularJS">
+            <summary>Uses $http from AngularJS 1.x.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.Angular">
+            <summary>Uses the http service from AngularJS 2.x.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.Fetch">
+            <summary>Uses the window.fetch API.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.Aurelia">
+            <summary>Uses the Aurelia fetch service.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.TypeScript.TypeScriptTemplate.Axios">
+            <summary>Uses the Axios service.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.TypeScript.TypeScriptTypeNameGenerator">
+            <summary>Generates a TypeScript type name (Error is renamed to ErrorDto, otherwise the defaults are used).</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.TypeScript.TypeScriptTypeNameGenerator.Generate(NJsonSchema.JsonSchema,System.String)">
+            <summary>Generates the type name for the given schema.</summary>
+            <param name="schema">The schema.</param>
+            <param name="typeNameHint">The type name hint.</param>
+            <returns>The type name.</returns>
+        </member>
+    </members>
+</doc>

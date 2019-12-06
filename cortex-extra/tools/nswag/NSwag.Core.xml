@@ -1,0 +1,1057 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.Core</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.Collections.ObservableDictionary`2">
+            <summary>An implementation of an observable dictionary.</summary>
+            <typeparam name="TKey">The type of the key.</typeparam>
+            <typeparam name="TValue">The type of the value.</typeparam>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Collections.ObservableDictionary`2"/> class. </summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.#ctor(System.Collections.Generic.IDictionary{`0,`1})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Collections.ObservableDictionary`2"/> class. </summary>
+            <param name="dictionary">The dictionary to initialize this dictionary. </param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.#ctor(System.Collections.Generic.IEqualityComparer{`0})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Collections.ObservableDictionary`2"/> class. </summary>
+            <param name="comparer">The comparer. </param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.#ctor(System.Int32)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Collections.ObservableDictionary`2"/> class. </summary>
+            <param name="capacity">The capacity. </param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.#ctor(System.Collections.Generic.IDictionary{`0,`1},System.Collections.Generic.IEqualityComparer{`0})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Collections.ObservableDictionary`2"/> class. </summary>
+            <param name="dictionary">The dictionary to initialize this dictionary. </param>
+            <param name="comparer">The comparer. </param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.#ctor(System.Int32,System.Collections.Generic.IEqualityComparer{`0})">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Collections.ObservableDictionary`2"/> class. </summary>
+            <param name="capacity">The capacity. </param>
+            <param name="comparer">The comparer. </param>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.Dictionary">
+            <summary>Gets the underlying dictonary. </summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.AddRange(System.Collections.Generic.IDictionary{`0,`1})">
+            <summary>Adds multiple key-value pairs the the dictionary. </summary>
+            <param name="items">The key-value pairs. </param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Insert(`0,`1,System.Boolean)">
+            <summary>Inserts a key-value pair into the dictionary. </summary>
+            <param name="key">The key. </param>
+            <param name="value">The value. </param>
+            <param name="add">If true and key already exists then an exception is thrown. </param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.OnPropertyChanged(System.String)">
+            <summary>Called when the property has changed.</summary>
+            <param name="propertyName">Name of the property.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.OnCollectionChanged">
+            <summary>Called when the collection has changed.</summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.OnCollectionChanged(System.Collections.Specialized.NotifyCollectionChangedAction,System.Collections.Generic.KeyValuePair{`0,`1})">
+            <summary>Called when the collection has changed.</summary>
+            <param name="action">The action.</param>
+            <param name="changedItem">The changed item.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.OnCollectionChanged(System.Collections.Specialized.NotifyCollectionChangedAction,System.Collections.Generic.KeyValuePair{`0,`1},System.Collections.Generic.KeyValuePair{`0,`1})">
+            <summary>Called when the collection has changed.</summary>
+            <param name="action">The action.</param>
+            <param name="newItem">The new item.</param>
+            <param name="oldItem">The old item.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.OnCollectionChanged(System.Collections.Specialized.NotifyCollectionChangedAction,System.Collections.IList)">
+            <summary>Called when the collection has changed.</summary>
+            <param name="action">The action.</param>
+            <param name="newItems">The new items.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Add(`0,`1)">
+            <summary>Adds the specified key.</summary>
+            <param name="key">The key.</param>
+            <param name="value">The value.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.ContainsKey(`0)">
+            <summary>Determines whether the specified key contains key.</summary>
+            <param name="key">The key.</param>
+            <returns></returns>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.Keys">
+            <summary>Gets an <see cref="T:System.Collections.Generic.ICollection`1" /> containing the keys of the <see cref="T:System.Collections.Generic.IDictionary`2" />.</summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Remove(`0)">
+            <summary>Removes the specified key.</summary>
+            <param name="key">The key.</param>
+            <returns></returns>
+            <exception cref="T:System.ArgumentNullException">key</exception>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.TryGetValue(`0,`1@)">
+            <summary>Tries the get value.</summary>
+            <param name="key">The key.</param>
+            <param name="value">The value.</param>
+            <returns></returns>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.Values">
+            <summary>Gets an <see cref="T:System.Collections.Generic.ICollection`1" /> containing the values in the <see cref="T:System.Collections.Generic.IDictionary`2" />.</summary>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.Item(`0)">
+            <summary>Gets or sets the TValue with the specified key.</summary>
+            <value>The TValue.</value>
+            <param name="key">The key.</param>
+            <returns></returns>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Add(System.Collections.Generic.KeyValuePair{`0,`1})">
+            <summary>Adds the specified item.</summary>
+            <param name="item">The item.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Clear">
+            <summary>Removes all items from the <see cref="T:System.Collections.Generic.ICollection`1" />.</summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Initialize(System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{`0,`1}})">
+            <summary>Initializes the specified key value pairs.</summary>
+            <param name="keyValuePairs">The key value pairs.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Initialize(System.Collections.IEnumerable)">
+            <summary>Initializes the specified key value pairs.</summary>
+            <param name="keyValuePairs">The key value pairs.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Contains(System.Object)">
+            <summary>Determines whether [contains] [the specified key].</summary>
+            <param name="key">The key.</param>
+            <returns></returns>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Remove(System.Object)">
+            <summary>Removes the specified key.</summary>
+            <param name="key">The key.</param>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.IsFixedSize">
+            <summary>Gets a value indicating whether the <see cref="T:System.Collections.IDictionary" /> object has a fixed size.</summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Contains(System.Collections.Generic.KeyValuePair{`0,`1})">
+            <summary>Determines whether [contains] [the specified item].</summary>
+            <param name="item">The item.</param>
+            <returns></returns>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.CopyTo(System.Collections.Generic.KeyValuePair{`0,`1}[],System.Int32)">
+            <summary>Copies to.</summary>
+            <param name="array">The array.</param>
+            <param name="arrayIndex">Index of the array.</param>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.CopyTo(System.Array,System.Int32)">
+            <summary>Copies to.</summary>
+            <param name="array">The array.</param>
+            <param name="index">The index.</param>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.Count">
+            <summary>Gets the number of elements contained in the <see cref="T:System.Collections.Generic.ICollection`1" />.</summary>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.IsSynchronized">
+            <summary>Gets a value indicating whether access to the <see cref="T:System.Collections.ICollection" /> is synchronized (thread safe).</summary>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.SyncRoot">
+            <summary>Gets an object that can be used to synchronize access to the <see cref="T:System.Collections.ICollection" />.</summary>
+        </member>
+        <member name="P:NSwag.Collections.ObservableDictionary`2.IsReadOnly">
+            <summary>Gets a value indicating whether the <see cref="T:System.Collections.Generic.ICollection`1" /> is read-only.</summary>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.Remove(System.Collections.Generic.KeyValuePair{`0,`1})">
+            <summary>Removes the specified item.</summary>
+            <param name="item">The item.</param>
+            <returns></returns>
+        </member>
+        <member name="M:NSwag.Collections.ObservableDictionary`2.GetEnumerator">
+            <summary>Returns an enumerator that iterates through the collection.</summary>
+            <returns>A <see cref="T:System.Collections.Generic.IEnumerator`1" /> that can be used to iterate through the collection.</returns>
+        </member>
+        <member name="E:NSwag.Collections.ObservableDictionary`2.CollectionChanged">
+            <summary>Occurs when the collection has changed.</summary>
+        </member>
+        <member name="E:NSwag.Collections.ObservableDictionary`2.PropertyChanged">
+            <summary>Occurs when a property has changed.</summary>
+        </member>
+        <member name="T:NSwag.HttpUtilities">
+            <summary>Contains HTTP utilities.</summary>
+        </member>
+        <member name="M:NSwag.HttpUtilities.IsSuccessStatusCode(System.String)">
+            <summary>Checks whether the given HTTP status code indicates success.</summary>
+            <param name="statusCode">The HTTP status code.</param>
+            <returns>true if success.</returns>
+        </member>
+        <member name="T:NSwag.JsonExpectedSchema">
+            <summary>Specifies a schema which is expected.</summary>
+        </member>
+        <member name="P:NSwag.JsonExpectedSchema.Description">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="P:NSwag.JsonExpectedSchema.Schema">
+            <summary>Gets or sets the schema.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiCallback">
+            <summary>Describes an OpenAPI callback.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiComponents">
+            <summary>Container for reusable components (OpenAPI only).</summary>
+        </member>
+        <member name="M:NSwag.OpenApiComponents.#ctor(NSwag.OpenApiDocument)">
+            <summary></summary>
+            <param name="document"></param>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Schemas">
+            <summary>Gets or sets the types.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Responses">
+            <summary>Gets or sets the responses which can be used for all operations.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Parameters">
+            <summary>Gets or sets the parameters which can be used for all operations.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Examples">
+            <summary>Gets or sets the headers.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Headers">
+            <summary>Gets or sets the types.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.SecuritySchemes">
+            <summary>Gets or sets the security definitions.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Links">
+            <summary>Gets or sets the security definitions.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiComponents.Callbacks">
+            <summary>Gets or sets the security definitions.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiContact">
+            <summary>The web service contact description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiContact.Name">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiContact.Url">
+            <summary>Gets or sets the contact URL.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiContact.Email">
+            <summary>Gets or sets the contact email.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiDocument">
+            <summary>Describes a JSON web service.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.OpenApiDocument"/> class.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.ToolchainVersion">
+            <summary>Gets the NSwag toolchain version.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.SchemaType">
+            <summary>Gets or sets the preferred schema type.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.DocumentPath">
+            <summary>Gets or sets the document path (URI or file path).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Generator">
+            <summary>Gets or sets the Swagger generator information.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Swagger">
+            <summary>Gets or sets the Swagger specification version being used (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.OpenApi">
+            <summary>Gets or sets the OpenAPI specification version being used (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Info">
+            <summary>Gets or sets the metadata about the API.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Servers">
+            <summary>Gets or sets the servers (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Paths">
+            <summary>Gets or sets the operations.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Components">
+            <summary>Gets or sets the components.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Security">
+            <summary>Gets or sets a security description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Tags">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.BaseUrl">
+            <summary>Gets the base URL of the web service.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.ExternalDocumentation">
+            <summary>Gets or sets the external documentation.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.ToJson">
+            <summary>Converts the Swagger specification to JSON.</summary>
+            <returns>The JSON string.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.ToJson(NJsonSchema.SchemaType)">
+            <summary>Converts the description object to JSON.</summary>
+            <param name="schemaType">The schema type.</param>
+            <returns>The JSON string.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.ToJson(NJsonSchema.SchemaType,Newtonsoft.Json.Formatting)">
+            <summary>Converts the description object to JSON.</summary>
+            <param name="schemaType">The schema type.</param>
+            <param name="formatting">The formatting.</param>
+            <returns>The JSON string.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.FromJsonAsync(System.String)">
+            <summary>Creates a Swagger specification from a JSON string.</summary>
+            <param name="data">The JSON data.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument"/>.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.FromJsonAsync(System.String,System.String)">
+            <summary>Creates a Swagger specification from a JSON string.</summary>
+            <param name="data">The JSON data.</param>
+            <param name="documentPath">The document path (URL or file path) for resolving relative document references.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument"/>.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.FromJsonAsync(System.String,System.String,NJsonSchema.SchemaType)">
+            <summary>Creates a Swagger specification from a JSON string.</summary>
+            <param name="data">The JSON data.</param>
+            <param name="documentPath">The document path (URL or file path) for resolving relative document references.</param>
+            <param name="expectedSchemaType">The expected schema type which is used when the type cannot be determined.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument"/>.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.FromJsonAsync(System.String,System.String,NJsonSchema.SchemaType,System.Func{NSwag.OpenApiDocument,NJsonSchema.JsonReferenceResolver})">
+            <summary>Creates a Swagger specification from a JSON string.</summary>
+            <param name="data">The JSON data.</param>
+            <param name="documentPath">The document path (URL or file path) for resolving relative document references.</param>
+            <param name="expectedSchemaType">The expected schema type which is used when the type cannot be determined.</param>
+            <param name="referenceResolverFactory">The JSON reference resolver factory.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument"/>.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.FromFileAsync(System.String)">
+            <summary>Creates a Swagger specification from a JSON file.</summary>
+            <param name="filePath">The file path.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument" />.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.FromUrlAsync(System.String)">
+            <summary>Creates a Swagger specification from an URL.</summary>
+            <param name="url">The URL.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument"/>.</returns>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Operations">
+            <summary>Gets the operations.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.GenerateOperationIds">
+            <summary>Generates missing or non-unique operation IDs.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiDocument.GetJsonSerializerContractResolver(NJsonSchema.SchemaType)">
+            <summary>Creates the serializer contract resolver based on the <see cref="T:NJsonSchema.SchemaType"/>.</summary>
+            <param name="schemaType">The schema type.</param>
+            <returns>The settings.</returns>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Host">
+            <summary>Gets or sets the host (name or ip) serving the API (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.BasePath">
+            <summary>Gets or sets the base path on which the API is served, which is relative to the <see cref="P:NSwag.OpenApiDocument.Host"/>.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Schemes">
+            <summary>Gets or sets the schemes.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Consumes">
+            <summary>Gets or sets a list of MIME types the operation can consume.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Produces">
+            <summary>Gets or sets a list of MIME types the operation can produce.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Definitions">
+            <summary>Gets or sets the types (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Parameters">
+            <summary>Gets or sets the parameters which can be used for all operations (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.Responses">
+            <summary>Gets or sets the responses which can be used for all operations (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiDocument.SecurityDefinitions">
+            <summary>Gets or sets the security definitions (Swagger only).</summary>
+        </member>
+        <member name="T:NSwag.OpenApiEncoding">
+            <summary>Describes the OpenApi encoding.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiEncoding.EncodingType">
+            <summary>Gets or sets the encoding type.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiEncoding.Headers">
+            <summary>Gets or sets the headers.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiEncoding.Style">
+            <summary>Gets or sets the encoding type.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiEncoding.Explode">
+            <summary>Gets or sets a value indicating whether values of type array or object generate separate parameters for each value of the array, or key-value-pair of the map.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiEncoding.AllowReserved">
+            <summary>Gets or sets a value indicating whether the parameter value should allow reserved characters, as defined by RFC3986.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiExample">
+            <summary>The Swagger example (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiExample.Summary">
+            <summary>Gets or sets the example's description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiExample.Description">
+            <summary>Gets or sets the example's description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiExample.Value">
+            <summary>Gets or sets the example's value.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiExample.ExternalValue">
+            <summary>Gets or sets the example's external value.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiExternalDocumentation">
+            <summary>The external documentation description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiExternalDocumentation.Description">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiExternalDocumentation.Url">
+            <summary>Gets or sets the documentation URL.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiHeaders">
+            <summary>A collection of headers.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiInfo">
+            <summary>The web service description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiInfo.Title">
+            <summary>Gets or sets the title.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiInfo.Description">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiInfo.TermsOfService">
+            <summary>Gets or sets the terms of service.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiInfo.Contact">
+            <summary>Gets or sets the contact information.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiInfo.License">
+            <summary>Gets or sets the license information.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiInfo.Version">
+            <summary>Gets or sets the API version.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiLicense">
+            <summary>The license information.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLicense.Name">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLicense.Url">
+            <summary>Gets or sets the license URL.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiLink">
+            <summary>The OpenApi link (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLink.OperationRef">
+            <summary>Gets or sets the example's description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLink.OperationId">
+            <summary>Gets or sets the example's description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLink.Parameters">
+            <summary>Gets or sets the example's value.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLink.RequestBody">
+            <summary>Gets or sets the example's external value.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLink.Description">
+            <summary>Gets or sets the example's external value.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiLink.Server">
+            <summary>Gets or sets the server.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiMediaType">
+            <summary>The Swagger media type (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiMediaType.Schema">
+            <summary>Gets or sets the schema.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiMediaType.Example">
+            <summary>Gets or sets the example.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiMediaType.Examples">
+            <summary>Gets or sets the headers (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiMediaType.Encoding">
+            <summary>Gets or sets the example's value.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiOAuth2Flow">
+            <summary>Enumeration of the OAuth2 flows. </summary>
+        </member>
+        <member name="F:NSwag.OpenApiOAuth2Flow.Undefined">
+            <summary>An undefined flow.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiOAuth2Flow.Implicit">
+            <summary>Use implicit flow.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiOAuth2Flow.Password">
+            <summary>Use password flow.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiOAuth2Flow.Application">
+            <summary>Use application flow.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiOAuth2Flow.AccessCode">
+            <summary>Use access code flow.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiOAuthFlow">
+            <summary>Configuration for an OAuth flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlow.AuthorizationUrl">
+            <summary>Gets or sets the authorization URL to be used for this flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlow.TokenUrl">
+            <summary>Gets or sets the token URL to be used for this flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlow.RefreshUrl">
+            <summary>Gets or sets the token URL to be used for this flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlow.Scopes">
+            <summary>Gets the available scopes for the OAuth2 security scheme.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiOAuthFlows">
+            <summary>Configuration information for the supported flow types.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlows.Implicit">
+            <summary>Gets or sets the configuration for the OAuth Implicit Code flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlows.Password">
+            <summary>Gets or sets the configuration for the OAuth Resource Owner Password flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlows.ClientCredentials">
+            <summary>Gets or sets the configuration for the OAuth Client Credentials flow.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOAuthFlows.AuthorizationCode">
+            <summary>Gets or sets the configuration for the OAuth Authorization Code flow.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiOperation">
+            <summary>Describes a JSON web service operation. </summary>
+        </member>
+        <member name="M:NSwag.OpenApiOperation.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.OpenApiPathItem"/> class.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Parent">
+            <summary>Gets the parent operations list.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Tags">
+            <summary>Gets or sets the tags.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Summary">
+            <summary>Gets or sets the summary of the operation.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Description">
+            <summary>Gets or sets the long description of the operation.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ExternalDocumentation">
+            <summary>Gets or sets the external documentation.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.OperationId">
+            <summary>Gets or sets the operation ID (unique name).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Consumes">
+            <summary>Gets or sets a list of MIME types the operation can consume.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Produces">
+            <summary>Gets or sets a list of MIME types the operation can produce.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Parameters">
+            <summary>Gets or sets the parameters.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.RequestBody">
+            <summary>Gets or sets the request body (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ActualParameters">
+            <summary>Gets the actual parameters (a combination of all inherited and local parameters).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Responses">
+            <summary>Gets or sets the HTTP Status Code/Response pairs.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Schemes">
+            <summary>Gets or sets the schemes.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Callbacks">
+            <summary>Gets or sets the callbacks (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.IsDeprecated">
+            <summary>Gets or sets a value indicating whether the operation is deprecated.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Security">
+            <summary>Gets or sets a security description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.Servers">
+            <summary>Gets or sets the servers (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ActualConsumes">
+            <summary>Gets the list of MIME types the operation can consume, either from the operation or from the <see cref="T:NSwag.OpenApiDocument"/>.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ActualProduces">
+            <summary>Gets the list of MIME types the operation can produce, either from the operation or from the <see cref="T:NSwag.OpenApiDocument"/>.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ActualSchemes">
+            <summary>Gets the actual schemes, either from the operation or from the <see cref="T:NSwag.OpenApiDocument"/>.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ActualResponses">
+            <summary>Gets the responses from the operation and from the <see cref="T:NSwag.OpenApiDocument"/> and dereferences them if necessary.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ActualSecurity">
+            <summary>Gets the actual security description, either from the operation or from the <see cref="T:NSwag.OpenApiDocument"/>.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiOperation.TryAddConsumes(System.String)">
+            <summary>Adds a consumes MIME type if it does not yet exists.</summary>
+            <param name="mimeType">The MIME type.</param>
+        </member>
+        <member name="P:NSwag.OpenApiOperation.ParametersRaw">
+            <summary>Gets or sets the parameters.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiOperationDescription">
+            <summary>Flattened information about an operation.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationDescription.Path">
+            <summary>Gets or sets the relative URL path.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationDescription.Method">
+            <summary>Gets or sets the HTTP method.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationDescription.Operation">
+            <summary>Gets or sets the operation.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiOperationMethod">
+            <summary>Enumeration of the available HTTP methods. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Undefined">
+            <summary>An undefined method.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Get">
+            <summary>The HTTP GET method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Post">
+            <summary>The HTTP POST method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Put">
+            <summary>The HTTP PUT method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Delete">
+            <summary>The HTTP DELETE method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Options">
+            <summary>The HTTP OPTIONS method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Head">
+            <summary>The HTTP HEAD method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Patch">
+            <summary>The HTTP PATCH method. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiOperationMethod.Trace">
+            <summary>The HTTP TRACE method (OpenAPI only). </summary>
+        </member>
+        <member name="T:NSwag.OpenApiParameter">
+            <summary>Describes an operation parameter. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Name">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Kind">
+            <summary>Gets or sets the kind of the parameter.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Style">
+            <summary>Gets or sets the style of the parameter (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Explode">
+            <summary>Gets or sets the explode setting for the parameter (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.IsRequired">
+            <summary>Gets or sets a value indicating whether the parameter is required (default: false).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.AllowEmptyValue">
+            <summary>Gets or sets a value indicating whether passing empty-valued parameters is allowed (default: false).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Description">
+            <summary>Gets or sets the description. </summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.ActualParameter">
+            <summary>Gets the actual parameter.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.CollectionFormat">
+            <summary>Gets or sets the format of the array if type array is used.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Examples">
+            <summary>Gets or sets the headers (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Schema">
+            <summary>Gets or sets the schema which is only available when <see cref="P:NSwag.OpenApiParameter.Kind"/> == body.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.CustomSchema">
+            <summary>Gets or sets the custom schema which is used when <see cref="P:NSwag.OpenApiParameter.Kind"/> != body.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.Position">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.ActualSchema">
+            <summary>Gets the actual schema, either the parameter schema itself (or its reference) or the <see cref="P:NSwag.OpenApiParameter.Schema"/> property when <see cref="P:NSwag.OpenApiParameter.Kind"/> == body.</summary>
+            <exception cref="T:System.InvalidOperationException" accessor="get">The schema reference path is not resolved.</exception>
+        </member>
+        <member name="M:NSwag.OpenApiParameter.IsNullable(NJsonSchema.SchemaType)">
+            <summary>Gets a value indicating whether the validated data can be null.</summary>
+            <param name="schemaType">The schema type.</param>
+            <returns>The result.</returns>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.IsXmlBodyParameter">
+            <summary>Gets a value indicating whether this is an XML body parameter.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiParameter.IsBinaryBodyParameter">
+            <summary>Gets a value indicating whether this is a binary body parameter.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiParameterCollectionFormat">
+            <summary>Defines the collectionFormat of a parameter.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterCollectionFormat.Undefined">
+            <summary>An undefined format.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterCollectionFormat.Csv">
+            <summary>Comma separated values "foo, bar".</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterCollectionFormat.Ssv">
+            <summary>Space separated values "foo bar".</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterCollectionFormat.Tsv">
+            <summary>Tab separated values "foo\tbar".</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterCollectionFormat.Pipes">
+            <summary>Pipe separated values "foo|bar".</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterCollectionFormat.Multi">
+            <summary>Corresponds to multiple parameter instances instead of multiple values for a single instance "foo=bar&amp;foo=baz".</summary>
+        </member>
+        <member name="T:NSwag.OpenApiParameterKind">
+            <summary>Enumeration of the parameter kinds. </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.Undefined">
+            <summary>An undefined kind.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.Body">
+            <summary>A JSON object as POST or PUT body (only one parameter of this type is allowed). </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.Query">
+            <summary>A query key-value pair. </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.Path">
+            <summary>An URL path placeholder. </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.Header">
+            <summary>A HTTP header parameter.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.FormData">
+            <summary>A form data parameter.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.ModelBinding">
+            <summary>A model binding parameter (either form data, path or query; by default query; generated by Swashbuckle).</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterKind.Cookie">
+            <summary>A cookie. </summary>
+        </member>
+        <member name="T:NSwag.OpenApiParameterStyle">
+            <summary>Enumeration of the parameter kinds. </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.Undefined">
+            <summary>An undefined kind.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.Simple">
+            <summary>Comma-separated values. For Path parameters.
+            Corresponds to the {param_name} URI template
+            </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.Label">
+            <summary>Dot-prefixed values, also known as label expansion. For Path parameters.
+            Corresponds to the {.param_name} URI template
+            </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.Matrix">
+            <summary>Semicolon-prefixed values, also known as path-style expansion.
+            For path parameters. Corresponds to the {;param_name} URI template
+            </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.Form">
+            <summary>Ampersand-separated values. Also known as form-style query expansion.
+            Corresponds to the {?param_name} URI template.
+            </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.SpaceDelimeted">
+            <summary>Space-separated array values. Same as collectionFormat: ssv in OpenAPI 2.0.
+            Has effect only for non-exploded arrays (explode: false), that is, the space
+            separates the array values if the array is a single parameter, as in arr=a b c.
+            </summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.PipeDelimited">
+            <summary>Pipeline-separated array values. Same as collectionFormat: pipes in
+            OpenAPI 2.0. Has effect only for non-exploded arrays (explode: false),
+            that is, the pipe separates the array values if the array is a single
+            parameter, as in arr=a|b|c.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiParameterStyle.DeepObject">
+            <summary>Simple way of rendering nested objects using form parameters (applies to objects only)</summary>
+        </member>
+        <member name="T:NSwag.OpenApiPathItem">
+            <summary>A Swagger path, the key is usually a value of <see cref="T:NSwag.OpenApiOperationMethod"/>.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiPathItem.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.OpenApiPathItem"/> class.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiPathItem.Parent">
+            <summary>Gets the parent <see cref="T:NSwag.OpenApiDocument"/>.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiPathItem.Summary">
+            <summary>Gets or sets the summary (OpenApi only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiPathItem.Description">
+            <summary>Gets or sets the description (OpenApi only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiPathItem.Servers">
+            <summary>Gets or sets the servers (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiPathItem.Parameters">
+            <summary>Gets or sets the parameters.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiRequestBody">
+            <summary>The OpenApi request body (OpenAPI only).</summary>
+        </member>
+        <member name="M:NSwag.OpenApiRequestBody.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.OpenApiRequestBody"/> class.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiRequestBody.Name">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiRequestBody.Description">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiRequestBody.Content">
+            <summary>Gets or sets the descriptions of potential response payloads (OpenApi only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiRequestBody.IsRequired">
+            <summary>Gets or sets the example's external value.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiRequestBody.Position">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiRequestBody.ActualName">
+            <summary>Gets the actual name of the request body parameter.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiResponse">
+            <summary>The Swagger response.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.ExtensionData">
+            <summary>Gets or sets the extension data (i.e. additional properties which are not directly defined by the JSON object).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Parent">
+            <summary>Gets the parent <see cref="T:NSwag.OpenApiOperation"/>.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.ActualResponse">
+            <summary>Gets the actual response, either this or the referenced response.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Description">
+            <summary>Gets or sets the response's description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Headers">
+            <summary>Gets or sets the headers.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.IsNullableRaw">
+            <summary>Sets a value indicating whether the response can be null (use IsNullable() to get a parameter's nullability).</summary>
+            <remarks>The Swagger spec does not support null in schemas, see https://github.com/OAI/OpenAPI-Specification/issues/229 </remarks>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.ExpectedSchemas">
+            <summary>Gets or sets the expected child schemas of the base schema (can be used for generating enhanced typings/documentation).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Content">
+            <summary>Gets or sets the descriptions of potential response payloads (OpenApi only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Links">
+            <summary>Gets or sets the links that can be followed from the response (OpenApi only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Schema">
+            <summary>Gets or sets the response schema (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiResponse.Examples">
+            <summary>Gets or sets the headers (Swagger only).</summary>
+        </member>
+        <member name="M:NSwag.OpenApiResponse.IsNullable(NJsonSchema.SchemaType)">
+            <summary>Determines whether the specified null handling is nullable (fallback value: false).</summary>
+            <param name="schemaType">The schema type.</param>
+            <returns>The result.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiResponse.IsNullable(NJsonSchema.SchemaType,System.Boolean)">
+            <summary>Determines whether the specified null handling is nullable.</summary>
+            <param name="schemaType">The schema type.</param>
+            <param name="fallbackValue">The fallback value when 'x-nullable' is not defined.</param>
+            <returns>The result.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiResponse.IsBinary(NSwag.OpenApiOperation)">
+            <summary>Checks whether this is a binary/file response.</summary>
+            <param name="operation">The operation the response belongs to.</param>
+            <returns>The result.</returns>
+        </member>
+        <member name="M:NSwag.OpenApiResponse.IsEmpty(NSwag.OpenApiOperation)">
+            <summary>Checks whether this is an empty response.</summary>
+            <param name="operation">The operation the response belongs to.</param>
+            <returns>The result.</returns>
+        </member>
+        <member name="T:NSwag.OpenApiSchema">
+            <summary>The enumeration of Swagger protocol schemes.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSchema.Undefined">
+            <summary>An undefined schema.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSchema.Http">
+            <summary>The HTTP schema.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSchema.Https">
+            <summary>The HTTPS schema.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSchema.Ws">
+            <summary>The WS schema.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSchema.Wss">
+            <summary>The WSS schema.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiSchemaResolver">
+            <summary>Appends a JSON Schema to the Definitions of a Swagger document.</summary>
+        </member>
+        <member name="M:NSwag.OpenApiSchemaResolver.#ctor(NSwag.OpenApiDocument,NJsonSchema.Generation.JsonSchemaGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.OpenApiSchemaResolver" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" /></exception>
+        </member>
+        <member name="M:NSwag.OpenApiSchemaResolver.AppendSchema(NJsonSchema.JsonSchema,System.String)">
+            <summary>Appends the schema to the root object.</summary>
+            <param name="schema">The schema to append.</param>
+            <param name="typeNameHint">The type name hint.</param>
+        </member>
+        <member name="T:NSwag.OpenApiSecurityApiKeyLocation">
+            <summary>Specifies the location of the API Key.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecurityApiKeyLocation.Undefined">
+            <summary>The API key kind is not defined.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecurityApiKeyLocation.Query">
+            <summary>In a query parameter.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecurityApiKeyLocation.Header">
+            <summary>In the HTTP header.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecurityApiKeyLocation.Cookie">
+            <summary>In the HTTP cookie (OpenAPI only).</summary>
+        </member>
+        <member name="T:NSwag.OpenApiSecurityRequirement">
+            <summary>The operation security requirements.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiSecurityScheme">
+            <summary>The definition of a security scheme that can be used by the operations.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Type">
+            <summary>Gets or sets the type of the security scheme.</summary>
+            <remarks>Changes the type to <see cref="F:NSwag.OpenApiSecuritySchemeType.Http"/> and the <see cref="P:NSwag.OpenApiSecurityScheme.Scheme"/> to "basic" set to <see cref="F:NSwag.OpenApiSecuritySchemeType.Basic"/>.</remarks>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Description">
+            <summary>Gets or sets the short description for security scheme.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Name">
+            <summary>Gets or sets the name of the header or query parameter to be used to transmit the API key.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.In">
+            <summary>Gets or sets the type of the API key.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Scheme">
+            <summary>Gets or sets name of the HTTP Authorization scheme to be used in the Authorization header as defined in RFC7235 (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.BearerFormat">
+            <summary>Gets or sets a hint to the client to identify how the bearer token is formatted. Bearer tokens are
+            usually generated by an authorization server, so this information is primarily for documentation purposes (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.OpenIdConnectUrl">
+            <summary>Gets or sets the OpenId Connect URL to discover OAuth2 configuration values (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Flows">
+            <summary>Gets or sets the configuration information for the supported flow types (OpenAPI only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Flow">
+            <summary>Gets or sets the used by the OAuth2 security scheme (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.AuthorizationUrl">
+            <summary>Gets or sets the authorization URL to be used for this flow (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.TokenUrl">
+            <summary>Gets or sets the token URL to be used for this flow (Swagger only).</summary>
+        </member>
+        <member name="P:NSwag.OpenApiSecurityScheme.Scopes">
+            <summary>Gets the available scopes for the OAuth2 security scheme (Swagger only).</summary>
+        </member>
+        <member name="T:NSwag.OpenApiSecuritySchemeType">
+            <summary></summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecuritySchemeType.Undefined">
+            <summary>The security scheme is not defined.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecuritySchemeType.Basic">
+            <summary>Basic authentication.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecuritySchemeType.ApiKey">
+            <summary>API key authentication.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecuritySchemeType.OAuth2">
+            <summary>OAuth2 authentication.</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecuritySchemeType.Http">
+            <summary>HTTP authentication (OpenAPI only).</summary>
+        </member>
+        <member name="F:NSwag.OpenApiSecuritySchemeType.OpenIdConnect">
+            <summary>OpenIdConnect authentication (OpenAPI only).</summary>
+        </member>
+        <member name="T:NSwag.OpenApiServer">
+            <summary>Describes an OpenAPI server.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServer.Url">
+            <summary>Gets or sets the URL of the server.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServer.Description">
+            <summary>Gets or sets the description of the server.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServer.Variables">
+            <summary>Gets or sets the variables of the server.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServer.IsValid">
+            <summary>Gets a value indicating whether the server description is valid.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiServerVariable">
+            <summary>Describes an OpenAPI server variable.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServerVariable.Enum">
+            <summary>Gets or sets the URL of the server.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServerVariable.Default">
+            <summary>Gets or sets the variables of the server.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiServerVariable.Description">
+            <summary>Gets or sets the description of the server.</summary>
+        </member>
+        <member name="T:NSwag.OpenApiTag">
+            <summary>Describes a Swagger tag.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiTag.Name">
+            <summary>Gets or sets the name.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiTag.Description">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="P:NSwag.OpenApiTag.ExternalDocumentation">
+            <summary>Gets or sets the external documentation.</summary>
+        </member>
+    </members>
+</doc>

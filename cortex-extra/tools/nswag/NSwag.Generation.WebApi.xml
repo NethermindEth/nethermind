@@ -1,0 +1,110 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.Generation.WebApi</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.Generation.WebApi.Infrastructure.RouteAttributeFacade">
+            <summary>
+            Uses reflection to provide a common interface to the following types:
+            * RouteAttribute
+            * IHttpRouteInfoProvider
+            * IRouteTemplateProvider
+            </summary>
+        </member>
+        <member name="T:NSwag.Generation.WebApi.Infrastructure.RoutePrefixAttributeFacade">
+            <summary>
+            Uses reflection to provide a common interface to the following types:
+            * RoutePrefixAttribute
+            * IRoutePrefix
+            </summary>
+        </member>
+        <member name="T:NSwag.Generation.WebApi.Processors.OperationConsumesProcessor">
+            <summary>Generates the consumes clause from the operation's ConsumesAttribute.</summary>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.Processors.OperationConsumesProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.WebApi.Processors.OperationParameterProcessor">
+            <summary>Generates the operation's parameters.</summary>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.Processors.OperationParameterProcessor.#ctor(NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.WebApi.Processors.OperationParameterProcessor"/> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.Processors.OperationParameterProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="T:NSwag.Generation.WebApi.Processors.OperationResponseProcessor">
+            <summary>Generates the operation's response objects based on reflection and the ResponseTypeAttribute, SwaggerResponseAttribute and ProducesResponseTypeAttribute attributes.</summary>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.Processors.OperationResponseProcessor.#ctor(NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.WebApi.Processors.OperationParameterProcessor"/> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.Processors.OperationResponseProcessor.Process(NSwag.Generation.Processors.Contexts.OperationProcessorContext)">
+            <summary>Processes the specified method information.</summary>
+            <param name="context"></param>
+            <returns>true if the operation should be added to the Swagger specification.</returns>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.Processors.OperationResponseProcessor.GetVoidResponseStatusCode">
+            <summary>Gets the response HTTP status code for an empty/void response and the given generator.</summary>
+            <returns>The status code.</returns>
+        </member>
+        <member name="T:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator">
+            <summary>Generates a <see cref="T:NSwag.OpenApiDocument"/> object for the given Web API class type. </summary>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.#ctor(NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator" /> class.</summary>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.GetControllerClasses(System.Reflection.Assembly)">
+            <summary>Gets all controller class types of the given assembly.</summary>
+            <param name="assembly">The assembly.</param>
+            <returns>The controller classes.</returns>
+        </member>
+        <member name="P:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.Settings">
+            <summary>Gets or sets the generator settings.</summary>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.GenerateForControllerAsync``1">
+            <summary>Generates a Swagger specification for the given controller type.</summary>
+            <typeparam name="TController">The type of the controller.</typeparam>
+            <returns>The <see cref="T:NSwag.OpenApiDocument" />.</returns>
+            <exception cref="T:System.InvalidOperationException">The operation has more than one body parameter.</exception>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.GenerateForControllerAsync(System.Type)">
+            <summary>Generates a Swagger specification for the given controller type.</summary>
+            <param name="controllerType">The type of the controller.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument" />.</returns>
+            <exception cref="T:System.InvalidOperationException">The operation has more than one body parameter.</exception>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.GenerateForControllersAsync(System.Collections.Generic.IEnumerable{System.Type})">
+            <summary>Generates a Swagger specification for the given controller types.</summary>
+            <param name="controllerTypes">The types of the controller.</param>
+            <returns>The <see cref="T:NSwag.OpenApiDocument" />.</returns>
+            <exception cref="T:System.InvalidOperationException">The operation has more than one body parameter.</exception>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator.GenerateForController(NSwag.OpenApiDocument,System.Type,NSwag.Generation.OpenApiDocumentGenerator,NSwag.OpenApiSchemaResolver)">
+            <exception cref="T:System.InvalidOperationException">The operation has more than one body parameter.</exception>
+        </member>
+        <member name="T:NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings">
+            <summary>Settings for the <see cref="T:NSwag.Generation.WebApi.WebApiOpenApiDocumentGenerator"/>.</summary>
+        </member>
+        <member name="M:NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings.DefaultUrlTemplate">
+            <summary>Gets or sets the default Web API URL template (default for Web API: 'api/{controller}/{id}'; for MVC projects: '{controller}/{action}/{id?}').</summary>
+        </member>
+        <member name="P:NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings.IsAspNetCore">
+            <summary>Gets or sets a value indicating whether the controllers are hosted by ASP.NET Core.</summary>
+        </member>
+        <member name="P:NSwag.Generation.WebApi.WebApiOpenApiDocumentGeneratorSettings.AddMissingPathParameters">
+            <summary>Gets or sets a value indicating whether to add path parameters which are missing in the action method.</summary>
+        </member>
+    </members>
+</doc>
