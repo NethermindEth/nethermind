@@ -31,7 +31,7 @@ namespace Nethermind.Monitoring.Metrics
         {
             _intervalSeconds = intervalSeconds;
         }
-        
+
         public void StartUpdating()
         {
             _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
@@ -44,14 +44,6 @@ namespace Nethermind.Monitoring.Metrics
 
         public void RegisterMetrics(Type type) => _metrics.RegisterMetrics(type);
 
-        private void UpdateMetrics(object state)
-        {
-            _metrics.UpdateMetrics(typeof(Blockchain.Metrics));
-            _metrics.UpdateMetrics(typeof(Evm.Metrics));
-            _metrics.UpdateMetrics(typeof(Store.Metrics));
-            _metrics.UpdateMetrics(typeof(Network.Metrics));
-            _metrics.UpdateMetrics(typeof(JsonRpc.Metrics));
-            _metrics.UpdateMetrics(typeof(DataMarketplace.Consumers.Metrics));
-        }
+        private void UpdateMetrics(object state) => _metrics.UpdateMetrics();
     }
 }

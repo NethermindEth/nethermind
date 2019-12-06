@@ -60,12 +60,14 @@ namespace Nethermind.Monitoring.Metrics
             }
         }
 
-        public void UpdateMetrics(Type type)
+        public void UpdateMetrics()
         {
-            EnsurePropertiesCached(type);
-            foreach (PropertyInfo propertyInfo in _propertiesCache[type])
+            foreach (var (type, properties) in _propertiesCache)
             {
-                _gauges[string.Concat(type.Name, ".", propertyInfo.Name)].Set(Convert.ToDouble(propertyInfo.GetValue(null)));
+                foreach (var propertyInfo in properties)
+                {
+                    _gauges[string.Concat(type.Name, ".", propertyInfo.Name)].Set(Convert.ToDouble(propertyInfo.GetValue(null)));
+                }
             }
         }
 
