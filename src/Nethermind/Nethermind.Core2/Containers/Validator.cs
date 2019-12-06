@@ -23,12 +23,39 @@ namespace Nethermind.Core2.Containers
     public class Validator
     {
         public const ulong ValidatorRegistryLimit = 1_099_511_627_776;
-        
+
+        public const int SszLength = BlsPublicKey.SszLength + Sha256.SszLength + Gwei.SszLength + 1 + 4 * Epoch.SszLength;
+
         public Validator(BlsPublicKey publicKey)
         {
             PublicKey = publicKey;
         }
-        
+
+        public BlsPublicKey PublicKey { get; }
+
+        /// <summary>Gets the public key commitment for withdrawals and transfers</summary>
+        public Sha256 WithdrawalCredentials { get; set; }
+
+        /// <summary>
+        ///     Balance at stake
+        /// </summary>
+        public Gwei EffectiveBalance { get; set; }
+
+        public bool Slashed { get; set; }
+
+        /// <summary>
+        ///     When criteria for activation were met
+        /// </summary>
+        public Epoch ActivationEligibilityEpoch { get; set; }
+
+        public Epoch ActivationEpoch { get; set; }
+        public Epoch ExitEpoch { get; set; }
+
+        /// <summary>
+        ///     Can validator withdraw funds
+        /// </summary>
+        public Epoch WithdrawableEpoch { get; set; }
+
         public bool Equals(Validator other)
         {
             return PublicKey.Equals(other.PublicKey) &&
@@ -50,31 +77,8 @@ namespace Nethermind.Core2.Containers
 
         public override int GetHashCode()
         {
-            return  BinaryPrimitives.ReadInt32LittleEndian(PublicKey.Bytes);
+            return BinaryPrimitives.ReadInt32LittleEndian(PublicKey.Bytes);
         }
-
-        public const int SszLength = BlsPublicKey.SszLength + Sha256.SszLength + Gwei.SszLength +  1 + 4 * Epoch.SszLength;
-        
-        public BlsPublicKey PublicKey { get; }
-        public Sha256 WithdrawalCredentials { get; set; }
-        
-        /// <summary>
-        /// Balance at stake
-        /// </summary>
-        public Gwei EffectiveBalance { get; set; }
-        public bool Slashed { get; set; }
-        
-        /// <summary>
-        /// When criteria for activation were met
-        /// </summary>
-        public Epoch ActivationEligibilityEpoch { get; set; }
-        public Epoch ActivationEpoch { get; set; }
-        public Epoch ExitEpoch { get; set; }
-        
-        /// <summary>
-        /// Can validator withdraw funds
-        /// </summary>
-        public Epoch WithdrawableEpoch { get; set; }
 
         public bool IsSlashable(Epoch epoch)
         {

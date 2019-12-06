@@ -1,13 +1,33 @@
 ﻿using System;
 using System.Buffers.Binary;
-using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core2.Types
 {
-    public class Hash32 : IEquatable<Hash32>, IComparable<Hash32>
+    public unsafe struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
     {
         public const int Length = 32;
+        
+//        private fixed byte Bytes[32];
+//
+//        public Hash32(ReadOnlySpan<byte> span)
+//        {
+//            if (span.Length != Length)
+//            {
+//                throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
+//            }
+//
+//            fixed (byte* ptr = Bytes)
+//            {
+//                var output = new Span<byte>(ptr, Length);
+//                span.CopyTo(output);
+//            }
+//        }
+//
+//        public Span<byte> AsSpan() => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
+
+        /*********************/
 
         private readonly byte[] _bytes;
 
@@ -17,23 +37,23 @@ namespace Nethermind.Core2.Types
             {
                 throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
             }
+
             _bytes = span.ToArray();
         }
 
-        private Hash32()
+        public Span<byte> AsSpan()
         {
-            _bytes = new byte[Length];
+            return new Span<byte>(_bytes);
         }
 
-        public static Hash32 Zero { get; } = new Hash32();
+        /*********************/
 
-        /// <summary>
-        /// Creates a deep copy of the object.
-        /// </summary>
-        public static Hash32 Clone(Hash32 other)
+        public bool Equals(Hash32 other)
         {
-            return new Hash32(other.AsSpan());
+            return AsSpan().SequenceEqual(other.AsSpan());
         }
+
+        public static Hash32 Zero { get; } = new Hash32(new byte[32]);
 
         public static explicit operator Hash32(byte[] bytes) => new Hash32(bytes);
 
@@ -54,29 +74,24 @@ namespace Nethermind.Core2.Types
             {
                 return right is null;
             }
-            return left.Equals(right);
-        }
 
-        public Span<byte> AsSpan()
-        {
-            return new Span<byte>(_bytes);
+            return left.Equals(right);
         }
 
         public int CompareTo(Hash32 other)
         {
             // lexicographic compare
-            return AsSpan().SequenceCompareTo(other._bytes);
+            return AsSpan().SequenceCompareTo(other.AsSpan());
         }
 
         public override bool Equals(object obj)
         {
-            return Equals(obj as Hash32);
-        }
+            if (obj is null)
+            {
+                return false;
+            }
 
-        public bool Equals(Hash32? other)
-        {
-            return !(other is null) &&
-                _bytes.SequenceEqual(other._bytes);
+            return Equals((Hash32) obj);
         }
 
         public override int GetHashCode()
@@ -86,7 +101,7 @@ namespace Nethermind.Core2.Types
 
         public override string ToString()
         {
-            return BitConverter.ToString(_bytes).Replace("-", "");
+            return AsSpan().ToHexString();
         }
 
         public Hash32 Xor(Hash32 other)
@@ -94,7 +109,7 @@ namespace Nethermind.Core2.Types
             return new Hash32(other.AsSpan().Xor(AsSpan()));
         }
     }
-    
+
 //     public unsafe struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
 //    {
 //        public const int Length = 32;
@@ -128,50 +143,7 @@ namespace Nethermind.Core2.Types
 //                span.CopyTo(output);
 //            }
 //        }
-//
-//        public static Hash32 Zero = default;
-//
-//        public static bool operator !=(Hash32? left, Hash32? right)
-//        {
-//            return !(left == right);
-//        }
-//
-//        public static bool operator ==(Hash32? left, Hash32? right)
-//        {
-//            if (left is null)
-//            {
-//                return right is null;
-//            }
-//            
-//            return left.Equals(right);
-//        }
 //        
 //        public Span<byte> AsSpan() => MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref this, 1));
-//
-//        public int CompareTo(Hash32 other)
-//        {
-//            // lexicographic compare
-//            return AsSpan().SequenceCompareTo(other.AsSpan());
-//        }
-//
-//        public override int GetHashCode()
-//        {
-//            return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
-//        }
-//
-//        public override string ToString()
-//        {
-//            return AsSpan().ToHexString();
-//        }
-//
-//        public Hash32 Xor(Hash32 other)
-//        {
-//            return new Hash32(other.AsSpan().Xor(AsSpan()));
-//        }
-//
-//        public bool Equals(Hash32 other)
-//        {
-//            return AsSpan().SequenceEqual(other.AsSpan());
-//        }
 //    }
 }
