@@ -42,6 +42,14 @@ jobs:
     - script: 
       - git submodule update --init src/Dirichlet src/rocksdb-sharp
       - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Test;
+        else 
+          dotnet test -c Release src/Nethermind/Nethermind.BeaconNode.Test; 
+        fi
+      name: "Nethermind.BeaconNode.Test"  
+    - script: 
+      - git submodule update --init src/Dirichlet src/rocksdb-sharp
+      - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
           dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Blockchain.Test;
         else 
           dotnet test -c Release src/Nethermind/Nethermind.Blockchain.Test; 
