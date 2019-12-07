@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core2.Types
 {

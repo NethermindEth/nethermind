@@ -16,7 +16,6 @@
 
 using System;
 using System.Buffers.Binary;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core2.Crypto
 {
@@ -37,7 +36,7 @@ namespace Nethermind.Core2.Crypto
         
         public bool Equals(BlsSignature other)
         {
-            return other != null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
         }
         
         public static bool operator !=(BlsSignature? left, BlsSignature? right)

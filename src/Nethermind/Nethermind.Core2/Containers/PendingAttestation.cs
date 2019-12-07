@@ -16,7 +16,6 @@
 
 using System;
 using System.Drawing;
-using Nethermind.Core.Extensions;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers

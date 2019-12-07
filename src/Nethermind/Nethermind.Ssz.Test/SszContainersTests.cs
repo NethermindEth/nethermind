@@ -23,6 +23,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Ssz.Test
 {

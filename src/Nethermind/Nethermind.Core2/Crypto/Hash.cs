@@ -19,8 +19,6 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Core2.Types;
 using Nethermind.HashLib;
 
@@ -50,12 +48,6 @@ namespace Nethermind.Core2.Crypto
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
         public static Hash32 Zero { get; } = Hash32.Zero;
-        
-        [DebuggerStepThrough]
-        public static Hash32 Compute(Rlp rlp)
-        {
-            return InternalCompute(rlp.Bytes);
-        }
 
         [DebuggerStepThrough]
         public static Hash32 Compute(byte[] input)

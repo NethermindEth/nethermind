@@ -19,9 +19,6 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core2.Crypto
 {
@@ -30,9 +27,7 @@ namespace Nethermind.Core2.Crypto
         public const int Length = 48;
 
         public const int SszLength = Length;
-
-        private Address _address;
-
+        
         public static BlsPublicKey Empty = new BlsPublicKey(new byte[Length]);
         
         public static BlsPublicKey TestKey1 = new BlsPublicKey(
@@ -41,7 +36,7 @@ namespace Nethermind.Core2.Crypto
             "202122232425262728292a2b2c2d2e2f");
 
         public BlsPublicKey(string hexString)
-            : this(Core.Extensions.Bytes.FromHexString(hexString))
+            : this(Core2.Bytes.FromHexString(hexString))
         {
         }
         
@@ -65,19 +60,11 @@ namespace Nethermind.Core2.Crypto
             Bytes = bytes;
         }
 
-        public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
-
         public byte[] Bytes { get; }
 
         public bool Equals(BlsPublicKey other)
         {
-            return other != null && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
-        }
-
-        private Address ComputeAddress()
-        {
-            Span<byte> hash = ValueKeccak.Compute(Bytes).BytesAsSpan;
-            return new Address(hash.Slice(12).ToArray());
+            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public override bool Equals(object obj)
@@ -119,7 +106,7 @@ namespace Nethermind.Core2.Crypto
                 return false;
             }
 
-            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Core2.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator !=(BlsPublicKey a, BlsPublicKey b)
