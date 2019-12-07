@@ -23,9 +23,11 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Mining;
 
@@ -39,17 +41,19 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISyncReport _syncReport;
+        private readonly IReceiptStorage _receiptStorage;
         private readonly ILogger _logger;
 
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
 
-        public BlockDownloader(IBlockTree blockTree, IBlockValidator blockValidator, ISealValidator sealValidator, ISyncReport syncReport, ILogManager logManager)
+        public BlockDownloader(IBlockTree blockTree, IBlockValidator blockValidator, ISealValidator sealValidator, ISyncReport syncReport, IReceiptStorage receiptStorage, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _syncBatchSize = new SyncBatchSize(logManager);
@@ -145,8 +149,10 @@ namespace Nethermind.Blockchain.Synchronization
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, bool shouldProcess = true)
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, bool shouldProcess = true, bool downloadReceipts = false)
         {
+            downloadReceipts &= !shouldProcess;
+            
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
@@ -200,8 +206,9 @@ namespace Nethermind.Blockchain.Synchronization
                         blocks[i - 1] = new Block(headers[i], BlockBody.Empty);
                     }
                 }
-                
-                Task<BlockBody[]> bodiesTask = hashes.Count == 0 ? Task.FromResult(new BlockBody[0]) : bestPeer.SyncPeer.GetBlocks(hashes.ToArray(), cancellation);
+
+                var blockHashes = hashes.ToArray();
+                Task<BlockBody[]> bodiesTask = blockHashes.Length == 0 ? Task.FromResult(new BlockBody[0]) : bestPeer.SyncPeer.GetBlocks(blockHashes, cancellation);
                 await bodiesTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
@@ -228,6 +235,14 @@ namespace Nethermind.Blockchain.Synchronization
                     return blocksSynced;
                 }
 
+                TxReceipt[][] receipts = null;
+                IDictionary<Keccak, IList<TxReceipt>> correctReceiptsBlocks = null;
+                if (downloadReceipts)
+                {
+                    receipts = await bestPeer.SyncPeer.GetReceipts(blockHashes, cancellation);
+                    correctReceiptsBlocks = new Dictionary<Keccak, IList<TxReceipt>>();
+                }
+                
                 BlockBody[] bodies = bodiesTask.Result;
                 for (int i = 0; i < bodies.Length; i++)
                 {
@@ -245,6 +260,32 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     blocks[indexMapping[i]].Body = body;
+
+                    if (downloadReceipts)
+                    {
+                        if (receipts.Length > i)
+                        {
+                            var blockReceipts = receipts[i];
+                            if (body.Transactions.Length == blockReceipts.Length)
+                            {
+                                var receiptsForBlock = new List<TxReceipt>();
+                                correctReceiptsBlocks[block.Hash] = receiptsForBlock;
+                                long gasUsedBefore = 0;
+
+                                for (int j = 0; j < body.Transactions.Length; j++)
+                                {
+                                    var transaction = body.Transactions[j];
+                                    if (blockReceipts.Length > j)
+                                    {
+                                        var receipt = blockReceipts[j];
+                                        BuildReceipt(receipt, block, transaction, j, gasUsedBefore);
+                                        receiptsForBlock.Add(receipt);
+                                        gasUsedBefore = receipt.GasUsedTotal;
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 _sinceLastTimeout++;
@@ -256,9 +297,22 @@ namespace Nethermind.Blockchain.Synchronization
                 int fullDataBlocksCount = 0;
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    if (blocks[i]?.Body != null)
+                    var block = blocks[i];
+                    if (block?.Body != null)
                     {
-                        fullDataBlocksCount++;
+                        IList<TxReceipt> receiptsForBlock = null;
+                        if (!downloadReceipts || block.Body.Transactions.Length == 0 || correctReceiptsBlocks?.TryGetValue(block.Hash, out receiptsForBlock) == true)
+                        {
+                            if (receiptsForBlock != null)
+                            {
+                                for (int j = 0; j < receiptsForBlock.Count; j++)
+                                {
+                                    _receiptStorage.Add(receiptsForBlock[j], true);
+                                }
+                            }
+                            
+                            fullDataBlocksCount++;
+                        }
                     }
                     else
                     {
@@ -309,6 +363,22 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             return blocksSynced;
+        }
+
+        private static void BuildReceipt(TxReceipt receipt, Block block, Transaction transaction, int j, long gasUsedBefore)
+        {
+            receipt.BlockHash = block.Hash;
+            receipt.BlockNumber = block.Number;
+            receipt.TxHash = transaction.Hash;
+            receipt.Index = j;
+            receipt.Sender = transaction.SenderAddress;
+            receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
+            receipt.ContractAddress = transaction.IsContractCreation ? transaction.To : null;
+            receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
+            if (receipt.StatusCode != StatusCode.Success)
+            {
+                receipt.StatusCode = receipt.Logs.Length == 0 ? StatusCode.Failure : StatusCode.Success;
+            }
         }
 
         private async Task<BlockHeader[]> RequestHeaders(PeerInfo bestPeer, CancellationToken cancellation, long currentNumber, int headersToRequest)
