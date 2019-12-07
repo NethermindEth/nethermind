@@ -67,15 +67,7 @@ namespace Nethermind.AuRa.Validators
 
         protected override Address[] Validators
         {
-            get
-            {
-                if (_validators == null && _blockTree.Head?.Number >= InitBlockNumber - 1)
-                {
-                    _validators = LoadValidatorsFromContract(_blockTree.Head);
-                }
-
-                return _validators;
-            }
+            get => _validators ??= LoadValidatorsFromContract(_blockTree.Head);
             set => _validators = value;
         }
         
@@ -88,8 +80,8 @@ namespace Nethermind.AuRa.Validators
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
-            ILogManager logManager, 
-            //IReceiptStorage receiptStorage,
+            IReceiptStorage receiptStorage,
+            ILogManager logManager,
             long startBlockNumber) : base(validator, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -97,7 +89,7 @@ namespace Nethermind.AuRa.Validators
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
-            //_receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             InitBlockNumber = startBlockNumber;
@@ -143,17 +135,12 @@ namespace Nethermind.AuRa.Validators
                     bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
                     if (reorganisationHappened)
                     {
-                        PendingValidators pendingValidators = null;
-                        if (!(block.Number <= CurrentPendingValidators?.BlockNumber))
-                        {
-                            pendingValidators = LoadPendingValidators();
-                        }
-
-                        SetPendingValidators(pendingValidators);
+                        SetPendingValidators(block.Number <= CurrentPendingValidators?.BlockNumber ? null : LoadPendingValidators());
                     }
                     else if (block.Number > _lastProcessedBlockNumber + 1) // blocks skipped, like fast sync
                     {
-                        // SetPendingValidators(TryGetInitChangeFromPastBlocks(_blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None), block.Number - 1), true);
+                        // TODO: Not working as we don't download receipts in fast sync
+                        SetPendingValidators(TryGetInitChangeFromPastBlocks(block.ParentHash), true);
                     }
                 }
                 else
@@ -171,18 +158,25 @@ namespace Nethermind.AuRa.Validators
             _lastProcessedBlockNumber = block.Number;
         }
 
-        private PendingValidators TryGetInitChangeFromPastBlocks(Block blockToCheck, long blockNumber)
+        private PendingValidators TryGetInitChangeFromPastBlocks(Keccak blockHash)
         {
             PendingValidators pendingValidators = null;
-            var lastFinalized = _blockFinalizationManager.GetLastFinalizedBy(blockNumber);
+            var lastFinalized = _blockFinalizationManager.GetLastFinalizedBy(blockHash);
             var toBlock = Math.Max(lastFinalized, InitBlockNumber);
-            while (blockToCheck?.Number >= toBlock)
+            var block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
+            while (block?.Number >= toBlock)
             {
-                var receipts = blockToCheck.Transactions.Select(t => _receiptStorage.Find(t.Hash)).Where(r => r != null).ToArray();
-                if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, blockToCheck.Header, receipts, out var potentialValidators))
+                var receipts = block.Transactions.Select(t => _receiptStorage.Find(t.Hash)).Where(r => r != null).ToArray();
+                if (ValidatorContract.CheckInitiateChangeEvent(ContractAddress, block.Header, receipts, out var potentialValidators))
                 {
-                    pendingValidators = new PendingValidators(blockToCheck.Number, blockToCheck.Hash, potentialValidators);
+                    if (Validators.SequenceEqual(potentialValidators))
+                    {
+                        break;
+                    }
+
+                    pendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
                 }
+                block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
             }
 
             return pendingValidators;

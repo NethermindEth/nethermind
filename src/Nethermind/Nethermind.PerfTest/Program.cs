@@ -260,6 +260,7 @@ namespace Nethermind.PerfTest
 
             var blockInfoRepository = new ChainLevelInfoRepository(blockInfosDb);
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, headersDb, blockInfosDb, blockInfoRepository, specProvider, transactionPool, _logManager));
+            var receiptStorage = new InMemoryReceiptStorage();
 
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
            
@@ -285,7 +286,7 @@ namespace Nethermind.PerfTest
             else if (chainSpec.SealEngineType == SealEngineType.AuRa)
             {
                 var abiEncoder = new AbiEncoder();
-                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(dbProvider.StateDb, stateProvider, abiEncoder, processor, blockTree, _logManager)
+                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(dbProvider.StateDb, stateProvider, abiEncoder, processor, blockTree, receiptStorage, _logManager)
                     .CreateValidatorProcessor(chainSpec.AuRa.Validators);
                     
                 sealValidator = new AuRaSealValidator(chainSpec.AuRa, new AuRaStepCalculator(chainSpec.AuRa.StepDuration, new Timestamper()), validatorProcessor, ethereumSigner, _logManager);
@@ -298,8 +299,6 @@ namespace Nethermind.PerfTest
             }
 
             /* store & validation */
-            
-            var receiptStorage = new InMemoryReceiptStorage();
             var headerValidator = new HeaderValidator(blockTree, sealValidator, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TxValidator(chainSpec.ChainId);

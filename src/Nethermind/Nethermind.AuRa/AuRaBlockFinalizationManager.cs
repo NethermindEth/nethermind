@@ -88,7 +88,7 @@ namespace Nethermind.AuRa
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
-                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)} : {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
+                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
                 
                 LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
@@ -235,9 +235,53 @@ namespace Nethermind.AuRa
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
         
-        public long GetLastFinalizedBy(in long blockNumber)
+        public long GetLastFinalizedBy(Keccak headHash)
         {
-            return GetFinalizedBlocks(_blockTree.FindHeader(blockNumber, BlockTreeLookupOptions.None)).LastOrDefault()?.Number ?? LastFinalizedBlockLevel;
+            var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = _auRaValidator.MinSealersForFinalization;
+            while (block.Number > 0)
+            {
+                validators.Add(block.Beneficiary);
+                if (validators.Count >= minSealersForFinalization)
+                {
+                    return block.Number;
+                }
+
+                block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+            }
+            
+            return 0;
+        }
+
+        public long? GetFinalizedLevel(long blockLevel)
+        {
+            BlockInfo GetBlockInfo(long level)
+            {
+                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(level);
+                return  chainLevelInfo?.MainChainBlock ?? chainLevelInfo?.BlockInfos[0];
+            }
+
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = _auRaValidator.MinSealersForFinalization;
+            var blockInfo = GetBlockInfo(blockLevel);
+            while (blockInfo != null)
+            {
+                var block = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+                if (_auRaValidator.IsValidSealer(block.Beneficiary, block.AuRaStep.Value))
+                {
+                    validators.Add(block.Beneficiary);
+                    if (validators.Count >= minSealersForFinalization)
+                    {
+                        return block.Number;
+                    }
+                }
+
+                blockLevel++;
+                blockInfo = GetBlockInfo(blockLevel);
+            }
+
+            return null;
         }
 
         public long LastFinalizedBlockLevel

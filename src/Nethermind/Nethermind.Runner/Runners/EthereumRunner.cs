@@ -656,7 +656,7 @@ namespace Nethermind.Runner.Runners
                     case SealEngineType.AuRa:
                     {
                         IAuRaValidatorProcessor validator = null;
-                        var producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
+                        var producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _receiptStorage, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
                         if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
                         _blockProducer = new AuRaBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _nodeKey.Address, _sealer, producerChain.ReadOnlyStateProvider, _configProvider.GetConfig<IAuraConfig>(), _logManager);
                         validator.SetFinalizationManager(_finalizationManager, true);
@@ -719,7 +719,7 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _blockTree, _logManager)
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                     
                     var auRaStepCalculator = new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper);    
