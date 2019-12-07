@@ -24,10 +24,15 @@ namespace Ethereum2.Bls.Test
 {
     public static class YamlNodeExtensions
     {
-        public static T Prop<T>(this YamlNode yamlNode, string propertyName) where T : class
+        public static T? Prop<T>(this YamlNode yamlNode, string propertyName) where T : class
         {
-            YamlMappingNode mappingNode = yamlNode as YamlMappingNode;
-            return (T) Convert.ChangeType((mappingNode[propertyName] as YamlScalarNode).Value, typeof(T));
+            YamlMappingNode? mappingNode = yamlNode as YamlMappingNode;
+            if (mappingNode is null)
+            {
+                return null;
+            }
+            
+            return (T) Convert.ChangeType((mappingNode[propertyName] as YamlScalarNode)?.Value, typeof(T));
         }
 
         public static T[] ArrayProp<T>(this YamlNode yamlNode, string propertyName) where T : class

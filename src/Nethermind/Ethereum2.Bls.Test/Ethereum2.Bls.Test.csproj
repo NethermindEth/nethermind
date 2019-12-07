@@ -4,6 +4,7 @@
         <TargetFramework>netcoreapp3.0</TargetFramework>
         <IsPackable>false</IsPackable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

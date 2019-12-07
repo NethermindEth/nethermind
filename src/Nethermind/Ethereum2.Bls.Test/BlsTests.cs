@@ -20,7 +20,7 @@ using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Bls;
-using Nethermind.Core.Extensions;
+using Nethermind.Core2;
 using NUnit.Framework;
 using YamlDotNet.RepresentationModel;
 
@@ -99,7 +99,7 @@ namespace Ethereum2.Bls.Test
             string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_uncompressed", "small"));
             (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
             var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
-            string[][] outputHex = node.ArrayProp<string[]>("output", sequence => sequence.Children.Select(c => (c as YamlScalarNode).Value).ToArray());
+            string[][] outputHex = node.ArrayProp<string[]>("output", sequence => sequence.Children.Select(c => (c as YamlScalarNode)?.Value).ToArray());
             throw new NotImplementedException();
         }
 

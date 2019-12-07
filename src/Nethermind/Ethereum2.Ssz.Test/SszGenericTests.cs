@@ -95,7 +95,7 @@ namespace Ethereum2.Ssz.Test
                     YamlSequenceNode sequenceNode = (YamlSequenceNode) valueNode;
                     if (validDir.Contains("bool"))
                     {
-                        bool[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => bool.Parse(sn.Value)).ToArray();
+                        bool[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => bool.Parse(sn?.Value ?? "false")).ToArray();
                         bool[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeBools(ssz).ToArray();
                         output = new byte[value.Length];
                         Nethermind.Ssz.Ssz.Encode(output, value);
