@@ -26,54 +26,69 @@ namespace Nethermind.Core2.Containers
             bool basicEquality = Equals(RandaoReversal, other.RandaoReversal) &&
                                  Equals(Eth1Data, other.Eth1Data) &&
                                  Bytes.AreEqual(Graffiti, other.Graffiti) &&
-                                 ProposerSlashings.Length == other.ProposerSlashings.Length &&
-                                 AttesterSlashings.Length == other.AttesterSlashings.Length &&
-                                 Attestations.Length == other.Attestations.Length &&
-                                 Deposits.Length == other.Deposits.Length &&
-                                 VoluntaryExits.Length == other.VoluntaryExits.Length;
+                                 (ProposerSlashings?.Length ?? 0) == (other.ProposerSlashings?.Length ?? 0) &&
+                                 (AttesterSlashings?.Length ?? 0) == (other.AttesterSlashings?.Length ?? 0) &&
+                                 (Attestations?.Length ?? 0) == (other.Attestations?.Length ?? 0) &&
+                                 (Deposits?.Length ?? 0) == (other.Deposits?.Length ?? 0) &&
+                                 (VoluntaryExits?.Length ?? 0) == (other.VoluntaryExits?.Length ?? 0);
 
             if (!basicEquality)
             {
                 return false;
             }
-            
-            for (int i = 0; i < AttesterSlashings.Length; i++)
+
+            if (!(AttesterSlashings is null) && !(other.AttesterSlashings is null))
             {
-                if (!Equals(AttesterSlashings[i], other.AttesterSlashings[i]))
+                for (int i = 0; i < AttesterSlashings.Length; i++)
                 {
-                    return false;
+                    if (!Equals(AttesterSlashings[i], other.AttesterSlashings[i]))
+                    {
+                        return false;
+                    }
                 }
             }
 
-            for (int i = 0; i < ProposerSlashings.Length; i++)
+            if (!(ProposerSlashings is null) && !(other.ProposerSlashings is null))
             {
-                if (!Equals(ProposerSlashings[i], other.ProposerSlashings[i]))
+                for (int i = 0; i < ProposerSlashings.Length; i++)
                 {
-                    return false;
+                    if (!Equals(ProposerSlashings[i], other.ProposerSlashings[i]))
+                    {
+                        return false;
+                    }
                 }
             }
-            
-            for (int i = 0; i < Attestations.Length; i++)
+
+            if (!(Attestations is null) && !(other.Attestations is null))
             {
-                if (!Equals(Attestations[i], other.Attestations[i]))
+                for (int i = 0; i < Attestations.Length; i++)
                 {
-                    return false;
+                    if (!Equals(Attestations[i], other.Attestations[i]))
+                    {
+                        return false;
+                    }
                 }
             }
-            
-            for (int i = 0; i < Deposits.Length; i++)
+
+            if (!(Deposits is null) && !(other.Deposits is null))
             {
-                if (!Equals(Deposits[i], other.Deposits[i]))
+                for (int i = 0; i < Deposits.Length; i++)
                 {
-                    return false;
+                    if (!Equals(Deposits[i], other.Deposits[i]))
+                    {
+                        return false;
+                    }
                 }
             }
-            
-            for (int i = 0; i < VoluntaryExits.Length; i++)
+
+            if (!(VoluntaryExits is null) && !(other.VoluntaryExits is null))
             {
-                if (!Equals(VoluntaryExits[i], other.VoluntaryExits[i]))
+                for (int i = 0; i < VoluntaryExits.Length; i++)
                 {
-                    return false;
+                    if (!Equals(VoluntaryExits[i], other.VoluntaryExits[i]))
+                    {
+                        return false;
+                    }
                 }
             }
 
@@ -94,36 +109,47 @@ namespace Nethermind.Core2.Containers
 
         public const int SszDynamicOffset = BlsSignature.SszLength + Eth1Data.SszLength + 32 + 5 * sizeof(uint);
 
-        public static int SszLength(BeaconBlockBody container)
+        public static int SszLength(BeaconBlockBody? container)
         {
-            int result = SszDynamicOffset;
-            
-            result += ProposerSlashing.SszLength * container.ProposerSlashings.Length;
-            result += Deposit.SszLength * container.Deposits.Length;
-            result += VoluntaryExit.SszLength * container.VoluntaryExits.Length;
-
-            result += sizeof(uint) * container.AttesterSlashings.Length;
-            for (int i = 0; i < container.AttesterSlashings.Length; i++)
+            if (container is null)
             {
-                result += AttesterSlashing.SszLength(container.AttesterSlashings[i]);
+                return 0;
             }
 
-            result += sizeof(uint) * container.Attestations.Length;
-            for (int i = 0; i < container.Attestations.Length; i++)
+            int result = SszDynamicOffset;
+
+            result += ProposerSlashing.SszLength * (container.ProposerSlashings?.Length ?? 0);
+            result += Deposit.SszLength * (container.Deposits?.Length ?? 0);
+            result += VoluntaryExit.SszLength * (container.VoluntaryExits?.Length ?? 0);
+
+            result += sizeof(uint) * (container.AttesterSlashings?.Length ?? 0);
+            if (!(container.AttesterSlashings is null))
             {
-                result += Attestation.SszLength(container.Attestations[i]);
+                for (int i = 0; i < container.AttesterSlashings.Length; i++)
+                {
+                    result += AttesterSlashing.SszLength(container.AttesterSlashings[i]);
+                }
+            }
+
+            result += sizeof(uint) * (container.Attestations?.Length ?? 0);
+            if (!(container.Attestations is null))
+            {
+                for (int i = 0; i < container.Attestations.Length; i++)
+                {
+                    result += Attestation.SszLength(container.Attestations[i]);
+                }
             }
 
             return result;
         }
 
-        public BlsSignature RandaoReversal { get; set; }
-        public Eth1Data Eth1Data { get; set; }
+        public BlsSignature RandaoReversal { get; set; } = BlsSignature.Empty;
+        public Eth1Data? Eth1Data { get; set; }
         public byte[] Graffiti { get; set; } = new byte[32];
-        public ProposerSlashing[] ProposerSlashings { get; set; }
-        public AttesterSlashing[] AttesterSlashings { get; set; }
-        public Attestation?[] Attestations { get; set; }
-        public Deposit?[] Deposits { get; set; }
-        public VoluntaryExit[] VoluntaryExits { get; set; }
+        public ProposerSlashing[]? ProposerSlashings { get; set; }
+        public AttesterSlashing[]? AttesterSlashings { get; set; }
+        public Attestation?[]? Attestations { get; set; }
+        public Deposit?[]? Deposits { get; set; }
+        public VoluntaryExit[]? VoluntaryExits { get; set; }
     }
 }

@@ -28,7 +28,7 @@ namespace Nethermind.Core2.Containers
         public Hash32 ParentRoot { get; set; }
         public Hash32 StateRoot { get; set; }
         public Hash32 BodyRoot { get; set; }
-        public BlsSignature Signature { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
         
         public bool Equals(BeaconBlockHeader other)
         {
@@ -39,7 +39,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

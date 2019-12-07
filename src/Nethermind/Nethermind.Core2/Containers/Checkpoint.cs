@@ -48,7 +48,7 @@ namespace Nethermind.Core2.Containers
             return Epoch == other.Epoch && Root == other.Root;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Checkpoint other && Equals(other);
         }

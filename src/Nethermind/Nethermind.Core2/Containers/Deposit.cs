@@ -30,7 +30,7 @@ namespace Nethermind.Core2.Containers
         public const int SszLength = SszLengthOfProof + DepositData.SszLength;
         
         public Hash32[] Proof = Enumerable.Repeat(Hash32.Zero, ContractTreeDepth + 1).ToArray();
-        public DepositData Data { get; set; }
+        public DepositData? Data { get; set; }
         
         public bool Equals(Deposit other)
         {
@@ -50,7 +50,7 @@ namespace Nethermind.Core2.Containers
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

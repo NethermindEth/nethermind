@@ -25,7 +25,7 @@ namespace Nethermind.Core2.Containers
             return Equals(DepositRoot, other.DepositRoot) && DepositCount == other.DepositCount && Equals(BlockHash, other.BlockHash);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

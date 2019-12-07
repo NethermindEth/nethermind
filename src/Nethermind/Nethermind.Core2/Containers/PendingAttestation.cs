@@ -27,7 +27,7 @@ namespace Nethermind.Core2.Containers
                                             Slot.SszLength +
                                             ValidatorIndex.SszLength;
         
-        public static int SszLength(PendingAttestation value)
+        public static int SszLength(PendingAttestation? value)
         {
             if (value == null)
             {

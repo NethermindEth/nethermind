@@ -26,8 +26,13 @@ namespace Nethermind.Core2.Containers
                                             AttestationData.SszLength +
                                             BlsSignature.SszLength;
         
-        public static int SszLength(IndexedAttestation value)
+        public static int SszLength(IndexedAttestation? value)
         {
+            if (value is null)
+            {
+                return 0;
+            }
+            
             return SszDynamicOffset +
                    (value.AttestingIndices?.Length ?? 0) * ValidatorIndex.SszLength;
         }

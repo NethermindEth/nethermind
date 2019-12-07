@@ -24,9 +24,9 @@ namespace Nethermind.Core2.Containers
     {
         public const int SszDynamicOffset = Slot.SszLength + 2 * Hash32.SszLength + sizeof(uint) + BlsSignature.SszLength;
         
-        public static int SszLength(BeaconBlock container)
+        public static int SszLength(BeaconBlock? container)
         {
-            return SszDynamicOffset + BeaconBlockBody.SszLength(container.Body);
+            return container is null ? 0 : (SszDynamicOffset + BeaconBlockBody.SszLength(container.Body));
         }
         
         public Slot Slot { get; set; }

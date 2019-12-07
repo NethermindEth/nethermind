@@ -137,7 +137,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[PendingAttestation.SszLength(container)];
             Ssz.Encode(encoded, container);
-            PendingAttestation decoded = Ssz.DecodePendingAttestation(encoded);
+            PendingAttestation? decoded = Ssz.DecodePendingAttestation(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -229,7 +229,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[ProposerSlashing.SszLength];
             Ssz.Encode(encoded, container);
-            ProposerSlashing decoded = Ssz.DecodeProposerSlashing(encoded);
+            ProposerSlashing? decoded = Ssz.DecodeProposerSlashing(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -261,7 +261,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[AttesterSlashing.SszLength(container)];
             Ssz.Encode(encoded, container);
-            AttesterSlashing decoded = Ssz.DecodeAttesterSlashing(encoded);
+            AttesterSlashing? decoded = Ssz.DecodeAttesterSlashing(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -284,7 +284,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[Attestation.SszLength(container)];
             Ssz.Encode(encoded, container);
-            Attestation decoded = Ssz.DecodeAttestation(encoded);
+            Attestation? decoded = Ssz.DecodeAttestation(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -305,7 +305,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[Deposit.SszLength];
             Ssz.Encode(encoded, container);
-            Deposit decoded = Ssz.DecodeDeposit(encoded);
+            Deposit? decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -321,7 +321,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[VoluntaryExit.SszLength];
             Ssz.Encode(encoded, container);
-            VoluntaryExit decoded = Ssz.DecodeVoluntaryExit(encoded);
+            VoluntaryExit? decoded = Ssz.DecodeVoluntaryExit(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);

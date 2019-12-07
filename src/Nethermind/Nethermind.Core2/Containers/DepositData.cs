@@ -24,10 +24,10 @@ namespace Nethermind.Core2.Containers
     {
         public const int SszLength = BlsPublicKey.SszLength + Hash32.SszLength + Gwei.SszLength + BlsSignature.SszLength;
 
-        public BlsPublicKey PublicKey { get; set; }
+        public BlsPublicKey PublicKey { get; set; } = BlsPublicKey.Empty;
         public Hash32 WithdrawalCredentials { get; set; }
         public Gwei Amount { get; set; }
-        public BlsSignature Signature { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
         
         public bool Equals(DepositData other)
         {
@@ -37,7 +37,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

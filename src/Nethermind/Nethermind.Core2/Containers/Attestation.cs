@@ -25,14 +25,14 @@ namespace Nethermind.Core2.Containers
         
         public static readonly uint MaxValidatorsPerCommittee = 2048;
         
-        public static int SszLength(Attestation container)
+        public static int SszLength(Attestation? container)
         {
             if (container == null)
             {
                 return 0;
             }
             
-            return SszDynamicOffset + container.AggregationBits.Length;
+            return SszDynamicOffset + container.AggregationBits?.Length ?? 0;
         }
         
         public byte[]? AggregationBits { get; set; }
