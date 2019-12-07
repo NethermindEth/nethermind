@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
@@ -179,9 +180,17 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
 
-            store.TryGetBlock(attestation.Data.BeaconBlockRoot, out var parentBlock);
+            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out BeaconBlock? parentBlock) || parentBlock is null)
+            {
+                throw new InvalidDataException("Cannot retrieve parent block");
+            }
+            
             var parentSigningRoot = parentBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            store.TryGetBlockState(parentSigningRoot, out var preState);
+            if (!store.TryGetBlockState(parentSigningRoot, out BeaconState? preState) || preState is null)
+            {
+                throw new InvalidDataException("Cannot retrieve pre state");
+            }
+            
             var blockTime = preState.GenesisTime + (ulong)parentBlock.Slot * timeParameters.SecondsPerSlot;
             var nextEpochTime = blockTime + (ulong)timeParameters.SlotsPerEpoch * timeParameters.SecondsPerSlot;
 
@@ -198,7 +207,11 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
 
-            store.TryGetBlockState(block.ParentRoot, out var preState);
+            if (!store.TryGetBlockState(block.ParentRoot, out BeaconState? preState) || preState is null)
+            {
+                throw new InvalidDataException("Cannot retrieve pre state");
+            }
+            
             var blockTime = preState.GenesisTime + (ulong)block.Slot * timeParameters.SecondsPerSlot;
 
             if (store.Time < blockTime)

@@ -343,14 +343,14 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Gwei GetTotalBalance(BeaconState state, IEnumerable<ValidatorIndex> validatorIndices)
         {
-            var total = new Gwei(0);
+            var total = Gwei.Zero;
             foreach (var index in validatorIndices)
             {
                 var validator = state.Validators[(int)(ulong)index];
                 var balance = validator.EffectiveBalance;
                 total += balance;
             }
-            if (total == new Gwei(0))
+            if (total == Gwei.Zero)
             {
                 return new Gwei(1);
             }

@@ -83,7 +83,7 @@ namespace Nethermind.BeaconNode.Containers
             return HashCode.Combine(BodyRoot, ParentRoot, Signature, Slot, StateRoot);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             var other = obj as BeaconBlockHeader;
             return !(other is null) && Equals(other);

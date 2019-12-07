@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Containers
             return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Domain type && Equals(type);
         }

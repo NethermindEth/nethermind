@@ -32,12 +32,12 @@ namespace Nethermind.BeaconNode.Storage
 
         void SetTime(ulong time);
 
-        bool TryGetBlock(Hash32 signingRoot, out BeaconBlock block);
+        bool TryGetBlock(Hash32 signingRoot, out BeaconBlock? block);
 
-        bool TryGetBlockState(Hash32 signingRoot, out BeaconState state);
+        bool TryGetBlockState(Hash32 signingRoot, out BeaconState? state);
 
-        bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState state);
+        bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState? state);
 
-        bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage latestMessage);
+        bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage? latestMessage);
     }
 }

@@ -96,20 +96,19 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             var minimum = gweiValues.EjectionBalance;
             var increment = gweiValues.EffectiveBalanceIncrement;
             var halfIncrement = increment / 2;
-            var one = new Gwei(1);
 
             var testCases = new[] {
                 new EffectiveBalanceCase(maximum, maximum, maximum, "as-is"),
-                new EffectiveBalanceCase(maximum, maximum - one, maximum - increment, "round down, step lower"),
-                new EffectiveBalanceCase(maximum, maximum + one, maximum, "round down"),
+                new EffectiveBalanceCase(maximum, maximum - 1, maximum - increment, "round down, step lower"),
+                new EffectiveBalanceCase(maximum, maximum + 1, maximum, "round down"),
                 new EffectiveBalanceCase(maximum, maximum - increment, maximum - increment, "exactly 1 step lower"),
-                new EffectiveBalanceCase(maximum, maximum - increment - one, maximum - (increment * 2), "just 1 over 1 step lower"),
-                new EffectiveBalanceCase(maximum, maximum - increment + one, maximum - increment, "close to 1 step lower"),
+                new EffectiveBalanceCase(maximum, maximum - increment - 1, maximum - (increment * 2), "just 1 over 1 step lower"),
+                new EffectiveBalanceCase(maximum, maximum - increment + 1, maximum - increment, "close to 1 step lower"),
                 new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 3), minimum, "bigger balance, but not high enough"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 3) + one, minimum + increment, "bigger balance, high enough, but small step"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4) - one, minimum + increment, "bigger balance, high enough, close to double step"),
+                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 3) + 1, minimum + increment, "bigger balance, high enough, but small step"),
+                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4) - 1, minimum + increment, "bigger balance, high enough, close to double step"),
                 new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4), minimum + (increment * 2), "exact two step balance increment"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4) + one, minimum + (increment * 2), "over two steps, round down"),
+                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4) + 1, minimum + (increment * 2), "over two steps, round down"),
             };
 
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);

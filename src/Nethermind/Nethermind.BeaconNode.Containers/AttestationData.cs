@@ -47,7 +47,7 @@ namespace Nethermind.BeaconNode.Containers
                 && Target.Equals(other.Target);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return Equals(obj as AttestationData);
         }

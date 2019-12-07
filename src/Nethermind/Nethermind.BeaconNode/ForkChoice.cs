@@ -66,10 +66,11 @@ namespace Nethermind.BeaconNode
         {
             // NOTE: This method should probably live in IStore, for various efficient implementations.
 
-            if (!store.TryGetBlock(root, out var block))
+            if (!store.TryGetBlock(root, out BeaconBlock? block) || block is null)
             {
                 throw new Exception($"Block not found for get ancestor root {root}.");
             }
+
             if (block.Slot > slot)
             {
                 return GetAncestor(store, block.ParentRoot, slot);
@@ -160,18 +161,20 @@ namespace Nethermind.BeaconNode
 
         public Gwei GetLatestAttestingBalance(IStore store, Hash32 root)
         {
-            if (!store.TryGetCheckpointState(store.JustifiedCheckpoint, out var state))
+            if (!store.TryGetCheckpointState(store.JustifiedCheckpoint, out BeaconState? state) || state is null)
             {
-                throw new Exception();
+                throw new Exception($"Not able to get checkpoint state {store.JustifiedCheckpoint}");
             }
+            
             var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             var activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
-            if (!store.TryGetBlock(root, out var rootBlock))
+            if (!store.TryGetBlock(root, out BeaconBlock rootBlock) || rootBlock is null)
             {
-                throw new Exception();
+                throw new Exception($"Not ble to find block {root}");
             }
-            var rootSlot = rootBlock.Slot;
-            var balance = new Gwei(0);
+            
+            Slot rootSlot = rootBlock.Slot;
+            Gwei balance = Gwei.Zero;
             foreach (var index in activeIndexes)
             {
                 if (store.TryGetLatestMessage(index, out var latestMessage))
