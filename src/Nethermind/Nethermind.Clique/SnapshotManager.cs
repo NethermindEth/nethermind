@@ -61,7 +61,10 @@ namespace Nethermind.Clique
             int extraSeal = 65;
 
             // Retrieve the signature from the header extra-data
-            if (header.ExtraData.Length < extraSeal) return null;
+            if (header.ExtraData.Length < extraSeal)
+            {
+                throw new BlockchainException($"Clique block without sealer extra data{Environment.NewLine}{header.ToString(BlockHeader.Format.Full)}");
+            }
 
             var signatureBytes = header.ExtraData.AsSpan().Slice(header.ExtraData.Length - extraSeal, extraSeal);
             Signature signature = new Signature(signatureBytes);
@@ -93,8 +96,8 @@ namespace Nethermind.Clique
 
         public Snapshot GetOrCreateSnapshot(long number, Keccak hash)
         {
-            Snapshot snapshot = GetSnapshot(number, hash);
-            if (snapshot != null)
+            Snapshot? snapshot = GetSnapshot(number, hash);
+            if (!(snapshot is null))
             {
                 return snapshot;
             }
@@ -120,7 +123,7 @@ namespace Nethermind.Clique
                     Keccak parentHash = header.ParentHash;
                     if (IsEpochTransition(number))
                     {
-                        Snapshot parentSnapshot = GetSnapshot(number - 1, parentHash);
+                        Snapshot? parentSnapshot = GetSnapshot(number - 1, parentHash);
                         
                         if(_logger.IsInfo) _logger.Info($"Creating epoch snapshot at block {number}");
                         int signersCount = CalculateSignersCount(header);
@@ -150,7 +153,7 @@ namespace Nethermind.Clique
 
                     for (int i = 0; i < headers.Count; i++)
                     {
-                        headers[i].Author = headers[i].Author ?? GetBlockSealer(headers[i]);
+                        headers[i].Author ??= GetBlockSealer(headers[i]);
                     }
 
                     int countBefore = snapshot.Signers.Count;
@@ -201,7 +204,7 @@ namespace Nethermind.Clique
             return (ulong) number % _cliqueConfig.Epoch == 0;
         }
 
-        private Snapshot GetSnapshot(long number, Keccak hash)
+        private Snapshot? GetSnapshot(long number, Keccak hash)
         {
             // If an in-memory snapshot was found, use that
             Snapshot cachedSnapshot = _snapshotCache.Get(hash);
@@ -210,7 +213,7 @@ namespace Nethermind.Clique
             // If an on-disk checkpoint snapshot can be found, use that
             if ((ulong) number % Clique.CheckpointInterval == 0)
             {
-                Snapshot persistedSnapshot = LoadSnapshot(hash);
+                Snapshot? persistedSnapshot = LoadSnapshot(hash);
                 if (persistedSnapshot != null) return persistedSnapshot;
             }
 
@@ -229,7 +232,7 @@ namespace Nethermind.Clique
         private SnapshotDecoder _decoder = new SnapshotDecoder();
 
         [Todo(Improve.Refactor, "I guess it was only added here because of the use of blocksdb")]
-        private Snapshot LoadSnapshot(Keccak hash)
+        private Snapshot? LoadSnapshot(Keccak hash)
         {
             Keccak key = GetSnapshotKey(hash);
             var bytes = _blocksDb.Get(key);

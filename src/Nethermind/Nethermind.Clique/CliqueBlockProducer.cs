@@ -93,7 +93,7 @@ namespace Nethermind.Clique
 
         private readonly BlockingCollection<Block> _signalsQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
 
-        private Block _scheduledBlock;
+        private Block? _scheduledBlock;
 
         public void CastVote(Address signer, bool vote)
         {
@@ -127,7 +127,7 @@ namespace Nethermind.Clique
                     return;
                 }
                 
-                Block scheduledBlock = _scheduledBlock;
+                Block? scheduledBlock = _scheduledBlock;
                 if (scheduledBlock == null)
                 {
                     if (_blockTree.Head.Timestamp + _config.BlockPeriod < _timestamper.EpochSeconds)
@@ -141,7 +141,7 @@ namespace Nethermind.Clique
 
                 string turnDescription = scheduledBlock.IsInTurn() ? "IN TURN" : "OUT OF TURN";
                 
-                int wiggle = _wiggle.WiggleFor(_scheduledBlock.Header);
+                int wiggle = _wiggle.WiggleFor(scheduledBlock.Header);
                 if (scheduledBlock.Timestamp * 1000 + (UInt256)wiggle < _timestamper.EpochMilliseconds)
                 {
                     if (scheduledBlock.TotalDifficulty > _blockTree.Head.TotalDifficulty)
@@ -181,7 +181,7 @@ namespace Nethermind.Clique
             }
         }
 
-        private Task _producerTask;
+        private Task? _producerTask;
 
         public void Start()
         {
@@ -207,7 +207,7 @@ namespace Nethermind.Clique
             });
         }
 
-        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
         {
             _signalsQueue.Add(e.Block);
         }
@@ -217,7 +217,7 @@ namespace Nethermind.Clique
             foreach (Block signal in _signalsQueue.GetConsumingEnumerable(_cancellationTokenSource.Token))
             {
                 Block parentBlock = signal;
-                while (_signalsQueue.TryTake(out Block nextSignal))
+                while (_signalsQueue.TryTake(out Block? nextSignal))
                 {
                     if (parentBlock.Number <= nextSignal.Number)
                     {
@@ -227,8 +227,8 @@ namespace Nethermind.Clique
 
                 try
                 {
-                    Block block = PrepareBlock(parentBlock);
-                    if (block == null)
+                    Block? block = PrepareBlock(parentBlock);
+                    if (block is null)
                     {
                         if (_logger.IsTrace) _logger.Trace("Skipping block production or block production failed");
                         continue;
@@ -282,9 +282,9 @@ namespace Nethermind.Clique
             await (_producerTask ?? Task.CompletedTask);
         }
 
-        private Keccak _recentNotAllowedParent;
+        private Keccak? _recentNotAllowedParent;
 
-        private Block PrepareBlock(Block parentBlock)
+        private Block? PrepareBlock(Block parentBlock)
         {
             BlockHeader parentHeader = parentBlock.Header;
             if (parentHeader == null)
