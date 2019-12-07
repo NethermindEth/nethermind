@@ -13,7 +13,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
-    <PackageReference Include="NLog" Version="4.6.7" />
+    <PackageReference Include="NLog" Version="4.6.8" />
     <PackageReference Include="Seq.Api" Version="5.1.1" />
     <PackageReference Include="YamlDotNet" Version="8.0.0" />
   </ItemGroup>
@@ -41,6 +41,7 @@
       <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
       <Name>Nethermind.JsonRpc</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj" />
     <ProjectReference Include="..\Nethermind.Monitoring\Nethermind.Monitoring.csproj" />
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />

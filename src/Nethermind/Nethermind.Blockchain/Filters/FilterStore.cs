@@ -24,8 +24,6 @@ using System.Linq;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using NLog.Filters;
 
 namespace Nethermind.Blockchain.Filters
 {

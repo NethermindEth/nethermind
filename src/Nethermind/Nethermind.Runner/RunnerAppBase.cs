@@ -44,6 +44,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
@@ -231,6 +232,12 @@ namespace Nethermind.Runner
                 _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
                     metricsParams.PushGatewayUrl, ClientVersion.Description,
                     metricsParams.NodeName, intervalSeconds, logManager);
+                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Store.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
+
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during starting a monitoring.", x.Exception);

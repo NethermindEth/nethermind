@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 
-namespace Nethermind.Logging
+namespace Nethermind.Logging.NLog
 {
     public class NLogManager : ILogManager
     {

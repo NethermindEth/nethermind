@@ -70,6 +70,11 @@ namespace Nethermind.Monitoring
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}, client: {_clientVersion}");
         }
 
+        public void RegisterMetrics(Type type)
+        {
+            _metricsUpdater.RegisterMetrics(type);
+        }
+        
         public Task StopAsync()
         {
             _metricsUpdater.StopUpdating();

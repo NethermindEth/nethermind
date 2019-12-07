@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner
+using NUnit.Framework;
+
+namespace Nethermind.Logging.NLog.Test
 {
-    public static class Metrics
+    [TestFixture]
+    public class NLogManagerTests
     {
-        public static long JsonRpcRequests { get; set; }
-        public static long JsonRpcRequestDeserializationFailures { get; set; }
-        public static long JsonRpcInvalidRequests { get; set; }
-        public static long JsonRpcErrors { get; set; }
-        public static long JsonRpcSuccesses { get; set; }
+        [Test]
+        public void Logger_name_is_set_to_full_class_name()
+        {
+            NLogManager manager = new NLogManager("test", null);
+            NLogLogger logger = (NLogLogger)manager.GetClassLogger();
+            Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Logger.Name);
+        }
     }
 }

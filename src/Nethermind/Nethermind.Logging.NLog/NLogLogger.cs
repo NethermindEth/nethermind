@@ -19,9 +19,13 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using NLog.Targets;
+using NLog.Filters;
 
-namespace Nethermind.Logging
+[assembly: InternalsVisibleTo("Nethermind.Logging.NLog.Test")]
+
+namespace Nethermind.Logging.NLog
 {
     public class NLogLogger : ILogger
     {
@@ -31,12 +35,12 @@ namespace Nethermind.Logging
         public bool IsDebug { get; }
         public bool IsTrace { get; }
 
-        internal readonly NLog.Logger Logger;
+        internal readonly global::NLog.Logger Logger;
 
         public NLogLogger(Type type, string fileName, string logDirectory = null, string loggerName = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? type.FullName.Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = NLog.LogManager.GetLogger(loggerName);
+            Logger = global::NLog.LogManager.GetLogger(loggerName);
 
             var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath() : logDirectory;
             if (!Directory.Exists(logsDir))
@@ -44,7 +48,7 @@ namespace Nethermind.Logging
                 Directory.CreateDirectory(logsDir);
             }
 
-            if (NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
+            if (global::NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
                 target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine(logsDir, fileName) : fileName;
             }
@@ -61,7 +65,8 @@ namespace Nethermind.Logging
         public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
         {
             loggerName = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = NLog.LogManager.GetLogger(loggerName);
+            Logger = global::NLog.LogManager.GetLogger(loggerName);
+            global::NLog.LogManager.GetLogger(loggerName);
 
             var logsDir = string.IsNullOrEmpty(logDirectory) ? "logs".GetApplicationResourcePath(): logDirectory;
             if (!Directory.Exists(logsDir))
@@ -69,7 +74,7 @@ namespace Nethermind.Logging
                 Directory.CreateDirectory(logsDir);
             }
 
-            if (NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
+            if (global::NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
                 target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine(logsDir, fileName) : fileName;
             }
