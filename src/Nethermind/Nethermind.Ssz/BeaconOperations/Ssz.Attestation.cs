@@ -33,8 +33,13 @@ namespace Nethermind.Ssz
             Encode(span, container.Signature, ref offset);
         }
 
-        public static void Encode(Span<byte> span, Attestation[] containers)
+        public static void Encode(Span<byte> span, Attestation?[]? containers)
         {
+            if (containers is null)
+            {
+                return;
+            }
+            
             int offset = 0;
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
@@ -90,12 +95,16 @@ namespace Nethermind.Ssz
             return container;
         }
 
-        private static void Encode(Span<byte> span, Attestation[] attestations, ref int offset, ref int dynamicOffset)
+        private static void Encode(Span<byte> span, Attestation?[]? attestations, ref int offset, ref int dynamicOffset)
         {
-            int length = attestations.Length * VarOffsetSize;
-            for (int i = 0; i < attestations.Length; i++)
+            int length = (attestations?.Length ?? 0) * VarOffsetSize;
+
+            if (!(attestations is null))
             {
-                length += Attestation.SszLength(attestations[i]);
+                for (int i = 0; i < attestations.Length; i++)
+                {
+                    length += Attestation.SszLength(attestations[i]);
+                }
             }
 
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);

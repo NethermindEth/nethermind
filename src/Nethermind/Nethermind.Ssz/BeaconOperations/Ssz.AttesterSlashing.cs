@@ -22,7 +22,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public static void Encode(Span<byte> span, AttesterSlashing container)
+        public static void Encode(Span<byte> span, AttesterSlashing? container)
         {
             if (span.Length != AttesterSlashing.SszLength(container))
             {
@@ -65,8 +65,13 @@ namespace Nethermind.Ssz
             return attesterSlashing;
         }
 
-        public static void Encode(Span<byte> span, AttesterSlashing[] containers)
+        public static void Encode(Span<byte> span, AttesterSlashing?[]? containers)
         {
+            if (containers is null)
+            {
+                return;
+            }
+            
             int offset = 0;
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
@@ -79,7 +84,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static AttesterSlashing[] DecodeAttesterSlashings(Span<byte> span)
+        public static AttesterSlashing?[] DecodeAttesterSlashings(Span<byte> span)
         {
             if (span.Length == 0)
             {
@@ -105,12 +110,15 @@ namespace Nethermind.Ssz
             return containers;
         }
         
-        private static void Encode(Span<byte> span, AttesterSlashing[] containers, ref int offset, ref int dynamicOffset)
+        private static void Encode(Span<byte> span, AttesterSlashing?[]? containers, ref int offset, ref int dynamicOffset)
         {
-            int length = containers.Length * VarOffsetSize;
-            for (int i = 0; i < containers.Length; i++)
+            int length = (containers?.Length ?? 0)  * VarOffsetSize;
+            if (!(containers is null))
             {
-                length += AttesterSlashing.SszLength(containers[i]);
+                for (int i = 0; i < containers.Length; i++)
+                {
+                    length += AttesterSlashing.SszLength(containers[i]);
+                }
             }
 
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);

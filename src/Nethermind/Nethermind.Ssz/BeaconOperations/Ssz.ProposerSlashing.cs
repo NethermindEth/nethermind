@@ -22,9 +22,9 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        private static void Encode(Span<byte> span, ProposerSlashing[] containers, ref int offset, ref int dynamicOffset)
+        private static void Encode(Span<byte> span, ProposerSlashing?[]? containers, ref int offset, ref int dynamicOffset)
         {
-            int length = containers.Length * ProposerSlashing.SszLength;
+            int length = (containers?.Length ?? 0) * ProposerSlashing.SszLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length), containers);
             dynamicOffset += length;
@@ -65,8 +65,13 @@ namespace Nethermind.Ssz
             return container;
         }
 
-        public static void Encode(Span<byte> span, ProposerSlashing[] containers)
+        public static void Encode(Span<byte> span, ProposerSlashing?[]? containers)
         {
+            if (containers is null)
+            {
+                return;
+            }
+            
             if (span.Length != ProposerSlashing.SszLength * containers.Length)
             {
                 ThrowTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
@@ -78,7 +83,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static ProposerSlashing[] DecodeProposerSlashings(Span<byte> span)
+        public static ProposerSlashing?[] DecodeProposerSlashings(Span<byte> span)
         {
             if (span.Length % ProposerSlashing.SszLength != 0)
             {
@@ -86,7 +91,7 @@ namespace Nethermind.Ssz
             }
 
             int count = span.Length / ProposerSlashing.SszLength;
-            ProposerSlashing[] containers = new ProposerSlashing[count];
+            ProposerSlashing?[] containers = new ProposerSlashing[count];
             for (int i = 0; i < count; i++)
             {
                 containers[i] = DecodeProposerSlashing(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength));

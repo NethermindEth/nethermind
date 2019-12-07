@@ -66,8 +66,13 @@ namespace Nethermind.Ssz
             return container;
         }
         
-        private static void Encode(Span<byte> span, AttestationData value, ref int offset)
+        private static void Encode(Span<byte> span, AttestationData? value, ref int offset)
         {
+            if (value is null)
+            {
+                return;
+            }
+            
             Encode(span.Slice(offset, AttestationData.SszLength), value);
             offset += AttestationData.SszLength;
         }

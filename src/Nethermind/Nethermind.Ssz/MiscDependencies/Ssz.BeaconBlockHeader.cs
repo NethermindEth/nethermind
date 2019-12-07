@@ -28,8 +28,13 @@ namespace Nethermind.Ssz
             return beaconBlockHeader;
         }
         
-        public static void Encode(Span<byte> span, BeaconBlockHeader container)
+        public static void Encode(Span<byte> span, BeaconBlockHeader? container)
         {
+            if (container is null)
+            {
+                return;
+            }
+            
             if (span.Length != BeaconBlockHeader.SszLength) ThrowTargetLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
             int offset = 0;
             Encode(span, container.Slot, ref offset);

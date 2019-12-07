@@ -168,16 +168,16 @@ namespace Nethermind.BeaconNode
             
             var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             var activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
-            if (!store.TryGetBlock(root, out BeaconBlock rootBlock) || rootBlock is null)
+            if (!store.TryGetBlock(root, out BeaconBlock? rootBlock) || rootBlock is null)
             {
                 throw new Exception($"Not ble to find block {root}");
             }
             
             Slot rootSlot = rootBlock.Slot;
             Gwei balance = Gwei.Zero;
-            foreach (var index in activeIndexes)
+            foreach (ValidatorIndex index in activeIndexes)
             {
-                if (store.TryGetLatestMessage(index, out var latestMessage))
+                if (store.TryGetLatestMessage(index, out LatestMessage? latestMessage) && !(latestMessage is null))
                 {
                     var ancestor = GetAncestor(store, latestMessage.Root, rootSlot);
                     if (ancestor == root)
@@ -187,6 +187,7 @@ namespace Nethermind.BeaconNode
                     }
                 }
             }
+            
             return balance;
         }
 
@@ -222,7 +223,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Attestations target be for a known block. If target block is unknown, delay consideration until the block is found
-            if (!store.TryGetBlockState(target.Root, out var targetStoredState))
+            if (!store.TryGetBlockState(target.Root, out BeaconState? targetStoredState) || targetStoredState is null)
             {
                 throw new ArgumentOutOfRangeException("attestation.Target.Root", target.Root, "Attestation target root not found in the block stores history.");
             }
@@ -237,19 +238,19 @@ namespace Nethermind.BeaconNode
             }
 
             // Attestations must be for a known block. If block is unknown, delay consideration until the block is found
-            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out var attestationBlock))
+            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out BeaconBlock? attestationBlock) || attestationBlock is null)
             {
                 throw new ArgumentOutOfRangeException("attestation.Data.BeaconBlockRoot", attestation.Data.BeaconBlockRoot, "Attestation data root not found in the block history.");
             }
             // Attestations must not be for blocks in the future. If not, the attestation should not be considered
             if (attestationBlock.Slot > attestation.Data.Slot)
             {
-                throw new Exception($"Ättestation data root slot {attestationBlock.Slot} should not be larger than the attestation data slot {attestation.Data.Slot}).");
+                throw new Exception($"Attestation data root slot {attestationBlock.Slot} should not be larger than the attestation data slot {attestation.Data.Slot}).");
             }
 
             // Store target checkpoint state if not yet seen
 
-            if (!store.TryGetCheckpointState(target, out var targetState))
+            if (!store.TryGetCheckpointState(target, out BeaconState? targetState) || targetState is null)
             {
                 _beaconStateTransition.ProcessSlots(baseState, targetEpochStartSlot);
                 store.SetCheckpointState(target, baseState);
@@ -259,7 +260,7 @@ namespace Nethermind.BeaconNode
             // Attestations can only affect the fork choice of subsequent slots.
             // Delay consideration in the fork choice until their slot is in the past.
             //var attestationDataSlotTime = ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
-            var attestationDataSlotTime = targetState.GenesisTime + ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
+            ulong attestationDataSlotTime = targetState.GenesisTime + ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
             if (store.Time < attestationDataSlotTime)
             {
                 throw new Exception($"Ättestation data time {attestationDataSlotTime} should not be larger than the store time {store.Time}).");
@@ -278,9 +279,10 @@ namespace Nethermind.BeaconNode
             var attestingIndices = _beaconStateAccessor.GetAttestingIndices(targetState, attestation.Data, attestation.AggregationBits);
             foreach (var index in attestingIndices)
             {
-                if (!store.TryGetLatestMessage(index, out var latestMessage) || target.Epoch > latestMessage.Epoch)
+                // this looks like an issue - if latest message is not retrieved then it is null and the comparison fails with null reference
+                if (!store.TryGetLatestMessage(index, out LatestMessage? latestMessage) || target.Epoch > latestMessage.Epoch)
                 {
-                    var newLatestMessage = new LatestMessage(target.Epoch, attestation.Data.BeaconBlockRoot);
+                    LatestMessage newLatestMessage = new LatestMessage(target.Epoch, attestation.Data.BeaconBlockRoot);
                     store.SetLatestMessage(index, newLatestMessage);
                 }
             }
@@ -289,10 +291,11 @@ namespace Nethermind.BeaconNode
         public void OnBlock(IStore store, BeaconBlock block)
         {
             // Make a copy of the state to avoid mutability issues
-            if (!store.TryGetBlockState(block.ParentRoot, out var parentState))
+            if (!store.TryGetBlockState(block.ParentRoot, out BeaconState? parentState) || parentState is null)
             {
                 throw new ArgumentOutOfRangeException(nameof(block), block.ParentRoot, "Block parent root not found in the block states history.");
             }
+            
             var preState = BeaconState.Clone(parentState);
 
             // Blocks cannot be in the future. If they are, their consideration must be delayed until the are in the past.
@@ -307,11 +310,12 @@ namespace Nethermind.BeaconNode
             store.SetBlock(signingRoot, block);
 
             // Check block is a descendant of the finalized block
-            if (!store.TryGetBlock(store.FinalizedCheckpoint.Root, out var finalizedCheckpointBlock))
+            if (!store.TryGetBlock(store.FinalizedCheckpoint.Root, out BeaconBlock? finalizedCheckpointBlock) || finalizedCheckpointBlock is null)
             {
                 throw new Exception($"Block not found for finalized checkpoint root {store.FinalizedCheckpoint.Root}.");
             }
-            var ancestor = GetAncestor(store, signingRoot, finalizedCheckpointBlock.Slot);
+            
+            Hash32 ancestor = GetAncestor(store, signingRoot, finalizedCheckpointBlock.Slot);
             if (ancestor != store.FinalizedCheckpoint.Root)
             {
                 throw new Exception($"Block with signing root {signingRoot} is not a descendant of the finalized block {store.FinalizedCheckpoint.Root} at slot {finalizedCheckpointBlock.Slot}.");
@@ -395,24 +399,26 @@ namespace Nethermind.BeaconNode
                 return true;
             }
 
-            if (!store.TryGetBlock(newJustifiedCheckpoint.Root, out var newJustifiedBlock))
+            if (!store.TryGetBlock(newJustifiedCheckpoint.Root, out BeaconBlock? newJustifiedBlock) || newJustifiedBlock is null)
             {
+                throw new NotImplementedException("What if block is null");
             }
-            var justifiedCheckpointEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
+            
+            Slot justifiedCheckpointEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
             if (newJustifiedBlock.Slot <= justifiedCheckpointEpochStartSlot)
             {
                 return false;
             }
-            if (!store.TryGetBlock(store.JustifiedCheckpoint.Root, out var justifiedCheckPointBlock))
+            
+            if (!store.TryGetBlock(store.JustifiedCheckpoint.Root, out BeaconBlock? justifiedCheckPointBlock) || justifiedCheckPointBlock is null)
             {
+                throw new NotImplementedException("What if justified checkpoint block is null");
             }
-            var ancestorOfNewCheckpointAtOldCheckpointSlot = GetAncestor(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot);
-            if (ancestorOfNewCheckpointAtOldCheckpointSlot != store.JustifiedCheckpoint.Root)
-            {
-                return false;
-            }
-            // i.e. new checkpoint is descendent of old checkpoint
-            return true;
+            
+            Hash32 ancestorOfNewCheckpointAtOldCheckpointSlot = GetAncestor(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot);
+            
+            // i.e. new checkpoint is descendant of old checkpoint
+            return ancestorOfNewCheckpointAtOldCheckpointSlot == store.JustifiedCheckpoint.Root;
         }
     }
 }
