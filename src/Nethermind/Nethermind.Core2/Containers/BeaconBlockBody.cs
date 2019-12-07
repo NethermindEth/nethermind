@@ -80,7 +80,7 @@ namespace Nethermind.Core2.Containers
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
@@ -122,8 +122,8 @@ namespace Nethermind.Core2.Containers
         public byte[] Graffiti { get; set; } = new byte[32];
         public ProposerSlashing[] ProposerSlashings { get; set; }
         public AttesterSlashing[] AttesterSlashings { get; set; }
-        public Attestation[] Attestations { get; set; }
-        public Deposit[] Deposits { get; set; }
+        public Attestation?[] Attestations { get; set; }
+        public Deposit?[] Deposits { get; set; }
         public VoluntaryExit[] VoluntaryExits { get; set; }
     }
 }

@@ -35,9 +35,9 @@ namespace Nethermind.Core2.Containers
             return SszDynamicOffset + container.AggregationBits.Length;
         }
         
-        public byte[] AggregationBits { get; set; }
-        public AttestationData Data { get; set; }
-        public BlsSignature Signature { get; set; }
+        public byte[]? AggregationBits { get; set; }
+        public AttestationData? Data { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
 
         public bool Equals(Attestation other)
         {
@@ -46,7 +46,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

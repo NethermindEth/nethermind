@@ -68,7 +68,7 @@ namespace Nethermind.Core2.Containers
                    && WithdrawableEpoch.Equals(other.WithdrawableEpoch);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

@@ -62,7 +62,7 @@ namespace Nethermind.Core2.Types
             return AsSpan().SequenceCompareTo(other.AsSpan());
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return !(obj is null) && Equals((Hash32) obj);
         }

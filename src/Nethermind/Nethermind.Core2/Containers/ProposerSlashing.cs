@@ -24,8 +24,8 @@ namespace Nethermind.Core2.Containers
         public const int SszLength = ValidatorIndex.SszLength + 2 * BeaconBlockHeader.SszLength;
 
         public ValidatorIndex ProposerIndex { get; set; }
-        public BeaconBlockHeader Header1 { get; set; }
-        public BeaconBlockHeader Header2 { get; set; }
+        public BeaconBlockHeader? Header1 { get; set; }
+        public BeaconBlockHeader? Header2 { get; set; }
 
         public bool Equals(ProposerSlashing other)
         {
@@ -34,7 +34,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Header2, other.Header2);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

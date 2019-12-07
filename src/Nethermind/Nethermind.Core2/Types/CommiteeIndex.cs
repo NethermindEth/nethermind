@@ -87,7 +87,7 @@ namespace Nethermind.Core2.Types
             return Number.CompareTo(other.Number);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is CommitteeIndex slot && Equals(slot);
         }

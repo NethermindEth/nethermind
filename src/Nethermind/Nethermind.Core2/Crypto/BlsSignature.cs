@@ -34,7 +34,7 @@ namespace Nethermind.Core2.Crypto
         
         public static BlsSignature Empty = new BlsSignature(new byte[SszLength]);
         
-        public bool Equals(BlsSignature other)
+        public bool Equals(BlsSignature? other)
         {
             return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
         }
@@ -59,7 +59,7 @@ namespace Nethermind.Core2.Crypto
             return new ReadOnlySpan<byte>(Bytes);
         }
         
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

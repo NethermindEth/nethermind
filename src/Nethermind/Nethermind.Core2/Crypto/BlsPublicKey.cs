@@ -62,12 +62,12 @@ namespace Nethermind.Core2.Crypto
 
         public byte[] Bytes { get; }
 
-        public bool Equals(BlsPublicKey other)
+        public bool Equals(BlsPublicKey? other)
         {
-            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
+            return !(other is null) && Core2.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return Equals(obj as BlsPublicKey);
         }

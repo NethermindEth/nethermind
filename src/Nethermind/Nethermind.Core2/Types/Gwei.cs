@@ -70,7 +70,7 @@ namespace Nethermind.Core2.Types
             return Amount == other.Amount;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Gwei other && Equals(other);
         }

@@ -66,7 +66,7 @@ namespace Nethermind.Core2.Types
             return Number == other.Number;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Epoch other && Equals(other);
         }

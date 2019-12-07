@@ -72,7 +72,7 @@ namespace Nethermind.Ssz
 
         private static byte[] _nullVoluntaryExit = new byte[VoluntaryExit.SszLength];
 
-        public static VoluntaryExit DecodeVoluntaryExit(Span<byte> span)
+        public static VoluntaryExit? DecodeVoluntaryExit(Span<byte> span)
         {
             if (span.Length != VoluntaryExit.SszLength) ThrowSourceLength<VoluntaryExit>(span.Length, VoluntaryExit.SszLength);
             if (span.SequenceEqual(_nullVoluntaryExit)) return null;

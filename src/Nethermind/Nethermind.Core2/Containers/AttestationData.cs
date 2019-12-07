@@ -30,7 +30,7 @@ namespace Nethermind.Core2.Containers
                    Target == other.Target;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

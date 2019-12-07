@@ -53,7 +53,7 @@ namespace Nethermind.Ssz
 
         private static byte[] _nullProposerSlashing = new byte[ProposerSlashing.SszLength];
 
-        public static ProposerSlashing DecodeProposerSlashing(Span<byte> span)
+        public static ProposerSlashing? DecodeProposerSlashing(Span<byte> span)
         {
             if (span.Length != ProposerSlashing.SszLength) ThrowSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
             if (span.SequenceEqual(_nullProposerSlashing)) return null;

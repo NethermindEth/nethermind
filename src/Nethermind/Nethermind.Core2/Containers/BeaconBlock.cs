@@ -32,8 +32,8 @@ namespace Nethermind.Core2.Containers
         public Slot Slot { get; set; }
         public Hash32 ParentRoot { get; set; }
         public Hash32 StateRoot { get; set; }
-        public BeaconBlockBody Body { get; set; }
-        public BlsSignature Signature { get; set; }
+        public BeaconBlockBody? Body { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
 
         public static uint MaxProposerSlashings { get; set; } = 16;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

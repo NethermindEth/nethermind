@@ -34,11 +34,11 @@ namespace Nethermind.Core2.Containers
                 return 0;
             }
             
-            return SszDynamicOffset + value.AggregationBits.Length;
+            return SszDynamicOffset + value.AggregationBits?.Length ?? 0;
         }
         
-        public byte[] AggregationBits { get; set; }
-        public AttestationData Data { get; set; }
+        public byte[]? AggregationBits { get; set; }
+        public AttestationData? Data { get; set; }
         public Slot InclusionDelay { get; set; }
         public ValidatorIndex ProposerIndex { get; set; }
         
@@ -50,7 +50,7 @@ namespace Nethermind.Core2.Containers
                    ProposerIndex == other.ProposerIndex;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

@@ -16,8 +16,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using Nethermind.Core.Extensions;
-using Nethermind.Core2.Crypto;
+using Nethermind.Core2;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -55,7 +54,7 @@ namespace Nethermind.Ssz
         
         public static Hash32 DecodeSha256(Span<byte> span)
         {
-            return Bytes.AreEqual(Bytes.Zero32, span) ? Hash32.Zero : new Hash32(DecodeBytes(span).ToArray());
+            return Bytes.AreEqual(Hash32.Zero.Bytes, span) ? Hash32.Zero : new Hash32(DecodeBytes(span).ToArray());
         }
         
         public static Hash32[] DecodeHashes(Span<byte> span)

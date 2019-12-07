@@ -15,12 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core2.Containers;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
@@ -51,7 +48,6 @@ namespace Nethermind.Ssz
             UInt256.CreateFromBigEndian(out RootOfNull, Sha256.OfAnEmptyString.Bytes);
         }
 
-        [Todo(Improve.Refactor, "Consider moving to extensions")]
         public static uint NextPowerOfTwo(uint v)
         {
             if (Lzcnt.IsSupported)
@@ -80,7 +76,6 @@ namespace Nethermind.Ssz
             throw new NotImplementedException();
         }
 
-        [Todo(Improve.Refactor, "Consider moving to extensions")]
         public static ulong NextPowerOfTwo(ulong v)
         {
             if (Lzcnt.IsSupported)
@@ -171,7 +166,7 @@ namespace Nethermind.Ssz
 
         public static void Ize(out UInt256 root, Hash32 value)
         {
-            UInt256.CreateFromLittleEndian(out root, value.Bytes ?? Bytes.Zero32);
+            UInt256.CreateFromLittleEndian(out root, value.Bytes ?? Hash32.Zero.Bytes);
         }
 
         public static void Ize(out UInt256 root, Span<bool> value)

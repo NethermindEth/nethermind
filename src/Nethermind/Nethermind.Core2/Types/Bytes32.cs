@@ -36,7 +36,7 @@ namespace Nethermind.Core2.Types
             return new ReadOnlySpan<byte>(_bytes);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return Equals(obj as Bytes32);
         }

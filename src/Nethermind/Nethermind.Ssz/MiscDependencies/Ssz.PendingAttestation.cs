@@ -48,7 +48,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static PendingAttestation DecodePendingAttestation(Span<byte> span)
+        public static PendingAttestation? DecodePendingAttestation(Span<byte> span)
         {
             if (span.Length == 0) return null;
             int offset = 0;

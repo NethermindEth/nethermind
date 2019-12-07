@@ -70,7 +70,7 @@ namespace Nethermind.Ssz
 
         private static byte[] _nullDeposit = new byte[Deposit.SszLength];
 
-        public static Deposit DecodeDeposit(Span<byte> span)
+        public static Deposit? DecodeDeposit(Span<byte> span)
         {
             if (span.Length != Deposit.SszLength) ThrowSourceLength<Deposit>(span.Length, Deposit.SszLength);
             if (span.SequenceEqual(_nullDeposit)) return null;
