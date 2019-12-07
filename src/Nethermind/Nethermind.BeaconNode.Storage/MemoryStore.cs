@@ -87,12 +87,12 @@ namespace Nethermind.BeaconNode.Storage
 
         public void SetTime(ulong time) => Time = time;
 
-        public bool TryGetBlock(Hash32 signingRoot, out BeaconBlock? block) => _blocks.TryGetValue(signingRoot, out block);
+        public bool TryGetBlock(Hash32 signingRoot, out BeaconBlock block) => _blocks.TryGetValue(signingRoot, out block);
 
-        public bool TryGetBlockState(Hash32 signingRoot, out BeaconState? state) => _blockStates.TryGetValue(signingRoot, out state);
+        public bool TryGetBlockState(Hash32 signingRoot, out BeaconState state) => _blockStates.TryGetValue(signingRoot, out state);
 
-        public bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState? state) => _checkpointStates.TryGetValue(checkpoint, out state);
+        public bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState state) => _checkpointStates.TryGetValue(checkpoint, out state);
 
-        public bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage? latestMessage) => _latestMessages.TryGetValue(validatorIndex, out latestMessage);
+        public bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage latestMessage) => _latestMessages.TryGetValue(validatorIndex, out latestMessage);
     }
 }

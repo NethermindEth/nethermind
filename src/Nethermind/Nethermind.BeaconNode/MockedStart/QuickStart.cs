@@ -33,12 +33,8 @@ namespace Nethermind.BeaconNode.MockedStart
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger<QuickStart> _logger;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
-        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         static QuickStart()
         {
@@ -51,12 +47,8 @@ namespace Nethermind.BeaconNode.MockedStart
 
         public QuickStart(ILogger<QuickStart> logger,
             ChainConstants chainConstants,
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
-            IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
@@ -66,12 +58,8 @@ namespace Nethermind.BeaconNode.MockedStart
         {
             _logger = logger;
             _chainConstants = chainConstants;
-            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
             _initialValueOptions = initialValueOptions;
-            _timeParameterOptions = timeParameterOptions;
-            _stateListLengthOptions = stateListLengthOptions;
-            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _signatureDomainOptions = signatureDomainOptions;
             _quickStartParameterOptions = quickStartParameterOptions;
             _cryptographyService = cryptographyService;
@@ -92,12 +80,8 @@ namespace Nethermind.BeaconNode.MockedStart
             _logger.LogWarning(0, "Mocked quick start with genesis time {GenesisTime} and {ValidatorCount} validators.",
                 quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount);
 
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             var gweiValues = _gweiValueOptions.CurrentValue;
             var initialValues = _initialValueOptions.CurrentValue;
-            var timeParameters = _timeParameterOptions.CurrentValue;
-            var stateListLengths = _stateListLengthOptions.CurrentValue;
-            var maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
             var signatureDomains = _signatureDomainOptions.CurrentValue;
 
             // Fixed amount
