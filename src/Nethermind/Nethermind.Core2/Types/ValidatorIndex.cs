@@ -34,6 +34,8 @@ namespace Nethermind.Core2.Types
         public static ValidatorIndex None => new ValidatorIndex(ulong.MaxValue);
 
         public static implicit operator ulong(ValidatorIndex validatorIndex) => validatorIndex.Number;
+        
+        public static explicit operator int(ValidatorIndex validatorIndex) => (int)validatorIndex.Number;
 
         public static implicit operator ValidatorIndex(ulong value) => new ValidatorIndex(value);
 

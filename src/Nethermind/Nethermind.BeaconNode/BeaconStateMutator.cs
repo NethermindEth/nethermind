@@ -36,7 +36,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public void DecreaseBalance(BeaconState state, ValidatorIndex index, Gwei delta)
         {
-            var balance = state.Balances[(int)(ulong)index];
+            var balance = state.Balances[(int)index];
             if (delta > balance)
             {
                 state.SetBalance(index, Gwei.Zero);
@@ -53,7 +53,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public void IncreaseBalance(BeaconState state, ValidatorIndex index, Gwei delta)
         {
-            var balance = state.Balances[(int)(ulong)index];
+            var balance = state.Balances[(int)index];
             var newBalance = balance + delta;
             state.SetBalance(index, newBalance);
         }
@@ -64,7 +64,7 @@ namespace Nethermind.BeaconNode
         public void InitiateValidatorExit(BeaconState state, ValidatorIndex index)
         {
             // Return if validator already initiated exit
-            var validator = state.Validators[(int)(ulong)index];
+            var validator = state.Validators[(int)index];
             if (validator.ExitEpoch != _chainConstants.FarFutureEpoch)
             {
                 return;
@@ -101,7 +101,7 @@ namespace Nethermind.BeaconNode
 
             var epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             InitiateValidatorExit(state, slashedIndex);
-            var validator = state.Validators[(int)(ulong)slashedIndex];
+            var validator = state.Validators[(int)slashedIndex];
             validator.SetSlashed();
             var slashedWithdrawableEpoch = epoch + stateListLengths.EpochsPerSlashingsVector;
             var withdrawableEpoch = Epoch.Max(validator.WithdrawableEpoch, slashedWithdrawableEpoch);

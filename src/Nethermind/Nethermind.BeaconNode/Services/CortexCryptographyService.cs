@@ -4,6 +4,7 @@ using System.Linq;
 using System.Security.Cryptography;
 using Cortex.Cryptography;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Hash32 = Nethermind.Core2.Types.Hash32;
@@ -21,9 +22,16 @@ namespace Nethermind.BeaconNode.Services
 
         public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
         {
-            var publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * BlsPublicKey.Length]);
+            // TKS: added an extension here as an example to discuss - I have been avoiding passing IEnumerable
+            // for the performance reasons - to avoid multiple runs
+            // and opted for passing either arrays or lists and keep it consistent
+            // it sometimes / very rarely has an issue of having to cast list to an array
+            // but usually we have a full control over the flow so it ends up being much better
+            // what do you think?
+            IList<BlsPublicKey> publicKeysList = publicKeys.AsList();
+            var publicKeysSpan = new Span<byte>(new byte[publicKeysList.Count * BlsPublicKey.Length]);
             var publicKeysSpanIndex = 0;
-            foreach (var publicKey in publicKeys)
+            foreach (var publicKey in publicKeysList)
             {
                 publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
                 publicKeysSpanIndex += BlsPublicKey.Length;

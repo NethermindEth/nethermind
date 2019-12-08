@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.BeaconNode.Containers\Nethermind.BeaconNode.Containers.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
   </ItemGroup>
 
   <ItemGroup>

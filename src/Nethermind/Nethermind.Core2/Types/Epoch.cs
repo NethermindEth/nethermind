@@ -90,6 +90,8 @@ namespace Nethermind.Core2.Types
         public static implicit operator Epoch(ulong value) => new Epoch(value);
 
         public static implicit operator ulong(Epoch slot) => slot.Number;
+        
+        public static implicit operator int(Epoch slot) => (int)slot.Number;
 
         public static Epoch Max(Epoch val1, Epoch val2)
         {

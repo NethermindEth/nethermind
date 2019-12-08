@@ -20,7 +20,7 @@ using System.Diagnostics;
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Amount}")]
-    public struct Gwei : IComparable<Gwei>
+    public struct Gwei : IEquatable<Gwei>, IComparable<Gwei>
     {
         public const int SszLength = sizeof(ulong);
 
@@ -90,7 +90,7 @@ namespace Nethermind.Core2.Types
 
         public static implicit operator Gwei(ulong value) => new Gwei(value);
 
-        public static explicit operator ulong(Gwei slot) => slot.Amount;
+        public static implicit operator ulong(Gwei slot) => slot.Amount;
 
         public static Gwei Min(Gwei val1, Gwei val2)
         {
@@ -125,6 +125,11 @@ namespace Nethermind.Core2.Types
         public static Gwei operator +(Gwei left, Gwei right)
         {
             return new Gwei(left.Amount + right.Amount);
+        }
+
+        public Gwei SquareRoot()
+        {
+            return Amount.SquareRoot();
         }
 
         public override string ToString()

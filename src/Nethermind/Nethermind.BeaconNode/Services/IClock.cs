@@ -4,6 +4,6 @@ namespace Nethermind.BeaconNode.Services
 {
     public interface IClock
     {
-        DateTimeOffset Now();
+        DateTimeOffset UtcNow();
     }
 }

@@ -183,7 +183,7 @@ namespace Nethermind.BeaconNode
                     var ancestor = GetAncestor(store, latestMessage!.Root, rootSlot);
                     if (ancestor == root)
                     {
-                        var validator = state.Validators[(int)(ulong)index];
+                        var validator = state.Validators[(int)index];
                         balance += validator.EffectiveBalance;
                     }
                 }

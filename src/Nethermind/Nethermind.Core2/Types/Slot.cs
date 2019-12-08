@@ -124,6 +124,11 @@ namespace Nethermind.Core2.Types
         {
             return slot.Number;
         }
+        
+        public static implicit operator int(Slot slot)
+                {
+                    return (int)slot.Number;
+                }
 
         public static uint Seconds { get; set; } = 12;
         

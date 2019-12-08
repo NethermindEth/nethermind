@@ -16,10 +16,22 @@
 
 namespace Nethermind.Core2
 {
-    /// <summary>
-    /// Temporarily - constants that are not assigned anywhere...
-    /// </summary>
-    public static class Constants
+    public static class UInt64Extensions
     {
+        /// <summary>
+        /// Return the largest integer x such that x**2 is less or equal n.
+        /// </summary>
+        public static ulong SquareRoot(this ulong value)
+        {
+            ulong x = value;
+            ulong y = (x + 1) / 2;
+            while (y < x)
+            {
+                x = y;
+                y = (x + value / x) / 2;
+            }
+
+            return x;
+        }
     }
 }

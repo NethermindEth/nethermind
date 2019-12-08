@@ -14,17 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Types
+using System.Collections.Generic;
+using System.Linq;
+
+namespace Nethermind.Core2
 {
-    // TKS: I have changed to enum but now not sure if that was a good choice
-    // I may prefer Sly's solution with a static list as it make the type more in line with everything else
-    // and does not require any special treatment when serializing
-    public enum DomainType : uint
+    public static class IEnumerableExtensions
     {
-        BeaconProposer = 0U,
-        BeaconAttester = 1U,
-        Randao = 2U,
-        Deposit = 3U,
-        VoluntaryExit = 4U,
+        public static IList<T> AsList<T>(this IEnumerable<T> enumerable)
+        {
+            if (enumerable is IList<T> list)
+            {
+                return list;
+            }
+
+            return enumerable.ToList();
+        }
     }
 }

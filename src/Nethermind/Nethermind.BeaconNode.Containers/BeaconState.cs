@@ -191,7 +191,7 @@ namespace Nethermind.BeaconNode.Containers
             JustificationBits.LeftShift(1);
         }
 
-        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)(ulong)validatorIndex] = balance;
+        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)validatorIndex] = balance;
 
         public void SetBlockRoot(Slot index, Hash32 blockRoot) => _blockRoots[index] = blockRoot;
 
