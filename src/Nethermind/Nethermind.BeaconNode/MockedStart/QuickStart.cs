@@ -216,7 +216,8 @@ namespace Nethermind.BeaconNode.MockedStart
 
             var hash32 = _cryptographyService.Hash(input);
             var hash = hash32.AsSpan();
-            var value = new BigInteger(hash.ToArray());
+            // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
+            var value = new BigInteger(hash.ToArray(), isUnsigned: true);
             var privateKey = value % s_curveOrder;
 
             // Note that the private key is an *unsigned*, *big endian* number
