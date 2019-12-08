@@ -22,10 +22,10 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public static void Encode(Span<byte> span, Attestation container)
+        public static void Encode(Span<byte> span, Attestation? container)
         {
             if (span.Length != Attestation.SszLength(container)) ThrowTargetLength<Attestation>(span.Length, Attestation.SszLength(container));
-            if (container == null) return;
+            if (container is null) return;
             int offset = 0;
             int dynamicOffset = Attestation.SszDynamicOffset;
             Encode(span, container.AggregationBits, ref offset, ref dynamicOffset);

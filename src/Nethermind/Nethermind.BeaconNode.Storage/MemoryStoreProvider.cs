@@ -30,7 +30,7 @@ namespace Nethermind.BeaconNode.Storage
         private readonly ILoggerFactory _loggerFactory;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
-        private IStore _store;
+        private IStore? _store;
 
         public MemoryStoreProvider(ILoggerFactory loggerFactory, IOptionsMonitor<TimeParameters> timeParameterOptions, BeaconChainUtility beaconChainUtility)
         {
