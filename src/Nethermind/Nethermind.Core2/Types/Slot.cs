@@ -33,7 +33,7 @@ namespace Nethermind.Core2.Types
         
         public static Slot Zero => new Slot(0);
         
-        public static Slot One => new Slot(0);
+        public static Slot One => new Slot(1);
 
         public ulong Number { get; }
 
