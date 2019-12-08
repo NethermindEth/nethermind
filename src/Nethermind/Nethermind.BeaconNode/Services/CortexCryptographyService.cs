@@ -28,10 +28,9 @@ namespace Nethermind.BeaconNode.Services
             // it sometimes / very rarely has an issue of having to cast list to an array
             // but usually we have a full control over the flow so it ends up being much better
             // what do you think?
-            IList<BlsPublicKey> publicKeysList = publicKeys.AsList();
-            var publicKeysSpan = new Span<byte>(new byte[publicKeysList.Count * BlsPublicKey.Length]);
+            var publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * BlsPublicKey.Length]);
             var publicKeysSpanIndex = 0;
-            foreach (var publicKey in publicKeysList)
+            foreach (var publicKey in publicKeys)
             {
                 publicKey.AsSpan().CopyTo(publicKeysSpan.Slice(publicKeysSpanIndex));
                 publicKeysSpanIndex += BlsPublicKey.Length;
