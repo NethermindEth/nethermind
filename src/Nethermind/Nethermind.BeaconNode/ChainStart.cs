@@ -3,8 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
-using Nethermind.Logging;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {

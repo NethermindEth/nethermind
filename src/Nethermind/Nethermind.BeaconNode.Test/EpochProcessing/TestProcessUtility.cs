@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Tests.EpochProcessing
 {
@@ -13,13 +14,13 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         /// </summary>
         public static void RunEpochProcessingTo(IServiceProvider testServiceProvider, BeaconState state, TestProcessStep step)
         {
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            var slot = state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
+            Slot slot = (Slot)(state.Slot + (timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch) - 1UL);
 
             // transition state to slot before epoch state transition
-            beaconStateTransition.ProcessSlots(state, slot - 1);
+            beaconStateTransition.ProcessSlots(state, slot);
 
             // start transitioning, do one slot update before the epoch itself.
             beaconStateTransition.ProcessSlot(state);
@@ -70,7 +71,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         {
             RunEpochProcessingTo(testServiceProvider, state, step);
 
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             if (step == TestProcessStep.ProcessJustificationAndFinalization)
             {

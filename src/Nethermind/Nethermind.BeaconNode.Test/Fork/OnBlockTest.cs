@@ -40,7 +40,7 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             store.SetTime(time2);
             var block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
-            var slot2 = block.Slot + timeParameters.SlotsPerEpoch;
+            Slot slot2 = (Slot)(block.Slot + timeParameters.SlotsPerEpoch);
             block2.SetSlot(slot2);
             TestBlock.SignBlock(testServiceProvider, state, block2, ValidatorIndex.None);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block2);

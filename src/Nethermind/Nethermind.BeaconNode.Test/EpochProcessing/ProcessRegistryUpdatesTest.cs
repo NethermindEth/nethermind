@@ -5,6 +5,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests.EpochProcessing
@@ -16,20 +17,20 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void BasicActivation()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var index = 0;
+            int index = 0;
 
             MockDeposit(testServiceProvider, state, index);
 
-            for (var count = (ulong)0; count < (ulong)timeParameters.MaximumSeedLookahead + 1; count++)
+            for (ulong count = (ulong)0; count < (ulong)timeParameters.MaximumSeedLookahead + 1; count++)
             {
                 TestState.NextEpoch(testServiceProvider, state);
             }
@@ -38,11 +39,11 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             RunProcessRegistryUpdates(testServiceProvider, state);
 
             // Assert
-            var validator = state.Validators[index];
+            Validator validator = state.Validators[index];
             validator.ActivationEligibilityEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
             validator.ActivationEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             isActive.ShouldBeTrue();
         }
 
@@ -50,25 +51,25 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void ActivationQueueSorting()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var mockActivations = 10;
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            for (var index = 0; index < mockActivations; index++)
+            int mockActivations = 10;
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            for (int index = 0; index < mockActivations; index++)
             {
                 MockDeposit(testServiceProvider, state, index);
-                state.Validators[index].SetEligible(currentEpoch + 1);
+                state.Validators[index].SetEligible(currentEpoch + Epoch.One);
             }
 
             // give the last priority over the others
             state.Validators[mockActivations - 1].SetEligible(currentEpoch);
 
             // make sure we are hitting the churn
-            var churnLimit = (int)beaconStateAccessor.GetValidatorChurnLimit(state);
+            int churnLimit = (int)beaconStateAccessor.GetValidatorChurnLimit(state);
             mockActivations.ShouldBeGreaterThan(churnLimit);
 
             // Act
@@ -93,28 +94,28 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void Ejection()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var index = 0;
+            int index = 0;
 
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var validator = state.Validators[index];
-            var isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            Validator validator = state.Validators[index];
+            bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             isActive.ShouldBeTrue();
             validator.ExitEpoch.ShouldBe(chainConstants.FarFutureEpoch);
 
             // Mock an ejection
             state.Validators[index].SetEffectiveBalance(gweiValues.EjectionBalance);
 
-            for (var count = (ulong)0; count < (ulong)timeParameters.MaximumSeedLookahead + 1; count++)
+            for (ulong count = (ulong)0; count < (ulong)timeParameters.MaximumSeedLookahead + 1; count++)
             {
                 TestState.NextEpoch(testServiceProvider, state);
             }
@@ -123,31 +124,31 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             RunProcessRegistryUpdates(testServiceProvider, state);
 
             // Assert
-            var epochAfter = beaconStateAccessor.GetCurrentEpoch(state);
-            var validatorAfter = state.Validators[index];
-            var isActiveAfter = beaconChainUtility.IsActiveValidator(validatorAfter, epochAfter);
+            Epoch epochAfter = beaconStateAccessor.GetCurrentEpoch(state);
+            Validator validatorAfter = state.Validators[index];
+            bool isActiveAfter = beaconChainUtility.IsActiveValidator(validatorAfter, epochAfter);
             isActiveAfter.ShouldBeFalse();
             validatorAfter.ExitEpoch.ShouldNotBe(chainConstants.FarFutureEpoch);
         }
 
         private void MockDeposit(IServiceProvider testServiceProvider, BeaconState state, int index)
         {
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            GweiValues gweiValues = testServiceProvider.GetService<IOptions<GweiValues>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var validator = state.Validators[index];
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            Validator validator = state.Validators[index];
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            bool isActive = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             isActive.ShouldBeTrue();
 
             validator.SetEligible(chainConstants.FarFutureEpoch);
             validator.SetActive(chainConstants.FarFutureEpoch);
             validator.SetEffectiveBalance(gweiValues.MaximumEffectiveBalance);
 
-            var isActiveAfter = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            bool isActiveAfter = beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             isActiveAfter.ShouldBeFalse();
         }
 

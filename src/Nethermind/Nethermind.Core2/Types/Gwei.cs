@@ -80,15 +80,15 @@ namespace Nethermind.Core2.Types
             return Amount.GetHashCode();
         }
 
-        public static Gwei MinDepositAmount { get; set; } = 1_000_000_000UL;
+        public static Gwei MinDepositAmount { get; set; } = (Gwei)1_000_000_000UL;
 
-        public static Gwei MaxEffectiveBalance { get; set; } = 32_000_000_000UL;
+        public static Gwei MaxEffectiveBalance { get; set; } = (Gwei)32_000_000_000UL;
 
-        public static Gwei EjectionBalance { get; set; } = 16_000_000_000UL;
+        public static Gwei EjectionBalance { get; set; } = (Gwei)16_000_000_000UL;
 
-        public static Gwei EffectiveBalanceIncrement { get; set; } = 1_000_000_000UL;
+        public static Gwei EffectiveBalanceIncrement { get; set; } = (Gwei)1_000_000_000UL;
 
-        public static implicit operator Gwei(ulong value) => new Gwei(value);
+        public static explicit operator Gwei(ulong value) => new Gwei(value);
 
         public static implicit operator ulong(Gwei slot) => slot.Amount;
 
@@ -129,7 +129,7 @@ namespace Nethermind.Core2.Types
 
         public Gwei SquareRoot()
         {
-            return Amount.SquareRoot();
+            return (Gwei)Amount.SquareRoot();
         }
 
         public override string ToString()

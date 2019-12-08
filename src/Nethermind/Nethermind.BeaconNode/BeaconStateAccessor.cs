@@ -272,8 +272,8 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Hash32 GetSeed(BeaconState state, Epoch epoch, DomainType domainType)
         {
-            var mixEpoch = epoch + _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector
-                - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - new Epoch(1);
+            Epoch mixEpoch = (Epoch)(epoch + _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector
+                - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - 1UL);
             // # Avoid underflow
             var mix = GetRandaoMix(state, mixEpoch);
             var seedHashInput = new Span<byte>(new byte[4 + 8 + 32]);

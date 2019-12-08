@@ -11,7 +11,7 @@ using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.Logging;
+using Nethermind.Logging.Microsoft;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
@@ -256,7 +256,7 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentOutOfRangeException("attestation.Data.Target.Epoch", data.Target.Epoch, $"Attestation data target epoch must be either the previous epoch {previousEpoch} or the current epoch {currentEpoch}.");
             }
             Slot minimumSlot = data.Slot + timeParameters.MinimumAttestationInclusionDelay;
-            Slot maximumSlot = data.Slot + timeParameters.SlotsPerEpoch;
+            Slot maximumSlot = (Slot)(data.Slot + timeParameters.SlotsPerEpoch);
             if (state.Slot < minimumSlot)
             {
                 throw new Exception($"Current state slot {state.Slot} must be equal or greater than the attestion slot {data.Slot} plus minimum delay {timeParameters.MinimumAttestationInclusionDelay}.");
@@ -536,11 +536,11 @@ namespace Nethermind.BeaconNode
             }
 
             // Reset slashings
-            Epoch slashingsIndex = nextEpoch % stateListLengths.EpochsPerSlashingsVector;
+            Epoch slashingsIndex = (Epoch)(nextEpoch % stateListLengths.EpochsPerSlashingsVector);
             state.SetSlashings(slashingsIndex, Gwei.Zero);
 
             // Set randao mix
-            Epoch randaoIndex = nextEpoch % stateListLengths.EpochsPerHistoricalVector;
+            Epoch randaoIndex = (Epoch)(nextEpoch % stateListLengths.EpochsPerHistoricalVector);
             Hash32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, currentEpoch);
             state.SetRandaoMix(randaoIndex, randaoMix);
 
@@ -724,7 +724,7 @@ namespace Nethermind.BeaconNode
             Hash32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
             Hash32 randaoHash = _cryptographyService.Hash(body.RandaoReveal.AsSpan());
             Hash32 mix = randaoMix.Xor(randaoHash);
-            Epoch randaoIndex = epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector;
+            Epoch randaoIndex = (Epoch)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
             state.SetRandaoMix(randaoIndex, mix);
         }
 
@@ -826,7 +826,7 @@ namespace Nethermind.BeaconNode
             // Cache state root
             Hash32 previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
                 _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            Slot previousRootIndex = state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot;
+            Slot previousRootIndex = (Slot)(state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot);
             state.SetStateRoot(previousRootIndex, previousStateRoot);
             // Cache latest block header state root
             if (state.LatestBlockHeader.StateRoot == Hash32.Zero)

@@ -10,8 +10,7 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.Logging;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -41,7 +40,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Epoch ComputeActivationExitEpoch(Epoch epoch)
         {
-            return epoch + 1 + _timeParameterOptions.CurrentValue.MaximumSeedLookahead;
+            return (Epoch)(epoch + 1UL + _timeParameterOptions.CurrentValue.MaximumSeedLookahead);
         }
 
         /// <summary>
@@ -95,7 +94,7 @@ namespace Nethermind.BeaconNode
             ValidatorIndex index = 0UL;
             while (true)
             {
-                ValidatorIndex initialValidatorIndex = index % indexCount;
+                ValidatorIndex initialValidatorIndex = (ValidatorIndex)(index % indexCount);
                 ValidatorIndex shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
                 ValidatorIndex candidateIndex = indices[(int) shuffledIndex];
 
@@ -183,7 +182,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Slot ComputeStartSlotOfEpoch(Epoch epoch)
         {
-            return (ulong) _timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number;
+            return (Slot)(_timeParameterOptions.CurrentValue.SlotsPerEpoch * epoch.Number);
         }
 
         /// <summary>

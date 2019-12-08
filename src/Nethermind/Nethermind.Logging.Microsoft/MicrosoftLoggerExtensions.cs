@@ -16,37 +16,37 @@
 
 using Microsoft.Extensions.Logging;
 
-namespace Nethermind.Logging
+namespace Nethermind.Logging.Microsoft
 {
     public static class MicrosoftLoggerExtensions
     {
-        public static bool IsError(this Microsoft.Extensions.Logging.ILogger logger)
+        public static bool IsError(this global::Microsoft.Extensions.Logging.ILogger logger)
         {
-            return logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Error);
+            return logger.IsEnabled(global::Microsoft.Extensions.Logging.LogLevel.Error);
         }
         
-        public static bool IsWarn(this Microsoft.Extensions.Logging.ILogger logger)
+        public static bool IsWarn(this global::Microsoft.Extensions.Logging.ILogger logger)
         {
-            return logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Warning);
+            return logger.IsEnabled(global::Microsoft.Extensions.Logging.LogLevel.Warning);
         }
         
-        public static bool IsInfo(this Microsoft.Extensions.Logging.ILogger logger)
+        public static bool IsInfo(this global::Microsoft.Extensions.Logging.ILogger logger)
         {
-            return logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Information);
+            return logger.IsEnabled(global::Microsoft.Extensions.Logging.LogLevel.Information);
         }
         
-        public static bool IsDebug(this Microsoft.Extensions.Logging.ILogger logger)
+        public static bool IsDebug(this global::Microsoft.Extensions.Logging.ILogger logger)
         {
-            return logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Debug);
+            return logger.IsEnabled(global::Microsoft.Extensions.Logging.LogLevel.Debug);
         }
         
-        public static bool IsTrace(this Microsoft.Extensions.Logging.ILogger logger)
+        public static bool IsTrace(this global::Microsoft.Extensions.Logging.ILogger logger)
         {
-            return logger.IsEnabled(Microsoft.Extensions.Logging.LogLevel.Trace);
+            return logger.IsEnabled(global::Microsoft.Extensions.Logging.LogLevel.Trace);
         }
         
         public static void Info(
-            this Microsoft.Extensions.Logging.ILogger logger,
+            this global::Microsoft.Extensions.Logging.ILogger logger,
             EventId eventId,
             string message,
             params object[] args)
@@ -55,7 +55,7 @@ namespace Nethermind.Logging
         }
         
         public static void Debug(
-            this Microsoft.Extensions.Logging.ILogger logger,
+            this global::Microsoft.Extensions.Logging.ILogger logger,
             EventId eventId,
             string message,
             params object[] args)

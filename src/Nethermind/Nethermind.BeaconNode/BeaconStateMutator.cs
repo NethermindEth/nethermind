@@ -1,4 +1,5 @@
-﻿using System.Linq;
+﻿using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
@@ -36,14 +37,14 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public void DecreaseBalance(BeaconState state, ValidatorIndex index, Gwei delta)
         {
-            var balance = state.Balances[(int)index];
+            Gwei balance = state.Balances[(int)index];
             if (delta > balance)
             {
                 state.SetBalance(index, Gwei.Zero);
             }
             else
             {
-                var newBalance = balance - delta;
+                Gwei newBalance = balance - delta;
                 state.SetBalance(index, newBalance);
             }
         }
@@ -53,8 +54,8 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public void IncreaseBalance(BeaconState state, ValidatorIndex index, Gwei delta)
         {
-            var balance = state.Balances[(int)index];
-            var newBalance = balance + delta;
+            Gwei balance = state.Balances[(int)index];
+            Gwei newBalance = balance + delta;
             state.SetBalance(index, newBalance);
         }
 
@@ -64,22 +65,22 @@ namespace Nethermind.BeaconNode
         public void InitiateValidatorExit(BeaconState state, ValidatorIndex index)
         {
             // Return if validator already initiated exit
-            var validator = state.Validators[(int)index];
+            Validator validator = state.Validators[(int)index];
             if (validator.ExitEpoch != _chainConstants.FarFutureEpoch)
             {
                 return;
             }
 
             // Compute exit queue epoch
-            var exitEpochs = state.Validators
+            IEnumerable<Epoch> exitEpochs = state.Validators
                 .Where(x => x.ExitEpoch != _chainConstants.FarFutureEpoch)
                 .Select(x => x.ExitEpoch);
-            var maxExitEpoch = exitEpochs.DefaultIfEmpty().Max();
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
-            var exitQueueEpoch = Epoch.Max(maxExitEpoch, activationExitEpoch);
-            var exitQueueChurn = state.Validators.Where(x => x.ExitEpoch == exitQueueEpoch).Count();
-            var validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
+            Epoch maxExitEpoch = exitEpochs.DefaultIfEmpty().Max();
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
+            Epoch exitQueueEpoch = Epoch.Max(maxExitEpoch, activationExitEpoch);
+            int exitQueueChurn = state.Validators.Where(x => x.ExitEpoch == exitQueueEpoch).Count();
+            ulong validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
             if ((ulong)exitQueueChurn >= validatorChurnLimit)
             {
                 exitQueueEpoch += new Epoch(1);
@@ -87,7 +88,7 @@ namespace Nethermind.BeaconNode
 
             // Set validator exit epoch and withdrawable epoch
             validator.SetExitEpoch(exitQueueEpoch);
-            var withdrawableEpoch = validator.ExitEpoch + _timeParameterOptions.CurrentValue.MinimumValidatorWithdrawabilityDelay;
+            Epoch withdrawableEpoch = validator.ExitEpoch + _timeParameterOptions.CurrentValue.MinimumValidatorWithdrawabilityDelay;
             validator.SetWithdrawableEpoch(withdrawableEpoch);
         }
 
@@ -96,30 +97,30 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public void SlashValidator(BeaconState state, ValidatorIndex slashedIndex, ValidatorIndex whistleblowerIndex)
         {
-            var rewardsAndPenalties = _rewardsAndPenaltiesOptions.CurrentValue;
-            var stateListLengths = _stateListLengthOptions.CurrentValue;
+            RewardsAndPenalties rewardsAndPenalties = _rewardsAndPenaltiesOptions.CurrentValue;
+            StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
 
-            var epoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             InitiateValidatorExit(state, slashedIndex);
-            var validator = state.Validators[(int)slashedIndex];
+            Validator validator = state.Validators[(int)slashedIndex];
             validator.SetSlashed();
-            var slashedWithdrawableEpoch = epoch + stateListLengths.EpochsPerSlashingsVector;
-            var withdrawableEpoch = Epoch.Max(validator.WithdrawableEpoch, slashedWithdrawableEpoch);
+            Epoch slashedWithdrawableEpoch = (Epoch)(epoch + stateListLengths.EpochsPerSlashingsVector);
+            Epoch withdrawableEpoch = Epoch.Max(validator.WithdrawableEpoch, slashedWithdrawableEpoch);
             validator.SetWithdrawableEpoch(withdrawableEpoch);
 
-            var slashingsIndex = epoch % stateListLengths.EpochsPerSlashingsVector;
+            Epoch slashingsIndex = (Epoch)(epoch % stateListLengths.EpochsPerSlashingsVector);
             state.SetSlashings(slashingsIndex, validator.EffectiveBalance);
-            var slashingPenalty = validator.EffectiveBalance / rewardsAndPenalties.MinimumSlashingPenaltyQuotient;
+            Gwei slashingPenalty = validator.EffectiveBalance / rewardsAndPenalties.MinimumSlashingPenaltyQuotient;
             DecreaseBalance(state, slashedIndex, slashingPenalty);
 
             // Apply proposer and whistleblower rewards
-            var proposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            ValidatorIndex proposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
             if (whistleblowerIndex == ValidatorIndex.None)
             {
                 whistleblowerIndex = proposerIndex;
             }
-            var whistleblowerReward = validator.EffectiveBalance / rewardsAndPenalties.WhistleblowerRewardQuotient;
-            var proposerReward = whistleblowerReward / rewardsAndPenalties.ProposerRewardQuotient;
+            Gwei whistleblowerReward = validator.EffectiveBalance / rewardsAndPenalties.WhistleblowerRewardQuotient;
+            Gwei proposerReward = whistleblowerReward / rewardsAndPenalties.ProposerRewardQuotient;
 
             IncreaseBalance(state, proposerIndex, proposerReward);
             IncreaseBalance(state, whistleblowerIndex, whistleblowerReward - proposerReward);
