@@ -23,7 +23,11 @@ namespace Nethermind.BeaconNode.Tests
                 .Build();
             services.AddSingleton<IConfiguration>(configuration);
 
-            services.AddLogging(configure => configure.AddConsole());
+            services.AddLogging(configure =>
+            {
+                configure.SetMinimumLevel(LogLevel.Trace);
+                configure.AddConsole();
+            });
             
             services.AddBeaconNode(configuration);
 
