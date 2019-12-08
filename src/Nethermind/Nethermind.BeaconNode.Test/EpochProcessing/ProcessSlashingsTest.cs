@@ -19,20 +19,20 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void MaximumPenalties()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var slashedCount = (state.Validators.Count / 3) + 1;
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var outEpoch = currentEpoch + new Epoch((ulong)stateListLengths.EpochsPerSlashingsVector / 2);
+            int slashedCount = (state.Validators.Count / 3) + 1;
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch outEpoch = currentEpoch + new Epoch((ulong)stateListLengths.EpochsPerSlashingsVector / 2);
 
             var slashedIndices = Enumerable.Range(0, slashedCount).ToList();
             SlashValidators(testServiceProvider, state, slashedIndices, Enumerable.Repeat(outEpoch, slashedCount));
 
-            var totalBalance = beaconStateAccessor.GetTotalActiveBalance(state);
+            Gwei totalBalance = beaconStateAccessor.GetTotalActiveBalance(state);
             Gwei totalPenalties = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
 
             (totalBalance / 3).ShouldBeLessThanOrEqualTo(totalPenalties);
@@ -41,7 +41,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             RunProcessSlashings(testServiceProvider, state);
 
             // Assert
-            foreach (var index in slashedIndices)
+            foreach (int index in slashedIndices)
             {
                 state.Balances[index].ShouldBe(Gwei.Zero, $"Incorrect balance {index}");
             }
@@ -54,24 +54,24 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
 
         private void SlashValidators(IServiceProvider testServiceProvider, BeaconState state, IEnumerable<int> indices, IEnumerable<Epoch> outEpochs)
         {
-            var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
+            StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
 
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
-            var beaconStateMutator = testServiceProvider.GetService<BeaconStateMutator>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconStateMutator beaconStateMutator = testServiceProvider.GetService<BeaconStateMutator>();
 
-            var totalSlashedBalance = Gwei.Zero;
+            Gwei totalSlashedBalance = Gwei.Zero;
             var items = indices.Zip(outEpochs, (index, outEpoch) => new { index, outEpoch });
             foreach (var item in items)
             {
-                var validator = state.Validators[item.index];
+                Validator validator = state.Validators[item.index];
                 validator.SetSlashed();
                 beaconStateMutator.InitiateValidatorExit(state, new ValidatorIndex((ulong)item.index));
                 validator.SetWithdrawableEpoch(item.outEpoch);
                 totalSlashedBalance += validator.EffectiveBalance;
             }
 
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var slashingsIndex = currentEpoch % stateListLengths.EpochsPerSlashingsVector;
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch slashingsIndex = (Epoch)(currentEpoch % stateListLengths.EpochsPerSlashingsVector);
             state.SetSlashings(slashingsIndex, totalSlashedBalance);
         }
     }

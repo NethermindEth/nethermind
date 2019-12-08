@@ -23,7 +23,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
-            var slot = state.Slot + timeParameters.SlotsPerEpoch - (state.Slot % timeParameters.SlotsPerEpoch);
+            Slot slot = (Slot)(state.Slot + timeParameters.SlotsPerEpoch - state.Slot % timeParameters.SlotsPerEpoch);
             beaconStateTransition.ProcessSlots(state, slot);
         }
 

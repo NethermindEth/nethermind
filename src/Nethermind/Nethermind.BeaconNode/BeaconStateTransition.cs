@@ -1,15 +1,19 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
+using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
+using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
@@ -19,6 +23,8 @@ using Checkpoint = Nethermind.BeaconNode.Containers.Checkpoint;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Hash32 = Nethermind.Core2.Types.Hash32;
 using HistoricalBatch = Nethermind.BeaconNode.Containers.HistoricalBatch;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
+using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 using PendingAttestation = Nethermind.BeaconNode.Containers.PendingAttestation;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 using Validator = Nethermind.BeaconNode.Containers.Validator;
@@ -75,18 +81,18 @@ namespace Nethermind.BeaconNode
 
         public (IList<Gwei> rewards, IList<Gwei> penalties) GetAttestationDeltas(BeaconState state)
         {
-            var rewardsAndPenalties = _rewardsAndPenaltiesOptions.CurrentValue;
+            RewardsAndPenalties rewardsAndPenalties = _rewardsAndPenaltiesOptions.CurrentValue;
 
-            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
-            var totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
-            var validatorCount = state.Validators.Count;
-            var rewards = Enumerable.Repeat(Gwei.Zero, validatorCount).ToList();
-            var penalties = Enumerable.Repeat(Gwei.Zero, validatorCount).ToList();
-            var eligibleValidatorIndices = new List<ValidatorIndex>();
-            for (var index = 0; index < validatorCount; index++)
+            Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+            int validatorCount = state.Validators.Count;
+            List<Gwei> rewards = Enumerable.Repeat(Gwei.Zero, validatorCount).ToList();
+            List<Gwei> penalties = Enumerable.Repeat(Gwei.Zero, validatorCount).ToList();
+            List<ValidatorIndex> eligibleValidatorIndices = new List<ValidatorIndex>();
+            for (int index = 0; index < validatorCount; index++)
             {
-                var validator = state.Validators[index];
-                var isActive = _beaconChainUtility.IsActiveValidator(validator, previousEpoch);
+                Validator validator = state.Validators[index];
+                bool isActive = _beaconChainUtility.IsActiveValidator(validator, previousEpoch);
                 if (isActive
                     || (validator.IsSlashed && previousEpoch + new Epoch(1) < validator.WithdrawableEpoch))
                 {
@@ -95,75 +101,75 @@ namespace Nethermind.BeaconNode
             }
 
             // Micro-incentives for matching FFG source, FFG target, and head
-            var matchingSourceAttestations = GetMatchingSourceAttestations(state, previousEpoch);
-            var matchingTargetAttestations = GetMatchingTargetAttestations(state, previousEpoch);
-            var matchingHeadAttestations = GetMatchingHeadAttestations(state, previousEpoch);
-            var attestationSets = new[] { matchingSourceAttestations, matchingTargetAttestations, matchingHeadAttestations };
-            var setNames = new[] { "Source", "Target", "Head" };
-            var setIndex = 0;
-            foreach (var attestationSet in attestationSets)
+            IEnumerable<PendingAttestation> matchingSourceAttestations = GetMatchingSourceAttestations(state, previousEpoch);
+            IEnumerable<PendingAttestation> matchingTargetAttestations = GetMatchingTargetAttestations(state, previousEpoch);
+            IEnumerable<PendingAttestation> matchingHeadAttestations = GetMatchingHeadAttestations(state, previousEpoch);
+            IEnumerable<PendingAttestation>[] attestationSets = new[] { matchingSourceAttestations, matchingTargetAttestations, matchingHeadAttestations };
+            string[] setNames = new[] { "Source", "Target", "Head" };
+            int setIndex = 0;
+            foreach (IEnumerable<PendingAttestation> attestationSet in attestationSets)
             {
-                var unslashedAttestingIndices = GetUnslashedAttestingIndices(state, attestationSet);
-                var attestingBalance = _beaconStateAccessor.GetTotalBalance(state, unslashedAttestingIndices);
-                foreach (var index in eligibleValidatorIndices)
+                IEnumerable<ValidatorIndex> unslashedAttestingIndices = GetUnslashedAttestingIndices(state, attestationSet);
+                Gwei attestingBalance = _beaconStateAccessor.GetTotalBalance(state, unslashedAttestingIndices);
+                foreach (ValidatorIndex index in eligibleValidatorIndices)
                 {
                     if (unslashedAttestingIndices.Contains(index))
                     {
-                        var reward = (GetBaseReward(state, index) * (ulong)attestingBalance) / (ulong)totalBalance;
-                        _logger.LogDebug(0, "Reward validator {ValidatorIndex} matching {SetName} +{Reward}", index, setNames[setIndex], reward);
-                        rewards[(int)(ulong)index] += reward;
+                        Gwei reward = GetBaseReward(state, index) * attestingBalance / totalBalance;
+                        if(_logger.IsDebug()) _logger.LogDebug(0, "Reward validator {ValidatorIndex} matching {SetName} +{Reward}", index, setNames[setIndex], reward);
+                        rewards[(int)index] += reward;
                     }
                     else
                     {
-                        var penalty = GetBaseReward(state, index);
-                        _logger.LogDebug(0, "Penalty validator {ValidatorIndex} non-matching {SetName} -{Penalty}", index, setNames[setIndex], penalty);
-                        penalties[(int)(ulong)index] += penalty;
+                        Gwei penalty = GetBaseReward(state, index);
+                        if(_logger.IsDebug()) _logger.LogDebug(0, "Penalty validator {ValidatorIndex} non-matching {SetName} -{Penalty}", index, setNames[setIndex], penalty);
+                        penalties[(int)index] += penalty;
                     }
                 }
                 setIndex++;
             }
 
             // Proposer and inclusion delay micro-rewards
-            var unslashedSourceAttestingIndices = GetUnslashedAttestingIndices(state, matchingSourceAttestations);
-            foreach (var index in unslashedSourceAttestingIndices)
+            IEnumerable<ValidatorIndex> unslashedSourceAttestingIndices = GetUnslashedAttestingIndices(state, matchingSourceAttestations);
+            foreach (ValidatorIndex index in unslashedSourceAttestingIndices)
             {
-                var attestation = matchingSourceAttestations
+                PendingAttestation attestation = matchingSourceAttestations
                     .Where(x =>
                     {
-                        var attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, x.Data, x.AggregationBits);
+                        IEnumerable<ValidatorIndex> attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, x.Data, x.AggregationBits);
                         return attestingIndices.Contains(index);
                     })
                     .OrderBy(x => x.InclusionDelay)
                     .First();
 
-                var baseReward = GetBaseReward(state, index);
-                var proposerReward = baseReward / rewardsAndPenalties.ProposerRewardQuotient;
-                _logger.LogDebug(0, "Reward validator {ValidatorIndex} proposer +{Reward}", attestation.ProposerIndex, proposerReward);
-                rewards[(int)(ulong)attestation.ProposerIndex] += proposerReward;
+                Gwei baseReward = GetBaseReward(state, index);
+                Gwei proposerReward = baseReward / rewardsAndPenalties.ProposerRewardQuotient;
+                if(_logger.IsDebug()) _logger.LogDebug(0, "Reward validator {ValidatorIndex} proposer +{Reward}", attestation.ProposerIndex, proposerReward);
+                rewards[(int)attestation.ProposerIndex] += proposerReward;
 
-                var maxAttesterReward = baseReward - proposerReward;
-                var attesterReward = maxAttesterReward / (ulong)attestation.InclusionDelay;
-                _logger.LogDebug(0, "Reward validator {ValidatorIndex} attester inclusion delay +{Reward}", index, attesterReward);
-                rewards[(int)(ulong)index] += attesterReward;
+                Gwei maxAttesterReward = baseReward - proposerReward;
+                Gwei attesterReward = maxAttesterReward / (ulong)attestation.InclusionDelay;
+                if(_logger.IsDebug()) _logger.LogDebug(0, "Reward validator {ValidatorIndex} attester inclusion delay +{Reward}", index, attesterReward);
+                rewards[(int)index] += attesterReward;
             }
 
             // Inactivity penalty
-            var finalityDelay = previousEpoch - state.FinalizedCheckpoint.Epoch;
+            Epoch finalityDelay = previousEpoch - state.FinalizedCheckpoint.Epoch;
             if (finalityDelay > _timeParameterOptions.CurrentValue.MinimumEpochsToInactivityPenalty)
             {
-                var matchingTargetAttestingIndices = GetUnslashedAttestingIndices(state, matchingTargetAttestations);
-                foreach (var index in eligibleValidatorIndices)
+                IEnumerable<ValidatorIndex> matchingTargetAttestingIndices = GetUnslashedAttestingIndices(state, matchingTargetAttestations);
+                foreach (ValidatorIndex index in eligibleValidatorIndices)
                 {
-                    var delayPenalty = GetBaseReward(state, index) * _chainConstants.BaseRewardsPerEpoch;
-                    _logger.LogDebug(0, "Penalty validator {ValidatorIndex} finality delay -{Penalty}", index, delayPenalty);
-                    penalties[(int)(ulong)index] += delayPenalty;
+                    Gwei delayPenalty = GetBaseReward(state, index) * _chainConstants.BaseRewardsPerEpoch;
+                    if(_logger.IsDebug()) _logger.LogDebug(0, "Penalty validator {ValidatorIndex} finality delay -{Penalty}", index, delayPenalty);
+                    penalties[(int)index] += delayPenalty;
 
                     if (!matchingTargetAttestingIndices.Contains(index))
                     {
-                        var effectiveBalance = state.Validators[(int)(ulong)index].EffectiveBalance;
-                        var additionalInactivityPenalty = (effectiveBalance * (ulong)finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
-                        _logger.LogDebug(0, "Penalty validator {ValidatorIndex} inactivity -{Penalty}", index, additionalInactivityPenalty);
-                        penalties[(int)(ulong)index] += additionalInactivityPenalty;
+                        Gwei effectiveBalance = state.Validators[(int)index].EffectiveBalance;
+                        Gwei additionalInactivityPenalty = (effectiveBalance * (ulong)finalityDelay) / rewardsAndPenalties.InactivityPenaltyQuotient;
+                        if(_logger.IsDebug()) _logger.LogDebug(0, "Penalty validator {ValidatorIndex} inactivity -{Penalty}", index, additionalInactivityPenalty);
+                        penalties[(int)index] += additionalInactivityPenalty;
                     }
                 }
             }
@@ -173,34 +179,34 @@ namespace Nethermind.BeaconNode
 
         public Gwei GetAttestingBalance(BeaconState state, IEnumerable<PendingAttestation> attestations)
         {
-            var unslashed = GetUnslashedAttestingIndices(state, attestations);
+            IEnumerable<ValidatorIndex> unslashed = GetUnslashedAttestingIndices(state, attestations);
             return _beaconStateAccessor.GetTotalBalance(state, unslashed);
         }
 
         public Gwei GetBaseReward(BeaconState state, ValidatorIndex index)
         {
-            var totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
-            var effectiveBalance = state.Validators[(int)(ulong)index].EffectiveBalance;
-            var squareRootBalance = _beaconChainUtility.IntegerSquareRoot((ulong)totalBalance);
-            var baseReward = ((effectiveBalance * _rewardsAndPenaltiesOptions.CurrentValue.BaseRewardFactor)
-                / squareRootBalance) / _chainConstants.BaseRewardsPerEpoch;
+            Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+            Gwei effectiveBalance = state.Validators[(int)index].EffectiveBalance;
+            Gwei squareRootBalance = totalBalance.IntegerSquareRoot();
+            Gwei baseReward = effectiveBalance * _rewardsAndPenaltiesOptions.CurrentValue.BaseRewardFactor
+                / squareRootBalance / _chainConstants.BaseRewardsPerEpoch;
             return baseReward;
         }
 
         public IEnumerable<PendingAttestation> GetMatchingHeadAttestations(BeaconState state, Epoch epoch)
         {
-            var sourceAttestations = GetMatchingSourceAttestations(state, epoch);
+            IEnumerable<PendingAttestation> sourceAttestations = GetMatchingSourceAttestations(state, epoch);
             return sourceAttestations.Where(x =>
             {
-                var blockRootAtSlot = _beaconStateAccessor.GetBlockRootAtSlot(state, x.Data.Slot);
+                Hash32 blockRootAtSlot = _beaconStateAccessor.GetBlockRootAtSlot(state, x.Data.Slot);
                 return x.Data.BeaconBlockRoot == blockRootAtSlot;
             });
         }
 
         public IEnumerable<PendingAttestation> GetMatchingSourceAttestations(BeaconState state, Epoch epoch)
         {
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
             if (epoch != currentEpoch && epoch != previousEpoch)
             {
                 throw new ArgumentOutOfRangeException(nameof(epoch), epoch, $"The epoch for attestions must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
@@ -215,42 +221,42 @@ namespace Nethermind.BeaconNode
 
         public IEnumerable<PendingAttestation> GetMatchingTargetAttestations(BeaconState state, Epoch epoch)
         {
-            var blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
-            var sourceAttestations = GetMatchingSourceAttestations(state, epoch);
+            Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, epoch);
+            IEnumerable<PendingAttestation> sourceAttestations = GetMatchingSourceAttestations(state, epoch);
             return sourceAttestations.Where(x => x.Data.Target.Root == blockRoot);
         }
 
         public IEnumerable<ValidatorIndex> GetUnslashedAttestingIndices(BeaconState state, IEnumerable<PendingAttestation> attestations)
         {
             IEnumerable<ValidatorIndex> output = new List<ValidatorIndex>();
-            foreach (var attestation in attestations)
+            foreach (PendingAttestation attestation in attestations)
             {
-                var attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
+                IEnumerable<ValidatorIndex> attestingIndices = _beaconStateAccessor.GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
                 output = output.Union(attestingIndices);
             }
-            return output.Where(x => !state.Validators[(int)(ulong)x].IsSlashed);
+            return output.Where(x => !state.Validators[(int)x].IsSlashed);
         }
 
         public void ProcessAttestation(BeaconState state, Attestation attestation)
         {
-            _logger.LogInformation(Event.ProcessAttestation, "Process block operation attestation {Attestation} for state {BeaconState}.", attestation, state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessAttestation, "Process block operation attestation {Attestation} for state {BeaconState}.", attestation, state);
 
-            var timeParameters = _timeParameterOptions.CurrentValue;
-            var data = attestation.Data;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
+            AttestationData data = attestation.Data;
 
-            var committeeCount = _beaconStateAccessor.GetCommitteeCountAtSlot(state, data.Slot);
+            ulong committeeCount = _beaconStateAccessor.GetCommitteeCountAtSlot(state, data.Slot);
             if ((ulong)data.Index >= committeeCount)
             {
                 throw new ArgumentOutOfRangeException("attestation.Data.Index", data.Index, $"Attestation data committee index must be less that the committee count {committeeCount}.");
             }
-            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (data.Target.Epoch != previousEpoch && data.Target.Epoch != currentEpoch)
             {
                 throw new ArgumentOutOfRangeException("attestation.Data.Target.Epoch", data.Target.Epoch, $"Attestation data target epoch must be either the previous epoch {previousEpoch} or the current epoch {currentEpoch}.");
             }
-            var minimumSlot = data.Slot + timeParameters.MinimumAttestationInclusionDelay;
-            var maximumSlot = data.Slot + timeParameters.SlotsPerEpoch;
+            Slot minimumSlot = data.Slot + timeParameters.MinimumAttestationInclusionDelay;
+            Slot maximumSlot = (Slot)(data.Slot + timeParameters.SlotsPerEpoch);
             if (state.Slot < minimumSlot)
             {
                 throw new Exception($"Current state slot {state.Slot} must be equal or greater than the attestion slot {data.Slot} plus minimum delay {timeParameters.MinimumAttestationInclusionDelay}.");
@@ -260,7 +266,7 @@ namespace Nethermind.BeaconNode
                 throw new Exception($"Current state slot {state.Slot} must be equal or less than the attestation slot {data.Slot} plus slots per epoch {timeParameters.SlotsPerEpoch}.");
             }
 
-            var committee = _beaconStateAccessor.GetBeaconCommittee(state, data.Slot, data.Index);
+            IReadOnlyList<ValidatorIndex> committee = _beaconStateAccessor.GetBeaconCommittee(state, data.Slot, data.Index);
             if (attestation.AggregationBits.Count != attestation.CustodyBits.Count)
             {
                 throw new Exception($"The attestation aggregation bit length {attestation.AggregationBits.Count} must be the same as the custody bit length {attestation.CustodyBits.Count}.");
@@ -270,9 +276,9 @@ namespace Nethermind.BeaconNode
                 throw new Exception($"The attestation aggregation bit (and custody bit) length {attestation.AggregationBits.Count} must be the same as the committee length {committee.Count}.");
             }
 
-            var inclusionDelay = state.Slot - data.Slot;
-            var proposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
-            var pendingAttestation = new PendingAttestation(attestation.AggregationBits, data, inclusionDelay, proposerIndex);
+            Slot inclusionDelay = state.Slot - data.Slot;
+            ValidatorIndex proposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            PendingAttestation pendingAttestation = new PendingAttestation(attestation.AggregationBits, data, inclusionDelay, proposerIndex);
 
             if (data.Target.Epoch == currentEpoch)
             {
@@ -292,9 +298,9 @@ namespace Nethermind.BeaconNode
             }
 
             // Check signature
-            var indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(state, attestation);
-            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconAttester, data.Target.Epoch);
-            var isValid = _beaconChainUtility.IsValidIndexedAttestation(state, indexedAttestation, domain);
+            IndexedAttestation indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(state, attestation);
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconAttester, data.Target.Epoch);
+            bool isValid = _beaconChainUtility.IsValidIndexedAttestation(state, indexedAttestation, domain);
             if (!isValid)
             {
                 throw new Exception($"Indexed attestation {indexedAttestation} is not valid.");
@@ -303,44 +309,44 @@ namespace Nethermind.BeaconNode
 
         public void ProcessAttesterSlashing(BeaconState state, AttesterSlashing attesterSlashing)
         {
-            _logger.LogInformation(Event.ProcessAttesterSlashing, "Process block operation attester slashing {AttesterSlashing}", attesterSlashing);
-            var attestation1 = attesterSlashing.Attestation1;
-            var attestation2 = attesterSlashing.Attestation2;
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessAttesterSlashing, "Process block operation attester slashing {AttesterSlashing}", attesterSlashing);
+            IndexedAttestation attestation1 = attesterSlashing.Attestation1;
+            IndexedAttestation attestation2 = attesterSlashing.Attestation2;
 
-            var isSlashableAttestationData = _beaconChainUtility.IsSlashableAttestationData(attestation1.Data, attestation2.Data);
+            bool isSlashableAttestationData = _beaconChainUtility.IsSlashableAttestationData(attestation1.Data, attestation2.Data);
             if (!isSlashableAttestationData)
             {
                 throw new Exception("Attestation data must be slashable.");
             }
 
-            var signatureDomains = _signatureDomainOptions.CurrentValue;
+            SignatureDomains signatureDomains = _signatureDomainOptions.CurrentValue;
 
-            var epoch1 = attestation1.Data.Target.Epoch;
-            var domain1 = _beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, epoch1);
-            var attestation1Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation1, domain1);
+            Epoch epoch1 = attestation1.Data.Target.Epoch;
+            Domain domain1 = _beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, epoch1);
+            bool attestation1Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation1, domain1);
             if (!attestation1Valid)
             {
                 throw new Exception("Attestation 1 must be valid.");
             }
 
-            var epoch2 = attestation2.Data.Target.Epoch;
-            var domain2 = _beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, epoch2);
-            var attestation2Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation2, domain2);
+            Epoch epoch2 = attestation2.Data.Target.Epoch;
+            Domain domain2 = _beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, epoch2);
+            bool attestation2Valid = _beaconChainUtility.IsValidIndexedAttestation(state, attestation2, domain2);
             if (!attestation2Valid)
             {
                 throw new Exception("Attestation 2 must be valid.");
             }
 
-            var slashedAny = false;
-            var attestingIndices1 = attestation1.CustodyBit0Indices.Union(attestation1.CustodyBit1Indices);
-            var attestingIndices2 = attestation2.CustodyBit0Indices.Union(attestation2.CustodyBit1Indices);
+            bool slashedAny = false;
+            IEnumerable<ValidatorIndex> attestingIndices1 = attestation1.CustodyBit0Indices.Union(attestation1.CustodyBit1Indices);
+            IEnumerable<ValidatorIndex> attestingIndices2 = attestation2.CustodyBit0Indices.Union(attestation2.CustodyBit1Indices);
 
-            var intersection = attestingIndices1.Intersect(attestingIndices2);
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            foreach (var index in intersection.OrderBy(x => x))
+            IEnumerable<ValidatorIndex> intersection = attestingIndices1.Intersect(attestingIndices2);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            foreach (ValidatorIndex index in intersection.OrderBy(x => x))
             {
-                var validator = state.Validators[(int)(ulong)index];
-                var isSlashableValidator = _beaconChainUtility.IsSlashableValidator(validator, currentEpoch);
+                Validator validator = state.Validators[(int)index];
+                bool isSlashableValidator = _beaconChainUtility.IsSlashableValidator(validator, currentEpoch);
                 if (isSlashableValidator)
                 {
                     _beaconStateMutator.SlashValidator(state, index, ValidatorIndex.None);
@@ -356,7 +362,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessBlock(BeaconState state, BeaconBlock block)
         {
-            _logger.LogInformation(Event.ProcessBlock, "Process block {BeaconBlock} for state {BeaconState}", block, state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessBlock, "Process block {BeaconBlock} for state {BeaconState}", block, state);
             ProcessBlockHeader(state, block);
             ProcessRandao(state, block.Body);
             ProcessEth1Data(state, block.Body);
@@ -365,22 +371,22 @@ namespace Nethermind.BeaconNode
 
         public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
         {
-            _logger.LogInformation(Event.ProcessBlock, "Process block header for block {BeaconBlock}", block);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessBlock, "Process block header for block {BeaconBlock}", block);
             // Verify that the slots match
             if (block.Slot != state.Slot)
             {
                 throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Block slot must match state slot {state.Slot}.");
             }
             // Verify that the parent matches
-            var latestBlockSigningRoot = state.LatestBlockHeader.SigningRoot();
+            Hash32 latestBlockSigningRoot = state.LatestBlockHeader.SigningRoot();
             if (block.ParentRoot != latestBlockSigningRoot)
             {
                 throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockSigningRoot}.");
             }
 
             // Save current block as the new latest block
-            var bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            var newBlockHeader = new BeaconBlockHeader(block.Slot,
+            Hash32 bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            BeaconBlockHeader newBlockHeader = new BeaconBlockHeader(block.Slot,
                 block.ParentRoot,
                 Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
                 bodyRoot,
@@ -389,17 +395,17 @@ namespace Nethermind.BeaconNode
             state.SetLatestBlockHeader(newBlockHeader);
 
             // Verify proposer is not slashed
-            var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
-            var proposer = state.Validators[(int)(ulong)beaconProposerIndex];
+            ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            Validator proposer = state.Validators[(int)beaconProposerIndex];
             if (proposer.IsSlashed)
             {
                 throw new Exception("Beacon proposer must not be slashed.");
             }
 
             // Verify proposer signature
-            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
-            var validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
+            Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
+            bool validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
             if (!validSignature)
             {
                 throw new Exception($"Block signature must match proposer public key {proposer.PublicKey}");
@@ -408,12 +414,12 @@ namespace Nethermind.BeaconNode
 
         public void ProcessDeposit(BeaconState state, Deposit deposit)
         {
-            _logger.LogInformation(Event.ProcessDeposit, "Process block operation deposit {Deposit} for state {BeaconState}.", deposit, state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessDeposit, "Process block operation deposit {Deposit} for state {BeaconState}.", deposit, state);
 
-            var gweiValues = _gweiValueOptions.CurrentValue;
+            GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
             // Verify the Merkle branch
-            var isValid = _beaconChainUtility.IsValidMerkleBranch(
+            bool isValid = _beaconChainUtility.IsValidMerkleBranch(
                 deposit.Data.HashTreeRoot(),
                 deposit.Proof,
                 _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
@@ -427,9 +433,9 @@ namespace Nethermind.BeaconNode
             // Deposits must be processed in order
             state.IncreaseEth1DepositIndex();
 
-            var publicKey = deposit.Data.PublicKey;
-            var amount = deposit.Data.Amount;
-            var validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
+            BlsPublicKey publicKey = deposit.Data.PublicKey;
+            Gwei amount = deposit.Data.Amount;
+            List<BlsPublicKey> validatorPublicKeys = state.Validators.Select(x => x.PublicKey).ToList();
 
             if (!validatorPublicKeys.Contains(publicKey))
             {
@@ -437,14 +443,14 @@ namespace Nethermind.BeaconNode
                 // Note: The deposit contract does not check signatures.
                 // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
 
-                var domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
+                Domain domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
                 if (!_cryptographyService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
                 {
                     return;
                 }
 
-                var effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
-                var newValidator = new Validator(
+                Gwei effectiveBalance = Gwei.Min(amount - (amount % gweiValues.EffectiveBalanceIncrement), gweiValues.MaximumEffectiveBalance);
+                Validator newValidator = new Validator(
                     publicKey,
                     deposit.Data.WithdrawalCredentials,
                     effectiveBalance
@@ -457,14 +463,14 @@ namespace Nethermind.BeaconNode
             }
             else
             {
-                var index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
+                ValidatorIndex index = (ValidatorIndex)(ulong)validatorPublicKeys.IndexOf(publicKey);
                 _beaconStateMutator.IncreaseBalance(state, index, amount);
             }
         }
 
         public void ProcessEpoch(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
             ProcessJustificationAndFinalization(state);
 
             // Was removed from phase 0 spec
@@ -487,11 +493,11 @@ namespace Nethermind.BeaconNode
 
         public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
         {
-            _logger.LogInformation(Event.ProcessEth1Data, "Process block ETH1 data for block body {BeaconBlockBody}", body);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessEth1Data, "Process block ETH1 data for block body {BeaconBlockBody}", body);
 
             state.AddEth1DataVote(body.Eth1Data);
-            var eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
-            if (eth1DataVoteCount * 2 > (int)(ulong)_timeParameterOptions.CurrentValue.SlotsPerEth1VotingPeriod)
+            int eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
+            if (eth1DataVoteCount * 2 > (int)_timeParameterOptions.CurrentValue.SlotsPerEth1VotingPeriod)
             {
                 state.SetEth1Data(body.Eth1Data);
             }
@@ -499,51 +505,51 @@ namespace Nethermind.BeaconNode
 
         public void ProcessFinalUpdates(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessFinalUpdates, "Process epoch final updates state {BeaconState}", state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessFinalUpdates, "Process epoch final updates state {BeaconState}", state);
 
-            var timeParameters = _timeParameterOptions.CurrentValue;
-            var gweiValues = _gweiValueOptions.CurrentValue;
-            var stateListLengths = _stateListLengthOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
+            GweiValues gweiValues = _gweiValueOptions.CurrentValue;
+            StateListLengths stateListLengths = _stateListLengthOptions.CurrentValue;
 
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var nextEpoch = currentEpoch + new Epoch(1);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch nextEpoch = currentEpoch + new Epoch(1);
 
             // Reset eth1 data votes
-            var nextSlot = state.Slot + new Slot(1);
+            Slot nextSlot = state.Slot + new Slot(1);
             if (nextSlot % timeParameters.SlotsPerEth1VotingPeriod == Slot.Zero)
             {
                 state.ClearEth1DataVotes();
             }
 
             // Update effective balances with hysteresis
-            var halfIncrement = gweiValues.EffectiveBalanceIncrement / 2;
-            for (var index = 0; index < state.Validators.Count; index++)
+            Gwei halfIncrement = gweiValues.EffectiveBalanceIncrement / 2;
+            for (int index = 0; index < state.Validators.Count; index++)
             {
-                var validator = state.Validators[index];
-                var balance = state.Balances[index];
+                Validator validator = state.Validators[index];
+                Gwei balance = state.Balances[index];
                 if (balance < validator.EffectiveBalance || (validator.EffectiveBalance + (halfIncrement * 3)) < balance)
                 {
-                    var roundedBalance = balance - (balance % gweiValues.EffectiveBalanceIncrement);
-                    var effectiveBalance = Gwei.Min(roundedBalance, gweiValues.MaximumEffectiveBalance);
+                    Gwei roundedBalance = balance - (balance % gweiValues.EffectiveBalanceIncrement);
+                    Gwei effectiveBalance = Gwei.Min(roundedBalance, gweiValues.MaximumEffectiveBalance);
                     validator.SetEffectiveBalance(effectiveBalance);
                 }
             }
 
             // Reset slashings
-            var slashingsIndex = nextEpoch % stateListLengths.EpochsPerSlashingsVector;
+            Epoch slashingsIndex = (Epoch)(nextEpoch % stateListLengths.EpochsPerSlashingsVector);
             state.SetSlashings(slashingsIndex, Gwei.Zero);
 
             // Set randao mix
-            var randaoIndex = nextEpoch % stateListLengths.EpochsPerHistoricalVector;
-            var randaoMix = _beaconStateAccessor.GetRandaoMix(state, currentEpoch);
+            Epoch randaoIndex = (Epoch)(nextEpoch % stateListLengths.EpochsPerHistoricalVector);
+            Hash32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, currentEpoch);
             state.SetRandaoMix(randaoIndex, randaoMix);
 
             // Set historical root accumulator
-            var divisor = timeParameters.SlotsPerHistoricalRoot / timeParameters.SlotsPerEpoch;
+            uint divisor = timeParameters.SlotsPerHistoricalRoot / timeParameters.SlotsPerEpoch;
             if ((ulong)nextEpoch % divisor == 0)
             {
-                var historicalBatch = new HistoricalBatch(state.BlockRoots.ToArray(), state.StateRoots.ToArray());
-                var historicalRoot = historicalBatch.HashTreeRoot();
+                HistoricalBatch historicalBatch = new HistoricalBatch(state.BlockRoots.ToArray(), state.StateRoots.ToArray());
+                Hash32 historicalRoot = historicalBatch.HashTreeRoot();
                 state.AddHistoricalRoot(historicalRoot);
             }
 
@@ -554,47 +560,47 @@ namespace Nethermind.BeaconNode
 
         public void ProcessJustificationAndFinalization(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch justification and finalization state {BeaconState}", state);
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch justification and finalization state {BeaconState}", state);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch <= _initialValueOptions.CurrentValue.GenesisEpoch + new Epoch(1))
             {
                 return;
                 //throw new ArgumentOutOfRangeException(nameof(state), currentEpoch, "Current epoch of state must be more than one away from genesis epoch.");
             }
 
-            var previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
-            var oldPreviousJustifiedCheckpoint = state.PreviousJustifiedCheckpoint;
-            var oldCurrentJustifiedCheckpoint = state.CurrentJustifiedCheckpoint;
+            Epoch previousEpoch = _beaconStateAccessor.GetPreviousEpoch(state);
+            Checkpoint oldPreviousJustifiedCheckpoint = state.PreviousJustifiedCheckpoint;
+            Checkpoint oldCurrentJustifiedCheckpoint = state.CurrentJustifiedCheckpoint;
 
             // Process justifications
             state.SetPreviousJustifiedCheckpoint(state.CurrentJustifiedCheckpoint);
             state.JustificationBitsShift();
 
             // Previous Epoch
-            var matchingTargetAttestationsPreviousEpoch = GetMatchingTargetAttestations(state, previousEpoch);
-            var attestingBalancePreviousEpoch = GetAttestingBalance(state, matchingTargetAttestationsPreviousEpoch);
-            var totalActiveBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+            IEnumerable<PendingAttestation> matchingTargetAttestationsPreviousEpoch = GetMatchingTargetAttestations(state, previousEpoch);
+            Gwei attestingBalancePreviousEpoch = GetAttestingBalance(state, matchingTargetAttestationsPreviousEpoch);
+            Gwei totalActiveBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
             if (attestingBalancePreviousEpoch * 3 >= totalActiveBalance * 2)
             {
-                var blockRoot = _beaconStateAccessor.GetBlockRoot(state, previousEpoch);
-                var checkpoint = new Checkpoint(previousEpoch, blockRoot);
+                Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, previousEpoch);
+                Checkpoint checkpoint = new Checkpoint(previousEpoch, blockRoot);
                 state.SetCurrentJustifiedCheckpoint(checkpoint);
                 state.JustificationBits.Set(1, true);
             }
 
             // Current Epoch
-            var matchingTargetAttestationsCurrentEpoch = GetMatchingTargetAttestations(state, currentEpoch);
-            var attestingBalanceCurrentEpoch = GetAttestingBalance(state, matchingTargetAttestationsCurrentEpoch);
+            IEnumerable<PendingAttestation> matchingTargetAttestationsCurrentEpoch = GetMatchingTargetAttestations(state, currentEpoch);
+            Gwei attestingBalanceCurrentEpoch = GetAttestingBalance(state, matchingTargetAttestationsCurrentEpoch);
             if (attestingBalanceCurrentEpoch * 3 >= totalActiveBalance * 2)
             {
-                var blockRoot = _beaconStateAccessor.GetBlockRoot(state, currentEpoch);
-                var checkpoint = new Checkpoint(currentEpoch, blockRoot);
+                Hash32 blockRoot = _beaconStateAccessor.GetBlockRoot(state, currentEpoch);
+                Checkpoint checkpoint = new Checkpoint(currentEpoch, blockRoot);
                 state.SetCurrentJustifiedCheckpoint(checkpoint);
                 state.JustificationBits.Set(0, true);
             }
 
             // Process finalizations
-            var bits = state.JustificationBits;
+            BitArray bits = state.JustificationBits;
             // The 2nd/3rd/4th most recent epochs are justified, the 2nd using the 4th as source
             if ((oldPreviousJustifiedCheckpoint.Epoch + new Epoch(3) == currentEpoch)
                 && bits.Cast<bool>().Skip(1).Take(3).All(x => x))
@@ -624,32 +630,32 @@ namespace Nethermind.BeaconNode
 
         public void ProcessOperations(BeaconState state, BeaconBlockBody body)
         {
-            _logger.LogInformation(Event.ProcessOperations, "Process block operations for block body {BeaconBlockBody}", body);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessOperations, "Process block operations for block body {BeaconBlockBody}", body);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
-            var outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
-            var expectedDeposits = Math.Min(_maxOperationsPerBlockOptions.CurrentValue.MaximumDeposits, outstandingDeposits);
+            ulong outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
+            ulong expectedDeposits = Math.Min(_maxOperationsPerBlockOptions.CurrentValue.MaximumDeposits, outstandingDeposits);
             if (body.Deposits.Count != (int)expectedDeposits)
             {
                 throw new ArgumentOutOfRangeException("body.Deposits.Count", body.Deposits.Count, $"Block body does not have the expected number of outstanding deposits {expectedDeposits}.");
             }
 
-            foreach (var proposerSlashing in body.ProposerSlashings)
+            foreach (ProposerSlashing proposerSlashing in body.ProposerSlashings)
             {
                 ProcessProposerSlashing(state, proposerSlashing);
             }
-            foreach (var attesterSlashing in body.AttesterSlashings)
+            foreach (AttesterSlashing attesterSlashing in body.AttesterSlashings)
             {
                 ProcessAttesterSlashing(state, attesterSlashing);
             }
-            foreach (var attestation in body.Attestations)
+            foreach (Attestation attestation in body.Attestations)
             {
                 ProcessAttestation(state, attestation);
             }
-            foreach (var deposit in body.Deposits)
+            foreach (Deposit deposit in body.Deposits)
             {
                 ProcessDeposit(state, deposit);
             }
-            foreach (var voluntaryExit in body.VoluntaryExits)
+            foreach (VoluntaryExit voluntaryExit in body.VoluntaryExits)
             {
                 ProcessVoluntaryExit(state, voluntaryExit);
             }
@@ -658,8 +664,8 @@ namespace Nethermind.BeaconNode
 
         public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
         {
-            _logger.LogInformation(Event.ProcessProposerSlashing, "Process block operation proposer slashing {ProposerSlashing}", proposerSlashing);
-            var proposer = state.Validators[(int)(ulong)proposerSlashing.ProposerIndex];
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessProposerSlashing, "Process block operation proposer slashing {ProposerSlashing}", proposerSlashing);
+            Validator proposer = state.Validators[(int)proposerSlashing.ProposerIndex];
             // Verify slots match
             if (proposerSlashing.Header1.Slot != proposerSlashing.Header2.Slot)
             {
@@ -671,27 +677,27 @@ namespace Nethermind.BeaconNode
                 throw new Exception($"Proposer slashing must be for two different headers.");
             }
             // Check proposer is slashable
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var isSlashable = _beaconChainUtility.IsSlashableValidator(proposer, currentEpoch);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            bool isSlashable = _beaconChainUtility.IsSlashableValidator(proposer, currentEpoch);
             if (!isSlashable)
             {
                 throw new Exception($"Proposer {proposerSlashing.ProposerIndex} is not slashable at epoch {currentEpoch}.");
             }
             // Signatures are valid
-            var slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.Header1.Slot);
-            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, slashingEpoch);
+            Epoch slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.Header1.Slot);
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, slashingEpoch);
 
-            var signingRoot1 = proposerSlashing.Header1.SigningRoot();
-            var signature1 = proposerSlashing.Header1.Signature;
-            var header1Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot1, signature1, domain);
+            Hash32 signingRoot1 = proposerSlashing.Header1.SigningRoot();
+            BlsSignature signature1 = proposerSlashing.Header1.Signature;
+            bool header1Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot1, signature1, domain);
             if (!header1Valid)
             {
                 throw new Exception("Proposer slashing header 1 signature is not valid.");
             }
 
-            var signingRoot2 = proposerSlashing.Header2.SigningRoot();
-            var signature2 = proposerSlashing.Header2.Signature;
-            var header2Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot2, signature2, domain);
+            Hash32 signingRoot2 = proposerSlashing.Header2.SigningRoot();
+            BlsSignature signature2 = proposerSlashing.Header2.Signature;
+            bool header2Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot2, signature2, domain);
             if (!header2Valid)
             {
                 throw new Exception("Proposer slashing header 2 signature is not valid.");
@@ -702,44 +708,44 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRandao(BeaconState state, BeaconBlockBody body)
         {
-            _logger.LogInformation(Event.ProcessRandao, "Process block randao for block body {BeaconBlockBody}", body);
-            var epoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessRandao, "Process block randao for block body {BeaconBlockBody}", body);
+            Epoch epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             // Verify RANDAO reveal
-            var beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
-            var proposer = state.Validators[(int)(ulong)beaconProposerIndex];
-            var epochRoot = epoch.HashTreeRoot();
-            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.Randao, Epoch.None);
-            var validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
+            ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
+            Validator proposer = state.Validators[(int)beaconProposerIndex];
+            Hash32 epochRoot = epoch.HashTreeRoot();
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.Randao, Epoch.None);
+            bool validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
             if (!validRandaoReveal)
             {
                 throw new Exception($"Randao reveal {body.RandaoReveal} must match proposer public key {proposer.PublicKey}");
             }
             // Mix in RANDAO reveal
-            var randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
-            var randaoHash = _cryptographyService.Hash(body.RandaoReveal.AsSpan());
-            var mix = randaoMix.Xor(randaoHash);
-            var randaoIndex = epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector;
+            Hash32 randaoMix = _beaconStateAccessor.GetRandaoMix(state, epoch);
+            Hash32 randaoHash = _cryptographyService.Hash(body.RandaoReveal.AsSpan());
+            Hash32 mix = randaoMix.Xor(randaoHash);
+            Epoch randaoIndex = (Epoch)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
             state.SetRandaoMix(randaoIndex, mix);
         }
 
         public void ProcessRegistryUpdates(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessRegistryUpdates, "Process epoch registry updates state {BeaconState}", state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessRegistryUpdates, "Process epoch registry updates state {BeaconState}", state);
 
-            var gweiValues = _gweiValueOptions.CurrentValue;
+            GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
             // Process activation eligibility and ejections
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            for (var index = 0; index < state.Validators.Count; index++)
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            for (int index = 0; index < state.Validators.Count; index++)
             {
-                var validator = state.Validators[index];
+                Validator validator = state.Validators[index];
                 if (validator.ActivationEligibilityEpoch == _chainConstants.FarFutureEpoch
                     && validator.EffectiveBalance == gweiValues.MaximumEffectiveBalance)
                 {
                     validator.SetEligible(currentEpoch);
                 }
 
-                var isActive = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+                bool isActive = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
                 if (isActive && validator.EffectiveBalance <= gweiValues.EjectionBalance)
                 {
                     _beaconStateMutator.InitiateValidatorExit(state, new ValidatorIndex((ulong)index));
@@ -747,9 +753,9 @@ namespace Nethermind.BeaconNode
             }
 
             // Queue validators eligible for activation and not dequeued for activation prior to finalized epoch
-            var activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(state.FinalizedCheckpoint.Epoch);
+            Epoch activationExitEpoch = _beaconChainUtility.ComputeActivationExitEpoch(state.FinalizedCheckpoint.Epoch);
 
-            var activationQueue = state.Validators
+            IEnumerable<int> activationQueue = state.Validators
                 .Select((validator, index) => new { index, validator })
                 .Where(x => x.validator.ActivationEligibilityEpoch != _chainConstants.FarFutureEpoch
                     && x.validator.ActivationEpoch >= activationExitEpoch)
@@ -757,11 +763,11 @@ namespace Nethermind.BeaconNode
                 .Select(x => x.index);
 
             // Dequeued validators for activation up to churn limit (without resetting activation epoch)
-            var validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
-            var activationEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
-            foreach (var index in activationQueue.Take((int)validatorChurnLimit))
+            ulong validatorChurnLimit = _beaconStateAccessor.GetValidatorChurnLimit(state);
+            Epoch activationEpoch = _beaconChainUtility.ComputeActivationExitEpoch(currentEpoch);
+            foreach (int index in activationQueue.Take((int)validatorChurnLimit))
             {
-                var validator = state.Validators[index];
+                Validator validator = state.Validators[index];
                 if (validator.ActivationEpoch == _chainConstants.FarFutureEpoch)
                 {
                     validator.SetActive(activationEpoch);
@@ -771,18 +777,18 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRewardsAndPenalties(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch rewards and penalties state {BeaconState}", state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch rewards and penalties state {BeaconState}", state);
 
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
             {
                 return;
             }
 
-            (var rewards, var penalties) = GetAttestationDeltas(state);
-            for (var index = 0; index < state.Validators.Count; index++)
+            (IList<Gwei> rewards, IList<Gwei> penalties) = GetAttestationDeltas(state);
+            for (int index = 0; index < state.Validators.Count; index++)
             {
-                var validatorIndex = new ValidatorIndex((ulong)index);
+                ValidatorIndex validatorIndex = new ValidatorIndex((ulong)index);
                 _beaconStateMutator.IncreaseBalance(state, validatorIndex, rewards[index]);
                 _beaconStateMutator.DecreaseBalance(state, validatorIndex, penalties[index]);
             }
@@ -790,25 +796,25 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlashings(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessSlashings, "Process epoch slashings state {BeaconState}", state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlashings, "Process epoch slashings state {BeaconState}", state);
 
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
 
-            var targetEpoch = currentEpoch + new Epoch((ulong)_stateListLengthOptions.CurrentValue.EpochsPerSlashingsVector / 2);
+            Epoch targetEpoch = currentEpoch + new Epoch((ulong)_stateListLengthOptions.CurrentValue.EpochsPerSlashingsVector / 2);
 
-            var totalSlashings = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
-            var minimumFactor = Gwei.Min(totalSlashings * 3, totalBalance);
+            Gwei totalSlashings = state.Slashings.Aggregate(Gwei.Zero, (accumulator, x) => accumulator + x);
+            Gwei minimumFactor = Gwei.Min(totalSlashings * 3, totalBalance);
 
-            for (var index = 0; index < state.Validators.Count; index++)
+            for (int index = 0; index < state.Validators.Count; index++)
             {
-                var validator = state.Validators[index];
+                Validator validator = state.Validators[index];
                 if (validator.IsSlashed && validator.WithdrawableEpoch == targetEpoch)
                 {
-                    var increment = (ulong)_gweiValueOptions.CurrentValue.EffectiveBalanceIncrement; // # Factored out from penalty numerator to avoid uint64 overflow
-                    var penaltyNumerator = (validator.EffectiveBalance / increment) * (ulong)minimumFactor;
-                    var penalty = (penaltyNumerator / (ulong)totalBalance) * increment;
-                    var validatorIndex = new ValidatorIndex((ulong)index);
+                    ulong increment = _gweiValueOptions.CurrentValue.EffectiveBalanceIncrement; // # Factored out from penalty numerator to avoid uint64 overflow
+                    Gwei penaltyNumerator = validator.EffectiveBalance / increment * minimumFactor;
+                    Gwei penalty = penaltyNumerator / totalBalance * increment;
+                    ValidatorIndex validatorIndex = new ValidatorIndex((ulong)index);
                     _beaconStateMutator.DecreaseBalance(state, validatorIndex, penalty);
                 }
             }
@@ -816,11 +822,11 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlot(BeaconState state)
         {
-            _logger.LogInformation(Event.ProcessSlot, "Process current slot {Slot} for state {BeaconState}", state.Slot, state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlot, "Process current slot {Slot} for state {BeaconState}", state.Slot, state);
             // Cache state root
-            var previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
+            Hash32 previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
                 _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            var previousRootIndex = state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot;
+            Slot previousRootIndex = (Slot)(state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot);
             state.SetStateRoot(previousRootIndex, previousStateRoot);
             // Cache latest block header state root
             if (state.LatestBlockHeader.StateRoot == Hash32.Zero)
@@ -828,13 +834,13 @@ namespace Nethermind.BeaconNode
                 state.LatestBlockHeader.SetStateRoot(previousStateRoot);
             }
             // Cache block root
-            var previousBlockRoot = state.LatestBlockHeader.SigningRoot();
+            Hash32 previousBlockRoot = state.LatestBlockHeader.SigningRoot();
             state.SetBlockRoot(previousRootIndex, previousBlockRoot);
         }
 
         public void ProcessSlots(BeaconState state, Slot slot)
         {
-            _logger.LogInformation(Event.ProcessSlots, "Process slots to {Slot} for state {BeaconState}", slot, state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlots, "Process slots to {Slot} for state {BeaconState}", slot, state);
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");
@@ -854,45 +860,45 @@ namespace Nethermind.BeaconNode
 
         public void ProcessVoluntaryExit(BeaconState state, VoluntaryExit exit)
         {
-            _logger.LogInformation(Event.ProcessVoluntaryExit, "Process block operation voluntary exit {VoluntaryExit} for state {BeaconState}.", exit, state);
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessVoluntaryExit, "Process block operation voluntary exit {VoluntaryExit} for state {BeaconState}.", exit, state);
 
-            var validator = state.Validators[(int)(ulong)exit.ValidatorIndex];
+            Validator validator = state.Validators[(int)exit.ValidatorIndex];
 
             //#Verify the validator is active
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var isActiveValidator = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            bool isActiveValidator = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
             if (!isActiveValidator)
             {
                 throw new Exception($"Validator {exit.ValidatorIndex} must be active in order to exit.");
             }
 
             //# Verify the validator has not yet exited
-            var hasExited = validator.ExitEpoch != _chainConstants.FarFutureEpoch;
+            bool hasExited = validator.ExitEpoch != _chainConstants.FarFutureEpoch;
             if (hasExited)
             {
                 throw new Exception($"Validator {exit.ValidatorIndex} already has exit epoch {validator.ExitEpoch}.");
             }
 
             //# Exits must specify an epoch when they become valid; they are not valid before then
-            var isCurrentAtOrAfterExit = currentEpoch >= exit.Epoch;
+            bool isCurrentAtOrAfterExit = currentEpoch >= exit.Epoch;
             if (!isCurrentAtOrAfterExit)
             {
                 throw new Exception($"Validator {exit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached their exit epoch {validator.ExitEpoch}.");
             }
 
             //# Verify the validator has been active long enough
-            var timeParameters = _timeParameterOptions.CurrentValue;
-            var minimumActiveEpoch = validator.ActivationEpoch + timeParameters.PersistentCommitteePeriod;
-            var isCurrentAtOrAfterMinimum = currentEpoch >= minimumActiveEpoch;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
+            Epoch minimumActiveEpoch = validator.ActivationEpoch + timeParameters.PersistentCommitteePeriod;
+            bool isCurrentAtOrAfterMinimum = currentEpoch >= minimumActiveEpoch;
             if (!isCurrentAtOrAfterMinimum)
             {
                 throw new Exception($"Validator {exit.ValidatorIndex} can not exit because the current epoch {currentEpoch} has not yet reached the minimum active epoch of {timeParameters.PersistentCommitteePeriod} after their activation epoch {validator.ActivationEpoch}.");
             }
 
             //# Verify signature
-            var domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.VoluntaryExit, exit.Epoch);
-            var signingRoot = exit.SigningRoot();
-            var validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, exit.Signature, domain);
+            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.VoluntaryExit, exit.Epoch);
+            Hash32 signingRoot = exit.SigningRoot();
+            bool validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, exit.Signature, domain);
             if (!validSignature)
             {
                 throw new Exception("Voluntary exit signature is not valid.");
@@ -904,7 +910,7 @@ namespace Nethermind.BeaconNode
 
         public BeaconState StateTransition(BeaconState state, BeaconBlock block, bool validateStateRoot)
         {
-            _logger.LogInformation(Event.ProcessSlots, "State transition for state {BeaconState} with block {BeaconBlock}; validating {ValidateStateRoot}.",
+            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlots, "State transition for state {BeaconState} with block {BeaconBlock}; validating {ValidateStateRoot}.",
                 state, block, validateStateRoot);
 
             // Process slots (including those with no blocks) since block
@@ -918,7 +924,7 @@ namespace Nethermind.BeaconNode
                 //options.AddCortexContainerConverters();
                 //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
-                var checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+                Hash32 checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
                 if (block.StateRoot != checkStateRoot)
                 {
                     throw new Exception($"Mismatch between calculated state root {checkStateRoot} and block state root {block.StateRoot}.");

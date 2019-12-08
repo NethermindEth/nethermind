@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -25,7 +26,7 @@ namespace Nethermind.BeaconNode
         {
             return await Task.Run(() =>
             {
-                _logger.LogDebug(Event.TryGenesis, "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.", eth1BlockHash, eth1Timestamp, deposits.Count);
+                if (_logger.IsDebug()) _logger.LogDebug(Event.TryGenesis, "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.", eth1BlockHash, eth1Timestamp, deposits.Count);
 
                 var candidateState = _genesis.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
                 if (_genesis.IsValidGenesisState(candidateState))

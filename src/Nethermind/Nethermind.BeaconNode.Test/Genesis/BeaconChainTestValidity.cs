@@ -75,7 +75,7 @@ namespace Nethermind.BeaconNode.Tests.Genesis
 
             // Act
             var state = CreateValidBeaconState(testServiceProvider);
-            state.Validators[0].SetEffectiveBalance(gweiValues.MaximumEffectiveBalance + 1);
+            state.Validators[0].SetEffectiveBalance(gweiValues.MaximumEffectiveBalance + Gwei.One);
 
             // Assert
             IsValidGenesisState(testServiceProvider, state, true);

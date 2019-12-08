@@ -160,7 +160,7 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot must be less than than the state slot {state.Slot}");
             }
             var blockIndex = slot % timeParameters.SlotsPerHistoricalRoot;
-            return state.BlockRoots[(int)(ulong)blockIndex];
+            return state.BlockRoots[(int)blockIndex];
         }
 
         ///// <summary>
@@ -262,7 +262,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Hash32 GetRandaoMix(BeaconState state, Epoch epoch)
         {
-            var index = (int)(ulong)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
+            var index = (int)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
             var mix = state.RandaoMixes[index];
             return mix;
         }
@@ -272,8 +272,8 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Hash32 GetSeed(BeaconState state, Epoch epoch, DomainType domainType)
         {
-            var mixEpoch = epoch + _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector
-                - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - new Epoch(1);
+            Epoch mixEpoch = (Epoch)(epoch + _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector
+                - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - 1UL);
             // # Avoid underflow
             var mix = GetRandaoMix(state, mixEpoch);
             var seedHashInput = new Span<byte>(new byte[4 + 8 + 32]);
@@ -346,7 +346,7 @@ namespace Nethermind.BeaconNode
             var total = Gwei.Zero;
             foreach (var index in validatorIndices)
             {
-                var validator = state.Validators[(int)(ulong)index];
+                var validator = state.Validators[(int)index];
                 var balance = validator.EffectiveBalance;
                 total += balance;
             }

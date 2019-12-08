@@ -20,7 +20,7 @@ using System.Diagnostics;
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Amount}")]
-    public struct Gwei : IComparable<Gwei>
+    public struct Gwei : IEquatable<Gwei>, IComparable<Gwei>
     {
         public const int SszLength = sizeof(ulong);
 
@@ -80,17 +80,17 @@ namespace Nethermind.Core2.Types
             return Amount.GetHashCode();
         }
 
-        public static Gwei MinDepositAmount { get; set; } = 1_000_000_000UL;
+        public static Gwei MinDepositAmount { get; set; } = (Gwei)1_000_000_000UL;
 
-        public static Gwei MaxEffectiveBalance { get; set; } = 32_000_000_000UL;
+        public static Gwei MaxEffectiveBalance { get; set; } = (Gwei)32_000_000_000UL;
 
-        public static Gwei EjectionBalance { get; set; } = 16_000_000_000UL;
+        public static Gwei EjectionBalance { get; set; } = (Gwei)16_000_000_000UL;
 
-        public static Gwei EffectiveBalanceIncrement { get; set; } = 1_000_000_000UL;
+        public static Gwei EffectiveBalanceIncrement { get; set; } = (Gwei)1_000_000_000UL;
 
-        public static implicit operator Gwei(ulong value) => new Gwei(value);
+        public static explicit operator Gwei(ulong value) => new Gwei(value);
 
-        public static explicit operator ulong(Gwei slot) => slot.Amount;
+        public static implicit operator ulong(Gwei slot) => slot.Amount;
 
         public static Gwei Min(Gwei val1, Gwei val2)
         {
@@ -125,6 +125,11 @@ namespace Nethermind.Core2.Types
         public static Gwei operator +(Gwei left, Gwei right)
         {
             return new Gwei(left.Amount + right.Amount);
+        }
+
+        public Gwei IntegerSquareRoot()
+        {
+            return (Gwei)Amount.SquareRoot();
         }
 
         public override string ToString()

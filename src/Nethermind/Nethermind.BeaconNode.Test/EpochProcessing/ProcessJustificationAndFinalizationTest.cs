@@ -392,7 +392,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             foreach (var checkpoint in checkpoints)
             {
                 var startSlot = beaconChainUtility.ComputeStartSlotOfEpoch(checkpoint.Epoch);
-                var slotIndex = startSlot % timeParameters.SlotsPerHistoricalRoot;
+                Slot slotIndex = (Slot)(startSlot % timeParameters.SlotsPerHistoricalRoot);
                 state.SetBlockRoot(slotIndex, checkpoint.Root);
             }
         }

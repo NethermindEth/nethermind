@@ -31,8 +31,13 @@ namespace Nethermind.Ssz
             offset += VarOffsetSize;
         }
         
-         public static void Encode(Span<byte> span, ProposerSlashing container)
+         public static void Encode(Span<byte> span, ProposerSlashing? container)
         {
+            if (container is null)
+            {
+                return;
+            }
+            
             if (span.Length != ProposerSlashing.SszLength)
             {
                 ThrowTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);

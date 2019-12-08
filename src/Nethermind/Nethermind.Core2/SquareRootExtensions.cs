@@ -14,17 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2.Types
+namespace Nethermind.Core2
 {
-    // TKS: I have changed to enum but now not sure if that was a good choice
-    // I may prefer Sly's solution with a static list as it make the type more in line with everything else
-    // and does not require any special treatment when serializing
-    public enum DomainType : uint
+    public static class UInt64Extensions
     {
-        BeaconProposer = 0U,
-        BeaconAttester = 1U,
-        Randao = 2U,
-        Deposit = 3U,
-        VoluntaryExit = 4U,
+        /// <summary>
+        /// Return the largest integer x such that x**2 is less or equal n.
+        /// </summary>
+        public static ulong SquareRoot(this ulong value)
+        {
+            ulong x = value;
+            ulong y = (x + 1) / 2;
+            while (y < x)
+            {
+                x = y;
+                y = (x + value / x) / 2;
+            }
+
+            return x;
+        }
     }
 }

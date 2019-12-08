@@ -5,8 +5,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 using Shouldly;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
+using Validator = Nethermind.BeaconNode.Containers.Validator;
 
 namespace Nethermind.BeaconNode.Tests.BlockProcessing
 {
@@ -17,23 +19,23 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
         public void SuccessTest()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             // move state forward PERSISTENT_COMMITTEE_PERIOD epochs to allow for exit
-            var move = timeParameters.SlotsPerEpoch * (ulong)timeParameters.PersistentCommitteePeriod;
-            var newSlot = state.Slot + move;
-            state.SetSlot(newSlot);
+            ulong move = timeParameters.SlotsPerEpoch * (ulong)timeParameters.PersistentCommitteePeriod;
+            ulong newSlot = state.Slot + move;
+            state.SetSlot((Slot)newSlot);
 
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch)[0];
-            var validator = state.Validators[(int)(ulong)validatorIndex];
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            ValidatorIndex validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch)[0];
+            Validator validator = state.Validators[(int)(ulong)validatorIndex];
             var privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
 
-            var voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: true);
+            VoluntaryExit voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: true);
 
             RunVoluntaryExitProcessing(testServiceProvider, state, voluntaryExit, expectValid: true);
         }
@@ -42,23 +44,23 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
         public void InvalidSignature()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
             // move state forward PERSISTENT_COMMITTEE_PERIOD epochs to allow for exit
-            var move = timeParameters.SlotsPerEpoch * (ulong)timeParameters.PersistentCommitteePeriod;
-            var newSlot = state.Slot + move;
-            state.SetSlot(newSlot);
+            ulong move = timeParameters.SlotsPerEpoch * (ulong)timeParameters.PersistentCommitteePeriod;
+            ulong newSlot = state.Slot + move;
+            state.SetSlot((Slot)newSlot);
 
-            var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
-            var validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch)[0];
-            var validator = state.Validators[(int)(ulong)validatorIndex];
+            Epoch currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
+            ValidatorIndex validatorIndex = beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch)[0];
+            Validator validator = state.Validators[(int)(ulong)validatorIndex];
             var privateKey = TestKeys.PublicKeyToPrivateKey(validator.PublicKey, timeParameters);
 
-            var voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: false);
+            VoluntaryExit voluntaryExit = TestVoluntaryExit.BuildVoluntaryExit(testServiceProvider, state, currentEpoch, validatorIndex, privateKey, signed: false);
 
             RunVoluntaryExitProcessing(testServiceProvider, state, voluntaryExit, expectValid: false);
         }
@@ -70,12 +72,12 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
         //If ``valid == False``, run expecting ``AssertionError``
         private void RunVoluntaryExitProcessing(IServiceProvider testServiceProvider, BeaconState state, VoluntaryExit voluntaryExit, bool expectValid)
         {
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
-            var chainConstants = testServiceProvider.GetService<ChainConstants>();
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            ChainConstants chainConstants = testServiceProvider.GetService<ChainConstants>();
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             // Act
             if (!expectValid)
@@ -87,16 +89,16 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
                 return;
             }
 
-            var validatorIndex = voluntaryExit.ValidatorIndex;
+            ValidatorIndex validatorIndex = voluntaryExit.ValidatorIndex;
 
-            var preExitEpoch = state.Validators[(int)(ulong)validatorIndex].ExitEpoch;
+            Epoch preExitEpoch = state.Validators[(int)(ulong)validatorIndex].ExitEpoch;
 
             beaconStateTransition.ProcessVoluntaryExit(state, voluntaryExit);
 
             // Assert
             preExitEpoch.ShouldBe(chainConstants.FarFutureEpoch);
 
-            var postExitEpoch = state.Validators[(int)(ulong)validatorIndex].ExitEpoch;
+            Epoch postExitEpoch = state.Validators[(int)(ulong)validatorIndex].ExitEpoch;
             postExitEpoch.ShouldBeLessThan(chainConstants.FarFutureEpoch);
         }
     }
