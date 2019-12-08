@@ -21,15 +21,15 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.Forks
 {
-    public class Berlin : IReleaseSpec
+    public class MuirGlacier : IReleaseSpec
     {
         private static IReleaseSpec _instance;
 
-        private Berlin()
+        private MuirGlacier()
         {
         }
 
-        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Berlin());
+        public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new MuirGlacier());
 
         public long MaximumExtraDataSize => 32;
         public long MaxCodeSize => 24576;

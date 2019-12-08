@@ -60,8 +60,13 @@ namespace Nethermind.Core.Specs
             {
                 return ConstantinopleFix.Instance;
             }
+            
+            if (blockNumber < MuirGlacierBlockNumber)
+            {
+                return Istanbul.Instance;
+            }
 
-            return Istanbul.Instance;
+            return MuirGlacier.Instance;
         }
 
         public static long HomesteadBlockNumber { get; } = 1150000;
@@ -71,6 +76,7 @@ namespace Nethermind.Core.Specs
         public static long ByzantiumBlockNumber { get; } = 4370000;
         public static long ConstantinopleFixBlockNumber { get; } = 7280000;
         public static long IstanbulBlockNumber { get; } = 9069000;
+        public static long MuirGlacierBlockNumber { get; } = 9200000;
 
         public int ChainId => 1;
 
