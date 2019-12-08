@@ -119,6 +119,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
+        [Ignore("Long and unpredictable test - we deserve a better test here - without Thread.Sleep")]
         public void After_ending_does_not_update_total_or_current()
         {
             MeasuredProgress measuredProgress = new MeasuredProgress();
