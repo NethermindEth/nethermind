@@ -147,7 +147,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 var deposit = new Deposit(proof, depositData);
 
                 _logger.LogDebug("Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.",
-                    validatorIndex, publicKey);
+                    validatorIndex, publicKey.ToString().Substring(0, 12));
 
                 deposits.Add(deposit);
             }
