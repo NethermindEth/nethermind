@@ -187,7 +187,7 @@ namespace Nethermind.BeaconNode
         {
             Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
             Gwei effectiveBalance = state.Validators[(int)index].EffectiveBalance;
-            Gwei squareRootBalance = totalBalance.SquareRoot();
+            Gwei squareRootBalance = totalBalance.IntegerSquareRoot();
             Gwei baseReward = effectiveBalance * _rewardsAndPenaltiesOptions.CurrentValue.BaseRewardFactor
                 / squareRootBalance / _chainConstants.BaseRewardsPerEpoch;
             return baseReward;

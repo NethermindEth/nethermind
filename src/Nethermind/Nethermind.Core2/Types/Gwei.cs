@@ -127,7 +127,7 @@ namespace Nethermind.Core2.Types
             return new Gwei(left.Amount + right.Amount);
         }
 
-        public Gwei SquareRoot()
+        public Gwei IntegerSquareRoot()
         {
             return (Gwei)Amount.SquareRoot();
         }
