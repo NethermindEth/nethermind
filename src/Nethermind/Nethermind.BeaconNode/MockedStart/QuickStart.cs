@@ -208,20 +208,21 @@ namespace Nethermind.BeaconNode.MockedStart
         {
             var input = new Span<byte>(new byte[32]);
             var bigIndex = new BigInteger(index);
-            var success = bigIndex.TryWriteBytes(input, out var bytesWritten);
-            if (!success || bytesWritten == 0)
+            var indexWriteSuccess = bigIndex.TryWriteBytes(input, out var indexBytesWritten);
+            if (!indexWriteSuccess || indexBytesWritten == 0)
             {
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            var hash = _cryptographyService.Hash(input).AsSpan();
-
+            var hash32 = _cryptographyService.Hash(input);
+            var hash = hash32.AsSpan();
             var value = new BigInteger(hash.ToArray());
             var privateKey = value % s_curveOrder;
 
+            // Note that the private key is an *unsigned*, *big endian* number
             var privateKeySpan = new Span<byte>(new byte[32]);
-            var success2 = privateKey.TryWriteBytes(privateKeySpan, out var bytesWritten2);
-            if (!success2 || bytesWritten2 != 32)
+            var keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out var keyBytesWritten, isUnsigned: true, isBigEndian: true);
+            if (!keyWriteSuccess || keyBytesWritten != 32)
             {
                 throw new Exception("Error generating quick start private key.");
             }
