@@ -44,23 +44,5 @@ namespace Nethermind.Logging.Microsoft
         {
             return logger.IsEnabled(global::Microsoft.Extensions.Logging.LogLevel.Trace);
         }
-        
-        public static void Info(
-            this global::Microsoft.Extensions.Logging.ILogger logger,
-            EventId eventId,
-            string message,
-            params object[] args)
-        {
-            logger.LogInformation(eventId, message, args);
-        }
-        
-        public static void Debug(
-            this global::Microsoft.Extensions.Logging.ILogger logger,
-            EventId eventId,
-            string message,
-            params object[] args)
-        {
-            logger.LogDebug(eventId, message, args);
-        }
     }
 }
