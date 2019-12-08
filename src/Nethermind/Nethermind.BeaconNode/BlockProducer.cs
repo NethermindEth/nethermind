@@ -37,12 +37,12 @@ namespace Nethermind.BeaconNode
 
             var head = await _forkChoice.GetHeadAsync(store);
 
-            if (!store.TryGetBlockState(head, out BeaconState? state) || state is null)
+            if (!store.TryGetBlockState(head, out var state))
             {
                 throw new Exception($"Beacon chain is currently syncing, head state {head} not found.");
             }
 
-            return state;
+            return state!;
         }
 
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)

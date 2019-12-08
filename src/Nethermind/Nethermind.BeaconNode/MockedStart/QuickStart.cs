@@ -33,12 +33,8 @@ namespace Nethermind.BeaconNode.MockedStart
         private readonly IOptionsMonitor<GweiValues> _gweiValueOptions;
         private readonly IOptionsMonitor<InitialValues> _initialValueOptions;
         private readonly ILogger<QuickStart> _logger;
-        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
-        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
-        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
-        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         static QuickStart()
         {
@@ -51,12 +47,8 @@ namespace Nethermind.BeaconNode.MockedStart
 
         public QuickStart(ILogger<QuickStart> logger,
             ChainConstants chainConstants,
-            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<GweiValues> gweiValueOptions,
             IOptionsMonitor<InitialValues> initialValueOptions,
-            IOptionsMonitor<TimeParameters> timeParameterOptions,
-            IOptionsMonitor<StateListLengths> stateListLengthOptions,
-            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
             ICryptographyService cryptographyService,
@@ -66,12 +58,8 @@ namespace Nethermind.BeaconNode.MockedStart
         {
             _logger = logger;
             _chainConstants = chainConstants;
-            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _gweiValueOptions = gweiValueOptions;
             _initialValueOptions = initialValueOptions;
-            _timeParameterOptions = timeParameterOptions;
-            _stateListLengthOptions = stateListLengthOptions;
-            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _signatureDomainOptions = signatureDomainOptions;
             _quickStartParameterOptions = quickStartParameterOptions;
             _cryptographyService = cryptographyService;
@@ -92,12 +80,8 @@ namespace Nethermind.BeaconNode.MockedStart
             _logger.LogWarning(0, "Mocked quick start with genesis time {GenesisTime} and {ValidatorCount} validators.",
                 quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount);
 
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             var gweiValues = _gweiValueOptions.CurrentValue;
             var initialValues = _initialValueOptions.CurrentValue;
-            var timeParameters = _timeParameterOptions.CurrentValue;
-            var stateListLengths = _stateListLengthOptions.CurrentValue;
-            var maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
             var signatureDomains = _signatureDomainOptions.CurrentValue;
 
             // Fixed amount
@@ -163,7 +147,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 var deposit = new Deposit(proof, depositData);
 
                 _logger.LogDebug("Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.",
-                    validatorIndex, publicKey);
+                    validatorIndex, publicKey.ToString().Substring(0, 12));
 
                 deposits.Add(deposit);
             }
@@ -224,20 +208,22 @@ namespace Nethermind.BeaconNode.MockedStart
         {
             var input = new Span<byte>(new byte[32]);
             var bigIndex = new BigInteger(index);
-            var success = bigIndex.TryWriteBytes(input, out var bytesWritten);
-            if (!success || bytesWritten == 0)
+            var indexWriteSuccess = bigIndex.TryWriteBytes(input, out var indexBytesWritten);
+            if (!indexWriteSuccess || indexBytesWritten == 0)
             {
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            var hash = _cryptographyService.Hash(input).AsSpan();
-
-            var value = new BigInteger(hash.ToArray());
+            var hash32 = _cryptographyService.Hash(input);
+            var hash = hash32.AsSpan();
+            // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
+            var value = new BigInteger(hash.ToArray(), isUnsigned: true);
             var privateKey = value % s_curveOrder;
 
+            // Note that the private key is an *unsigned*, *big endian* number
             var privateKeySpan = new Span<byte>(new byte[32]);
-            var success2 = privateKey.TryWriteBytes(privateKeySpan, out var bytesWritten2);
-            if (!success2 || bytesWritten2 != 32)
+            var keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out var keyBytesWritten, isUnsigned: true, isBigEndian: true);
+            if (!keyWriteSuccess || keyBytesWritten != 32)
             {
                 throw new Exception("Error generating quick start private key.");
             }

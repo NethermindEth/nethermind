@@ -180,13 +180,13 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
 
-            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out BeaconBlock? parentBlock) || parentBlock is null)
+            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out var parentBlock))
             {
                 throw new InvalidDataException("Cannot retrieve parent block");
             }
             
             var parentSigningRoot = parentBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            if (!store.TryGetBlockState(parentSigningRoot, out BeaconState? preState) || preState is null)
+            if (!store.TryGetBlockState(parentSigningRoot, out var preState))
             {
                 throw new InvalidDataException("Cannot retrieve pre state");
             }
@@ -207,7 +207,7 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
 
-            if (!store.TryGetBlockState(block.ParentRoot, out BeaconState? preState) || preState is null)
+            if (!store.TryGetBlockState(block.ParentRoot, out var preState))
             {
                 throw new InvalidDataException("Cannot retrieve pre state");
             }
