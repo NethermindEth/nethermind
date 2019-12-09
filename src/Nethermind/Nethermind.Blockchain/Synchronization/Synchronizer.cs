@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Synchronization
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
 
-            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, syncReport, receiptStorage, logManager);
+            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, logManager);
 
             if (syncConfig.FastBlocks)
             {

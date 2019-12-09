@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Mining;
@@ -50,18 +51,26 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
         private SyncBatchSize _syncBatchSize;
         private int _sinceLastTimeout;
 
-        public BlockDownloader(IBlockTree blockTree, IBlockValidator blockValidator, ISealValidator sealValidator, ISyncReport syncReport, IReceiptStorage receiptStorage, ILogManager logManager)
+        public BlockDownloader(IBlockTree blockTree,
+            IBlockValidator blockValidator,
+            ISealValidator sealValidator,
+            ISyncReport syncReport,
+            IReceiptStorage receiptStorage,
+            ISpecProvider specProvider,
+            ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _syncBatchSize = new SyncBatchSize(logManager);
@@ -290,7 +299,7 @@ namespace Nethermind.Blockchain.Synchronization
                         }
                     }
                     
-                    ProcessDownloadBody(body, block, downloadReceipts, blockReceipts, correctReceiptsBlocks);
+                    ProcessDownloadedBody(body, block, downloadReceipts, blockReceipts, correctReceiptsBlocks);
                 }
 
                 _sinceLastTimeout++;
@@ -370,7 +379,7 @@ namespace Nethermind.Blockchain.Synchronization
             return blocksSynced;
         }
 
-        private static void ProcessDownloadBody(
+        private void ProcessDownloadedBody(
             BlockBody body,
             Block block, 
             bool downloadReceipts,
@@ -403,12 +412,23 @@ namespace Nethermind.Blockchain.Synchronization
                             gasUsedBefore = receipt.GasUsedTotal;
                         }
                     }
+
+                    ValidateReceipts(block, blockReceipts);
                 }
                 else
                 {
-                    throw new InvalidOperationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
+                    throw new EthSynchronizationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
                 }
             }
+        }
+
+        private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
+        {
+            Keccak receiptsRoot = block.CalculateReceiptRoot(_specProvider, blockReceipts);
+            if (receiptsRoot != block.ReceiptsRoot)
+            {
+                throw new EthSynchronizationException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");
+            }            
         }
 
         private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
