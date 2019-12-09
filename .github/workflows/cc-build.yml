@@ -19,10 +19,9 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1
-      with:
-        submodules: true
-        fetch-depth: 1
+    - uses: actions/checkout@v2-beta
+    - name: Updating submodules
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -95,10 +94,9 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1
-      with:
-        submodules: true
-        fetch-depth: 1
+    - uses: actions/checkout@v2-beta
+    - name: Updating submodules
+      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Basic.Test
@@ -147,11 +145,11 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v2-beta
       with:
-        submodules: true
         lfs: true
-        fetch-depth: 1
+    - name: Updating submodules
+      run: git -c submodule."src/tests".update=none submodule update --init
     - name: Ethereum.Bls.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum2.Bls.Test
