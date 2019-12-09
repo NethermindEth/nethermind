@@ -16,7 +16,7 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
-        lfs: true
+        fetch-depth: 1
     - name: Installing Linux packages
       if: matrix.os == 'ubuntu-latest'
       run: sudo apt-get install libsnappy-dev libc6-dev libc6
@@ -92,7 +92,7 @@ jobs:
     - uses: actions/checkout@v1
       with:
         submodules: true
-        lfs: true
+        fetch-depth: 1
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Basic.Test
@@ -145,6 +145,7 @@ jobs:
       with:
         submodules: true
         lfs: true
+        fetch-depth: 1
     - name: Ethereum.Bls.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum2.Bls.Test
