@@ -33,9 +33,10 @@
 
   <ItemGroup>
     <Content Remove="oapi\**" />
-    <Content Remove="tools\**" />
     <None Include="oapi\**" CopyToOutputDirectory="Never" />
-    <None Include="tools\**" CopyToOutputDirectory="Never" />
   </ItemGroup>
 
+  <ItemGroup>
+    <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />
+  </ItemGroup>
 </Project>

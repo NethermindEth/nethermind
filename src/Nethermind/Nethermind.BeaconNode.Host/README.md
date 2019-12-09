@@ -75,13 +75,14 @@ Controller code, in the Nethermind.BeaconNode.Api project:
 
 ```
 cd src/Nethermind/Nethermind.BeaconNode.Api
-dotnet tools/nswag/dotnet-nswag.dll openapi2cscontroller /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeApi /namespace:Nethermind.BeaconNode.Api /output:BeaconNodeApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
+dotnet restore # ensure the tool is installed
+dotnet nswag openapi2cscontroller /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeApi /namespace:Nethermind.BeaconNode.Api /output:BeaconNodeApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
 ```
 
 Client code:
 
 ```
-dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Nethermind.BeaconNode.ApiClient /ContractsNamespace:Nethermind.BeaconNode.ApiClient.Contracts /output:../Nethermind.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
+dotnet nswag openapi2csclient /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Nethermind.BeaconNode.ApiClient /ContractsNamespace:Nethermind.BeaconNode.ApiClient.Contracts /output:../Nethermind.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
 ### Implemented

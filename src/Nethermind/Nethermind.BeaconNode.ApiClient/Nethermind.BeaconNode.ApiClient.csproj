@@ -19,4 +19,7 @@
   <ItemGroup>
     <Compile Remove="BeaconNodeClient-generated.cs" />
   </ItemGroup>
+  <ItemGroup>
+    <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />
+  </ItemGroup>
 </Project>
