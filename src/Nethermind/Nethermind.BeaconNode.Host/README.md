@@ -1,36 +1,38 @@
-# Cortex
+# Nethermind Ethereum 2.0 - Beacon Node Host
 
-.NET Core Ethereum 2.0
+This is the Beacon Node host for Ethereum 2.0 for the .NET Core Nethermind project.
 
 ## Getting started
 
 ### Pre-requisites
 
 * .NET Core 3.0 development tools
+* On Linux and OSX, you also need GMP installed (big number library)
 
 ### Compile and run the Beacon Node
 
-To run with default Development settings (minimal config):
+To run the unit tests:
 
 ```
-dotnet run --project src/Cortex.BeaconNode.Host --QuickStart:GenesisTime ([DateTimeOffset]::Now.ToUnixTimeSeconds()) --QuickStart:ValidatorCount 3
+dotnet test src/Nethermind/Nethermind.BeaconNode.Test
 ```
 
-To run with Production settings (mainnet config):
+To run with default Development settings (minimal config), with mocked quick start:
 
 ```
-dotnet run --project src/Cortex.BeaconNode.Host --environment Production
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime ([DateTimeOffset]::Now.ToUnixTimeSeconds()) --QuickStart:ValidatorCount 8
 ```
-
 
 ### Test it works
 
-Open a browser to ```https://localhost:5001/node/version``` and it should respond with the name and version.
+Run, as above, then open a browser to ```https://localhost:5001/node/version``` and it should respond with the name and version.
 
 Other GET queries:
 
 * genesis time: ```https://localhost:5001/node/genesis_time```
 * get an unsigned block, ready for signing: ```https://localhost:5001/validator/block?slot=10&randao_reveal=0x0102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f10```
+
+(this last one is only mocked up so far, and not actually implemented yet)
 
 ### Optional requirements
 
@@ -39,41 +41,43 @@ Other GET queries:
 
 ### Build with version number
 
-To build a release version, with a gitversion based version number:
+To build a release version, with a GitVersion based semantic version number:
 
 ```
-./build.ps1
+./src/Nethermind/Nethermind.BeaconNode.Host/build.ps1
 ```
 
-Then run the DLL that was created (still the Development version):
+Then run the DLL that was published:
 
 ```
-dotnet ./src/Cortex.BeaconNode.Host/bin/Release/netcoreapp3.0/publish/Cortex.BeaconNode.Host.dll
+dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll
 ```
 
-The files are also copied to a release directory, configured with default host settings as Production:
-
-```
-dotnet ./release/latest/Cortex.BeaconNode.Host.dll
-```
-
-The published version also includes a published Windows platform executable.
-
+From the published version you can also pass ```--Environment Development``` to use the development (minimal) configuration, and pass in quick start parameters, as above.
 
 ## Development
 
+### Configuration files
+
+Primary configuration files use .NET Core JSON settings files, with overrides from envrionment variables and command line.
+
+There is a script in src/Nethermind/Nethermind.BeaconNode.Host/configuration that will convert from the specification YAML files to fragments to insert into the relevant Production and Development configuration JSON files.
+
+For backwards compatibility, the application can also use the YAML files directly if necessary (although values are overwritten by anything from the full appsettings).
+
 ### API generation
 
-Controller code:
+Controller code, in the Nethermind.BeaconNode.Api project:
 
 ```
-dotnet tools/nswag/dotnet-nswag.dll openapi2cscontroller /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeApi /namespace:Cortex.BeaconNode.Api /output:src/Cortex.BeaconNode.Api/BeaconNodeApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
+cd src/Nethermind/Nethermind.BeaconNode.Api
+dotnet tools/nswag/dotnet-nswag.dll openapi2cscontroller /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeApi /namespace:Nethermind.BeaconNode.Api /output:BeaconNodeApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"
 ```
 
 Client code:
 
 ```
-dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:docs/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Cortex.BeaconNode.ApiClient /ContractsNamespace:Cortex.BeaconNode.ApiClient.Contracts /output:src/Cortex.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
+dotnet tools/nswag/dotnet-nswag.dll openapi2csclient /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Nethermind.BeaconNode.ApiClient /ContractsNamespace:Nethermind.BeaconNode.ApiClient.Contracts /output:../Nethermind.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
 ### Implemented
@@ -87,14 +91,16 @@ Phase 0:
 
 Supporting components:
 
-* SimpleSerialize (SSZ) spec -- sufficient to support the beacon chain, no deserialisation yet, see the separate Cortex.Ssz project, https://github.com/sgryphon/cortex-ssz
-* BLS signature verification --  sufficient to support the beacon chain, currently only Windows support, based on the Herumi library, see the separate Cortex.Cryptography.Bls project, https://github.com/sgryphon/cortex-cryptography-bls
+* SimpleSerialize (SSZ) spec -- sufficient to support the beacon chain, no deserialisation yet, see the separate Cortex.Ssz project, https://github.com/NethermindEth/cortex-ssz
+* BLS signature verification --  sufficient to support the beacon chain, currently only Windows support, based on the Herumi library, see the separate Cortex.Cryptography.Bls project, https://github.com/NethermindEth/cortex-cryptography-bls
+
+Both these will be merged into the main Nethermind project / renamed / replaced with the Nethermind implementation.
 
 ### In Progress
 
 * Honest Validator
 * Eth2 APIs
-* Interop Standards in Eth2 PM -- QuickStart
+* Interop Standards in Eth2 PM -- partially implemented for basic mocked QuickStart
 
 ### To Do
 
@@ -121,7 +127,7 @@ Other:
 Project-specific:
 
 * Peer to peer
-* Installation, e.g.Windows Service
+* Installation, e.g.Windows Service (to be intergrated with Nethermind.Runner ?)
 
 https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/windows-service?view=aspnetcore-3.0&tabs=netcore-cli
 
