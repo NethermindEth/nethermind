@@ -29,10 +29,15 @@ namespace Nethermind.BeaconNode
             string product1 = $"{productToken}/{version}";
             parts.Add(product1);
 
+            string osDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+            string frameworkDescription = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+            string osComment = $"({osDescription}/{frameworkDescription})";
+            parts.Add(osComment);
+
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)
             {
-                string comment1 = $"({environmentName})";
-                parts.Add(comment1);
+                string environmentComment = $"({environmentName})";
+                parts.Add(environmentComment);
             }
 
             string versionString = string.Join(" ", parts);
