@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -29,8 +30,8 @@ namespace Nethermind.BeaconNode
             string product1 = $"{productToken}/{version}";
             parts.Add(product1);
 
-            string osDescription = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
-            string frameworkDescription = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+            string osDescription = RuntimeInformation.OSDescription;
+            string frameworkDescription = RuntimeInformation.FrameworkDescription;
             string osComment = $"({osDescription}/{frameworkDescription})";
             parts.Add(osComment);
 

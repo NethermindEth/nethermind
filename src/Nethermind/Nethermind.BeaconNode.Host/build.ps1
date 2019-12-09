@@ -14,7 +14,7 @@ $versionFolder = "release/$($v.NuGetVersion)"
 if (Test-Path $versionFolder) {
     Remove-Item -Path $versionFolder -Recurse
 }
-New-Item -Path $versionFolder -ItemType Directory
+New-Item -Path $versionFolder -ItemType Directory -Force
 Copy-Item -Path './bin/Release/netcoreapp3.0/publish/*' -Destination $versionFolder -Recurse
 
 $hostsettings = Get-Content -Raw -Path "$($versionFolder)/hostsettings.json" | ConvertFrom-Json
@@ -25,5 +25,5 @@ $latestFolder = 'release/latest'
 if (Test-Path $latestFolder) {
     Remove-Item -Path $latestFolder -Recurse
 }
-New-Item -Path $latestFolder -ItemType Directory
+New-Item -Path $latestFolder -ItemType Directory -Force
 Copy-Item -Path "$($versionFolder)/*" -Destination $latestFolder -Recurse
