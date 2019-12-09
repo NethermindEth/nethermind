@@ -29,6 +29,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
 using Nethermind.Runner.Runners;
@@ -95,7 +96,7 @@ namespace Nethermind.Runner.Test
                 Substitute.For<INdmDataPublisher>(),
                 Substitute.For<INdmInitializer>(),
                 Substitute.For<IWebSocketsManager>(),
-                new EthereumJsonSerializer());
+                new EthereumJsonSerializer(), Substitute.For<IMonitoringService>());
 
             await runner.Start();
             await runner.StopAsync();

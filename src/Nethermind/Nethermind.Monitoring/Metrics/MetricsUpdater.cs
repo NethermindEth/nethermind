@@ -64,7 +64,7 @@ namespace Nethermind.Monitoring.Metrics
         {
             _intervalSeconds = intervalSeconds;
         }
-        
+
         public void StartUpdating()
         {
             _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));

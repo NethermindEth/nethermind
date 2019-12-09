@@ -14,23 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-
-namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
+namespace Nethermind.DataMarketplace.Consumers
 {
-    public class GasLimitsForRpc
+    public static class Metrics
     {
-        public ulong Deposit { get; set; }
-        public ulong Refund { get; set; }
-
-        public GasLimitsForRpc()
-        {
-        }
-
-        public GasLimitsForRpc(GasLimits gasLimits)
-        {
-            Deposit = gasLimits.Deposit;
-            Refund = gasLimits.Refund;
-        }
+        public static long SentQueries { get; set; }
+        public static long ConsumedUnits { get; set; }
+        public static long ReceivedData { get; set; }
     }
 }
