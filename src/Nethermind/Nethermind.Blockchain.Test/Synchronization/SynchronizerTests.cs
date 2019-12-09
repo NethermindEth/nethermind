@@ -91,15 +91,15 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
                     return Task.FromException<BlockBody[]>(new TimeoutException());
                 }
 
-                BlockBody[] result = new BlockBody[blockHashes.Length];
-                for (int i = 0; i < blockHashes.Length; i++)
+                BlockBody[] result = new BlockBody[blockHashes.Count];
+                for (int i = 0; i < blockHashes.Count; i++)
                 {
                     foreach (Block block in Blocks)
                     {
@@ -215,12 +215,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
             }
 
-            public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

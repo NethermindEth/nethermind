@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -80,10 +81,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
         }
 
-        public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+        public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
         {
-            BlockBody[] result = new BlockBody[blockHashes.Length];
-            for (int i = 0; i < blockHashes.Length; i++)
+            BlockBody[] result = new BlockBody[blockHashes.Count];
+            for (int i = 0; i < blockHashes.Count; i++)
             {
                 Block block = _remoteTree.FindBlock(blockHashes[i], BlockTreeLookupOptions.RequireCanonical);
                 result[i] = new BlockBody(block.Transactions, block.Ommers);
@@ -150,12 +151,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
         }
 
-        public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
         {
             return Task.FromResult(_remoteSyncServer.GetReceipts(blockHash));
         }
 
-        public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+        public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
             return Task.FromResult(_remoteSyncServer.GetNodeData(hashes));
         }

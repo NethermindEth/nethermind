@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -192,7 +193,7 @@ namespace Nethermind.Blockchain.Synchronization
                 var headers = await RequestHeaders(bestPeer, cancellation, currentNumber, blocksToRequest);
                 Block[] blocks = new Block[headers.Length - 1];
 
-                List<Keccak> hashes = new List<Keccak>();
+                List<Keccak> blockHashes = new List<Keccak>();
                 Dictionary<int, int> indexMapping = new Dictionary<int, int>();
                 int currentBodyIndex = 0;
                 for (int i = 1; i < headers.Length; i++)
@@ -207,7 +208,7 @@ namespace Nethermind.Blockchain.Synchronization
                         blocks[i - 1] = new Block(headers[i], (BlockBody) null);
                         indexMapping.Add(currentBodyIndex, i - 1);
                         currentBodyIndex++;
-                        hashes.Add(headers[i].Hash);
+                        blockHashes.Add(headers[i].Hash);
                     }
                     else
                     {
@@ -215,13 +216,11 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
-                var blockHashes = hashes.ToArray();
-                
-                Task<BlockBody[]> bodiesTask = blockHashes.Length == 0
+                Task<BlockBody[]> bodiesTask = blockHashes.Count == 0
                     ? Task.FromResult(Array.Empty<BlockBody>())
                     : bestPeer.SyncPeer.GetBlocks(blockHashes, cancellation);
                 
-                Task<TxReceipt[][]> receiptsTasks = !downloadReceipts || blockHashes.Length == 0
+                Task<TxReceipt[][]> receiptsTasks = !downloadReceipts || blockHashes.Count == 0
                     ? Task.FromResult(Array.Empty<TxReceipt[]>())
                     : bestPeer.SyncPeer.GetReceipts(blockHashes, cancellation);
 
@@ -269,46 +268,29 @@ namespace Nethermind.Blockchain.Synchronization
                 BlockBody[] bodies = bodiesTask.Result;
                 for (int i = 0; i < bodies.Length; i++)
                 {
-                    BlockBody body = bodies[i];
+                    var body = bodies[i];
+                    var block = blocks[indexMapping[i]];
+                    
                     if (body == null)
                     {
                         // TODO: this is how it used to be... I do not want to touch it without extensive testing 
-                        throw new EthSynchronizationException($"{bestPeer} sent an empty body for {blocks[i].ToString(Block.Format.Short)}.");
+                        throw new EthSynchronizationException($"{bestPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
                     }
-
-                    Block block = blocks[indexMapping[i]];
-                    if (block == null || block.Body != null)
-                    {
-                        throw new InvalidOperationException("Invalid state of blocks placeholders during sync");
-                    }
-
-                    blocks[indexMapping[i]].Body = body;
-
+                    
+                    TxReceipt[] blockReceipts = null;
                     if (downloadReceipts)
                     {
                         if (receipts.Length > i)
                         {
-                            var blockReceipts = receipts[i];
-                            if (body.Transactions.Length == (blockReceipts?.Length ?? 0))
-                            {
-                                var receiptsForBlock = new List<TxReceipt>();
-                                correctReceiptsBlocks[block.Hash] = receiptsForBlock;
-                                long gasUsedBefore = 0;
-
-                                for (int j = 0; j < body.Transactions.Length; j++)
-                                {
-                                    var transaction = body.Transactions[j];
-                                    if (blockReceipts.Length > j)
-                                    {
-                                        var receipt = blockReceipts[j];
-                                        RecoverReceiptData(receipt, block, transaction, j, gasUsedBefore);
-                                        receiptsForBlock.Add(receipt);
-                                        gasUsedBefore = receipt.GasUsedTotal;
-                                    }
-                                }
-                            }
+                            blockReceipts = receipts[i];
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"Failed to download receipts for block {block.ToString(Block.Format.Short)}.");
                         }
                     }
+                    
+                    ProcessDownloadBody(body, block, downloadReceipts, blockReceipts, correctReceiptsBlocks);
                 }
 
                 _sinceLastTimeout++;
@@ -388,6 +370,47 @@ namespace Nethermind.Blockchain.Synchronization
             return blocksSynced;
         }
 
+        private static void ProcessDownloadBody(
+            BlockBody body,
+            Block block, 
+            bool downloadReceipts,
+            TxReceipt[] blockReceipts,
+            IDictionary<Keccak, IList<TxReceipt>> correctReceiptsBlocks)
+        {
+            if (block == null || block.Body != null)
+            {
+                throw new InvalidOperationException("Invalid state of blocks placeholders during sync");
+            }
+
+            block.Body = body;
+            
+            if (downloadReceipts)
+            {
+                if (body.Transactions.Length == (blockReceipts?.Length ?? 0))
+                {
+                    var receiptsForBlock = new List<TxReceipt>();
+                    correctReceiptsBlocks[block.Hash] = receiptsForBlock;
+                    long gasUsedBefore = 0;
+
+                    for (int j = 0; j < body.Transactions.Length; j++)
+                    {
+                        var transaction = body.Transactions[j];
+                        if (blockReceipts.Length > j)
+                        {
+                            var receipt = blockReceipts[j];
+                            RecoverReceiptData(receipt, block, transaction, j, gasUsedBefore);
+                            receiptsForBlock.Add(receipt);
+                            gasUsedBefore = receipt.GasUsedTotal;
+                        }
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
+                }
+            }
+        }
+
         private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
         {
             receipt.BlockHash = block.Hash;
@@ -426,7 +449,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     throw new EthSynchronizationException("Headers task faulted.", t.Exception);
                 }
-            });
+            }, cancellation);
 
             cancellation.ThrowIfCancellationRequested();
 

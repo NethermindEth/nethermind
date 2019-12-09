@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -171,10 +172,10 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public TxReceipt[][] GetReceipts(Keccak[] blockHashes)
+        public TxReceipt[][] GetReceipts(IList<Keccak> blockHashes)
         {
-            var receipts = new TxReceipt[blockHashes.Length][];
-            for (int blockIndex = 0; blockIndex < blockHashes.Length; blockIndex++)
+            var receipts = new TxReceipt[blockHashes.Count][];
+            for (int blockIndex = 0; blockIndex < blockHashes.Count; blockIndex++)
             {
                 Block block = Find(blockHashes[blockIndex]);
                 var blockReceipts = new TxReceipt[block?.Transactions.Length ?? 0];
@@ -205,10 +206,10 @@ namespace Nethermind.Blockchain.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[][] GetNodeData(Keccak[] keys)
+        public byte[][] GetNodeData(IList<Keccak> keys)
         {
-            var values = new byte[keys.Length][];
-            for (int i = 0; i < keys.Length; i++)
+            var values = new byte[keys.Count][];
+            for (int i = 0; i < keys.Count; i++)
             {
                 values[i] = _stateDb.Get(keys[i]) ?? _codeDb.Get(keys[i]);
             }

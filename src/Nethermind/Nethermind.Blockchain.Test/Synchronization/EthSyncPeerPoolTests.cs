@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Configuration;
 using System.Linq;
 using System.Threading;
@@ -78,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 DisconnectRequested = true;
             }
 
-            public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
             {
                 return Task.FromResult(new BlockBody[0]);
             }
@@ -116,12 +117,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             {
             }
 
-            public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {
                 return Task.FromResult(new TxReceipt[0][]);
             }
 
-            public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
             {
                 return Task.FromResult(new byte[0][]);
             }

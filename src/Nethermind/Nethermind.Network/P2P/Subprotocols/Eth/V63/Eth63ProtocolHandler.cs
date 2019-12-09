@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -63,26 +64,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} GetReceipts from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} GetReceipts from {Node:c}");
                     Metrics.Eth63GetReceiptsReceived++;
                     Handle(Deserialize<GetReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.Receipts:
-                    Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} Receipts from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} Receipts from {Node:c}");
                     Metrics.Eth63ReceiptsReceived++;
                     Handle(Deserialize<ReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} GetNodeData from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} GetNodeData from {Node:c}");
                     Metrics.Eth63GetNodeDataReceived++;
                     Handle(Deserialize<GetNodeDataMessage>(message.Content));
                     break;
                 case Eth63MessageCode.NodeData:
-                    Interlocked.Increment(ref _counter);
-                    if(Logger.IsTrace) Logger.Trace($"{_counter:D5} NodeData from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if(Logger.IsTrace) Logger.Trace($"{Counter:D5} NodeData from {Node:c}");
                     Metrics.Eth63NodeDataReceived++;
                     Handle(Deserialize<NodeDataMessage>(message.Content));
                     break;
@@ -93,10 +94,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxReceipt[][] txReceipts = SyncServer.GetReceipts(msg.BlockHashes);
-            Interlocked.Increment(ref _counter);
+            Interlocked.Increment(ref Counter);
             Send(new ReceiptsMessage(txReceipts));
             stopwatch.Stop();
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if(Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(ReceiptsMessage msg)
@@ -112,10 +113,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             Stopwatch stopwatch = Stopwatch.StartNew();
             byte[][] nodeData = SyncServer.GetNodeData(msg.Keys);
-            Interlocked.Increment(ref _counter);
+            Interlocked.Increment(ref Counter);
             Send(new NodeDataMessage(nodeData));
             stopwatch.Stop();
-            if(Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if(Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(NodeDataMessage msg)
@@ -127,11 +128,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
         }
 
-        public override async Task<byte[][]> GetNodeData(Keccak[] keys, CancellationToken token)
+        public override async Task<byte[][]> GetNodeData(IList<Keccak> keys, CancellationToken token)
         {
-            if (keys.Length == 0)
+            if (keys.Count == 0)
             {
-                return new byte[0][];
+                return Array.Empty<byte[]>();
             }
             
             var msg = new GetNodeDataMessage(keys);
@@ -139,11 +140,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             return receipts;
         }
         
-        public override async Task<TxReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
+        public override async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHashes, CancellationToken token)
         {
-            if (blockHashes.Length == 0)
+            if (blockHashes.Count == 0)
             {
-                return new TxReceipt[0][];
+                return Array.Empty<TxReceipt[]>();
             }
             
             var msg = new GetReceiptsMessage(blockHashes);
@@ -157,7 +158,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending node fata request:");
-                Logger.Trace($"Keys count: {message.Keys.Length}");
+                Logger.Trace($"Keys count: {message.Keys.Count}");
             }
 
             var request = new Request<GetNodeDataMessage, byte[][]>(message);
@@ -200,7 +201,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending node fata request:");
-                Logger.Trace($"Hashes count: {message.BlockHashes.Length}");
+                Logger.Trace($"Hashes count: {message.BlockHashes.Count}");
             }
 
             var request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);

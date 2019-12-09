@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -36,14 +37,14 @@ namespace Nethermind.Blockchain.Synchronization
 
         void Disconnect(DisconnectReason reason, string details);
         
-        Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
+        Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token);
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
         
-        Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token);
-        Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token);
+        Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
+        Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
     }
 }

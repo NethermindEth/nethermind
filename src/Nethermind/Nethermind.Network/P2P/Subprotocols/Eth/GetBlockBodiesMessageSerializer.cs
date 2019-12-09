@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             NettyRlpStream nettyRlpStream = new NettyRlpStream(byteBuffer);
 
             int contentLength = 0;
-            for (int i = 0; i < message.BlockHashes.Length; i++)
+            for (int i = 0; i < message.BlockHashes.Count; i++)
             {
                 contentLength += Rlp.LengthOf(message.BlockHashes[i]);
             }
@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             byteBuffer.EnsureWritable(totalLength, true);
             
             nettyRlpStream.StartSequence(contentLength);
-            for (int i = 0; i < message.BlockHashes.Length; i++)
+            for (int i = 0; i < message.BlockHashes.Count; i++)
             {
                 nettyRlpStream.Encode(message.BlockHashes[i]);
             }

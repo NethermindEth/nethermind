@@ -16,15 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    [DebuggerDisplay("{BlockHashes.Length}")]
+    [DebuggerDisplay("{BlockHashes.Count}")]
     public class GetBlockBodiesMessage : P2PMessage
     {
-        public Keccak[] BlockHashes { get; }
+        public IList<Keccak> BlockHashes { get; }
         public override int PacketType { get; } = Eth62MessageCode.GetBlockBodies;
         public override string Protocol { get; } = "eth";
 
@@ -32,9 +33,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
         }
 
-        public GetBlockBodiesMessage (params Keccak[] blockHashes)
+        public GetBlockBodiesMessage(IList<Keccak> blockHashes)
         {
             BlockHashes = blockHashes;
+        }
+
+        public GetBlockBodiesMessage (params Keccak[] blockHashes) : this((IList<Keccak>)blockHashes)
+        {
         }
     }
 }

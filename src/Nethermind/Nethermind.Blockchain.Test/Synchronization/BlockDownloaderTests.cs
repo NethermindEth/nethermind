@@ -520,7 +520,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 throw new NotImplementedException();
             }
 
-            public Task<BlockBody[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -550,12 +550,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+            public Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+            public Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
