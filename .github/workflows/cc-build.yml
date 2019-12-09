@@ -96,7 +96,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2-beta
     - name: Updating submodules
-      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update
+      run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Basic.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Ethereum.Basic.Test
@@ -146,8 +146,6 @@ jobs:
         os: [ubuntu-latest]
     steps:
     - uses: actions/checkout@v2-beta
-      with:
-        lfs: true
     - name: Updating submodules
       run: git -c submodule."src/tests".update=none submodule update --init
     - name: Ethereum.Bls.Test
