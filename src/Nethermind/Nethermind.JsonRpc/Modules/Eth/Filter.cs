@@ -62,10 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 };
             }
 
-            var block = new BlockParameter();
-            block.FromJson(value);
-
-            return block;
+            return BlockParameter.FromJson(value);
         }
 
         private static object GetAddress(JToken token) => GetSingleOrMany(token);

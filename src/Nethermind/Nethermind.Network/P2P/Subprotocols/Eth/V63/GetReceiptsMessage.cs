@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
@@ -26,9 +27,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override int PacketType { get; } = 0x0f;
         public override string Protocol { get; } = "eth";
 
-        public Keccak[] BlockHashes { get; set; }
+        public IList<Keccak> BlockHashes { get; }
         
-        public GetReceiptsMessage(Keccak[] blockHashes)
+        public GetReceiptsMessage(IList<Keccak> blockHashes)
         {
             BlockHashes = blockHashes ?? throw new ArgumentNullException(nameof(blockHashes));
         }

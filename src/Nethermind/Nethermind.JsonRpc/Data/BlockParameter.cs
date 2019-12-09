@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Data
             BlockNumber = number;
         }
 
-        public BlockParameter FromJson(string jsonValue)
+        public static BlockParameter FromJson(string jsonValue)
         {
             switch (jsonValue)
             {

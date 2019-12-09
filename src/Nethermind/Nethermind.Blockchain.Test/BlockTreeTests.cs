@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -765,6 +766,23 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(block1);
             blockTree.UpdateMainChain(block1);
             Assert.True(blockTree.IsMainChain(block1.Hash));
+        }
+        
+        [Test]
+        public void Is_main_chain_returns_true_on_fast_sync_block()
+        {
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            BlockTree blockTree = BuildBlockTree();
+            blockTree.SuggestBlock(block0, false);
+            blockTree.IsMainChain(block0.Hash).Should().BeTrue();
+        }
+        
+        [Test]
+        public void Was_processed_returns_true_on_fast_sync_block()
+        {
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            BlockTree blockTree = BuildBlockTree();
+            blockTree.SuggestBlock(block0, false);
         }
 
         [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]

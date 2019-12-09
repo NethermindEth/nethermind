@@ -157,7 +157,7 @@ namespace Nethermind.Core.Encoding
             {
                 return Encode(new[] {rlp});
             }
-
+            
             if (Decoders.ContainsKey(typeof(T)))
             {
                 return ((IRlpDecoder<T>) Decoders[typeof(T)]).Encode(item, behaviors);
@@ -833,10 +833,10 @@ namespace Nethermind.Core.Encoding
             return new Rlp(result);
         }
 
-        public static Rlp Encode(Keccak[] sequence)
+        public static Rlp Encode(IList<Keccak> sequence)
         {
-            Rlp[] rlpSequence = new Rlp[sequence.Length];
-            for (int i = 0; i < sequence.Length; i++)
+            Rlp[] rlpSequence = new Rlp[sequence.Count];
+            for (int i = 0; i < sequence.Count; i++)
             {
                 rlpSequence[i] = Encode(sequence[i]);
             }

@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             var serialized = serializer.Serialize(message);
             GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
-            Assert.AreEqual(keys.Length, deserialized.BlockHashes.Length, "length");
+            Assert.AreEqual(keys.Length, deserialized.BlockHashes.Count, "count");
             for (int i = 0; i < keys.Length; i++) Assert.AreEqual(keys[i], deserialized.BlockHashes[i], $"blockHashes[{i}]");
         }
 

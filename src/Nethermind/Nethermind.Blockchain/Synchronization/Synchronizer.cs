@@ -88,7 +88,7 @@ namespace Nethermind.Blockchain.Synchronization
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
 
-            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, syncReport, logManager);
+            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, logManager);
 
             if (syncConfig.FastBlocks)
             {
@@ -274,7 +274,7 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     case SyncMode.Headers:
                         syncProgressTask = _syncConfig.DownloadBodiesInFastSync
-                            ? _blockDownloader.DownloadBlocks(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token, false)
+                            ? _blockDownloader.DownloadBlocks(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token, _syncConfig.DownloadReceiptsInFastSync ? BlockDownloader.DownloadOptions.DownloadWithReceipts : BlockDownloader.DownloadOptions.Download)
                             : _blockDownloader.DownloadHeaders(bestPeer, SyncModeSelector.FullSyncThreshold, linkedCancellation.Token);
                         break;
                     case SyncMode.StateNodes:
