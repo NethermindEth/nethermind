@@ -8,7 +8,7 @@ if (Test-Path 'bin/Release') {
 }
 
 $v = (dotnet ./tools/gitversion/GitVersion.dll | ConvertFrom-Json)
-dotnet publish ./Nethermind.BeaconNode.Host.csproj -c Release -p:AssemblyVersion=$($v.AssemblySemVer) -p:FileVersion=$($v.AssemblySemFileVer) -p:Version=$($v.SemVer)+$($v.CommitsSinceVersionSource).Sha.$($v.ShortSha) -p:PackageVersion=$($v.NuGetVersion)
+dotnet publish ./Nethermind.BeaconNode.Host.csproj -c Release -p:AssemblyVersion=$($v.AssemblySemVer) -p:FileVersion=$($v.AssemblySemFileVer) -p:Version=$($v.SemVer)+$($v.ShortSha) -p:PackageVersion=$($v.NuGetVersion)
 
 $versionFolder = "release/$($v.NuGetVersion)"
 if (Test-Path $versionFolder) {

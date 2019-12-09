@@ -8,7 +8,7 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconNodeConfiguration
     {
-        private const string ProductToken = "Cortex";
+        private const string ProductToken = "Nethermind";
         private readonly ILogger _logger;
 
         public BeaconNodeConfiguration(ILogger<BeaconNodeConfiguration> logger, IHostEnvironment environment)
@@ -21,21 +21,21 @@ namespace Nethermind.BeaconNode
 
         private string BuildVersionString(string productToken, string environmentName)
         {
-            var parts = new List<string>();
+            List<string> parts = new List<string>();
 
-            var assembly = typeof(BeaconNodeConfiguration).Assembly;
-            var versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
-            var version = versionAttribute.InformationalVersion;
-            var product1 = $"{productToken}/{version}";
+            Assembly assembly = typeof(BeaconNodeConfiguration).Assembly;
+            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+            string version = versionAttribute.InformationalVersion;
+            string product1 = $"{productToken}/{version}";
             parts.Add(product1);
 
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)
             {
-                var comment1 = $"({environmentName})";
+                string comment1 = $"({environmentName})";
                 parts.Add(comment1);
             }
 
-            var versionString = string.Join(" ", parts);
+            string versionString = string.Join(" ", parts);
             return versionString;
         }
     }
