@@ -332,7 +332,12 @@ ASALocalRun/
 # Visual Studio Code configuration
 .vscode/
 
-# ** Custom additional ignore specs **
+
+#######################################
+#                                     #
+#  Custom additional gitignore specs  #
+#                                     #
+#######################################
 
 # Local History for Visual Studio
 .localhistory/
@@ -357,3 +362,5 @@ src/Nethermind/Nethermind.Cli/cli.cmd.history
 
 # Include tool runtime debug files
 !src/Nethermind/Nethermind.BeaconNode.Api/tools/**/*.pdb
+
+src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
