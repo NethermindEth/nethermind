@@ -22,10 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\..\cortex-extra\mainnet.yaml" Link="mainnet.yaml">
+    <None Include="..\Nethermind.BeaconNode.Host\configuration\mainnet.yaml" Link="mainnet.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\..\..\cortex-extra\minimal.yaml" Link="minimal.yaml">
+    <None Include="..\Nethermind.BeaconNode.Host\configuration\minimal.yaml" Link="minimal.yaml">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
