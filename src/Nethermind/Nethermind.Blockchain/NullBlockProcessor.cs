@@ -38,7 +38,16 @@ namespace Nethermind.Blockchain
             return suggestedBlocks;
         }
 
-        public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
-        public event EventHandler<TxProcessedEventArgs> TransactionProcessed;
+        public event EventHandler<BlockProcessedEventArgs> BlockProcessed
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<TxProcessedEventArgs> TransactionProcessed
+        {
+            add { }
+            remove { }
+        }
     }
 }
