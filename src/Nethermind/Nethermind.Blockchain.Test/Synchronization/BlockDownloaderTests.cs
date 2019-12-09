@@ -241,7 +241,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await blockDownloader.DownloadBlocks(peerInfo, 0, CancellationToken.None, downloadOptions);
             _blockTree.BestSuggestedHeader.Number.Should().Be(Math.Max(0, headNumber * 2));
             _blockTree.IsMainChain(_blockTree.BestSuggestedHeader.Hash).Should().Be(downloadOptions != BlockDownloader.DownloadOptions.DownloadAndProcess);
-            _blockTree.WasProcessed(_blockTree.BestSuggestedHeader.Number, _blockTree.BestSuggestedHeader.Hash).Should().Be(downloadOptions != BlockDownloader.DownloadOptions.DownloadAndProcess);
             inMemoryReceiptStorage.Count.Should().Be(withReceipts ? buildBlocksResponse.Result.Sum(b => b.Transactions?.Length ?? 0) : 0);
         }
 

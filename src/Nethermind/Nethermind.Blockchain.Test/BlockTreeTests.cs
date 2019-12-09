@@ -775,7 +775,6 @@ namespace Nethermind.Blockchain.Test
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0, false);
             blockTree.IsMainChain(block0.Hash).Should().BeTrue();
-            blockTree.WasProcessed(block0.Number, block0.Hash).Should().BeTrue();
         }
         
         [Test]
@@ -784,7 +783,6 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             BlockTree blockTree = BuildBlockTree();
             blockTree.SuggestBlock(block0, false);
-            blockTree.WasProcessed(block0.Number, block0.Hash).Should().BeTrue();
         }
 
         [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]

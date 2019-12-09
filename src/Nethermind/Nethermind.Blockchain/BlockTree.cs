@@ -1170,7 +1170,6 @@ namespace Nethermind.Blockchain
                 if (setAsMain)
                 {
                     level.HasBlockOnMainChain = true;
-                    blockInfo.WasProcessed = true;
                 }
 
                 _chainLevelInfoRepository.PersistLevel(number, level, batch);                
