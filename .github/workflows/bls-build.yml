@@ -1,9 +1,6 @@
 name: BLS Build
 
-on:
-  push:
-    branches:
-      - master
+on: repository_dispatch
 
 jobs:
   bls-building:

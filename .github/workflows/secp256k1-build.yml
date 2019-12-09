@@ -1,9 +1,6 @@
 name: Secp256k1 Build
 
-on:
-  push:
-    branches:
-      - master
+on: repository_dispatch
 
 jobs:
   secp256k1-building:
