@@ -31,6 +31,11 @@ namespace Nethermind.Blockchain
         
         public static Keccak CalculateReceiptRoot(this Block block, ISpecProvider specProvider, TxReceipt[] txReceipts)
         {
+            return CalculateReceiptRoot(block.Number, specProvider, txReceipts);
+        }
+        
+        public static Keccak CalculateReceiptRoot(long blockNumber, ISpecProvider specProvider, TxReceipt[] txReceipts)
+        {
             if (txReceipts.Length == 0)
             {
                 return PatriciaTree.EmptyTreeHash;
@@ -39,7 +44,7 @@ namespace Nethermind.Blockchain
             PatriciaTree receiptTree = new PatriciaTree();
             for (int i = 0; i < txReceipts.Length; i++)
             {
-                byte[] receiptRlp = _receiptDecoder.EncodeNew(txReceipts[i], specProvider.GetSpec(block.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                byte[] receiptRlp = _receiptDecoder.EncodeNew(txReceipts[i], specProvider.GetSpec(blockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
