@@ -28,33 +28,33 @@ namespace Nethermind.Blockchain.Filters
         public Keccak BlockHash { get; }
         public long BlockNumber { get; }
         public byte[] Data { get; }
-        public UInt256 LogIndex { get; }
+        public long LogIndex { get; }
         public bool Removed { get; }
         public Keccak[] Topics { get; }
         public Keccak TransactionHash { get; }
-        public UInt256 TransactionIndex { get; }
+        public long TransactionIndex { get; }
+        public long TransactionLogIndex { get; }
         
-        public FilterLog(long logIndex, TxReceipt txReceipt, LogEntry logEntry) 
-            : this((UInt256) logIndex, txReceipt, logEntry) { }
-        
-        public FilterLog(UInt256 logIndex, TxReceipt txReceipt, LogEntry logEntry)
+        public FilterLog(long logIndex, long transactionLogIndex, TxReceipt txReceipt, LogEntry logEntry)
             : this(
                 logIndex,
+                transactionLogIndex,
                 txReceipt.BlockNumber,
                 txReceipt.BlockHash,
-                (UInt256) txReceipt.Index,
+                txReceipt.Index,
                 txReceipt.TxHash,
                 logEntry.LoggersAddress,
                 logEntry.Data,
                 logEntry.Topics) { }
 
-        public FilterLog(UInt256 logIndex, long blockNumber, Keccak blockHash, UInt256 transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
+        public FilterLog(long logIndex, long transactionLogIndex, long blockNumber, Keccak blockHash, int transactionIndex, Keccak transactionHash, Address address, byte[] data, Keccak[] topics, bool removed = false)
         {
             Removed = removed;
             LogIndex = logIndex;
             BlockNumber = blockNumber;
             BlockHash = blockHash;
             TransactionIndex = transactionIndex;
+            TransactionLogIndex = transactionLogIndex;
             TransactionHash = transactionHash;
             Address = address;
             Data = data;
