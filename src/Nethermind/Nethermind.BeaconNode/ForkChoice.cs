@@ -378,7 +378,7 @@ namespace Nethermind.BeaconNode
                 return;
             }
             var currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            _logger.LogDebug("New epoch {Epoch} at time {Time}", currentEpoch, store.Time);
+            _logger.LogDebug("New epoch {Epoch} at time {Time:n0}", currentEpoch, store.Time);
             // Update store.justified_checkpoint if a better checkpoint is known
             if (store.BestJustifiedCheckpoint.Epoch > store.JustifiedCheckpoint.Epoch)
             {
