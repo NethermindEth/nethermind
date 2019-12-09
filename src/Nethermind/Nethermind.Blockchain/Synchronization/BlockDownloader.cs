@@ -35,6 +35,13 @@ namespace Nethermind.Blockchain.Synchronization
 {
     internal class BlockDownloader
     {
+        public enum DownloadOptions
+        {
+            Download,
+            DownloadAndProcess,
+            DownloadWithReceipts
+        }
+        
         public const int MaxReorganizationLength = 2 * SyncBatchSize.Max;
 
         private readonly IBlockTree _blockTree;
@@ -149,9 +156,10 @@ namespace Nethermind.Blockchain.Synchronization
             return headersSynced;
         }
 
-        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, bool shouldProcess = true, bool downloadReceipts = false)
+        public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, DownloadOptions options = DownloadOptions.DownloadAndProcess)
         {
-            downloadReceipts &= !shouldProcess;
+            var downloadReceipts = options == DownloadOptions.DownloadWithReceipts;
+            var shouldProcess = options == DownloadOptions.DownloadAndProcess;
             
             if (bestPeer == null)
             {
@@ -281,7 +289,7 @@ namespace Nethermind.Blockchain.Synchronization
                         if (receipts.Length > i)
                         {
                             var blockReceipts = receipts[i];
-                            if (body.Transactions.Length == blockReceipts.Length)
+                            if (body.Transactions.Length == (blockReceipts?.Length ?? 0))
                             {
                                 var receiptsForBlock = new List<TxReceipt>();
                                 correctReceiptsBlocks[block.Hash] = receiptsForBlock;

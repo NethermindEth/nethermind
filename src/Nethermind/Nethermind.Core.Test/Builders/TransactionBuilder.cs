@@ -92,6 +92,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public TransactionBuilder WithValue(int value)
+        {
+            TestObjectInternal.Value = (UInt256) value;
+            return this;
+        }
+        
         public TransactionBuilder WithSenderAddress(Address address)
         {
             TestObjectInternal.SenderAddress = address;

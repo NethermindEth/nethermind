@@ -61,6 +61,7 @@ namespace Nethermind.Blockchain.Test
             var fetchedReceipt = storage.Find(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
+            receipt.TxHash.Should().Be(transaction.Hash);
         }
         
         private void TestAddAndGetReceiptEip658(IReceiptStorage storage)
@@ -71,6 +72,7 @@ namespace Nethermind.Blockchain.Test
             var fetchedReceipt = storage.Find(transaction.Hash);
             receipt.StatusCode.Should().Be(fetchedReceipt.StatusCode);
             receipt.PostTransactionState.Should().Be(fetchedReceipt.PostTransactionState);
+            receipt.TxHash.Should().Be(transaction.Hash);
         }
 
         private Transaction GetSignedTransaction(Address to = null)

@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public ReceiptBuilder WithLogs(LogEntry[] logs)
+        public ReceiptBuilder WithLogs(params LogEntry[] logs)
         {
             TestObjectInternal.Logs = logs;
             return this;
