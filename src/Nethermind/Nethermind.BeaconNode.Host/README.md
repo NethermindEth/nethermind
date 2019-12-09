@@ -41,7 +41,7 @@ Other GET queries:
 
 ### Build with version number
 
-To build a release version, with a GitVersion based semantic version number:
+To publish a release version, configured for Production environment:
 
 ```
 ./src/Nethermind/Nethermind.BeaconNode.Host/build.ps1
