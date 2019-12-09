@@ -44,6 +44,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
@@ -77,8 +78,7 @@ namespace Nethermind.Runner
         {
             if (Logger.IsDebug) Logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
             if (Logger.IsDebug) Logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
-            if (Logger.IsDebug)
-                Logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+            if (Logger.IsDebug) Logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
         }
 
         public void Run(string[] args)
@@ -138,7 +138,7 @@ namespace Nethermind.Runner
         {
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
-            var metricsParams = configProvider.GetConfig<IMetricsConfig>();
+            var metricOptions = configProvider.GetConfig<IMetricsConfig>();
             var logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
@@ -192,9 +192,11 @@ namespace Nethermind.Runner
                         jsonSerializer));
                 }
             }
-            
+
             _ethereumRunner = new EthereumRunner(rpcModuleProvider, configProvider, logManager, grpcServer,
-                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer, webSocketsManager, jsonSerializer);
+                ndmConsumerChannelManager, ndmDataPublisher, ndmInitializer, webSocketsManager, jsonSerializer,
+                _monitoringService);
+            
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
@@ -225,12 +227,19 @@ namespace Nethermind.Runner
                 if (Logger.IsInfo) Logger.Info("Json RPC is disabled");
             }
 
-            if (metricsParams.Enabled)
+            if (metricOptions.Enabled)
             {
-                var intervalSeconds = metricsParams.IntervalSeconds;
+                var intervalSeconds = metricOptions.IntervalSeconds;
                 _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
-                    metricsParams.PushGatewayUrl, ClientVersion.Description,
-                    metricsParams.NodeName, intervalSeconds, logManager);
+                    metricOptions.PushGatewayUrl, ClientVersion.Description,
+                    metricOptions.NodeName, intervalSeconds, logManager);
+                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Store.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.DataMarketplace.Consumers.Metrics));
+
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during starting a monitoring.", x.Exception);

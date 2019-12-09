@@ -1,8 +1,9 @@
 name: Publish Alpine Linux Image to Docker Registry
-on: 
+
+on:
   push:
-    branches: 
-      - master
+    tags:
+    - '*'
       
 jobs:
   publish-to-docker:
@@ -14,7 +15,7 @@ jobs:
       env:
         GIT_COMMIT: $(git log -1 --format=%h)
       with:
-        name: nethermind/nethermind-alpine
+        name: nethermind/nethermind:alpine
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         build-args: GIT_COMMIT

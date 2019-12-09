@@ -25,7 +25,6 @@ using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Consumers.Providers;
-using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Dirichlet.Numerics;
@@ -55,6 +54,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ITimestamper _timestamper;
         private readonly uint _requiredBlockConfirmations;
+        private readonly bool _disableSendingDepositTransaction;
         private readonly IWallet _wallet;
         private readonly IGasPriceService _gasPriceService;
         private readonly ILogger _logger;
@@ -63,7 +63,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             IDataAssetService dataAssetService, IKycVerifier kycVerifier, IProviderService providerService,
             IAbiEncoder abiEncoder, ICryptoRandom cryptoRandom, IWallet wallet, IGasPriceService gasPriceService,
             IDepositDetailsRepository depositRepository, ITimestamper timestamper, ILogManager logManager,
-            uint requiredBlockConfirmations)
+            uint requiredBlockConfirmations, bool disableSendingDepositTransaction = false)
         {
             _depositService = depositService;
             _depositUnitsCalculator = depositUnitsCalculator;
@@ -75,6 +75,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
             _cryptoRandom = cryptoRandom;
             _timestamper = timestamper;
             _requiredBlockConfirmations = requiredBlockConfirmations;
+            _disableSendingDepositTransaction = disableSendingDepositTransaction;
             _wallet = wallet;
             _gasPriceService = gasPriceService;
             _logger = logManager.GetClassLogger();
@@ -174,9 +175,20 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 ? await _gasPriceService.GetCurrentAsync()
                 : gasPrice.Value;
             await _depositRepository.AddAsync(depositDetails);
+            
+            var transactionHash = Keccak.Zero;
             if (_logger.IsInfo) _logger.Info($"Created a deposit with id: '{depositId}', for data asset: '{assetId}', address: '{address}'.");
-            var transactionHash = await _depositService.MakeDepositAsync(address, deposit, gasPriceValue);
+            if (_disableSendingDepositTransaction)
+            {
+                if (_logger.IsWarn) _logger.Warn("*** NDM sending deposit transaction is disabled ***");
+            }
+            else
+            {
+                transactionHash = await _depositService.MakeDepositAsync(address, deposit, gasPriceValue);
+            }
+            
             if (_logger.IsInfo) _logger.Info($"Sent a deposit with id: '{depositId}', transaction hash: '{transactionHash}' for data asset: '{assetId}', address: '{address}', gas price: {gasPriceValue} wei.");
+
             depositDetails.SetTransaction(new TransactionInfo(transactionHash, deposit.Value, gasPriceValue,
                 _depositService.GasLimit, now));
             await _depositRepository.UpdateAsync(depositDetails);

@@ -901,6 +901,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
         }
 
         [Test]
+        [Retry(3)]
         public async Task Silences_when_peer_sends_empty_byte_arrays()
         {
             ExecutorMock mock = new ExecutorMock(_remoteStateDb, _remoteCodeDb, ExecutorMock.EmptyArraysInResponses);

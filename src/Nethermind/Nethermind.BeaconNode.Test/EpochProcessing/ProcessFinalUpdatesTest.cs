@@ -26,7 +26,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             timeParameters.SlotsPerEth1VotingPeriod.ShouldBeGreaterThan(timeParameters.SlotsPerEpoch);
 
             // skip ahead to the end of the epoch
-            state.SetSlot(timeParameters.SlotsPerEpoch - new Slot(1));
+            state.SetSlot((Slot)(timeParameters.SlotsPerEpoch - 1UL));
 
             // add a vote for each skipped slot.
             for (var index = Slot.Zero; index < state.Slot + new Slot(1); index += new Slot(1))
@@ -55,7 +55,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             //  skip ahead to the end of the voting period
-            state.SetSlot(timeParameters.SlotsPerEth1VotingPeriod - new Slot(1));
+            state.SetSlot((Slot)(timeParameters.SlotsPerEth1VotingPeriod - 1UL));
 
             // add a vote for each skipped slot.
             for (var index = Slot.Zero; index < state.Slot + new Slot(1); index += new Slot(1))
@@ -99,16 +99,16 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
 
             var testCases = new[] {
                 new EffectiveBalanceCase(maximum, maximum, maximum, "as-is"),
-                new EffectiveBalanceCase(maximum, maximum - 1, maximum - increment, "round down, step lower"),
-                new EffectiveBalanceCase(maximum, maximum + 1, maximum, "round down"),
-                new EffectiveBalanceCase(maximum, maximum - increment, maximum - increment, "exactly 1 step lower"),
-                new EffectiveBalanceCase(maximum, maximum - increment - 1, maximum - (increment * 2), "just 1 over 1 step lower"),
-                new EffectiveBalanceCase(maximum, maximum - increment + 1, maximum - increment, "close to 1 step lower"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 3), minimum, "bigger balance, but not high enough"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 3) + 1, minimum + increment, "bigger balance, high enough, but small step"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4) - 1, minimum + increment, "bigger balance, high enough, close to double step"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4), minimum + (increment * 2), "exact two step balance increment"),
-                new EffectiveBalanceCase(minimum, minimum + (halfIncrement * 4) + 1, minimum + (increment * 2), "over two steps, round down"),
+                new EffectiveBalanceCase(maximum, (Gwei)(maximum - 1), maximum - increment, "round down, step lower"),
+                new EffectiveBalanceCase(maximum, (Gwei)(maximum + 1), maximum, "round down"),
+                new EffectiveBalanceCase(maximum, (Gwei)(maximum - increment), maximum - increment, "exactly 1 step lower"),
+                new EffectiveBalanceCase(maximum, (Gwei)(maximum - increment - 1), maximum - (increment * 2), "just 1 over 1 step lower"),
+                new EffectiveBalanceCase(maximum, (Gwei)(maximum - increment + 1), maximum - increment, "close to 1 step lower"),
+                new EffectiveBalanceCase(minimum, (Gwei)(minimum + (halfIncrement * 3)), minimum, "bigger balance, but not high enough"),
+                new EffectiveBalanceCase(minimum, (Gwei)(minimum + (halfIncrement * 3) + 1), minimum + increment, "bigger balance, high enough, but small step"),
+                new EffectiveBalanceCase(minimum, (Gwei)(minimum + (halfIncrement * 4) - 1), minimum + increment, "bigger balance, high enough, close to double step"),
+                new EffectiveBalanceCase(minimum, (Gwei)(minimum + (halfIncrement * 4)), minimum + (increment * 2), "exact two step balance increment"),
+                new EffectiveBalanceCase(minimum, (Gwei)(minimum + (halfIncrement * 4) + 1), minimum + (increment * 2), "over two steps, round down"),
             };
 
             var currentEpoch = beaconStateAccessor.GetCurrentEpoch(state);
@@ -146,7 +146,7 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
             // skip ahead to near the end of the historical roots period (excl block before epoch processing)
-            state.SetSlot(timeParameters.SlotsPerHistoricalRoot - new Slot(1));
+            state.SetSlot((Slot)(timeParameters.SlotsPerHistoricalRoot - 1UL));
             var historyLength = state.HistoricalRoots.Count;
 
             // Act

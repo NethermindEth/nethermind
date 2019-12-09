@@ -36,13 +36,35 @@ namespace Ethereum2.Bls.Test
             foreach (string testCase in smallDir)
             {
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(testCase, "data.yaml"));
-                string[] inputHex = node.ArrayProp<string>("input");
-                string outputHex = node.Prop<string>("output");
-
-                Span<byte> aggregated = Bytes.FromHexString(inputHex[0]);
+                string?[]? inputHex = node.ArrayProp<string>("input");
+                if (inputHex is null)
+                {
+                    throw new InvalidDataException("Test input missing");
+                }
+                
+                string? outputHex = node.Prop<string>("output");
+                if (outputHex is null)
+                {
+                    throw new InvalidDataException("Test expected output missing");
+                }
+                
+                string? firstCase = inputHex[0];
+                if (firstCase is null)
+                {
+                    throw new InvalidDataException("Test case input missing");
+                }
+                
+                Span<byte> aggregated = Bytes.FromHexString(firstCase);
                 for (int i = 1; i < inputHex.Length; i++)
                 {
-                    byte[] next = Bytes.FromHexString(inputHex[i]);
+                    string? currentInput = inputHex[i];
+                    if (currentInput is null)
+                    {
+                        throw new InvalidDataException("Test case input missing");
+                    }
+
+                    
+                    byte[] next = Bytes.FromHexString(currentInput);
                     BlsProxy.AddPublicKey(aggregated, next);
                 }
 
@@ -62,13 +84,35 @@ namespace Ethereum2.Bls.Test
             foreach (string testCase in smallDir)
             {
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(testCase, "data.yaml"));
-                string[] inputHex = node.ArrayProp<string>("input");
-                string outputHex = node.Prop<string>("output");
 
-                Span<byte> aggregated = Bytes.FromHexString(inputHex[0]);
+                string?[]? inputHex = node.ArrayProp<string>("input");
+                if (inputHex is null)
+                {
+                    throw new InvalidDataException("Test input missing");
+                }
+                
+                string? outputHex = node.Prop<string>("output");
+                if (outputHex is null)
+                {
+                    throw new InvalidDataException("Test expected output missing");
+                }
+
+                string? firstCase = inputHex[0];
+                if (firstCase is null)
+                {
+                    throw new InvalidDataException("Test case input missing");
+                }
+                
+                Span<byte> aggregated = Bytes.FromHexString(firstCase);
                 for (int i = 1; i < inputHex.Length; i++)
                 {
-                    byte[] next = Bytes.FromHexString(inputHex[i]);
+                    string? currentInput = inputHex[i];
+                    if (currentInput is null)
+                    {
+                        throw new InvalidDataException("Test case input missing");
+                    }
+                    
+                    byte[] next = Bytes.FromHexString(currentInput);
                     BlsProxy.AddSignature(aggregated, next);
                 }
 
@@ -84,23 +128,25 @@ namespace Ethereum2.Bls.Test
         [Ignore("need to build the latest BLS changes correctly")]
         public void Bls_msg_hash_compressed()
         {
-            string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_compressed", "small"));
-            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
-            var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
-            string[] outputHex = node.ArrayProp<string>("output");
-            BlsProxy.HashWithDomain(out Span<byte> signatureBytes, out Span<byte> blsSignatureBytes, Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
-            Assert.AreEqual(string.Join(string.Empty, outputHex), signatureBytes.ToHexString());
+//            string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_compressed", "small"));
+//            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+//
+//            var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
+//            string[] outputHex = node.ArrayProp<string>("output");
+//            BlsProxy.HashWithDomain(out Span<byte> signatureBytes, out Span<byte> blsSignatureBytes, Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
+//            Assert.AreEqual(string.Join(string.Empty, outputHex), signatureBytes.ToHexString());
         }
 
         [Test]
         [Ignore("need to build the latest BLS changes correctly")]
         public void Bls_msg_hash_uncompressed()
         {
-            string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_uncompressed", "small"));
-            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
-            var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
-            string[][] outputHex = node.ArrayProp<string[]>("output", sequence => sequence.Children.Select(c => (c as YamlScalarNode)?.Value).ToArray());
-            throw new NotImplementedException();
+//            string[] valid = Directory.GetDirectories(Path.Combine("msg_hash_uncompressed", "small"));
+//            (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(valid[0], "data.yaml"));
+//
+//            var input = new {Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
+//            string[][] outputHex = node.ArrayProp<string[]>("output", sequence => sequence.Children.Select(c => (c as YamlScalarNode)?.Value).ToArray());
+//            throw new NotImplementedException();
         }
 
         [Test]
@@ -111,11 +157,21 @@ namespace Ethereum2.Bls.Test
             {
                 Console.WriteLine(testCase);
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(testCase, "data.yaml"));
-                string inputHex = node.Prop<string>("input");
+                string? inputHex = node.Prop<string>("input");
+                if (inputHex is null)
+                {
+                    throw new InvalidDataException("Input missing");
+                }
+                
                 byte[] privateKeyBytes = Bytes.FromHexString(inputHex);
                 BlsProxy.GetPublicKey(privateKeyBytes, out Span<byte> publicKey);
 
-                string outputHex = node.Prop<string>("output");
+                string? outputHex = node.Prop<string>("output");
+                if (outputHex is null)
+                {
+                    throw new InvalidDataException("Expected output missing");
+                }
+                
                 byte[] expectedPublicKey = Bytes.FromHexString(outputHex);
                 Assert.AreEqual(expectedPublicKey, publicKey.ToArray());
             }
@@ -128,8 +184,24 @@ namespace Ethereum2.Bls.Test
             foreach (string caseDir in smallDir)
             {
                 (YamlNode node, YamlNodeType nodeType) = LoadValue(Path.Combine(caseDir, "data.yaml"));
+
                 var input = new {PrivateKey = node["input"].Prop<string>("privkey"), Message = node["input"].Prop<string>("message"), Domain = node["input"].Prop<string>("domain")};
-                string outputHex = node.Prop<string>("output");
+                if (input.PrivateKey is null)
+                {
+                    throw new InvalidDataException("Test input -> private key is null");
+                }
+                
+                if (input.Message is null)
+                {
+                    throw new InvalidDataException("Test input -> message is null");
+                }
+                
+                if (input.Domain is null)
+                {
+                    throw new InvalidDataException("Test input -> domain is null");
+                }
+                
+                string? outputHex = node.Prop<string>("output");
 
                 BlsProxy.Sign(out Span<byte> signatureBytes, Bytes.FromHexString(input.PrivateKey), Bytes.FromHexString(input.Message), Bytes.FromHexString(input.Domain));
                 Assert.AreEqual(outputHex, signatureBytes.ToHexString(true));   

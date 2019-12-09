@@ -17,7 +17,7 @@ namespace Nethermind.BeaconNode.Tests.Helpers
 
         public ManualResetEvent CompleteWaitHandle { get; }
 
-        public DateTimeOffset Now()
+        public DateTimeOffset UtcNow()
         {
             var next = _timeValues.Dequeue();
             if (_timeValues.Count == 0)

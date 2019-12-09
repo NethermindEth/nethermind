@@ -16,7 +16,6 @@
 
 using Nethermind.DataMarketplace.Consumers.Refunds;
 using Nethermind.DataMarketplace.Consumers.Shared.Domain;
-using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
 
 namespace Nethermind.DataMarketplace.Consumers.Shared.Services

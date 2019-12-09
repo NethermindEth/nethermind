@@ -16,6 +16,9 @@
 
 namespace Nethermind.Core2.Types
 {
+    // TKS: I have changed to enum but now not sure if that was a good choice
+    // I may prefer Sly's solution with a static list as it make the type more in line with everything else
+    // and does not require any special treatment when serializing
     public enum DomainType : uint
     {
         BeaconProposer = 0U,

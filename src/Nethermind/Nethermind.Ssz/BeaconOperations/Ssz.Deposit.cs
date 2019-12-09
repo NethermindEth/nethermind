@@ -21,16 +21,19 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public static void Encode(Span<byte> span, Deposit[] containers)
+        public static void Encode(Span<byte> span, Deposit[]? containers)
         {
-            if (span.Length != Deposit.SszLength * containers.Length)
+            if (span.Length != Deposit.SszLength * (containers?.Length ?? 0))
             {
                 ThrowTargetLength<Deposit>(span.Length, Deposit.SszLength);
             }
 
-            for (int i = 0; i < containers.Length; i++)
+            if (!(containers is null))
             {
-                Encode(span.Slice(i * Deposit.SszLength, Deposit.SszLength), containers[i]);
+                for (int i = 0; i < containers.Length; i++)
+                {
+                    Encode(span.Slice(i * Deposit.SszLength, Deposit.SszLength), containers[i]);
+                }
             }
         }
 
@@ -51,16 +54,16 @@ namespace Nethermind.Ssz
             return containers;
         }
         
-        private static void Encode(Span<byte> span, Deposit[] containers, ref int offset, ref int dynamicOffset)
+        private static void Encode(Span<byte> span, Deposit[]? containers, ref int offset, ref int dynamicOffset)
         {
-            int length = containers.Length * Deposit.SszLength;
+            int length = (containers?.Length ?? 0) * Deposit.SszLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length), containers);
             dynamicOffset += length;
             offset += VarOffsetSize;
         }
         
-        public static void Encode(Span<byte> span, Deposit container)
+        public static void Encode(Span<byte> span, Deposit? container)
         {
             if (span.Length != Deposit.SszLength) ThrowTargetLength<Deposit>(span.Length, Deposit.SszLength);
             if (container == null) return;

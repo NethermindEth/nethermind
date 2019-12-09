@@ -34,7 +34,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static VoluntaryExit[] DecodeVoluntaryExits(Span<byte> span)
+        public static VoluntaryExit?[] DecodeVoluntaryExits(Span<byte> span)
         {
             if (span.Length % VoluntaryExit.SszLength != 0)
             {
@@ -42,7 +42,7 @@ namespace Nethermind.Ssz
             }
 
             int count = span.Length / VoluntaryExit.SszLength;
-            VoluntaryExit[] containers = new VoluntaryExit[count];
+            VoluntaryExit?[] containers = new VoluntaryExit?[count];
             for (int i = 0; i < count; i++)
             {
                 containers[i] = DecodeVoluntaryExit(span.Slice(i * VoluntaryExit.SszLength, VoluntaryExit.SszLength));

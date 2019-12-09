@@ -37,6 +37,14 @@ it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
 *	Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
 * `sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6`
 
+Additionally for Ubuntu 16.04
+
+```
+sudo add-apt-repository ppa:ubuntu-toolchain-r/test && \
+sudo apt-get update && \
+sudo apt-get install gcc-6 g++-6 && \
+sudo apt install libzstd1
+```
 #### Mac
 
 *	Mac https://www.microsoft.com/net/download?initial-os=macos

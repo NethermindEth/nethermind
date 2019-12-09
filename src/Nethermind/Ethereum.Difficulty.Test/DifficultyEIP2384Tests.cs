@@ -35,7 +35,7 @@ namespace Ethereum.Difficulty.Test
         [TestCaseSource(nameof(LoadEIP2384Tests))]
         public void Test(DifficultyTests test)
         {
-            RunTest(test, new SingleReleaseSpecProvider(Berlin.Instance, 1));
+            RunTest(test, new SingleReleaseSpecProvider(MuirGlacier.Instance, 1));
         }
     }
 }

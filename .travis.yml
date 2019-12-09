@@ -116,6 +116,13 @@ jobs:
           dotnet test -c Release src/Nethermind/Nethermind.JsonRpc.Test;
         fi
       name: "Nethermind.JsonRpc.Test"
+    - script:
+      - if [ $TRAVIS_PULL_REQUEST != false ] || [ $TRAVIS_BRANCH == "master" ]; then
+          dotnet test -c Release /p:CollectCoverage=true /p:CoverletOutputFormat=opencover /p:Exclude=$NETHERMIND_TEST_PROJECTS src/Nethermind/Nethermind.Logging.NLog.Test;
+        else 
+          dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test;
+        fi
+      name: "Nethermind.JsonRpc.Test"
     #- script: dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
     - script:

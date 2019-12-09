@@ -19,22 +19,22 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void GenesisEpochNoAttestationsNoPenalties()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
-            var preState = BeaconState.Clone(state);
+            BeaconState preState = BeaconState.Clone(state);
 
-            var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+            Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
             stateEpoch.ShouldBe(initialValues.GenesisEpoch);
 
             // Act
             RunProcessRewardsAndPenalties(testServiceProvider, state);
 
             // Assert
-            for (var index = 0; index < preState.Validators.Count; index++)
+            for (int index = 0; index < preState.Validators.Count; index++)
             {
                 state.Balances[index].ShouldBe(preState.Balances[index], $"Balance {index}");
             }
@@ -44,29 +44,29 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void GenesisEpochFullAttestationsNoRewards()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
             var attestations = new List<Attestation>();
-            for (var slot = Slot.Zero; slot < timeParameters.SlotsPerEpoch - new Slot(1); slot += new Slot(1))
+            for (Slot slot = Slot.Zero; slot < timeParameters.SlotsPerEpoch - new Slot(1); slot += new Slot(1))
             {
                 // create an attestation for each slot
                 if (slot < timeParameters.SlotsPerEpoch)
                 {
-                    var attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, slot, CommitteeIndex.None, signed: true);
+                    Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, slot, CommitteeIndex.None, signed: true);
                     attestations.Add(attestation);
                 }
 
                 // fill each created slot in state after inclusion delay
                 if (slot >= timeParameters.MinimumAttestationInclusionDelay)
                 {
-                    var index = slot - timeParameters.MinimumAttestationInclusionDelay;
-                    var includeAttestation = attestations[(int)(ulong)index];
+                    Slot index = slot - timeParameters.MinimumAttestationInclusionDelay;
+                    Attestation includeAttestation = attestations[(int)(ulong)index];
                     TestAttestation.AddAttestationsToState(testServiceProvider, state, new[] { includeAttestation }, state.Slot);
                 }
 
@@ -74,16 +74,16 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
             }
 
             // ensure has not cross the epoch boundary
-            var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+            Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
             stateEpoch.ShouldBe(initialValues.GenesisEpoch);
 
-            var preState = BeaconState.Clone(state);
+            BeaconState preState = BeaconState.Clone(state);
 
             // Act
             RunProcessRewardsAndPenalties(testServiceProvider, state);
 
             // Assert
-            for (var index = 0; index < preState.Validators.Count; index++)
+            for (int index = 0; index < preState.Validators.Count; index++)
             {
                 state.Balances[index].ShouldBe(preState.Balances[index], $"Balance {index}");
             }
@@ -93,14 +93,14 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
         public void FullAttestations()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider();
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
+            BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             var attestations = PrepareStateWithFullAttestations(testServiceProvider, state);
 
-            var preState = BeaconState.Clone(state);
+            BeaconState preState = BeaconState.Clone(state);
 
             // Act
             RunProcessRewardsAndPenalties(testServiceProvider, state);
@@ -111,9 +111,9 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
 
             attestingIndices.Count.ShouldBeGreaterThan(0);
 
-            for (var index = 0; index < preState.Validators.Count; index++)
+            for (int index = 0; index < preState.Validators.Count; index++)
             {
-                var validatorIndex = new ValidatorIndex((ulong)index);
+                ValidatorIndex validatorIndex = new ValidatorIndex((ulong)index);
                 if (attestingIndices.Contains(validatorIndex))
                 {
                     state.Balances[index].ShouldBeGreaterThan(preState.Balances[index], $"Attesting balance {index}");
@@ -127,37 +127,37 @@ namespace Nethermind.BeaconNode.Tests.EpochProcessing
 
         private static IList<Attestation> PrepareStateWithFullAttestations(IServiceProvider testServiceProvider, BeaconState state)
         {
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            InitialValues initialValues = testServiceProvider.GetService<IOptions<InitialValues>>().Value;
 
-            var beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
+            BeaconChainUtility beaconChainUtility = testServiceProvider.GetService<BeaconChainUtility>();
 
             var attestations = new List<Attestation>();
-            var maxSlot = timeParameters.SlotsPerEpoch + timeParameters.MinimumAttestationInclusionDelay;
-            for (var slot = Slot.Zero; slot < maxSlot; slot += new Slot(1))
+            ulong maxSlot = timeParameters.SlotsPerEpoch + timeParameters.MinimumAttestationInclusionDelay;
+            for (Slot slot = Slot.Zero; slot < maxSlot; slot += new Slot(1))
             {
                 // create an attestation for each slot in epoch
                 if (slot < timeParameters.SlotsPerEpoch)
                 {
-                    var attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: true);
+                    Attestation attestation = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: true);
                     attestations.Add(attestation);
                 }
 
                 // fill each created slot in state after inclusion delay
                 if (slot >= timeParameters.MinimumAttestationInclusionDelay)
                 {
-                    var index = slot - timeParameters.MinimumAttestationInclusionDelay;
-                    var includeAttestation = attestations[(int)(ulong)index];
+                    Slot index = slot - timeParameters.MinimumAttestationInclusionDelay;
+                    Attestation includeAttestation = attestations[(int)(ulong)index];
                     TestAttestation.AddAttestationsToState(testServiceProvider, state, new[] { includeAttestation }, state.Slot);
                 }
 
                 TestState.NextSlot(testServiceProvider, state);
             }
 
-            var stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
-            stateEpoch.ShouldBe(initialValues.GenesisEpoch + 1);
+            Epoch stateEpoch = beaconChainUtility.ComputeEpochAtSlot(state.Slot);
+            stateEpoch.ShouldBe(initialValues.GenesisEpoch + Epoch.One);
 
-            state.PreviousEpochAttestations.Count.ShouldBe((int)(ulong)timeParameters.SlotsPerEpoch);
+            state.PreviousEpochAttestations.Count.ShouldBe((int)timeParameters.SlotsPerEpoch);
 
             return attestations;
         }

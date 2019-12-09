@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading.Tasks;
 
 namespace Nethermind.Monitoring
 {
     public interface IMonitoringService
     {
+        void RegisterMetrics(Type type);
         Task StartAsync();
         Task StopAsync();
     }

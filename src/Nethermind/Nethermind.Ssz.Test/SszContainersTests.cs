@@ -166,7 +166,7 @@ namespace Nethermind.Ssz.Test
             container.StateRoots[7] = Sha256.OfAnEmptyString;
             Span<byte> encoded = new byte[HistoricalBatch.SszLength];
             Ssz.Encode(encoded, container);
-            HistoricalBatch decoded = Ssz.DecodeHistoricalBatch(encoded);
+            HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);

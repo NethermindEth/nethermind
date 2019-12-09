@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Types;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests.BlockProcessing
@@ -62,7 +63,7 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
         private void PrepareStateForHeaderProcessing(BeaconState state,
             BeaconStateTransition beaconStateTransition)
         {
-            beaconStateTransition.ProcessSlots(state, state.Slot + 1);
+            beaconStateTransition.ProcessSlots(state, state.Slot + Slot.One);
         }
     }
 }

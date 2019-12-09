@@ -59,9 +59,9 @@ namespace Nethermind.BeaconNode
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            var version = _beaconNodeConfiguration.Version;
-            var environmentName = _environment.EnvironmentName;
-            var configName = _configuration[ConfigKey];
+            string version = _beaconNodeConfiguration.Version;
+            string environmentName = _environment.EnvironmentName;
+            string configName = _configuration[ConfigKey];
             _logger.LogInformation(Event.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
                 version, environmentName, configName, Thread.CurrentThread.ManagedThreadId);
 
@@ -70,7 +70,7 @@ namespace Nethermind.BeaconNode
             IStore? store = null;
             while (!stoppingToken.IsCancellationRequested && !_stopped)
             {
-                var time = _clock.Now();
+                DateTimeOffset time = _clock.UtcNow();
                 if (store == null)
                 {
                     store = _storeProvider.GetStore();
@@ -86,7 +86,7 @@ namespace Nethermind.BeaconNode
                 }
                 // Wait for remaining time, if any
                 // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
-                var remaining = time.AddSeconds(1) - _clock.Now();
+                TimeSpan remaining = time.AddSeconds(1) - _clock.UtcNow();
                 if (remaining > TimeSpan.Zero)
                 {
                     await Task.Delay(remaining, stoppingToken);

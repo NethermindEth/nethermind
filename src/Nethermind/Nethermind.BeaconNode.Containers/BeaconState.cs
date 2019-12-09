@@ -70,7 +70,7 @@ namespace Nethermind.BeaconNode.Containers
         }
 
         public BeaconState(ulong genesisTime, ulong eth1DepositIndex, Eth1Data eth1Data, BeaconBlockHeader latestBlockHeader,
-            uint slotsPerHistoricalRoot, uint epochsPerHistoricalVector, uint epochsPerSlashingsVector, int justificationBitsLength)
+            uint slotsPerHistoricalRoot, ulong epochsPerHistoricalVector, ulong epochsPerSlashingsVector, int justificationBitsLength)
         {
             GenesisTime = genesisTime;
             Eth1DepositIndex = eth1DepositIndex;
@@ -182,7 +182,10 @@ namespace Nethermind.BeaconNode.Containers
 
         public void IncreaseEth1DepositIndex() => Eth1DepositIndex++;
 
-        public void IncreaseSlot() => Slot++;
+        public void IncreaseSlot()
+        {
+            Slot = (Slot)(Slot + 1UL);
+        }
 
         public void JustificationBitsShift()
         {
@@ -191,7 +194,7 @@ namespace Nethermind.BeaconNode.Containers
             JustificationBits.LeftShift(1);
         }
 
-        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)(ulong)validatorIndex] = balance;
+        public void SetBalance(ValidatorIndex validatorIndex, Gwei balance) => _balances[(int)validatorIndex] = balance;
 
         public void SetBlockRoot(Slot index, Hash32 blockRoot) => _blockRoots[index] = blockRoot;
 

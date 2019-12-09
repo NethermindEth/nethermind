@@ -34,6 +34,7 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Store;
 using Nethermind.Wallet;
@@ -73,6 +74,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
         public IJsonRpcClientProxy JsonRpcClientProxy { get; }
         public IEthJsonRpcClientProxy EthJsonRpcClientProxy { get; }
         public IHttpClient HttpClient { get; }
+        public IMonitoringService MonitoringService { get; }
 
         public NdmRequiredServices(IConfigProvider configProvider, IConfigManager configManager, INdmConfig ndmConfig,
             string baseDbPath, IDbProvider rocksProvider, IMongoProvider mongoProvider, ILogManager logManager,
@@ -83,7 +85,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
             IGrpcServer grpcServer, IEthRequestService ethRequestService, INdmNotifier notifier,
             bool enableUnsecuredDevWallet, IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient)
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService)
         {
             ConfigProvider = configProvider;
             ConfigManager = configManager;
@@ -116,6 +118,7 @@ namespace Nethermind.DataMarketplace.Infrastructure
             JsonRpcClientProxy = jsonRpcClientProxy;
             EthJsonRpcClientProxy = ethJsonRpcClientProxy;
             HttpClient = httpClient;
+            MonitoringService = monitoringService;
         }
     }
 }

@@ -30,8 +30,13 @@ namespace Nethermind.Ssz
             return eth1Data;
         }
         
-        public static void Encode(Span<byte> span, Eth1Data[] containers)
+        public static void Encode(Span<byte> span, Eth1Data[]? containers)
         {
+            if (containers is null)
+            {
+                return;
+            }
+            
             if (span.Length != Eth1Data.SszLength * containers.Length)
             {
                 ThrowTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
@@ -43,13 +48,13 @@ namespace Nethermind.Ssz
             }
         }
         
-        private static void Encode(Span<byte> span, Eth1Data value, ref int offset)
+        private static void Encode(Span<byte> span, Eth1Data? value, ref int offset)
         {
             Encode(span.Slice(offset, Eth1Data.SszLength), value);
             offset += Eth1Data.SszLength;
         }
 
-        public static void Encode(Span<byte> span, Eth1Data container)
+        public static void Encode(Span<byte> span, Eth1Data? container)
         {
             if (span.Length != Eth1Data.SszLength) ThrowTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             if (container == null) return;

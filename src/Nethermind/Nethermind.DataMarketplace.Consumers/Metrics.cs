@@ -14,12 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.Core2
+namespace Nethermind.DataMarketplace.Consumers
 {
-    /// <summary>
-    /// Temporarily - constants that are not assigned anywhere...
-    /// </summary>
-    public static class Constants
+    public static class Metrics
     {
+        public static long SentQueries { get; set; }
+        public static long ConsumedUnits { get; set; }
+        public static long ReceivedData { get; set; }
     }
 }

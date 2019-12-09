@@ -17,7 +17,11 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading;
+using Prometheus;
 
 namespace Nethermind.Monitoring.Metrics
 {
@@ -25,13 +29,42 @@ namespace Nethermind.Monitoring.Metrics
     {
         private readonly int _intervalSeconds;
         private Timer _timer;
-        private readonly MetricsRegistry _metrics = new MetricsRegistry();
+        private Dictionary<string, Gauge> _gauges = new Dictionary<string, Gauge>();
+        private Dictionary<Type, PropertyInfo[]> _propertiesCache = new Dictionary<Type, PropertyInfo[]>();
+        private HashSet<Type> _metricTypes = new HashSet<Type>();
+
+        public void RegisterMetrics(Type type)
+        {
+            EnsurePropertiesCached(type);
+            foreach (PropertyInfo propertyInfo in _propertiesCache[type])
+            {
+                _gauges[string.Concat(type.Name, ".", propertyInfo.Name)] = CreateGauge(BuildGaugeName(propertyInfo.Name));
+            }
+
+            _metricTypes.Add(type);
+        }
+
+        private void EnsurePropertiesCached(Type type)
+        {
+            if (!_propertiesCache.ContainsKey(type))
+            {
+                _propertiesCache[type] = type.GetProperties();
+            }
+        }
+
+        private string BuildGaugeName(string propertyName)
+        {
+            return Regex.Replace(propertyName, @"(\p{Ll})(\p{Lu})", "$1_$2").ToLowerInvariant();
+        }
+
+        private static Gauge CreateGauge(string name, string help = "")
+            => Prometheus.Metrics.CreateGauge($"nethermind_{name}", help);
 
         public MetricsUpdater(int intervalSeconds = 5)
         {
             _intervalSeconds = intervalSeconds;
         }
-        
+
         public void StartUpdating()
         {
             _timer = new Timer(UpdateMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(_intervalSeconds));
@@ -44,11 +77,19 @@ namespace Nethermind.Monitoring.Metrics
 
         private void UpdateMetrics(object state)
         {
-            _metrics.UpdateMetrics(typeof(Blockchain.Metrics));
-            _metrics.UpdateMetrics(typeof(Evm.Metrics));
-            _metrics.UpdateMetrics(typeof(Store.Metrics));
-            _metrics.UpdateMetrics(typeof(Network.Metrics));
-            _metrics.UpdateMetrics(typeof(JsonRpc.Metrics));
+            foreach (Type metricType in _metricTypes)
+            {
+                UpdateMetrics(metricType);
+            }
+        }
+        
+        private void UpdateMetrics(Type type)
+        {
+            EnsurePropertiesCached(type);
+            foreach (PropertyInfo propertyInfo in _propertiesCache[type])
+            {
+                _gauges[string.Concat(type.Name, ".", propertyInfo.Name)].Set(Convert.ToDouble(propertyInfo.GetValue(null)));
+            }
         }
     }
 }

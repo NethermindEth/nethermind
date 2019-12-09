@@ -39,6 +39,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Wallet;
+using Metrics = Nethermind.DataMarketplace.Consumers.Metrics;
 
 namespace Nethermind.DataMarketplace.Subprotocols
 {
@@ -582,6 +583,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         private void Handle(DataAssetDataMessage message)
         {
             if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} NDM received: dataassetdata");
+            Metrics.ReceivedData++;
             ConsumerService.SetUnitsAsync(message.DepositId, message.ConsumedUnits).ContinueWith(t =>
             {
                 if (t.IsFaulted && Logger.IsError)

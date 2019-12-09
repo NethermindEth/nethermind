@@ -355,7 +355,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestDepositSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            Deposit container = Nethermind.Ssz.Ssz.DecodeDeposit(serialized);
+            Deposit? container = Nethermind.Ssz.Ssz.DecodeDeposit(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -377,7 +377,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestEth1DataSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            Eth1Data container = Nethermind.Ssz.Ssz.DecodeEth1Data(serialized);
+            Eth1Data? container = Nethermind.Ssz.Ssz.DecodeEth1Data(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -388,7 +388,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestForkSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            Fork container = Nethermind.Ssz.Ssz.DecodeFork(serialized);
+            Fork? container = Nethermind.Ssz.Ssz.DecodeFork(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -399,7 +399,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestHistoricBatchSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            HistoricalBatch container = Nethermind.Ssz.Ssz.DecodeHistoricalBatch(serialized);
+            HistoricalBatch? container = Nethermind.Ssz.Ssz.DecodeHistoricalBatch(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -410,7 +410,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestIndexedAttestationSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            IndexedAttestation container = Nethermind.Ssz.Ssz.DecodeIndexedAttestation(serialized);
+            IndexedAttestation? container = Nethermind.Ssz.Ssz.DecodeIndexedAttestation(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -421,7 +421,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestPendingAttestationSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            PendingAttestation container = Nethermind.Ssz.Ssz.DecodePendingAttestation(serialized);
+            PendingAttestation? container = Nethermind.Ssz.Ssz.DecodePendingAttestation(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -432,7 +432,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestProposerSlashingSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            ProposerSlashing container = Nethermind.Ssz.Ssz.DecodeProposerSlashing(serialized);
+            ProposerSlashing? container = Nethermind.Ssz.Ssz.DecodeProposerSlashing(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -443,7 +443,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestValidatorSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            Validator container = Nethermind.Ssz.Ssz.DecodeValidator(serialized);
+            Validator? container = Nethermind.Ssz.Ssz.DecodeValidator(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);
@@ -454,7 +454,7 @@ namespace Ethereum2.Ssz.Test
 
         private static void TestVoluntaryExitSsz(byte[] serialized, UInt256 expectedMerkleRoot, string testCaseDir)
         {
-            VoluntaryExit container = Nethermind.Ssz.Ssz.DecodeVoluntaryExit(serialized);
+            VoluntaryExit? container = Nethermind.Ssz.Ssz.DecodeVoluntaryExit(serialized);
             byte[] again = new byte[serialized.Length];
             Nethermind.Ssz.Ssz.Encode(again, container);
             Assert.AreEqual(serialized.ToHexString(), again.ToHexString(), testCaseDir);

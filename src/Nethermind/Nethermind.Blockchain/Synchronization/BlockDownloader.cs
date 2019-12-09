@@ -286,12 +286,12 @@ namespace Nethermind.Blockchain.Synchronization
                         throw new EthSynchronizationException($"{bestPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
                     }
                     
-                    TxReceipt[] blockReceipts = null;
+                    TxReceipt[] blockReceipts = Array.Empty<TxReceipt>();
                     if (downloadReceipts)
                     {
                         if (receipts.Length > i)
                         {
-                            blockReceipts = receipts[i];
+                            blockReceipts = receipts[i] ?? Array.Empty<TxReceipt>();
                         }
                         else
                         {
@@ -386,6 +386,7 @@ namespace Nethermind.Blockchain.Synchronization
             TxReceipt[] blockReceipts,
             IDictionary<Keccak, IList<TxReceipt>> correctReceiptsBlocks)
         {
+            if (blockReceipts == null) throw new ArgumentNullException(nameof(blockReceipts));
             if (block == null || block.Body != null)
             {
                 throw new InvalidOperationException("Invalid state of blocks placeholders during sync");
@@ -395,18 +396,18 @@ namespace Nethermind.Blockchain.Synchronization
             
             if (downloadReceipts)
             {
-                if (body.Transactions.Length == (blockReceipts?.Length ?? 0))
+                if (body.Transactions.Length == blockReceipts.Length)
                 {
-                    var receiptsForBlock = new List<TxReceipt>();
+                    List<TxReceipt> receiptsForBlock = new List<TxReceipt>();
                     correctReceiptsBlocks[block.Hash] = receiptsForBlock;
                     long gasUsedBefore = 0;
 
                     for (int j = 0; j < body.Transactions.Length; j++)
                     {
-                        var transaction = body.Transactions[j];
+                        Transaction transaction = body.Transactions[j];
                         if (blockReceipts.Length > j)
                         {
-                            var receipt = blockReceipts[j];
+                            TxReceipt receipt = blockReceipts[j];
                             RecoverReceiptData(receipt, block, transaction, j, gasUsedBefore);
                             receiptsForBlock.Add(receipt);
                             gasUsedBefore = receipt.GasUsedTotal;

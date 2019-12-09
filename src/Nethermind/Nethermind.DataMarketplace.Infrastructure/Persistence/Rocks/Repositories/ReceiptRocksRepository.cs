@@ -53,13 +53,13 @@ namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositori
             }
 
             await Task.CompletedTask;
-            var consumers = new DataDeliveryReceiptDetails[receiptsBytes.Length];
+            var receipts = new DataDeliveryReceiptDetails[receiptsBytes.Length];
             for (var i = 0; i < receiptsBytes.Length; i++)
             {
-                consumers[i] = Decode(receiptsBytes[i]);
+                receipts[i] = Decode(receiptsBytes[i]);
             }
 
-            var filteredReceipts = consumers.AsEnumerable();
+            var filteredReceipts = receipts.AsEnumerable();
             if (!(depositId is null))
             {
                 filteredReceipts = filteredReceipts.Where(c => c.DepositId == depositId);

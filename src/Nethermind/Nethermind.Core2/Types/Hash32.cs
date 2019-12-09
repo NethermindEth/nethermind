@@ -38,6 +38,11 @@ namespace Nethermind.Core2.Types
         {
             return new Span<byte>(Bytes);
         }
+        
+        public Span<byte> AsSpan(int startIndex, int length)
+        {
+            return Bytes.AsSpan(startIndex, length);
+        }
 
         public bool Equals(Hash32 other)
         {

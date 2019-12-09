@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -55,8 +56,13 @@ namespace Nethermind.BeaconNode.Storage
             return _store;
         }
 
-        public IStore? GetStore()
+        public IStore GetStore()
         {
+            if (_store is null)
+            {
+                throw new InvalidOperationException("Illegal attempt to retrieve a store that has not been created yet.");
+            }
+            
             // NOTE: For MemoryStoreProvider, this needs ot have been initialised via CreateStore.
             return _store;
         }
