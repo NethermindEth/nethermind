@@ -27,4 +27,11 @@
     <Compile Remove="BeaconNodeApi-generated.cs" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Remove="oapi\**" />
+    <Content Remove="tools\**" />
+    <None Include="oapi\**" CopyToOutputDirectory="Never" />
+    <None Include="tools\**" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+
 </Project>

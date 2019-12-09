@@ -362,5 +362,8 @@ src/Nethermind/Nethermind.Cli/cli.cmd.history
 
 # Include tool runtime debug files
 !src/Nethermind/Nethermind.BeaconNode.Api/tools/**/*.pdb
+!src/Nethermind/Nethermind.BeaconNode.Host/tools/**/*.pdb
 
 src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
+
+src/Nethermind/Nethermind.BeaconNode.Host/release

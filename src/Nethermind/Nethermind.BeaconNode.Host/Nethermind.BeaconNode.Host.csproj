@@ -24,5 +24,14 @@
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="configuration\**" />
+    <Content Remove="tools\**" />
+    <Content Remove="release\**" />
+    <None Include="configuration\**" CopyToOutputDirectory="Never" />
+    <None Include="tools\**" CopyToOutputDirectory="Never" />
+    <None Include="release\**" CopyToOutputDirectory="Never" />
+  </ItemGroup>
   
 </Project>
