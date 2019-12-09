@@ -24,16 +24,16 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterLog
     {
-        public bool Removed { get; }
-        public UInt256 LogIndex { get; }
-        public long BlockNumber { get; }
+        public Address Address { get; }
         public Keccak BlockHash { get; }
+        public long BlockNumber { get; }
+        public byte[] Data { get; }
+        public UInt256 LogIndex { get; }
+        public bool Removed { get; }
+        public Keccak[] Topics { get; }
         public Keccak TransactionHash { get; }
         public UInt256 TransactionIndex { get; }
-        public Address Address { get; }
-        public byte[] Data { get; }
-        public Keccak[] Topics { get; }
-
+        
         public FilterLog(long logIndex, TxReceipt txReceipt, LogEntry logEntry) 
             : this((UInt256) logIndex, txReceipt, logEntry) { }
         
