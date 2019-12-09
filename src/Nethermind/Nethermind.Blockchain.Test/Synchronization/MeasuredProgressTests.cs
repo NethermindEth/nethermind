@@ -119,9 +119,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.SetMeasuringPoint();
             Thread.Sleep(100);
             measuredProgress.Update(3L);
-            Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 10M);
+            Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);
-            Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 15M);
+            Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 12M);
             Assert.LessOrEqual(measuredProgress.CurrentPerSecond, 30M);
         }
 
@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.SetMeasuringPoint();
             Thread.Sleep(100);
             measuredProgress.SetMeasuringPoint();
-            Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 10M);
+            Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);
             Assert.AreEqual(0M, measuredProgress.CurrentPerSecond);
         }
