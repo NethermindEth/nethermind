@@ -53,7 +53,11 @@ Then run the DLL that was published:
 dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll
 ```
 
-From the published version you can also pass ```--Environment Development``` to use the development (minimal) configuration, and pass in quick start parameters, as above.
+From the published version you can also start with Development (minimal) configuration, and quick start parameters:
+
+```
+dotnet ./src/Nethermind/Nethermind.BeaconNode.Host/release/latest/Nethermind.BeaconNode.Host.dll --Environment Development --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 8
+```
 
 ## Development
 
