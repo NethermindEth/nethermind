@@ -17,6 +17,8 @@
  */
 
 using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 
 namespace Nethermind.Benchmarks.Evm
@@ -45,10 +47,13 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            for (int i = 0; i < 32; i++)
-            {
-                c[i] = (byte)(~a[i]);
-            }
+            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
+            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(c);
+
+            refBuffer = ~refA;
+            Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
+            Unsafe.Add(ref refBuffer, 2) = ~Unsafe.Add(ref refA, 2);
+            Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3);
         }
         
         [Benchmark]

@@ -14,11 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Buffers.Binary;
 
 namespace Nethermind.Core2.Crypto
 {
-    public class BlsSignature
+    public class BlsSignature : IEquatable<BlsSignature>
     {
         public BlsSignature(byte[] bytes)
         {
@@ -31,12 +32,34 @@ namespace Nethermind.Core2.Crypto
         
         public static BlsSignature TestSig1 = new BlsSignature(new byte[SszLength]);
         
-        public bool Equals(BlsSignature other)
+        public static BlsSignature Empty = new BlsSignature(new byte[SszLength]);
+        
+        public bool Equals(BlsSignature? other)
         {
-            return Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return other != null && Core2.Bytes.AreEqual(Bytes, other.Bytes);
+        }
+        
+        public static bool operator !=(BlsSignature? left, BlsSignature? right)
+        {
+            return !(left == right);
         }
 
-        public override bool Equals(object obj)
+        public static bool operator ==(BlsSignature? left, BlsSignature? right)
+        {
+            if (left is null)
+            {
+                return right is null;
+            }
+            
+            return left.Equals(right);
+        }
+
+        public ReadOnlySpan<byte> AsSpan()
+        {
+            return new ReadOnlySpan<byte>(Bytes);
+        }
+        
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
@@ -46,6 +69,11 @@ namespace Nethermind.Core2.Crypto
         public override int GetHashCode()
         {
             return Bytes != null ? BinaryPrimitives.ReadInt32LittleEndian(Bytes) : 0;
-        }   
+        }
+
+        public override string ToString()
+        {
+            return Bytes.ToHexString(true);
+        }
     }
 }

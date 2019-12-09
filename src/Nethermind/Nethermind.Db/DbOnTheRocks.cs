@@ -24,7 +24,6 @@ using System.Reflection;
 using Nethermind.Db.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
-using NLog.Filters;
 using RocksDbSharp;
 
 namespace Nethermind.Db

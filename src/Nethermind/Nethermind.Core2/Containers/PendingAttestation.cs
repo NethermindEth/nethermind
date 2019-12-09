@@ -16,7 +16,6 @@
 
 using System;
 using System.Drawing;
-using Nethermind.Core.Extensions;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
@@ -28,18 +27,18 @@ namespace Nethermind.Core2.Containers
                                             Slot.SszLength +
                                             ValidatorIndex.SszLength;
         
-        public static int SszLength(PendingAttestation value)
+        public static int SszLength(PendingAttestation? value)
         {
             if (value == null)
             {
                 return 0;
             }
             
-            return SszDynamicOffset + value.AggregationBits.Length;
+            return SszDynamicOffset + value.AggregationBits?.Length ?? 0;
         }
         
-        public byte[] AggregationBits { get; set; }
-        public AttestationData Data { get; set; }
+        public byte[]? AggregationBits { get; set; }
+        public AttestationData? Data { get; set; }
         public Slot InclusionDelay { get; set; }
         public ValidatorIndex ProposerIndex { get; set; }
         
@@ -51,7 +50,7 @@ namespace Nethermind.Core2.Containers
                    ProposerIndex == other.ProposerIndex;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

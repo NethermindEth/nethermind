@@ -28,9 +28,18 @@ namespace Nethermind.Core2.Containers
             CurrentVersion = currentVersion;
             Epoch = epoch;
         }
-        
+
         public ForkVersion PreviousVersion { get; }
         public ForkVersion CurrentVersion { get; }
+
+        /// <summary>
+        ///     Gets the epoch of the latest fork
+        /// </summary>
         public Epoch Epoch { get; }
+
+        public override string ToString()
+        {
+            return $"E:{Epoch} C:{CurrentVersion} P:{PreviousVersion}";
+        }
     }
 }

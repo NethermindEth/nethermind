@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.AssemblyLoader</name>
+    </assembly>
+    <members>
+        <member name="M:NSwag.AssemblyLoader.AppDomainIsolation`1.#ctor(System.String,System.String,System.Collections.Generic.IEnumerable{BindingRedirect},System.Collections.Generic.IEnumerable{System.Reflection.Assembly})">
+            <exception cref="T:System.ArgumentNullException"><paramref name="assemblyDirectory"/> is <see langword="null" />.</exception>
+        </member>
+        <member name="T:NSwag.AssemblyLoader.Utilities.PathUtilities">
+            <summary>Provides file path utility methods.</summary>
+        </member>
+        <member name="M:NSwag.AssemblyLoader.Utilities.PathUtilities.ExpandFileWildcards(System.String)">
+            <summary>Expands the given wildcards (** or *) in the path.</summary>
+            <param name="path">The file path with wildcards.</param>
+            <returns>All expanded file paths.</returns>
+        </member>
+        <member name="M:NSwag.AssemblyLoader.Utilities.PathUtilities.ExpandFileWildcards(System.Collections.Generic.IEnumerable{System.String})">
+            <summary>Expands the given wildcards (** or *) in the paths.</summary>
+            <param name="paths">The files path with wildcards.</param>
+            <returns>All expanded file paths.</returns>
+        </member>
+        <member name="M:NSwag.AssemblyLoader.Utilities.PathUtilities.FindWildcardMatches(System.String,System.Collections.Generic.IEnumerable{System.String},System.Char)">
+            <summary>Finds the wildcard matches.</summary>
+            <param name="selector">The selector.</param>
+            <param name="items">The items.</param>
+            <param name="delimiter">The delimiter.</param>
+            <returns>The matches.</returns>
+        </member>
+        <member name="M:NSwag.AssemblyLoader.Utilities.PathUtilities.MakeAbsolutePath(System.String,System.String)">
+            <summary>Converts a relative path to an absolute path.</summary>
+            <param name="relativePath">The relative path.</param>
+            <param name="relativeTo">The current directory.</param>
+            <returns>The absolute path.</returns>
+        </member>
+        <member name="M:NSwag.AssemblyLoader.Utilities.PathUtilities.MakeRelativePath(System.String,System.String)">
+            <summary>Converts an absolute path to a relative path if possible.</summary>
+            <param name="absolutePath">The absolute path.</param>
+            <param name="relativeTo">The current directory.</param>
+            <returns>The relative path.</returns>
+            <exception cref="T:System.ArgumentException">The path of the two files doesn't have any common base.</exception>
+        </member>
+    </members>
+</doc>

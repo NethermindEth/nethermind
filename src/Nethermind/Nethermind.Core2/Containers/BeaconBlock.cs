@@ -22,18 +22,18 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
-        public const int SszDynamicOffset = Slot.SszLength + 2 * Sha256.SszLength + sizeof(uint) + BlsSignature.SszLength;
+        public const int SszDynamicOffset = Slot.SszLength + 2 * Hash32.SszLength + sizeof(uint) + BlsSignature.SszLength;
         
-        public static int SszLength(BeaconBlock container)
+        public static int SszLength(BeaconBlock? container)
         {
-            return SszDynamicOffset + BeaconBlockBody.SszLength(container.Body);
+            return container is null ? 0 : (SszDynamicOffset + BeaconBlockBody.SszLength(container.Body));
         }
         
         public Slot Slot { get; set; }
-        public Sha256 ParentRoot { get; set; }
-        public Sha256 StateRoot { get; set; }
-        public BeaconBlockBody Body { get; set; }
-        public BlsSignature Signature { get; set; }
+        public Hash32 ParentRoot { get; set; }
+        public Hash32 StateRoot { get; set; }
+        public BeaconBlockBody? Body { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
 
         public static uint MaxProposerSlashings { get; set; } = 16;
 
@@ -54,7 +54,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

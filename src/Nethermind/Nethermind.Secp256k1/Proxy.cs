@@ -30,153 +30,153 @@ namespace Nethermind.Secp256k1
         private static class Win64Lib
         {
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern /* void */ IntPtr secp256k1_context_destroy(IntPtr context);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, byte[] pubkey, byte[] seckey);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, byte[] serializedPublicKey, ref uint outputSize, byte[] publicKey, uint flags);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] compactSignature, int recoveryId);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dll")]
+            [DllImport("runtimes\\win-x64\\native\\secp256k1.dll")]
             public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
         }
 
         private static class PosixLib
         {
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern /* void */ IntPtr secp256k1_context_destroy(IntPtr context);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, byte[] pubkey, byte[] seckey);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, byte[] serializedPublicKey, ref uint outputSize, byte[] publicKey, uint flags);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] compactSignature, int recoveryId);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.so")]
+            [DllImport("runtimes\\linux-x64\\native\\libsecp256k1.so")]
             public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
         }
 
         private static class MacLib
         {
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern /* void */ IntPtr secp256k1_context_destroy(IntPtr context);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, byte[] pubkey, byte[] seckey);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, byte[] serializedPublicKey, ref uint outputSize, byte[] publicKey, uint flags);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] compactSignature, int recoveryId);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern bool secp256k1_ecdh( /* secp256k1_context */ IntPtr context, byte[] output, byte[] publicKey, byte[] privateKey, IntPtr hashFunctionPointer, IntPtr data);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern unsafe int secp256k1_ec_pubkey_parse(IntPtr ctx, void* pubkey, void* input, uint inputlen);
 
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("secp256k1.dylib")]
+            [DllImport("runtimes\\osx-x64\\native\\libsecp256k1.dylib")]
             public static extern unsafe int secp256k1_ec_pubkey_serialize(IntPtr ctx, void* output, ref uint outputlen, void* pubkey, uint flags);
         }
 
@@ -205,17 +205,17 @@ namespace Nethermind.Secp256k1
         private static readonly OsPlatform Platform;
         private static readonly IntPtr Context;
 
+        static Proxy()
+        {
+            Platform = GetPlatform();
+            Context = CreateContext();
+        }
+
         private enum OsPlatform
         {
             Windows,
             Linux,
             Mac
-        }
-
-        static Proxy()
-        {
-            Platform = GetPlatform();
-            Context = CreateContext();
         }
 
         private static OsPlatform GetPlatform()
@@ -240,32 +240,24 @@ namespace Nethermind.Secp256k1
 
         private static IntPtr CreateContext()
         {
-            switch (Platform)
+            return Platform switch
             {
-                case OsPlatform.Windows:
-                    return Win64Lib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify);
-                case OsPlatform.Linux:
-                    return PosixLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify);
-                case OsPlatform.Mac:
-                    return MacLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify);
-            }
-
-            throw new InvalidOperationException("Unsupported platform.");
+                OsPlatform.Windows => Win64Lib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
+                OsPlatform.Linux => PosixLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
+                OsPlatform.Mac => MacLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
+                _ => throw new InvalidOperationException("Unsupported platform.")
+            };
         }
 
         public static bool VerifyPrivateKey(byte[] privateKey)
         {
-            switch (Platform)
+            return Platform switch
             {
-                case OsPlatform.Windows:
-                    return Win64Lib.secp256k1_ec_seckey_verify(Context, privateKey);
-                case OsPlatform.Linux:
-                    return PosixLib.secp256k1_ec_seckey_verify(Context, privateKey);
-                case OsPlatform.Mac:
-                    return MacLib.secp256k1_ec_seckey_verify(Context, privateKey);
-            }
-
-            throw new InvalidOperationException("Unsupported platform.");
+                OsPlatform.Windows => Win64Lib.secp256k1_ec_seckey_verify(Context, privateKey),
+                OsPlatform.Linux => PosixLib.secp256k1_ec_seckey_verify(Context, privateKey),
+                OsPlatform.Mac => MacLib.secp256k1_ec_seckey_verify(Context, privateKey),
+                _ => throw new InvalidOperationException("Unsupported platform.")
+            };
         }
 
         public static byte[] GetPublicKey(byte[] privateKey, bool compressed)
@@ -384,11 +376,12 @@ namespace Nethermind.Secp256k1
             {
                 IntPtr fp = Marshal.GetFunctionPointerForDelegate(hashFunctionPtr);
                 {
-                    return Platform == OsPlatform.Windows
-                        ? Win64Lib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero)
-                        : Platform == OsPlatform.Linux
-                            ? PosixLib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero)
-                            : MacLib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero);
+                    return Platform switch
+                    {
+                        OsPlatform.Windows => Win64Lib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero),
+                        OsPlatform.Linux => PosixLib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero),
+                        _ => MacLib.secp256k1_ecdh(Context, agreement, publicKey, privateKey, fp, IntPtr.Zero)
+                    };
                 }
             }
             finally
@@ -417,9 +410,9 @@ namespace Nethermind.Secp256k1
         /// <param name="publicKeyOutput">(Output) pointer to a pubkey object. If 1 is returned, it is set to a parsed version of input. If not, its value is undefined.</param>
         /// <param name="serializedPublicKey">Serialized public key.</param>
         /// <returns>True if the public key was fully valid, false if the public key could not be parsed or is invalid.</returns>
-        public static unsafe bool PublicKeyParse(Span<byte> publicKeyOutput, Span<byte> serializedPublicKey)
+        private static unsafe bool PublicKeyParse(Span<byte> publicKeyOutput, Span<byte> serializedPublicKey)
         {
-            var inputLen = serializedPublicKey.Length;
+            int inputLen = serializedPublicKey.Length;
             if (inputLen != 33 && inputLen != 65)
             {
                 throw new ArgumentException($"{nameof(serializedPublicKey)} must be 33 or 65 bytes");
@@ -430,14 +423,14 @@ namespace Nethermind.Secp256k1
                 throw new ArgumentException($"{nameof(publicKeyOutput)} must be {64} bytes");
             }
 
-            fixed (byte* pubKeyPtr = &MemoryMarshal.GetReference(publicKeyOutput),
-                serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey))
+            fixed (byte* pubKeyPtr = &MemoryMarshal.GetReference(publicKeyOutput), serializedPtr = &MemoryMarshal.GetReference(serializedPublicKey))
             {
-                return (Platform == OsPlatform.Windows
-                    ? Win64Lib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)
-                    : Platform == OsPlatform.Linux
-                        ? PosixLib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)
-                        : MacLib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)) == 1;
+                return Platform switch
+                {
+                    OsPlatform.Windows => Win64Lib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen),
+                    OsPlatform.Linux => PosixLib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen),
+                    _ => MacLib.secp256k1_ec_pubkey_parse(Context, pubKeyPtr, serializedPtr, (uint) inputLen)
+                } == 1;
             }
         }
         
@@ -447,7 +440,7 @@ namespace Nethermind.Secp256k1
         /// <param name="serializedPublicKeyOutput">65-byte (if compressed==0) or 33-byte (if compressed==1) output to place the serialized key in.</param>
         /// <param name="publicKey">The secp256k1_pubkey initialized public key.</param>
         /// <param name="flags">SECP256K1_EC_COMPRESSED if serialization should be in compressed format, otherwise SECP256K1_EC_UNCOMPRESSED.</param>
-        public static unsafe bool PublicKeySerialize(Span<byte> serializedPublicKeyOutput, Span<byte> publicKey, uint flags = Secp256K1EcUncompressed)
+        private static unsafe bool PublicKeySerialize(Span<byte> serializedPublicKeyOutput, Span<byte> publicKey, uint flags = Secp256K1EcUncompressed)
         {
             bool compressed = (flags & Secp256K1EcCompressed) == Secp256K1EcCompressed;
             int serializedPubKeyLength = compressed ? 33 : 65;
@@ -456,6 +449,7 @@ namespace Nethermind.Secp256k1
                 string compressedStr = compressed ? "compressed" : "uncompressed";
                 throw new ArgumentException($"{nameof(serializedPublicKeyOutput)} ({compressedStr}) must be {serializedPubKeyLength} bytes");
             }
+            
             if (publicKey.Length < 64)
             {
                 throw new ArgumentException($"{nameof(publicKey)} must be {64} bytes");
@@ -463,14 +457,14 @@ namespace Nethermind.Secp256k1
 
             uint newLength = (uint)serializedPubKeyLength;
 
-            fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKeyOutput),
-                pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
+            fixed (byte* serializedPtr = &MemoryMarshal.GetReference(serializedPublicKeyOutput), pubKeyPtr = &MemoryMarshal.GetReference(publicKey))
             {
-                var result = (Platform == OsPlatform.Windows
-                           ? Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags)
-                           : Platform == OsPlatform.Linux
-                               ? PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags)
-                               : MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags));
+                int result = (Platform switch
+                {
+                    OsPlatform.Windows => Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags),
+                    OsPlatform.Linux => PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags),
+                    _ => MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPtr, ref newLength, pubKeyPtr, (uint) flags)
+                });
                 
                 return result == 1 && newLength == serializedPubKeyLength;
             }
@@ -489,7 +483,7 @@ namespace Nethermind.Secp256k1
             // Parse our public key from the serialized data.
             if (!PublicKeyParse(publicKey, uncompressedPrefixedPublicKey))
             {
-                var errMsg = "Unmanaged EC library failed to deserialize public key. ";
+                const string errMsg = "Unmanaged EC library failed to deserialize public key. ";
                 throw new Exception(errMsg);
             }
 
@@ -497,7 +491,7 @@ namespace Nethermind.Secp256k1
             uint serializedKeyFlags = Secp256K1EcUncompressed;
             if (!PublicKeySerialize(serializedKey, publicKey, serializedKeyFlags))
             {
-                var errMsg = "Unmanaged EC library failed to serialize public key. ";
+                const string errMsg = "Unmanaged EC library failed to serialize public key. ";
                 throw new Exception(errMsg);
             }
         }

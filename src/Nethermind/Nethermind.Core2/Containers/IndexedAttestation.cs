@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Encoding;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -27,37 +26,50 @@ namespace Nethermind.Core2.Containers
                                             AttestationData.SszLength +
                                             BlsSignature.SszLength;
         
-        public static int SszLength(IndexedAttestation value)
+        public static int SszLength(IndexedAttestation? value)
         {
+            if (value is null)
+            {
+                return 0;
+            }
+            
             return SszDynamicOffset +
-                   value.AttestingIndices.Length * ValidatorIndex.SszLength;
+                   (value.AttestingIndices?.Length ?? 0) * ValidatorIndex.SszLength;
         }
 
-        public ValidatorIndex[] AttestingIndices { get; set; }
-        public AttestationData Data { get; set; }
-        public BlsSignature Signature { get; set; }
+        public ValidatorIndex[]? AttestingIndices { get; set; }
+        public AttestationData? Data { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
         
         public bool Equals(IndexedAttestation other)
         {
             if (!Equals(Data, other.Data) ||
                 !Equals(Signature, other.Signature) ||
-                AttestingIndices.Length != other.AttestingIndices.Length)
+                (AttestingIndices?.Length ?? 0) != (other.AttestingIndices?.Length ?? 0))
             {
                 return false;
             }
 
-            for (int i = 0; i < AttestingIndices.Length; i++)
+            if (!(AttestingIndices is null))
             {
-                if (AttestingIndices[i] != other.AttestingIndices[i])
+                if (other.AttestingIndices is null)
                 {
                     return false;
+                }
+                
+                for (int i = 0; i < AttestingIndices?.Length; i++)
+                {
+                    if (AttestingIndices[i] != other.AttestingIndices[i])
+                    {
+                        return false;
+                    }
                 }
             }
 
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

@@ -1,4 +1,4 @@
-Docker
+Docker (Ubuntu)
 ******
 
 Using an existing image

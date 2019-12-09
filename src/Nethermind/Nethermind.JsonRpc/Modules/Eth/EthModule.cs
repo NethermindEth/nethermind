@@ -277,7 +277,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return Task.FromResult(ResultWrapper<Keccak>.Success(txHash));
         }
 
-        public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
+        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
             BlockHeader block = _blockchainBridge.GetHeader(blockParameter ?? BlockParameter.Latest);
 
@@ -287,20 +287,15 @@ namespace Nethermind.JsonRpc.Modules.Eth
             {
                 tx.GasLimit = 10000000;
             }
-
-            if (tx.To == null)
-            {
-                return ResultWrapper<byte[]>.Fail($"Recipient address not specified on the transaction.", ErrorType.InvalidParams);
-            }
             
             BlockchainBridge.CallOutput result = _blockchainBridge.Call(block, tx);
 
             if (result.Error != null)
             {
-                return ResultWrapper<byte[]>.Fail($"VM Exception while processing transaction: {result.Error}", ErrorType.ExecutionError, result.OutputData);
+                return ResultWrapper<string>.Fail("VM execution error.", ErrorType.ExecutionError, result.Error);
             }
 
-            return ResultWrapper<byte[]>.Success(result.OutputData);
+            return ResultWrapper<string>.Success(result.OutputData.ToHexString(true));
         }
 
         public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall)

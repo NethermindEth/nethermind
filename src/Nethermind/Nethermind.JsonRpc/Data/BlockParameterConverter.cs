@@ -19,14 +19,13 @@
 using System;
 using Nethermind.Core.Json;
 using Newtonsoft.Json;
-using NLog.StructuredLogging.Json.Helpers;
 
 namespace Nethermind.JsonRpc.Data
 {
     public class BlockParameterConverter : JsonConverter<BlockParameter>
     {
         private NullableLongConverter _longConverter = new NullableLongConverter();
-        
+
         public override void WriteJson(JsonWriter writer, BlockParameter value, JsonSerializer serializer)
         {
             if (value.Type == BlockParameterType.BlockNumber)
@@ -53,18 +52,37 @@ namespace Nethermind.JsonRpc.Data
             }
         }
 
+        private static bool IsNonStringAndLongish(object item)
+        {
+            return Convert.GetTypeCode(item) switch
+            {
+                TypeCode.Int16 => true,
+                TypeCode.Int32 => true,
+                TypeCode.Int64 => true,
+                TypeCode.UInt16 => true,
+                TypeCode.UInt64 => true,
+                TypeCode.UInt32 => true,
+                TypeCode.Single => true,
+                TypeCode.Double => true,
+                TypeCode.Decimal => true,
+                TypeCode.Byte => true,
+                TypeCode.SByte => true,
+                _ => false
+            };
+        }
+
         public override BlockParameter ReadJson(JsonReader reader, Type objectType, BlockParameter existingValue, bool hasExistingValue, JsonSerializer serializer)
         {
             if (reader.Value == null)
             {
                 return BlockParameter.Latest;
             }
-            
-            if (reader.Value.IsNonStringValueType())
+
+            if (IsNonStringAndLongish(reader.Value))
             {
-                return new BlockParameter((long)reader.Value);
+                return new BlockParameter((long) reader.Value);
             }
-                
+
             string value = reader.Value as string;
             switch (value)
             {

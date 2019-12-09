@@ -23,8 +23,8 @@ namespace Nethermind.Monitoring.Metrics
 {
     public interface IMetricsUpdater
     {
+        void RegisterMetrics(Type type);
         void StartUpdating();
         void StopUpdating();
-        void RegisterMetrics(Type type);
     }
 }

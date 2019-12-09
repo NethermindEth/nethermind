@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Number}")]
-    public struct CommitteeIndex
+    public struct CommitteeIndex : IEquatable<CommitteeIndex>, IComparable<CommitteeIndex>
     {
         public const int SszLength = sizeof(ulong);
 
@@ -35,26 +36,72 @@ namespace Nethermind.Core2.Types
             return Number == other.Number;
         }
         
-        public static bool operator ==(CommitteeIndex a, CommitteeIndex b)
+         public static CommitteeIndex None => new CommitteeIndex(ulong.MaxValue);
+
+        public static explicit operator CommitteeIndex(ulong value) => new CommitteeIndex(value);
+
+        public static explicit operator ulong(CommitteeIndex committeeIndex) => committeeIndex.Number;
+
+        public static CommitteeIndex operator -(CommitteeIndex left, CommitteeIndex right)
         {
-            return a.Number == b.Number;
+            return new CommitteeIndex(left.Number - right.Number);
         }
 
-        public static bool operator !=(CommitteeIndex a, CommitteeIndex b)
+        public static bool operator !=(CommitteeIndex left, CommitteeIndex right)
         {
-            return !(a == b);
+            return !(left == right);
         }
 
-        public override bool Equals(object obj)
+        public static CommitteeIndex operator +(CommitteeIndex left, CommitteeIndex right)
         {
-            return obj is CommitteeIndex other && Equals(other);
+            return new CommitteeIndex(left.Number + right.Number);
         }
-        
+
+        public static bool operator <(CommitteeIndex left, CommitteeIndex right)
+        {
+            return left.CompareTo(right) < 0;
+        }
+
+        public static bool operator <=(CommitteeIndex left, CommitteeIndex right)
+        {
+            return left.CompareTo(right) <= 0;
+        }
+
+        public static bool operator ==(CommitteeIndex left, CommitteeIndex right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator >(CommitteeIndex left, CommitteeIndex right)
+        {
+            return left.CompareTo(right) > 0;
+        }
+
+        public static bool operator >=(CommitteeIndex left, CommitteeIndex right)
+        {
+            return left.CompareTo(right) >= 0;
+        }
+
+        public int CompareTo(CommitteeIndex other)
+        {
+            return Number.CompareTo(other.Number);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            return obj is CommitteeIndex slot && Equals(slot);
+        }
+
+        public bool Equals(CommitteeIndex other)
+        {
+            return Number == other.Number;
+        }
+
         public override int GetHashCode()
         {
             return Number.GetHashCode();
         }
-        
+
         public override string ToString()
         {
             return Number.ToString();

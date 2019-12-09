@@ -19,7 +19,6 @@ using System.Buffers.Binary;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Ssz
@@ -204,7 +203,6 @@ namespace Nethermind.Ssz
             dynamicOffset += value.Length;
         }
         
-        [Todo(Improve.Refactor, "Not sure if this will be useful for readability")]
         public static void Encode(Span<byte> span, Span<byte> value)
         {
             const int typeSize = 1;

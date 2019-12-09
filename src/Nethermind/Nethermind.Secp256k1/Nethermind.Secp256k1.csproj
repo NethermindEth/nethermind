@@ -5,14 +5,14 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
-    <None Include="./External/Win64/secp256k1.dll" Link="secp256k1.dll">
+    <Content Include="runtimes\linux-x64\native\libsecp256k1.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Posix/libsecp256k1.so" Link="libsecp256k1.so">
+    </Content>
+    <Content Include="runtimes\osx-x64\native\libsecp256k1.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Mac/libsecp256k1.dylib" Link="libsecp256k1.dylib">
+    </Content>
+    <Content Include="runtimes\win-x64\native\secp256k1.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
+    </Content>
   </ItemGroup>
 </Project>

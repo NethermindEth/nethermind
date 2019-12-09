@@ -68,7 +68,7 @@ namespace Ethereum.Difficulty.Test
                 }
             }
 
-            return expectedTypeName;
+            return expectedTypeName.Replace("_", string.Empty);
         }
     }
 }

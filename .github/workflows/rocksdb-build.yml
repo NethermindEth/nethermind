@@ -1,0 +1,84 @@
+name: RocksDB Build
+
+on:
+  repository_dispatch:
+    types: rocksdb_build
+
+jobs:
+  rocksb-building:
+    name: Building RocksDB
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macOS-latest, ubuntu-latest]
+    steps:
+    - name: Cloning rocksDB repository
+      run: |
+        git clone git://github.com/warrenfalk/rocksdb-sharp-native.git
+    - name: Checking out the latest rocksdb version for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        sed -i "31s/.*/ROCKSDBVERSION=$(git ls-remote --tags git://github.com/facebook/rocksdb.git | cut -d/ -f3- |  sort -t '/' -k 3 -V | awk '/^[^{]*$/{version=$1}END{print version}')/" /d/a/nethermind/nethermind/rocksdb-sharp-native/build-rocksdb.sh
+      shell: bash
+    - name: Building rocksDB for Windows
+      if: matrix.os == 'windows-latest'
+      run: |
+        call "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        call "C:\Program Files\Git\bin\bash.exe"
+        sh /d/a/nethermind/nethermind/rocksdb-sharp-native/build-rocksdb.sh
+      shell: cmd
+    - uses: actions/upload-artifact@v1
+      name: Uploading Windows artifact
+      if: matrix.os == 'windows-latest'
+      with:
+        name: windows_artifact_rocksdb
+        path: runtimes/win-x64/native/rocksdb.dll
+    - name: Building rocksDB for Linux
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt install libsnappy-dev libzstd-dev liblz4-dev zlib1g-dev
+        git clone https://github.com/facebook/rocksdb.git
+        cd rocksdb/
+        git fetch --tags
+        latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+        git checkout $latestTag
+        TAG="${latestTag:1}"
+        make shared_lib
+        strip librocksdb.so.${TAG}
+        mv librocksdb.so.${TAG} librocksdb.so
+    - uses: actions/upload-artifact@v1
+      name: Uploading Linux artifact
+      if: matrix.os == 'ubuntu-latest'
+      with:
+        name: linux_artifact_rocksdb
+        path: rocksdb/librocksdb.so
+    - name: Building rocksDB for OSX
+      if: matrix.os == 'macOS-latest'
+      run: |
+        git clone git://github.com/Cyan4973/lz4.git
+        brew install gcc
+        brew install snappy
+        brew install zstd
+        make -C lz4/lib
+        cp -L lz4/lib/liblz4.dylib ./liblz4_64.dylib
+        make -C lz4/lib clean
+        CFLAGS="-arch x86_64" CXXFLAGS="-arch x86_64" LDFLAGS="-arch x86_64" make -C lz4/lib
+        lipo -create ./liblz4_64.dylib -output ./liblz4.dylib
+        cp -v ./liblz4.dylib lz4/lib/$(readlink lz4/lib/liblz4.dylib)
+        touch lz4/lib/liblz4
+        make -C lz4/lib install
+        git clone https://github.com/facebook/rocksdb.git
+        cd rocksdb/
+        git fetch --tags
+        latestTag=$(git describe --tags `git rev-list --tags --max-count=1`)
+        git checkout $latestTag
+        TAG="${latestTag:1}"
+        sed -i.bak '14s/CXXFLAGS += ${EXTRA_CXXFLAGS}/CXXFLAGS += -w/' Makefile
+        make shared_lib
+        mv librocksdb.${TAG}.dylib librocksdb.dylib
+    - uses: actions/upload-artifact@v1
+      name: Uploading Darwin artifact
+      if: matrix.os == 'macOS-latest'
+      with:
+        name: darwin_artifact_rocksdb
+        path: rocksdb/librocksdb.dylib

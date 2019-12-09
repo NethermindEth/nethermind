@@ -42,7 +42,6 @@ using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
-using NLog;
 using NSubstitute;
 using NUnit.Framework;
 

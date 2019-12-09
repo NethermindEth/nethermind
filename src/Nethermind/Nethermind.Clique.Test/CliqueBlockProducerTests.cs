@@ -741,6 +741,7 @@ namespace Nethermind.Clique.Test
         }
 
         [Test]
+        [Retry(3)]
         public async Task Creates_blocks_without_signals_from_block_tree()
         {
             await On.Goerli

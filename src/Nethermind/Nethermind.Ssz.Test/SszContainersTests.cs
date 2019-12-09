@@ -23,6 +23,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Ssz.Test
 {
@@ -136,7 +137,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[PendingAttestation.SszLength(container)];
             Ssz.Encode(encoded, container);
-            PendingAttestation decoded = Ssz.DecodePendingAttestation(encoded);
+            PendingAttestation? decoded = Ssz.DecodePendingAttestation(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -165,7 +166,7 @@ namespace Nethermind.Ssz.Test
             container.StateRoots[7] = Sha256.OfAnEmptyString;
             Span<byte> encoded = new byte[HistoricalBatch.SszLength];
             Ssz.Encode(encoded, container);
-            HistoricalBatch decoded = Ssz.DecodeHistoricalBatch(encoded);
+            HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -228,7 +229,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[ProposerSlashing.SszLength];
             Ssz.Encode(encoded, container);
-            ProposerSlashing decoded = Ssz.DecodeProposerSlashing(encoded);
+            ProposerSlashing? decoded = Ssz.DecodeProposerSlashing(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -260,7 +261,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[AttesterSlashing.SszLength(container)];
             Ssz.Encode(encoded, container);
-            AttesterSlashing decoded = Ssz.DecodeAttesterSlashing(encoded);
+            AttesterSlashing? decoded = Ssz.DecodeAttesterSlashing(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -283,7 +284,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[Attestation.SszLength(container)];
             Ssz.Encode(encoded, container);
-            Attestation decoded = Ssz.DecodeAttestation(encoded);
+            Attestation? decoded = Ssz.DecodeAttestation(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -304,7 +305,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[Deposit.SszLength];
             Ssz.Encode(encoded, container);
-            Deposit decoded = Ssz.DecodeDeposit(encoded);
+            Deposit? decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -320,7 +321,7 @@ namespace Nethermind.Ssz.Test
 
             Span<byte> encoded = new byte[VoluntaryExit.SszLength];
             Ssz.Encode(encoded, container);
-            VoluntaryExit decoded = Ssz.DecodeVoluntaryExit(encoded);
+            VoluntaryExit? decoded = Ssz.DecodeVoluntaryExit(encoded);
             Assert.AreEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
@@ -377,7 +378,7 @@ namespace Nethermind.Ssz.Test
 
             Deposit deposit = new Deposit();
             deposit.Data = depositData;
-            deposit.Proof = new Sha256[Deposit.ContractTreeDepth + 1];
+            deposit.Proof = new Hash32[Deposit.ContractTreeDepth + 1];
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;
@@ -491,17 +492,17 @@ namespace Nethermind.Ssz.Test
             container.Slashings = new Gwei[Time.EpochsPerSlashingsVector];
             container.Slot = new Slot(1);
             container.Validators = new Validator[7];
-            container.BlockRoots = new Sha256[Time.SlotsPerHistoricalRoot];
-            container.StateRoots = new Sha256[Time.SlotsPerHistoricalRoot];
+            container.BlockRoots = new Hash32[Time.SlotsPerHistoricalRoot];
+            container.StateRoots = new Hash32[Time.SlotsPerHistoricalRoot];
             container.Eth1Data = eth1Data;
             container.Eth1DataVotes = new Eth1Data[2];
             container.PreviousJustifiedCheckpoint = new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString);
             container.CurrentJustifiedCheckpoint = new Checkpoint(new Epoch(5), Sha256.OfAnEmptyString);
             container.FinalizedCheckpoint = new Checkpoint(new Epoch(7), Sha256.OfAnEmptyString);
             container.GenesisTime = 123;
-            container.HistoricalRoots = new Sha256[13];
+            container.HistoricalRoots = new Hash32[13];
             container.JustificationBits = 9;
-            container.RandaoMixes = new Sha256[Time.EpochsPerHistoricalVector];
+            container.RandaoMixes = new Hash32[Time.EpochsPerHistoricalVector];
             container.PreviousEpochAttestations = new PendingAttestation[1];
             container.CurrentEpochAttestations = new PendingAttestation[11];
             container.Eth1DepositIndex = 1234;

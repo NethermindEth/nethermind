@@ -1,0 +1,654 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>NSwag.CodeGeneration.CSharp</name>
+    </assembly>
+    <members>
+        <member name="T:NSwag.CodeGeneration.CSharp.CSharpClientGenerator">
+            <summary>Generates the CSharp service client code. </summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpClientGenerator.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpClientGenerator" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" />.</exception>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpClientGenerator.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings,NJsonSchema.CodeGeneration.CSharp.CSharpTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpClientGenerator" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <param name="resolver">The resolver.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" />.</exception>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGenerator.Settings">
+            <summary>Gets or sets the generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGenerator.BaseSettings">
+            <summary>Gets the base settings.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpClientGenerator.GenerateClientTypes(System.String,System.String,System.Collections.Generic.IEnumerable{NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel})">
+            <summary>Generates the client class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="controllerClassName">Name of the controller class.</param>
+            <param name="operations">The operations.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpClientGenerator.CreateOperationModel(NSwag.OpenApiOperation,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates an operation model.</summary>
+            <param name="operation">The operation.</param>
+            <param name="settings">The settings.</param>
+            <returns>The operation model.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings">
+            <summary>Settings for the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpClientGenerator"/>.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ClientBaseClass">
+            <summary>Gets or sets the full name of the base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ConfigurationClass">
+            <summary>Gets or sets the full name of the configuration class (<see cref="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ClientBaseClass"/> must be set).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.GenerateExceptionClasses">
+            <summary>Gets or sets a value indicating whether to generate exception classes (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ExceptionClass">
+            <summary>Gets or sets the name of the exception class (supports the '{controller}' placeholder, default 'ApiException').</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.InjectHttpClient">
+            <summary>Gets or sets a value indicating whether an HttpClient instance is injected into the client (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.DisposeHttpClient">
+            <summary>Gets or sets a value indicating whether to dispose the HttpClient (injected HttpClient is never disposed, default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ProtectedMethods">
+            <summary>Gets or sets the list of methods with a protected access modifier ("classname.methodname").</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.UseHttpClientCreationMethod">
+            <summary>Gets or sets a value indicating whether to call CreateHttpClientAsync on the base class to create a new HttpClient instance (cannot be used when the HttpClient is injected).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.UseHttpRequestMessageCreationMethod">
+            <summary>Gets or sets a value indicating whether to call CreateHttpRequestMessageAsync on the base class to create a new HttpRequestMethod.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.WrapDtoExceptions">
+            <summary>Gets or sets a value indicating whether DTO exceptions are wrapped in a SwaggerException instance (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ClientClassAccessModifier">
+            <summary>Gets or sets the client class access modifier (default: public).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.UseBaseUrl">
+            <summary>Gets or sets a value indicating whether to use and expose the base URL (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.GenerateBaseUrlProperty">
+            <summary>Gets or sets a value indicating whether to generate the BaseUrl property, must be defined on the base class otherwise (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.GenerateSyncMethods">
+            <summary>Gets or sets a value indicating whether to generate synchronous methods (not recommended, default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.HttpClientType">
+            <summary>
+            Gets or sets the HttpClient type which will be used in the generation of the client code. By default the System.Net.Http.HttpClient
+            will be used, but this can be overridden. Just keep in mind that the type you specify has the same default HttpClient method signatures.
+            </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ParameterDateTimeFormat">
+            <summary>Gets or sets the format for DateTime type method parameters (default: "s").</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.GenerateUpdateJsonSerializerSettingsMethod">
+            <summary>Gets or sets a value indicating whether to generate the UpdateJsonSerializerSettings method (must be implemented in the base class otherwise, default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.SerializeTypeInformation">
+            <summary>Gets or sets a value indicating whether to serialize the type information in a $type property (not recommended, also sets TypeNameHandling = Auto).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.QueryNullValue">
+            <summary>Gets or sets the null value used for query parameters which are null (default: '').</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings.ExposeJsonSerializerSettings">
+            <summary>Gets or sets a value indicating whether to expose the JsonSerializerSettings property (default: false).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator">
+            <summary>Generates the CSharp service client code. </summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" />.</exception>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings,NJsonSchema.CodeGeneration.CSharp.CSharpTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator" /> class.</summary>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <param name="resolver">The resolver.</param>
+            <exception cref="T:System.ArgumentNullException"><paramref name="document" /> is <see langword="null" />.</exception>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.Settings">
+            <summary>Gets or sets the generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.BaseSettings">
+            <summary>Gets the base settings.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.GenerateAllClientTypes">
+            <summary>Generates the client types.</summary>
+            <returns>The code artifact collection.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.GenerateClientTypes(System.String,System.String,System.Collections.Generic.IEnumerable{NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel})">
+            <summary>Generates the client class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="controllerClassName">Name of the controller class.</param>
+            <param name="operations">The operations.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator.CreateOperationModel(NSwag.OpenApiOperation,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates an operation model.</summary>
+            <param name="operation">The operation.</param>
+            <param name="settings">The settings.</param>
+            <returns>The operation model.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings">
+            <summary>Settings for the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpControllerGenerator"/>.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.GetRouteName(NSwag.OpenApiOperation)">
+            <summary>Returns the route name for a controller method.</summary>
+            <param name="operation">Swagger operation</param>
+            <returns>Route name.</returns>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.ControllerBaseClass">
+            <summary>Gets or sets the full name of the base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.ControllerStyle">
+            <summary>Gets or sets the controller generation style (partial, abstract; default: partial).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.ControllerTarget">
+            <summary>Gets or sets the controller target framework.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.UseCancellationToken">
+            <summary>Gets or sets a value indicating whether to allow adding cancellation token </summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.RouteNamingStrategy">
+            <summary>Gets or sets the strategy for naming routes (default: CSharpRouteNamingStrategy.None).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.GenerateModelValidationAttributes">
+            <summary>Gets or sets a value indicating whether to add model validation attributes.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings.UseActionResultType">
+            <summary>Gets or sets a value indicating whether ASP.Net Core (2.1) ActionResult type is used (default: false).</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase">
+            <summary>The CSharp generator base class.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase.#ctor(NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings,NJsonSchema.CodeGeneration.CSharp.CSharpTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase"/> class.</summary>
+            <param name="document">The document.</param>
+            <param name="settings">The settings.</param>
+            <param name="resolver">The resolver.</param>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase.GetTypeName(NJsonSchema.JsonSchema,System.Boolean,System.String)">
+            <summary>Gets the type.</summary>
+            <param name="schema">The schema.</param>
+            <param name="isNullable">Specifies whether the type is nullable..</param>
+            <param name="typeNameHint">The type name hint.</param>
+            <returns>The type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase.CreateResolverWithExceptionSchema(NJsonSchema.CodeGeneration.CSharp.CSharpGeneratorSettings,NSwag.OpenApiDocument)">
+            <summary>Creates a new resolver, adds the given schema definitions and registers an exception schema if available.</summary>
+            <param name="settings">The settings.</param>
+            <param name="document">The document </param>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase.GenerateFile(System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},NSwag.CodeGeneration.ClientGeneratorOutputType)">
+            <summary>Generates the file.</summary>
+            <param name="clientTypes">The client types.</param>
+            <param name="dtoTypes">The DTO types.</param>
+            <param name="outputType">Type of the output.</param>
+            <returns>The code.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase.GenerateDtoTypes">
+            <summary>Generates all DTO types.</summary>
+            <returns>The code artifact collection.</returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings">
+            <summary>Settings for the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpGeneratorBase"/>.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.#ctor">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings"/> class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.CSharpGeneratorSettings">
+            <summary>Gets the CSharp generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.CodeGeneratorSettings">
+            <summary>Gets the code generator settings.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.AdditionalNamespaceUsages">
+            <summary>Gets or sets the additional namespace usages.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.AdditionalContractNamespaceUsages">
+            <summary>Gets or sets the additional contract namespace usages.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.ResponseArrayType">
+            <summary>Gets or sets the array type of operation responses (i.e. the method return type).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.ResponseDictionaryType">
+            <summary>Gets or sets the dictionary type of operation responses (i.e. the method return type).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.ParameterArrayType">
+            <summary>Gets or sets the array type of operation parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings.ParameterDictionaryType">
+            <summary>Gets or sets the dictionary type of operation parameters.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel">
+            <summary>The CSharp client template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.#ctor(System.String,System.String,System.Collections.Generic.IEnumerable{NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel},NJsonSchema.JsonSchema,NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel" /> class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="controllerClassName">The class name of the controller.</param>
+            <param name="operations">The operations.</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.Class">
+            <summary>Gets the class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.HasBaseClass">
+            <summary>Gets a value indicating whether the client has a base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.BaseClass">
+            <summary>Gets the base class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.HasConfigurationClass">
+            <summary>Gets a value indicating whether the client has configuration class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.ConfigurationClass">
+            <summary>Gets the configuration class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.HasBaseType">
+            <summary>Gets a value indicating whether the client has a base type.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.InjectHttpClient">
+            <summary>Gets or sets a value indicating whether an HttpClient instance is injected.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.DisposeHttpClient">
+            <summary>Gets or sets a value indicating whether to dispose the HttpClient (injected HttpClient is never disposed, default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.UseHttpClientCreationMethod">
+            <summary>Gets a value indicating whether to use a HTTP client creation method.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.HttpClientType">
+            <summary>Gets the type of the HttpClient that will be used in the calls from a client to a service.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.UseHttpRequestMessageCreationMethod">
+            <summary>Gets a value indicating whether to use a HTTP request message creation method.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.GenerateClientInterfaces">
+            <summary>Gets a value indicating whether to generate client interfaces.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.HasBaseUrl">
+            <summary>Gets a value indicating whether the document has a BaseUrl specified.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.BaseUrl">
+            <summary>Gets the service base URL.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.HasOperations">
+            <summary>Gets a value indicating whether the client has operations.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.ExceptionClass">
+            <summary>Gets the exception class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.GenerateOptionalParameters">
+            <summary>Gets a value indicating whether to generate optional parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.UseBaseUrl">
+            <summary>Gets or sets a value indicating whether to use and expose the base URL (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.GenerateBaseUrlProperty">
+            <summary>Gets or sets a value indicating whether to generate the BaseUrl property, must be defined on the base class otherwise (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.GenerateSyncMethods">
+            <summary>Gets or sets a value indicating whether to generate synchronous methods (not recommended, default: false).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.ClientClassAccessModifier">
+            <summary>Gets or sets the client class access modifier.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.Operations">
+            <summary>Gets the operations.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.InterfaceOperations">
+            <summary>Gets the operations of the interface.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.WrapDtoExceptions">
+            <summary>Gets or sets a value indicating whether DTO exceptions are wrapped in a SwaggerException instance.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.ParameterDateTimeFormat">
+            <summary>Gets or sets the format for DateTime type method parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.ExposeJsonSerializerSettings">
+            <summary>Gets or sets a value indicating whether to expose the JsonSerializerSettings property.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.GenerateUpdateJsonSerializerSettingsMethod">
+            <summary>Gets or sets a value indicating whether to generate the UpdateJsonSerializerSettings method.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.SerializeTypeInformation">
+            <summary>Gets or sets a value indicating whether to serialize the type information in a $type property (not recommended, also sets TypeNameHandling = Auto).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.QueryNullValue">
+            <summary>Gets or sets the null value used for query parameters which are null.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpClientTemplateModel.JsonSerializerParameterCode">
+            <summary>Gets the JSON serializer parameter code.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerOperationModel">
+            <summary>The CSharp controller operation model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpControllerOperationModel.#ctor(NSwag.OpenApiOperation,NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings,NSwag.CodeGeneration.CSharp.CSharpControllerGenerator,NJsonSchema.CodeGeneration.CSharp.CSharpTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerOperationModel" /> class.</summary>
+            <param name="operation">The operation.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerOperationModel.ResultType">
+            <summary>Gets or sets the type of the result.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerRouteNamingStrategy">
+            <summary>The CSharp controller routing naming strategy enum.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.CSharp.Models.CSharpControllerRouteNamingStrategy.None">
+            <summary>Disable route naming.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.CSharp.Models.CSharpControllerRouteNamingStrategy.OperationId">
+            <summary>Use the operationId as the route name, if available.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerStyle">
+            <summary>The CSharp controller style enum.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.CSharp.Models.CSharpControllerStyle.Partial">
+            <summary>Generates partial controllers.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.CSharp.Models.CSharpControllerStyle.Abstract">
+            <summary>Generates abstract controllers.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTarget">
+            <summary>The CSharp controller target framework.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTarget.AspNet">
+            <summary>ASP.NET MVC.</summary>
+        </member>
+        <member name="F:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTarget.AspNetCore">
+            <summary>ASP.NET Core.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel">
+            <summary>The CSharp controller template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.#ctor(System.String,System.Collections.Generic.IEnumerable{NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel},NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpControllerGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel" /> class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="operations">The operations.</param>
+            <param name="document">The document.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.Class">
+            <summary>Gets or sets the class name.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.HasBaseClass">
+            <summary>Gets a value indicating whether the controller has a base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.AspNetNamespace">
+            <summary>Gets the ASP.NET framework namespace.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.IsAspNetCore">
+            <summary>Gets or sets a value indicating whether the output should target ASP.NET Core.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.IsAspNet">
+            <summary>Gets or sets a value indicating whether the output should target ASP.NET MVC.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.BaseClass">
+            <summary>Gets the base class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.BaseUrl">
+            <summary>Gets or sets the service base URL.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.HasOperations">
+            <summary>Gets or sets a value indicating whether the controller has operations.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.Operations">
+            <summary>Gets or sets the operations.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.HasBasePath">
+            <summary>Gets or sets a value indicating whether the controller has a base path.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.BasePath">
+            <summary>Gets or sets the base path.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.GenerateOptionalParameters">
+            <summary>Gets a value indicating whether to generate optional parameters.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.GeneratePartialControllers">
+            <summary>Gets a value indicating whether to generate partial controllers.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.GenerateAbstractControllers">
+            <summary>Gets a value indicating whether to generate abstract controllers.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.UseCancellationToken">
+            <summary>Gets a value indicating whether to allow adding cancellation token.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.GenerateModelValidationAttributes">
+            <summary>Gets a value indicating whether to allow adding model validation attributes</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.RequiredAttributeType">
+            <summary>Gets the type of the attribute used to specify a parameter as required.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.Title">
+            <summary>Gets the Title.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.Description">
+            <summary>Gets the Description.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpControllerTemplateModel.Version">
+            <summary>Gets the API version.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpExceptionDescriptionModel">
+            <summary>The CSharp exception description model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpExceptionDescriptionModel.#ctor(System.String,System.String,System.String,NSwag.CodeGeneration.CSharp.CSharpClientGeneratorSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpExceptionDescriptionModel" /> class.</summary>
+            <param name="type">The type.</param>
+            <param name="description">The description.</param>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpExceptionDescriptionModel.Type">
+            <summary>Gets or sets the name of the type.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpExceptionDescriptionModel.Description">
+            <summary>Gets or sets the description.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel">
+            <summary>The CSharp file template model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.#ctor(System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},System.Collections.Generic.IEnumerable{NJsonSchema.CodeGeneration.CodeArtifact},NSwag.CodeGeneration.ClientGeneratorOutputType,NSwag.OpenApiDocument,NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings,NSwag.CodeGeneration.CSharp.CSharpGeneratorBase,NJsonSchema.CodeGeneration.CSharp.CSharpTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel" /> class.</summary>
+            <param name="clientTypes">The client types.</param>
+            <param name="dtoTypes">The DTO types.</param>
+            <param name="outputType">Type of the output.</param>
+            <param name="document">The Swagger document.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The client generator base.</param>
+            <param name="resolver">The resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.Namespace">
+            <summary>Gets the namespace.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.NamespaceUsages">
+            <summary>Gets the all the namespace usages.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.GenerateContracts">
+            <summary>Gets a value indicating whether to generate contract code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.GenerateImplementation">
+            <summary>Gets a value indicating whether to generate implementation code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.GenerateClientClasses">
+            <summary>Gets or sets a value indicating whether to generate client types.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.Clients">
+            <summary>Gets the clients code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.Classes">
+            <summary>Gets the classes code.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.RequiresJsonExceptionConverter">
+            <summary>Gets a value indicating whether the generated code requires a JSON exception converter.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.ExceptionModelClass">
+            <summary>Gets the exception model class.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.RequiresFileParameterType">
+            <summary>Gets a value indicating whether the generated code requires the FileParameter type.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.GenerateFileResponseClass">
+            <summary>Gets a value indicating whether [generate file response class].</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.GenerateExceptionClasses">
+            <summary>Gets or sets a value indicating whether to generate exception classes (default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.WrapResponses">
+            <summary>Gets or sets a value indicating whether to wrap success responses to allow full response access.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.GenerateResponseClasses">
+            <summary>Gets or sets a value indicating whether to generate the response class (only applied when WrapResponses == true, default: true).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.ResponseClassNames">
+            <summary>Gets the response class names.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpFileTemplateModel.ExceptionClassNames">
+            <summary>Gets the exception class names.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel">
+            <summary>The CSharp operation model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.#ctor(NSwag.OpenApiOperation,NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings,NSwag.CodeGeneration.CSharp.CSharpGeneratorBase,NJsonSchema.CodeGeneration.CSharp.CSharpTypeResolver)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel" /> class.</summary>
+            <param name="operation">The operation.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.MethodAccessModifier">
+            <summary>Gets the method's access modifier.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.ActualOperationName">
+            <summary>Gets the actual name of the operation (language specific).</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.IsInterfaceMethod">
+            <summary>Gets a value indicating whether this operation is rendered as interface method.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.HasResult">
+            <summary>Gets a value indicating whether the operation has a result type.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.SyncResultType">
+            <summary>Gets or sets the synchronous type of the result.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.ResultType">
+            <summary>Gets or sets the type of the result.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.ExceptionType">
+            <summary>Gets or sets the type of the exception.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.ExceptionDescriptions">
+            <summary>Gets or sets the exception descriptions.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.HasRouteName">
+            <summary>Gets a value indicating whether a route name is available.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.RouteName">
+            <summary>Gets the route name for this operation.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.RequiresAuthentication">
+            <summary>True if the operation has any security schemes</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.Security">
+            <summary>Gets the security schemas that apply to this operation</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.GetParameterVariableName(NSwag.OpenApiParameter,System.Collections.Generic.IEnumerable{NSwag.OpenApiParameter})">
+            <summary>Gets the name of the parameter variable.</summary>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <returns>The parameter variable name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.ResolveParameterType(NSwag.OpenApiParameter)">
+            <summary>Resolves the type of the parameter.</summary>
+            <param name="parameter">The parameter.</param>
+            <returns>The parameter type name.</returns>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpOperationModel.CreateResponseModel(NSwag.OpenApiOperation,System.String,NSwag.OpenApiResponse,NJsonSchema.JsonSchema,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase,NSwag.CodeGeneration.ClientGeneratorBaseSettings)">
+            <summary>Creates the response model.</summary>
+            <param name="operation">The operation.</param>
+            <param name="statusCode">The status code.</param>
+            <param name="response">The response.</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="generator">The generator.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="settings">The settings.</param>
+            <returns></returns>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpParameterModel">
+            <summary>The CSharp parameter model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpParameterModel.#ctor(System.String,System.String,System.String,NSwag.OpenApiParameter,System.Collections.Generic.IList{NSwag.OpenApiParameter},NJsonSchema.CodeGeneration.CodeGeneratorSettingsBase,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpParameterModel" /> class.</summary>
+            <param name="parameterName">Name of the parameter.</param>
+            <param name="variableName">Name of the variable.</param>
+            <param name="typeName">The type name.</param>
+            <param name="parameter">The parameter.</param>
+            <param name="allParameters">All parameters.</param>
+            <param name="settings">The settings.</param>
+            <param name="generator">The client generator base.</param>
+            <param name="typeResolver">The type resolver.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpParameterModel.IsSystemNullable">
+            <summary>Gets a value indicating whether the type is a Nullable&lt;&gt;.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpParameterModel.TypeInControllerInterface">
+            <summary>Gets the type of the parameter when used in a controller interface where we can set default values before calling.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpParameterModel.IsValidIdentifier">
+            <summary>Gets a value indicating whether the parameter name is a valid CSharp identifier.</summary>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpResponseModel">
+            <summary>The CSharp response model.</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpResponseModel.#ctor(NSwag.CodeGeneration.Models.IOperationModel,NSwag.OpenApiOperation,System.String,NSwag.OpenApiResponse,System.Boolean,NJsonSchema.JsonSchema,NSwag.CodeGeneration.IClientGenerator,NJsonSchema.CodeGeneration.TypeResolverBase,NJsonSchema.CodeGeneration.CodeGeneratorSettingsBase)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpResponseModel"/> class.</summary>
+            <param name="operationModel">The operation model.</param>
+            <param name="operation">The operation.</param>
+            <param name="statusCode">The status code.</param>
+            <param name="response">The response.</param>
+            <param name="isPrimarySuccessResponse">Specifies whether this is the success response.</param>
+            <param name="exceptionSchema">The exception schema.</param>
+            <param name="generator">The client generator.</param>
+            <param name="resolver">The resolver.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="T:NSwag.CodeGeneration.CSharp.Models.CSharpTemplateModelBase">
+            <summary>Base class for the CSharp models</summary>
+        </member>
+        <member name="M:NSwag.CodeGeneration.CSharp.Models.CSharpTemplateModelBase.#ctor(System.String,NSwag.CodeGeneration.CSharp.CSharpGeneratorBaseSettings)">
+            <summary>Initializes a new instance of the <see cref="T:NSwag.CodeGeneration.CSharp.Models.CSharpTemplateModelBase"/> class.</summary>
+            <param name="controllerName">Name of the controller.</param>
+            <param name="settings">The settings.</param>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpTemplateModelBase.WrapResponses">
+            <summary>Gets a value indicating whether to wrap success responses to allow full response access.</summary>
+        </member>
+        <member name="P:NSwag.CodeGeneration.CSharp.Models.CSharpTemplateModelBase.ResponseClass">
+            <summary>Gets the response class name.</summary>
+        </member>
+    </members>
+</doc>

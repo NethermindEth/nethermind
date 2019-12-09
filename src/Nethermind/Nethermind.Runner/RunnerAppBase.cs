@@ -44,6 +44,7 @@ using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Monitoring;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
@@ -145,22 +146,6 @@ namespace Nethermind.Runner
             var jsonSerializer = new EthereumJsonSerializer();
             var webSocketsManager = new WebSocketsManager();
 
-            if (metricOptions.Enabled)
-            {
-                var intervalSeconds = metricOptions.IntervalSeconds;
-                _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
-                    metricOptions.PushGatewayUrl, ClientVersion.Description,
-                    metricOptions.NodeName, intervalSeconds, logManager);
-                await _monitoringService.StartAsync().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during starting a monitoring.", x.Exception);
-                });
-            }
-            else
-            {
-                if (Logger.IsInfo) Logger.Info("Monitoring is disabled");
-            }
-            
             INdmDataPublisher ndmDataPublisher = null;
             INdmConsumerChannelManager ndmConsumerChannelManager = null;
             INdmInitializer ndmInitializer = null;
@@ -240,6 +225,29 @@ namespace Nethermind.Runner
             else
             {
                 if (Logger.IsInfo) Logger.Info("Json RPC is disabled");
+            }
+
+            if (metricOptions.Enabled)
+            {
+                var intervalSeconds = metricOptions.IntervalSeconds;
+                _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
+                    metricOptions.PushGatewayUrl, ClientVersion.Description,
+                    metricOptions.NodeName, intervalSeconds, logManager);
+                _monitoringService.RegisterMetrics(typeof(Nethermind.JsonRpc.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Store.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Evm.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Blockchain.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.Network.Metrics));
+                _monitoringService.RegisterMetrics(typeof(Nethermind.DataMarketplace.Consumers.Metrics));
+
+                await _monitoringService.StartAsync().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during starting a monitoring.", x.Exception);
+                });
+            }
+            else
+            {
+                if (Logger.IsInfo) Logger.Info("Monitoring is disabled");
             }
         }
 
