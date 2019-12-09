@@ -208,8 +208,16 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 var blockHashes = hashes.ToArray();
-                Task<BlockBody[]> bodiesTask = blockHashes.Length == 0 ? Task.FromResult(new BlockBody[0]) : bestPeer.SyncPeer.GetBlocks(blockHashes, cancellation);
-                await bodiesTask.ContinueWith(t =>
+                
+                Task<BlockBody[]> bodiesTask = blockHashes.Length == 0
+                    ? Task.FromResult(Array.Empty<BlockBody>())
+                    : bestPeer.SyncPeer.GetBlocks(blockHashes, cancellation);
+                
+                Task<TxReceipt[][]> receiptsTasks = !downloadReceipts || blockHashes.Length == 0
+                    ? Task.FromResult(Array.Empty<TxReceipt[]>())
+                    : bestPeer.SyncPeer.GetReceipts(blockHashes, cancellation);
+
+                ValueTask DownloadFailHandler<T>(Task<T> t, string entities)
                 {
                     if (t.IsFaulted)
                     {
@@ -218,19 +226,26 @@ namespace Nethermind.Blockchain.Synchronization
                             || (t.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
                             || (t.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
                         {
-                            if (_logger.IsTrace) _logger.Error("Failed to retrieve bodies when synchronizing (Timeout)", bodiesTask.Exception);
+                            if (_logger.IsTrace) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", bodiesTask.Exception);
                             _syncBatchSize.Shrink();
                         }
                         else
                         {
-                            if (_logger.IsError) _logger.Error("Failed to retrieve bodies when synchronizing", bodiesTask.Exception);
+                            if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing.", bodiesTask.Exception);
                         }
 
-                        throw new EthSynchronizationException("Bodies task faulted.", bodiesTask.Exception);
+                        throw new EthSynchronizationException($"{entities} task faulted", bodiesTask.Exception);
                     }
-                });
 
-                if (bodiesTask.IsCanceled)
+                    return default;
+                }
+
+                await Task.WhenAll(
+                    bodiesTask.ContinueWith(t => DownloadFailHandler<BlockBody[]>(t, "bodies"), cancellation),
+                    receiptsTasks.ContinueWith(t => DownloadFailHandler<TxReceipt[][]>(t, "receipts"), cancellation));
+                
+
+                if (bodiesTask.IsCanceled || receiptsTasks.IsCanceled)
                 {
                     return blocksSynced;
                 }
@@ -239,7 +254,7 @@ namespace Nethermind.Blockchain.Synchronization
                 IDictionary<Keccak, IList<TxReceipt>> correctReceiptsBlocks = null;
                 if (downloadReceipts)
                 {
-                    receipts = await bestPeer.SyncPeer.GetReceipts(blockHashes, cancellation);
+                    receipts = receiptsTasks.Result;
                     correctReceiptsBlocks = new Dictionary<Keccak, IList<TxReceipt>>();
                 }
                 
@@ -278,7 +293,7 @@ namespace Nethermind.Blockchain.Synchronization
                                     if (blockReceipts.Length > j)
                                     {
                                         var receipt = blockReceipts[j];
-                                        BuildReceipt(receipt, block, transaction, j, gasUsedBefore);
+                                        RecoverReceiptData(receipt, block, transaction, j, gasUsedBefore);
                                         receiptsForBlock.Add(receipt);
                                         gasUsedBefore = receipt.GasUsedTotal;
                                     }
@@ -365,12 +380,12 @@ namespace Nethermind.Blockchain.Synchronization
             return blocksSynced;
         }
 
-        private static void BuildReceipt(TxReceipt receipt, Block block, Transaction transaction, int j, long gasUsedBefore)
+        private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
         {
             receipt.BlockHash = block.Hash;
             receipt.BlockNumber = block.Number;
             receipt.TxHash = transaction.Hash;
-            receipt.Index = j;
+            receipt.Index = transactionIndex;
             receipt.Sender = transaction.SenderAddress;
             receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
             receipt.ContractAddress = transaction.IsContractCreation ? transaction.To : null;
