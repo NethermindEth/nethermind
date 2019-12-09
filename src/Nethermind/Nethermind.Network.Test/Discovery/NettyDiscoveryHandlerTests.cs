@@ -113,6 +113,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
+        [Retry(3)]
         public void PongSentReceivedTest()
         {
             var msg = new PongMessage
