@@ -1,9 +1,8 @@
 name: RocksDB Build
 
 on:
-  push:
-    branches:
-      - master
+  repository_dispatch:
+    types: rocksdb_build
 
 jobs:
   rocksb-building:
