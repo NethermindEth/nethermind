@@ -1,6 +1,8 @@
 name: Secp256k1 Build
 
-on: repository_dispatch
+on:
+  repository_dispatch:
+    types: secp_build
 
 jobs:
   secp256k1-building:

@@ -1,6 +1,8 @@
 name: RocksDB Build
 
-on: repository_dispatch
+on:
+  repository_dispatch:
+    types: rocksdb_build
 
 jobs:
   rocksb-building:
