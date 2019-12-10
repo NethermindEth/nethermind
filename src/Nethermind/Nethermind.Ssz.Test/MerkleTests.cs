@@ -38,6 +38,7 @@ namespace Nethermind.Ssz.Test
         [TestCase(1U, 1U)]
         [TestCase(2U, 2U)]
         [TestCase(3U, 4U)]
+        [TestCase(4U, 4U)]
         [TestCase(uint.MaxValue / 2, 2147483648U)]
         [TestCase(uint.MaxValue / 2 + 1, 2147483648U)]
         public void Can_get_the_next_power_of_two_32(uint value, uint expectedResult)
@@ -49,11 +50,24 @@ namespace Nethermind.Ssz.Test
         [TestCase(1UL, 1UL)]
         [TestCase(2UL, 2UL)]
         [TestCase(3UL, 4UL)]
+        [TestCase(4UL, 4UL)]
         [TestCase(ulong.MaxValue / 2, 9223372036854775808UL)]
         [TestCase(ulong.MaxValue / 2 + 1, 9223372036854775808UL)]
         public void Can_get_the_next_power_of_two_64(ulong value, ulong expectedResult)
         {
             Assert.AreEqual(expectedResult, Merkle.NextPowerOfTwo(value));
+        }
+        
+        [TestCase(ulong.MinValue, 0UL)]
+        [TestCase(1UL, 0UL)]
+        [TestCase(2UL, 1UL)]
+        [TestCase(3UL, 2UL)]
+        [TestCase(4UL, 2UL)]
+        [TestCase(ulong.MaxValue / 2, 63UL)]
+        [TestCase(ulong.MaxValue / 2 + 1, 63UL)]
+        public void Can_get_the_next_power_of_two_exponent(ulong value, ulong expectedResult)
+        {
+            Assert.AreEqual(expectedResult, Merkle.NextPowerOfTwoExponent(value));
         }
 
         [Test]

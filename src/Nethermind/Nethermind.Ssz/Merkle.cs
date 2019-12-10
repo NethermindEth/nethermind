@@ -68,12 +68,40 @@ namespace Nethermind.Ssz
 
         public static int NextPowerOfTwoExponent(ulong v)
         {
+            if (v == 0)
+            {
+                return 0;
+            }
+            
+            int leadingZeros = 0;
             if (Lzcnt.IsSupported)
             {
-                return 64 - (int)Lzcnt.X64.LeadingZeroCount(--v);
+                leadingZeros = (int) Lzcnt.X64.LeadingZeroCount(--v);
+            }
+            else
+            {
+                leadingZeros = CountLeadingZeros(v);
             }
 
-            throw new NotImplementedException();
+            return 64 - leadingZeros;
+        }
+
+        private static int CountLeadingZeros(ulong x)
+        {
+            x--;
+            
+            int count = 0;
+            for (int i = 63; i >= 0; i--)
+            {
+                if (x / (1UL << i) == 1)
+                {
+                    break;
+                }
+                
+                count++;
+            }
+
+            return count;
         }
 
         public static ulong NextPowerOfTwo(ulong v)
@@ -359,8 +387,8 @@ namespace Nethermind.Ssz
                 root = value.Length == 0 ? lastChunk[0] : value[0];
                 return;
             }
-            
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint)(value.Length + lastChunk.Length) : limit);
+
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (uint) (value.Length + lastChunk.Length) : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)
@@ -375,7 +403,7 @@ namespace Nethermind.Ssz
 
             merkleizer.CalculateRoot(out root);
         }
-        
+
         public static void Ize(out UInt256 root, Span<UInt256> value, ulong limit = 0UL)
         {
             if (limit == 0 && value.Length == 1)
@@ -383,8 +411,8 @@ namespace Nethermind.Ssz
                 root = value[0];
                 return;
             }
-            
-            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong)value.Length : limit);
+
+            int depth = NextPowerOfTwoExponent(limit == 0UL ? (ulong) value.Length : limit);
             Merkleizer merkleizer = new Merkleizer(depth);
             int length = value.Length;
             for (int i = 0; i < length; i++)
