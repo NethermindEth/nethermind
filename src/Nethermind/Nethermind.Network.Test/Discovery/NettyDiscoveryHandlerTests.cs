@@ -83,7 +83,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
-        [Retry(3)]
+        [Retry(5)]
         public void PingSentReceivedTest()
         {
             var msg = new PingMessage
@@ -96,7 +96,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));
 
             var msg2 = new PingMessage
@@ -109,12 +109,12 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Ping));  
         }
 
         [Test]
-        [Retry(3)]
+        [Retry(5)]
         public void PongSentReceivedTest()
         {
             var msg = new PongMessage
@@ -125,7 +125,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
 
             var msg2 = new PongMessage
@@ -136,12 +136,17 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Pong));
         }
 
+        private static void SleepWhileWaiting()
+        {
+            Thread.Sleep((TestContext.CurrentContext.CurrentRepeatCount + 1) * 100);
+        }
+
         [Test]
-        [Retry(3)]
+        [Retry(5)]
         public void FindNodeSentReceivedTest()
         {
             var msg = new FindNodeMessage
@@ -152,7 +157,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
 
             var msg2 = new FindNodeMessage
@@ -163,12 +168,12 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.FindNode));
         }
 
         [Test]
-        [Retry(3)]
+        [Retry(5)]
         public void NeighborsSentReceivedTest()
         {
             var msg = new NeighborsMessage
@@ -179,7 +184,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey2.PublicKey
             };
             _discoveryHandlers[0].SendMessage(msg);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[1].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
 
             var msg2 = new NeighborsMessage
@@ -190,7 +195,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarPublicKey = _privateKey.PublicKey
             };
             _discoveryHandlers[1].SendMessage(msg2);
-            Thread.Sleep(200);
+            SleepWhileWaiting();
             _discoveryManagers[0].Received(1).OnIncomingMessage(Arg.Is<DiscoveryMessage>(x => x.MessageType == MessageType.Neighbors));
         }
 
