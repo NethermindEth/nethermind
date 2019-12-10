@@ -18,9 +18,15 @@ echo Publishing Nethermind Cli for different platforms...
 echo =======================================================
 echo Nethermind Cli path: $CLI_PATH
 
-dotnet publish -c release -r $LINUX
-dotnet publish -c release -r $OSX
-dotnet publish -c release -r $WIN10
+dotnet tool restore
+assemblyversion=$(dotnet gitversion -output json -showvariable AssemblySemVer)
+fileversion=$(dotnet gitversion -output json -showvariable AssemblySemFileVer)
+semver=$(dotnet gitversion -output json -showvariable SemVer)
+shortsha=$(dotnet gitversion -output json -showvariable ShortSha)
+
+dotnet publish -c release -r $LINUX -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
+dotnet publish -c release -r $OSX -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
+dotnet publish -c release -r $WIN10 -p:AssemblyVersion=$assemblyversion -p:FileVersion=$fileversion -p:Version=${semver}+${shortsha}
 
 rm -rf $OUT && mkdir $OUT $OUT/$LINUX $OUT/$OSX $OUT/$WIN10
 
