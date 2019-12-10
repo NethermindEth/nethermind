@@ -358,7 +358,6 @@ src/Nethermind/Nethermind.Runner/node.key.plain
 
 # Console history
 
-src/Nethermind/Nethermind.Cli/cli.cmd.history
 src/Nethermind/**/cli.cmd.history
 
 src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
