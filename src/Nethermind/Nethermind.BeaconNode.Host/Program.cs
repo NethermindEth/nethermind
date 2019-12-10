@@ -46,11 +46,10 @@ namespace Nethermind.BeaconNode.Host
                 })
                 .ConfigureLogging((hostContext, configureLogging) =>
                 {
-                    configureLogging.AddConsole(consoleLoggerOptions => {
-                        //consoleLoggerOptions.Format = ConsoleLoggerFormat.Systemd;
-                        consoleLoggerOptions.TimestampFormat = "HH:mm:sszz ";
-                        consoleLoggerOptions.IncludeScopes = true;
-                    });
+                    if (hostContext.Configuration.GetSection("Logging:Console").Exists())
+                    {
+                        configureLogging.AddConsole();
+                    }
                 })
                 .ConfigureAppConfiguration((hostContext, config) =>
                 {
