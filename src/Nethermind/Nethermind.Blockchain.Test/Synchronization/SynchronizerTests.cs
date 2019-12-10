@@ -624,6 +624,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
+        [Retry(3)]
         public void Will_ignore_new_block_that_is_far_ahead()
         {
             // this test was designed for no sync-timer sync process
