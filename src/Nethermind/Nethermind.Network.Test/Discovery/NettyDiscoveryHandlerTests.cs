@@ -142,7 +142,7 @@ namespace Nethermind.Network.Test.Discovery
 
         private static void SleepWhileWaiting()
         {
-            Thread.Sleep((TestContext.CurrentContext.CurrentRepeatCount + 1) * 100);
+            Thread.Sleep((TestContext.CurrentContext.CurrentRepeatCount + 1) * 300);
         }
 
         [Test]
