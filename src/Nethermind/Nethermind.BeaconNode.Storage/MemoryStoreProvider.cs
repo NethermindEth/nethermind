@@ -56,15 +56,16 @@ namespace Nethermind.BeaconNode.Storage
             return _store;
         }
 
-        public IStore GetStore()
+        public bool TryGetStore(out IStore? store)
         {
-            if (_store is null)
-            {
-                throw new InvalidOperationException("Illegal attempt to retrieve a store that has not been created yet.");
-            }
+            // NOTE: For MemoryStoreProvider, this needs ot have been initialised via CreateStore (MemoryStore has no persistence).
+            store = _store;
             
-            // NOTE: For MemoryStoreProvider, this needs ot have been initialised via CreateStore.
-            return _store;
+            if (store is null)
+            {
+                return false;
+            }
+            return true;
         }
     }
 }

@@ -103,9 +103,9 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
 
             // Assert
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            IStore store = storeProvider.GetStore();
+            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
 
-            if (!store.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
+            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
             {
                 throw new InvalidDataException("Missing finalized checkpoint block state");
             }
@@ -132,8 +132,8 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
 
             // Assert
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
-            IStore store = storeProvider.GetStore();
-            if (!store.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
+            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
+            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
             {
                 throw new InvalidDataException("Missing finalized checkpoint block state");
             }

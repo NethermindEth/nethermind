@@ -9,6 +9,8 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Tests.Helpers;
 using NSubstitute;
+using NSubstitute.Extensions;
+using NSubstitute.ReceivedExtensions;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests
@@ -67,7 +69,7 @@ namespace Nethermind.BeaconNode.Tests
 
             // Assert
             signal.ShouldBeTrue();
-            mockStoreProvider.GetStore().Received(4);
+            mockStoreProvider.Received(4).TryGetStore(out var store);
         }
 
     }
