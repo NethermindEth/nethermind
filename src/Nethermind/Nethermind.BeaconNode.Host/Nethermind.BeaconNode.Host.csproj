@@ -14,6 +14,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="GitVersionTask" Version="5.1.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="3.0.1" />
     <PackageReference Include="NetEscapades.Configuration.Yaml" Version="1.6.0" />
@@ -23,6 +27,13 @@
     <ProjectReference Include="..\Nethermind.BeaconNode.Api\Nethermind.BeaconNode.Api.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="configuration\**" />
+    <Content Remove="release\**" />
+    <None Include="configuration\**" CopyToOutputDirectory="Never" />
+    <None Include="release\**" CopyToOutputDirectory="Never" />
   </ItemGroup>
   
 </Project>

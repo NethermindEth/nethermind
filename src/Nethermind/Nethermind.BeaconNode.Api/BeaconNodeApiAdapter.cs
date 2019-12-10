@@ -1,14 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Cortex.BeaconNode.Api;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using BeaconBlock = Cortex.BeaconNode.Api.BeaconBlock;
-using BeaconBlockBody = Cortex.BeaconNode.Api.BeaconBlockBody;
-using IndexedAttestation = Cortex.BeaconNode.Api.IndexedAttestation;
+using BeaconBlock = Nethermind.BeaconNode.Api.BeaconBlock;
+using BeaconBlockBody = Nethermind.BeaconNode.Api.BeaconBlockBody;
+using IndexedAttestation = Nethermind.BeaconNode.Api.IndexedAttestation;
 
 namespace Nethermind.BeaconNode.Api
 {

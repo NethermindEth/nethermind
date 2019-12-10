@@ -1,5 +1,4 @@
 ﻿using System.Reflection;
-using Cortex.BeaconNode.Api;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.BeaconNode.Api

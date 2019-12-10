@@ -73,11 +73,10 @@ namespace Nethermind.BeaconNode
                 DateTimeOffset time = _clock.UtcNow();
                 if (store == null)
                 {
-                    store = _storeProvider.GetStore();
-                    if (store != null)
+                    if (_storeProvider.TryGetStore(out store))
                     {
                         _logger.LogInformation(Event.WorkerStoreAvailableTickStarted, "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
-                            store.GenesisTime, Thread.CurrentThread.ManagedThreadId);
+                            store!.GenesisTime, Thread.CurrentThread.ManagedThreadId);
                     }
                 }
                 if (store != null)

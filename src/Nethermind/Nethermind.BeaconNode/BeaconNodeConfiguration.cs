@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -8,7 +9,7 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconNodeConfiguration
     {
-        private const string ProductToken = "Cortex";
+        private const string ProductToken = "Nethermind";
         private readonly ILogger _logger;
 
         public BeaconNodeConfiguration(ILogger<BeaconNodeConfiguration> logger, IHostEnvironment environment)
@@ -21,21 +22,26 @@ namespace Nethermind.BeaconNode
 
         private string BuildVersionString(string productToken, string environmentName)
         {
-            var parts = new List<string>();
+            List<string> parts = new List<string>();
 
-            var assembly = typeof(BeaconNodeConfiguration).Assembly;
-            var versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
-            var version = versionAttribute.InformationalVersion;
-            var product1 = $"{productToken}/{version}";
+            Assembly assembly = typeof(BeaconNodeConfiguration).Assembly;
+            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+            string version = versionAttribute.InformationalVersion;
+            string product1 = $"{productToken}/{version}";
             parts.Add(product1);
+
+            string osDescription = RuntimeInformation.OSDescription;
+            string frameworkDescription = RuntimeInformation.FrameworkDescription;
+            string osComment = $"({osDescription}/{frameworkDescription})";
+            parts.Add(osComment);
 
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)
             {
-                var comment1 = $"({environmentName})";
-                parts.Add(comment1);
+                string environmentComment = $"({environmentName})";
+                parts.Add(environmentComment);
             }
 
-            var versionString = string.Join(" ", parts);
+            string versionString = string.Join(" ", parts);
             return versionString;
         }
     }

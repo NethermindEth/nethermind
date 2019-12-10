@@ -29,15 +29,14 @@ namespace Nethermind.BeaconNode
 
         public async Task<BeaconState> GetHeadStateAsync()
         {
-            var store = _storeProvider.GetStore();
-            if (store == null)
+            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
             {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
             }
 
-            var head = await _forkChoice.GetHeadAsync(store);
-
-            if (!store.TryGetBlockState(head, out var state))
+            IStore store = retrievedStore!;
+            Hash32 head = await _forkChoice.GetHeadAsync(store);
+            if (!store.TryGetBlockState(head, out BeaconState? state))
             {
                 throw new Exception($"Beacon chain is currently syncing, head state {head} not found.");
             }
@@ -47,20 +46,19 @@ namespace Nethermind.BeaconNode
 
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
         {
-            var store = _storeProvider.GetStore();
-            if (store == null)
+            if (!_storeProvider.TryGetStore(out IStore? store))
             {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
             }
 
-            var head = await _forkChoice.GetHeadAsync(store);
+            Hash32 head = await _forkChoice.GetHeadAsync(store!);
 
             // get previous head block, based on the fork choice
             // get latest state
             // process outstanding slots for state
             // get parent header (state root, signature, slot, parent root, body root)
 
-            var body = new BeaconBlockBody(randaoReveal,
+            BeaconBlockBody body = new BeaconBlockBody(randaoReveal,
                 new Eth1Data(0, Hash32.Zero), 
                 new Bytes32(), 
                 Array.Empty<ProposerSlashing>(),
@@ -68,7 +66,7 @@ namespace Nethermind.BeaconNode
                 Array.Empty<Attestation>(),
                 Array.Empty<Deposit>(),
                 Array.Empty<VoluntaryExit>());
-            var block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, BlsSignature.Empty);
+            BeaconBlock block = new BeaconBlock(slot, Hash32.Zero, Hash32.Zero, body, BlsSignature.Empty);
 
             // new block = slot, parent root,
             //  signature = null
