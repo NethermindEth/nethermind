@@ -83,6 +83,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
+        [Retry(3)]
         public void PingSentReceivedTest()
         {
             var msg = new PingMessage
@@ -140,6 +141,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
+        [Retry(3)]
         public void FindNodeSentReceivedTest()
         {
             var msg = new FindNodeMessage
@@ -166,6 +168,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
+        [Retry(3)]
         public void NeighborsSentReceivedTest()
         {
             var msg = new NeighborsMessage
