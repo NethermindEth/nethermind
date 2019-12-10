@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -30,10 +31,16 @@ namespace Nethermind.BeaconNode
             string product1 = $"{productToken}/{version}";
             parts.Add(product1);
 
+            Architecture osArchiteture = RuntimeInformation.OSArchitecture;
             string osDescription = RuntimeInformation.OSDescription;
+            if (osDescription.Contains('#'))
+            {
+                int indexOfHash = osDescription.IndexOf('#');
+                osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
+            }
             string frameworkDescription = RuntimeInformation.FrameworkDescription;
-            string osComment = $"({osDescription}/{frameworkDescription})";
-            parts.Add(osComment);
+            string osFrameworkComment = $"({osArchiteture}-{osDescription}/{frameworkDescription})";
+            parts.Add(osFrameworkComment);
 
             if (!string.IsNullOrWhiteSpace(environmentName) && environmentName != Environments.Production)
             {
