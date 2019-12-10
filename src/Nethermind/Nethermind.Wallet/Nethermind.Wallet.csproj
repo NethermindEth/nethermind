@@ -7,4 +7,10 @@
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="GitVersionTask" Version="5.1.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+  </ItemGroup>
 </Project>
