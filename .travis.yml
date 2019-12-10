@@ -11,6 +11,7 @@ git:
   submodules: false
 before_script:
   - chmod -R +x scripts
+  - dotnet tool restore
 notifications:
   slack:
     rooms:
