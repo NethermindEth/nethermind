@@ -152,6 +152,8 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure
             var jsonRpcClientProxy = services.RequiredServices.JsonRpcClientProxy;
             var ethJsonRpcClientProxy = services.RequiredServices.EthJsonRpcClientProxy;
             var transactionService = services.CreatedServices.TransactionService;
+            var monitoringService = services.RequiredServices.MonitoringService;
+            monitoringService?.RegisterMetrics(typeof(Metrics));
 
             var dataRequestFactory = new DataRequestFactory(wallet, nodePublicKey);
             var transactionVerifier = new TransactionVerifier(blockchainBridge, requiredBlockConfirmations);
