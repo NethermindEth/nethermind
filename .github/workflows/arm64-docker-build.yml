@@ -1,0 +1,22 @@
+name: Publish Arm64 Image to Docker Registry
+on: 
+  push:
+    branches: 
+      - feature/arm64-image
+
+jobs:
+  arm64_building:
+    runs-on: ubuntu-18.04
+    name: Build on ARM64
+    steps:
+      - uses: actions/checkout@v2-beta
+      - name: Publish to Docker
+        uses: elgohr/Publish-Docker-Github-Action@master
+        env:
+          GIT_COMMIT: $(git log -1 --format=%h)
+        with:
+          name: nethermindeth/nethermind:arm64
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          build-args: GIT_COMMIT
+          dockerfile: Dockerfile_arm64
