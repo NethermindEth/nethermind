@@ -69,9 +69,6 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="git-hash*">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
   </ItemGroup>
@@ -92,7 +89,4 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
-  <Target Name="StoreGitHash" BeforeTargets="Build">
-    <Exec Command="git describe --all --long &gt; git-hash" />
-  </Target>
-</Project>
+ </Project>
