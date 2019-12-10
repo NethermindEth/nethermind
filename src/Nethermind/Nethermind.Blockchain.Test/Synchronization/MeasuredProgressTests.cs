@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.Update(3L);
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);
-            Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 12M);
+            Assert.GreaterOrEqual(measuredProgress.CurrentPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.CurrentPerSecond, 30M);
         }
 
