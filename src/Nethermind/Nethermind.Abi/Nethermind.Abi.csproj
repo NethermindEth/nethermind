@@ -10,10 +10,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="GitVersionTask" Version="5.1.2">
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        <PrivateAssets>all</PrivateAssets>
-      </PackageReference>
       <PackageReference Include="MathNet.Numerics.FSharp" Version="4.9.0" />
     </ItemGroup>
 
