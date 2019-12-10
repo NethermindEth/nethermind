@@ -606,6 +606,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
+        [Retry(3)]
         public void Can_extend_chain_by_more_than_one_on_new_block_message()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
