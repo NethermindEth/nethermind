@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
@@ -13,17 +14,14 @@ namespace Nethermind.BeaconNode.OApi
 {
     public class BeaconNodeOApiAdapter : IBeaconNodeOApiController
     {
-        private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
-        private readonly BlockProducer _blockProducer;
         private readonly ILogger _logger;
+        private readonly IBeaconNodeApi _beaconNode;
 
         public BeaconNodeOApiAdapter(ILogger<BeaconNodeOApiAdapter> logger,
-            BeaconNodeConfiguration beaconNodeConfiguration,
-            BlockProducer blockProducer)
+            IBeaconNodeApi beaconNode)
         {
             _logger = logger;
-            _beaconNodeConfiguration = beaconNodeConfiguration;
-            _blockProducer = blockProducer;
+            _beaconNode = beaconNode;
         }
 
         /// <summary>Publish a signed attestation.</summary>
@@ -59,12 +57,13 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Success response</returns>
         public async Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal)
         {
-            Containers.BeaconBlock data = await _blockProducer.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal));
-
-            BeaconBlock result = new BeaconBlock()
+            Containers.BeaconBlock data =
+                await _beaconNode.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal));
+            
+            OApi.BeaconBlock result = new OApi.BeaconBlock()
             {
                 Slot = (ulong)data.Slot,
-                Body = new BeaconBlockBody()
+                Body = new OApi.BeaconBlockBody()
                 {
                     Randao_reveal = data.Body!.RandaoReveal.AsSpan().ToArray()
                 }
@@ -82,35 +81,38 @@ namespace Nethermind.BeaconNode.OApi
 
         /// <summary>Get fork information from running beacon node.</summary>
         /// <returns>Request successful</returns>
-        public Task<Response2> ForkAsync()
+        public async Task<Response2> ForkAsync()
         {
+            ForkVersion forkVersion = await _beaconNode.GetNodeForkAsync();
+            Response2 response = new Response2();
+            response.Fork = new Fork();
+            //response.Fork.Current_version;
             throw new NotImplementedException();
         }
 
         /// <summary>Poll to see if the the beacon node is syncing.</summary>
         /// <returns>Request successful</returns>
-        public Task<Response> SyncingAsync()
+        public async Task<Response> SyncingAsync()
         {
-            throw new NotImplementedException();
+            Response response = new Response();
+            response.Is_syncing = await _beaconNode.GetIsSyncingAsync();
+            response.Sync_status = new SyncingStatus();
+            //response.Sync_status.Current_slot =
+            return response;
         }
 
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <returns>Request successful</returns>
         public async Task<ulong> TimeAsync()
         {
-            BeaconState state = await _blockProducer.GetHeadStateAsync();
-            if (state != null)
-            {
-                return state.GenesisTime;
-            }
-            return 0;
+            return await _beaconNode.GetGenesisTimeAsync();
         }
 
         /// <summary>Get version string of the running beacon node.</summary>
         /// <returns>Request successful</returns>
         public async Task<string> VersionAsync()
         {
-            return await Task.Run(() => _beaconNodeConfiguration.Version);
+            return await _beaconNode.GetNodeVersionAsync();
         }
     }
 }
