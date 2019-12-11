@@ -15,7 +15,7 @@ namespace Nethermind.BeaconNode
         private const string ConfigKey = "config";
 
         private readonly IConfiguration _configuration;
-        private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
+        private readonly ClientVersion _clientVersion;
         private readonly IStoreProvider _storeProvider;
         private readonly ForkChoice _forkChoice;
         private readonly INodeStart _nodeStart;
@@ -28,7 +28,7 @@ namespace Nethermind.BeaconNode
             IClock clock,
             IHostEnvironment environment,
             IConfiguration configuration,
-            BeaconNodeConfiguration beaconNodeConfiguration,
+            ClientVersion clientVersion,
             IStoreProvider storeProvider,
             ForkChoice forkChoice,
             INodeStart nodeStart)
@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode
             _clock = clock;
             _environment = environment;
             _configuration = configuration;
-            _beaconNodeConfiguration = beaconNodeConfiguration;
+            _clientVersion = clientVersion;
             _storeProvider = storeProvider;
             _forkChoice = forkChoice;
             _nodeStart = nodeStart;
@@ -59,7 +59,7 @@ namespace Nethermind.BeaconNode
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            string version = _beaconNodeConfiguration.Version;
+            string version = _clientVersion.Description;
             string environmentName = _environment.EnvironmentName;
             string configName = _configuration[ConfigKey];
             _logger.LogInformation(Event.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",

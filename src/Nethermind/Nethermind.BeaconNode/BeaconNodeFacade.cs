@@ -27,18 +27,18 @@ namespace Nethermind.BeaconNode
 {
     public class BeaconNodeFacade : IBeaconNodeApi
     {
-        private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
+        private readonly ClientVersion _clientVersion;
         private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
         private readonly BlockProducer _blockProducer;
 
         public BeaconNodeFacade(            
-            BeaconNodeConfiguration beaconNodeConfiguration,
+            ClientVersion clientVersion,
             ForkChoice forkChoice, 
             IStoreProvider storeProvider,
             BlockProducer blockProducer)
         {
-            _beaconNodeConfiguration = beaconNodeConfiguration;
+            _clientVersion = clientVersion;
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
             _blockProducer = blockProducer;
@@ -46,7 +46,7 @@ namespace Nethermind.BeaconNode
         
         public async Task<string> GetNodeVersionAsync()
         {
-            return await Task.Run(() => _beaconNodeConfiguration.Version);
+            return await Task.Run(() => _clientVersion.Description);
         }
 
         public async Task<ulong> GetGenesisTimeAsync()

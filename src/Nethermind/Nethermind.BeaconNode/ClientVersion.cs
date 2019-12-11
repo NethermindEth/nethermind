@@ -8,24 +8,43 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.BeaconNode
 {
-    public class BeaconNodeConfiguration
+    public class ClientVersion
     {
         private const string ProductToken = "Nethermind";
         private readonly ILogger _logger;
 
-        public BeaconNodeConfiguration(ILogger<BeaconNodeConfiguration> logger, IHostEnvironment environment)
+        public ClientVersion(ILogger<ClientVersion> logger, IHostEnvironment environment)
         {
             _logger = logger;
-            Version = BuildVersionString(ProductToken, environment.EnvironmentName);
+            Description = BuildVersionDescription(ProductToken, environment.EnvironmentName);
         }
 
-        public string Version { get; }
+        /// <summary>
+        /// Product, version, platform, and environment details to identify the application.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Format similar to a  [HTTP User-Agent](https://tools.ietf.org/html/rfc7231#section-5.5.3) field.
+        /// </para>
+        /// <para>
+        /// This consists of one or more product identifiers, each followed by zero or more comments.
+        /// Each product identifier consists of a name and optional version (separated by a slash).
+        /// </para>
+        /// <para>
+        /// By convention, the product identifiers are listed in decreasing order of their significance for identifying the software.
+        /// Commonly there may be only one product.
+        /// </para>
+        /// <para>
+        /// Comments are enclosed in parentheses, [Section 3.2 of RFC 7230](https://tools.ietf.org/html/rfc7230#section-3.2.6).
+        /// </para>
+        /// </remarks>
+        public string Description { get; }
 
-        private string BuildVersionString(string productToken, string environmentName)
+        private string BuildVersionDescription(string productToken, string environmentName)
         {
             List<string> parts = new List<string>();
 
-            Assembly assembly = typeof(BeaconNodeConfiguration).Assembly;
+            Assembly assembly = typeof(ClientVersion).Assembly;
             AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             string version = versionAttribute.InformationalVersion;
             string product1 = $"{productToken}/{version}";
