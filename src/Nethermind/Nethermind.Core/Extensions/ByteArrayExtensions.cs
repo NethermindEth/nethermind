@@ -26,6 +26,7 @@ using System.Threading;
 using Extensions.Data;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
@@ -219,10 +220,9 @@ namespace Nethermind.Core.Extensions
             Buffer.BlockCopy(bytes, startIndex, slice, 0, length);
             return slice;
         }
-        
-        public static byte[] SliceWithZeroPadding(this byte[] bytes, BigInteger startIndex, int length)
+
+        public static byte[] SliceWithZeroPadding(this Span<byte> bytes, int startIndex, int length)
         {
-            // TODO: use span here
             if (startIndex >= bytes.Length)
             {
                 return new byte[length];
@@ -230,42 +230,36 @@ namespace Nethermind.Core.Extensions
 
             if (length == 1)
             {
-                return bytes.Length == 0 ? new byte[0] : new[] {bytes[(int)startIndex]};
+                return bytes.Length == 0 ? new byte[0] : new[] {bytes[startIndex]};
             }
 
-            byte[] slice = new byte[length];
-            if (startIndex > bytes.Length - 1)
-            {
-                return slice;
-            }
-
-            Buffer.BlockCopy(bytes, (int)startIndex, slice, 0, Math.Min(bytes.Length - (int)startIndex, length));
-            return slice;
+            byte[] result = new byte[length];
+            int copiedLength = Math.Min(bytes.Length - startIndex, length);
+            bytes.Slice(startIndex, copiedLength).CopyTo(result.AsSpan().Slice(0, copiedLength));
+//            Buffer.BlockCopy(bytes.ToArray(), startIndex, result, 0, Math.Min(bytes.Length - startIndex, length));
+            return result;
         }
 
-        public static Span<byte> SliceWithZeroPadding(this Span<byte> bytes, BigInteger startIndex, int length)
+        public static byte[] SliceWithZeroPadding(this Span<byte> bytes, UInt256 startIndex, int length)
         {
-            if (startIndex >= bytes.Length)
+            if (startIndex >= bytes.Length || startIndex > int.MaxValue)
             {
-                return new byte[length].AsSpan();
+                return new byte[length];
             }
 
-            if (length == 1)
-            {
-                return bytes.Length == 0 ? Span<byte>.Empty : new[] {bytes[(int)startIndex]};
-            }
-
-            byte[] slice = new byte[length];
-            if (startIndex > bytes.Length - 1)
-            {
-                return slice;
-            }
-
-            int finalLength = Math.Min(bytes.Length - (int)startIndex, length);
-            bytes.Slice((int)startIndex, finalLength).CopyTo(slice);
-            return slice;
+            return SliceWithZeroPadding(bytes, (int) startIndex, length);
         }
         
+        public static byte[] SliceWithZeroPadding(this byte[] bytes, UInt256 startIndex, int length)
+        {
+            return bytes.AsSpan().SliceWithZeroPadding(startIndex, length);
+        }
+        
+        public static byte[] SliceWithZeroPadding(this byte[] bytes, int startIndex, int length)
+        {
+            return bytes.AsSpan().SliceWithZeroPadding(startIndex, length);
+        }
+
         public static byte[] SliceWithZeroPaddingEmptyOnError(this byte[] bytes, BigInteger startIndex, int length)
         {
             if (startIndex >= bytes.Length || length == 0)

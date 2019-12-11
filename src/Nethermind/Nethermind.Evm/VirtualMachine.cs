@@ -17,11 +17,13 @@
  */
 
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -1287,10 +1289,14 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            for (int i = 0; i < 32; i++)
-                            {
-                                wordBuffer[i] = (byte)(a[i] & b[i]);
-                            }
+                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+
+                            refBuffer = refA & refB;
+                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
+                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) & Unsafe.Add(ref refB, 2);
+                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
                         }
 
                         PushBytes(wordBuffer, bytesOnStack);
@@ -1316,10 +1322,14 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            for (int i = 0; i < 32; i++)
-                            {
-                                wordBuffer[i] = (byte)(a[i] | b[i]);
-                            }
+                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+
+                            refBuffer = refA | refB;
+                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
+                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) | Unsafe.Add(ref refB, 2);
+                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) | Unsafe.Add(ref refB, 3);
                         }
 
                         PushBytes(wordBuffer, bytesOnStack);
@@ -1345,10 +1355,14 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            for (int i = 0; i < 32; i++)
-                            {
-                                wordBuffer[i] = (byte)(a[i] ^ b[i]);
-                            }
+                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+
+                            refBuffer = refA ^ refB;
+                            Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
+                            Unsafe.Add(ref refBuffer, 2) = Unsafe.Add(ref refA, 2) ^ Unsafe.Add(ref refB, 2);
+                            Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
                         }
 
                         PushBytes(wordBuffer, bytesOnStack);
@@ -1373,10 +1387,13 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            for (int i = 0; i < 32; ++i)
-                            {
-                                wordBuffer[i] = (byte)~a[i];
-                            }
+                            ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+
+                            refBuffer = ~refA;
+                            Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
+                            Unsafe.Add(ref refBuffer, 2) = ~Unsafe.Add(ref refA, 2);
+                            Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3) ;
                         }
 
                         PushBytes(wordBuffer, bytesOnStack);
@@ -1500,7 +1517,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        PopUInt(out BigInteger src, bytesOnStack);
+                        PopUInt256(out UInt256 src, bytesOnStack);
                         PushBytes(env.InputData.SliceWithZeroPadding(src, 32), bytesOnStack);
                         break;
                     }

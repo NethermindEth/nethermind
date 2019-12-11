@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
@@ -26,9 +27,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override int PacketType { get; } = 0x0d;
         public override string Protocol { get; } = "eth";
 
-        public Keccak[] Keys { get; set; }
+        public IList<Keccak> Keys { get; }
 
-        public GetNodeDataMessage(Keccak[] keys)
+        public GetNodeDataMessage(IList<Keccak> keys)
         {            
             Keys = keys ?? throw new ArgumentNullException(nameof(keys));
         }

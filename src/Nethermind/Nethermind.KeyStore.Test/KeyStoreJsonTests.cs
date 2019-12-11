@@ -91,7 +91,6 @@ namespace Nethermind.KeyStore.Test
         }
         
         [Test]
-        [Ignore("Awaits Ethereum Tests PR approval.")]
         public void MyCryptoTest()
         {
             var testModel = _testsModel.MyCrypto;

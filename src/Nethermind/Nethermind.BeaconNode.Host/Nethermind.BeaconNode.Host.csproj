@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsTransformWebConfigDisabled>true</IsTransformWebConfigDisabled>
+    <UserSecretsId>dotnet-Nethermind.BeaconNode.Host-376091C2-AFFA-41D5-A229-A31991A2A89F</UserSecretsId>
+    <Product>Nethermind Eth2.0 blockchain</Product>
+    <Authors>sgryphon</Authors>
+    <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
+    <Version>0.0.1</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="GitVersionTask" Version="5.1.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="3.0.1" />
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="1.6.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.BeaconNode.Api\Nethermind.BeaconNode.Api.csproj" />
+    <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
+    <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Remove="configuration\**" />
+    <Content Remove="release\**" />
+    <None Include="configuration\**" CopyToOutputDirectory="Never" />
+    <None Include="release\**" CopyToOutputDirectory="Never" />
+  </ItemGroup>
+  
+</Project>

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -72,7 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _txFloodCheckTimer.Start();
         }
 
-        private TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
+        private readonly TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
 
         private void CheckTxFlooding(object sender, ElapsedEventArgs e)
         {
@@ -153,9 +154,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _isDowngradedDueToTxFlooding = false;
 
-        private Random _random = new Random();
+        private readonly Random _random = new Random();
 
-        protected long _counter = 0;
+        protected long Counter = 0;
 
         public virtual void HandleMessage(ZeroPacket message)
         {
@@ -176,13 +177,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    Interlocked.Increment(ref _counter);
-                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlockHashes from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NewBlockHashes from {Node:c}");
                     Metrics.Eth62NewBlockHashesReceived++;
                     Handle(Deserialize<NewBlockHashesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.Transactions:
-                    Interlocked.Increment(ref _counter);
+                    Interlocked.Increment(ref Counter);
                     Metrics.Eth62TransactionsReceived++;
                     if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
@@ -191,32 +192,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
-                    Interlocked.Increment(ref _counter);
-                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockHeaders from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetBlockHeaders from {Node:c}");
                     Metrics.Eth62GetBlockHeadersReceived++;
                     Handle(Deserialize<GetBlockHeadersMessage>(message.Content));
                     break;
                 case Eth62MessageCode.BlockHeaders:
-                    Interlocked.Increment(ref _counter);
-                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockHeaders from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockHeaders from {Node:c}");
                     Metrics.Eth62BlockHeadersReceived++;
                     Handle(Deserialize<BlockHeadersMessage>(message.Content));
                     break;
                 case Eth62MessageCode.GetBlockBodies:
-                    Interlocked.Increment(ref _counter);
-                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} GetBlockBodies from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetBlockBodies from {Node:c}");
                     Metrics.Eth62GetBlockBodiesReceived++;
                     Handle(Deserialize<GetBlockBodiesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.BlockBodies:
-                    Interlocked.Increment(ref _counter);
-                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} BlockBodies from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockBodies from {Node:c}");
                     Metrics.Eth62BlockBodiesReceived++;
                     Handle(Deserialize<BlockBodiesMessage>(message.Content));
                     break;
                 case Eth62MessageCode.NewBlock:
-                    Interlocked.Increment(ref _counter);
-                    if (Logger.IsTrace) Logger.Trace($"{_counter:D5} NewBlock from {Node:c}");
+                    Interlocked.Increment(ref Counter);
+                    if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NewBlock from {Node:c}");
                     Metrics.Eth62NewBlockReceived++;
                     Handle(Deserialize<NewBlockMessage>(message.Content));
                     break;
@@ -253,7 +254,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewBlock(Block block)
         {
-            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} NewBlock to {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
             if (block.TotalDifficulty == null)
             {
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
@@ -268,7 +269,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewTransaction(Transaction transaction)
         {
-            Interlocked.Increment(ref _counter);
+            Interlocked.Increment(ref Counter);
             if (transaction.Hash == null)
             {
                 throw new InvalidOperationException($"Trying to send a transaction with null hash");
@@ -278,13 +279,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(msg);
         }
 
-        public virtual async Task<TxReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        public virtual async Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token)
         {
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual async Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+        public virtual async Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token)
         {
             await Task.CompletedTask;
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
@@ -356,22 +357,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Received bodies request of length {request.BlockHashes.Length} from {Session.Node:c}:");
+                Logger.Trace($"Received bodies request of length {request.BlockHashes.Count} from {Session.Node:c}:");
             }
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Keccak[] hashes = request.BlockHashes;
-            Block[] blocks = new Block[hashes.Length];
+            IList<Keccak> hashes = request.BlockHashes;
+            Block[] blocks = new Block[hashes.Count];
 
-            for (int i = 0; i < hashes.Length; i++)
+            for (int i = 0; i < hashes.Count; i++)
             {
                 blocks[i] = SyncServer.Find(hashes[i]);
             }
 
-            Interlocked.Increment(ref _counter);
+            Interlocked.Increment(ref Counter);
             Send(new BlockBodiesMessage(blocks));
             stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
@@ -387,7 +388,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Logger.Trace($"  StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
             }
 
-            Interlocked.Increment(ref _counter);
+            Interlocked.Increment(ref Counter);
 
             // to clearly state that this client is an ETH client and not ETC (and avoid disconnections on reversed sync)
             // also to improve performance as this is the most common request
@@ -415,7 +416,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             Send(new BlockHeadersMessage(headers));
             stopwatch.Stop();
-            if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
         private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
@@ -553,7 +554,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (Logger.IsTrace)
             {
                 Logger.Trace("Sending bodies request:");
-                Logger.Trace($"Blockhashes count: {message.BlockHashes.Length}");
+                Logger.Trace($"Blockhashes count: {message.BlockHashes.Count}");
             }
 
             var request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
@@ -583,7 +584,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Length} block hashes");
+            throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
         }
 
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
@@ -621,9 +622,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
+        async Task<BlockBody[]> ISyncPeer.GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
         {
-            if (blockHashes.Length == 0)
+            if (blockHashes.Count == 0)
             {
                 return new BlockBody[0];
             }

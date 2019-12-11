@@ -52,6 +52,7 @@ BenchmarkDotNet.Artifacts/
 project.lock.json
 project.fragment.lock.json
 artifacts/
+**/Properties/launchSettings.json
 
 # StyleCop
 StyleCopReport.xml
@@ -59,7 +60,7 @@ StyleCopReport.xml
 # Files built by Visual Studio
 *_i.c
 *_p.c
-*_h.h
+*_i.h
 *.ilk
 *.meta
 *.obj
@@ -328,10 +329,19 @@ ASALocalRun/
 # MFractors (Xamarin productivity tool) working folder
 .mfractor/
 
+# Visual Studio Code configuration
+.vscode/
+
+
+#######################################
+#                                     #
+#  Custom additional gitignore specs  #
+#                                     #
+#######################################
+
 # Local History for Visual Studio
 .localhistory/
 
-.vscode/
 ndm/
 ndm_db/
 nethermind_db/
@@ -348,4 +358,8 @@ src/Nethermind/Nethermind.Runner/node.key.plain
 
 # Console history
 
-src/Nethermind/Nethermind.Cli/cli.cmd.history
+src/Nethermind/**/cli.cmd.history
+
+src/Nethermind/Nethermind.BeaconNode.Host/configuration/Output
+
+src/Nethermind/Nethermind.BeaconNode.Host/release

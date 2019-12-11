@@ -136,7 +136,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
             GetReceiptsMessage decodedMessage = serializer.Deserialize(decoded.Data);
-            Assert.AreEqual(message.BlockHashes.Length, decodedMessage.BlockHashes.Length);
+            Assert.AreEqual(message.BlockHashes.Count, decodedMessage.BlockHashes.Count);
         }
         
         [TestCase(StackType.Zero, StackType.Zero, true)]

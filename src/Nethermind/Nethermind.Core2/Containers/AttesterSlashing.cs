@@ -20,12 +20,12 @@ namespace Nethermind.Core2.Containers
 {
     public class AttesterSlashing
     {
-        public IndexedAttestation Attestation1 { get; set; }
-        public IndexedAttestation Attestation2 { get; set; }
+        public IndexedAttestation? Attestation1 { get; set; }
+        public IndexedAttestation? Attestation2 { get; set; }
 
-        public static int SszLength(AttesterSlashing container)
+        public static int SszLength(AttesterSlashing? container)
         {
-            if (container == null)
+            if (container is null)
             {
                 return 0;
             }
@@ -41,7 +41,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Attestation2, other.Attestation2);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

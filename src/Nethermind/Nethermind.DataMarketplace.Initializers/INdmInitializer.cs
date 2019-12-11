@@ -32,6 +32,7 @@ using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Stats;
 using Nethermind.Store;
@@ -52,6 +53,6 @@ namespace Nethermind.DataMarketplace.Initializers
             IProtocolValidator protocolValidator, IMessageSerializationService messageSerializationService,
             bool enableUnsecuredDevWallet, IWebSocketsManager webSocketsManager, ILogManager logManager,
             IBlockProcessor blockProcessor, IJsonRpcClientProxy jsonRpcClientProxy,
-            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient);
+            IEthJsonRpcClientProxy ethJsonRpcClientProxy, IHttpClient httpClient, IMonitoringService monitoringService);
     }
 }

@@ -555,7 +555,7 @@ namespace Nethermind.Blockchain
                 _headerDb.Set(header.Hash, newRlp.Bytes);
 
                 BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
-                UpdateOrCreateLevel(header.Number, blockInfo);
+                UpdateOrCreateLevel(header.Number, blockInfo, !shouldProcess);
             }
 
             if (header.IsGenesis || header.TotalDifficulty > (BestSuggestedHeader?.TotalDifficulty ?? 0))
@@ -934,7 +934,7 @@ namespace Nethermind.Blockchain
             bool ascendingOrder = true;
             if (processedBlocks.Length > 1)
             {
-                if (processedBlocks[processedBlocks.Length - 1].Number < processedBlocks[0].Number)
+                if (processedBlocks[^1].Number < processedBlocks[0].Number)
                 {
                     ascendingOrder = false;
                 }
@@ -1136,7 +1136,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void UpdateOrCreateLevel(long number, BlockInfo blockInfo)
+        private void UpdateOrCreateLevel(long number, BlockInfo blockInfo, bool setAsMain = false)
         {
             using (var batch = _chainLevelInfoRepository.StartBatch())
             {
@@ -1146,7 +1146,15 @@ namespace Nethermind.Blockchain
                 {
                     BlockInfo[] blockInfos = level.BlockInfos;
                     Array.Resize(ref blockInfos, blockInfos.Length + 1);
-                    blockInfos[blockInfos.Length - 1] = blockInfo;
+                    if (setAsMain)
+                    {
+                        blockInfos[^1] = blockInfos[0];
+                        blockInfos[0] = blockInfo;
+                    }
+                    else
+                    {
+                        blockInfos[^1] = blockInfo;
+                    }
                     level.BlockInfos = blockInfos;
                 }
                 else
@@ -1157,6 +1165,11 @@ namespace Nethermind.Blockchain
                     }
 
                     level = new ChainLevelInfo(false, new[] {blockInfo});
+                }
+
+                if (setAsMain)
+                {
+                    level.HasBlockOnMainChain = true;
                 }
 
                 _chainLevelInfoRepository.PersistLevel(number, level, batch);                

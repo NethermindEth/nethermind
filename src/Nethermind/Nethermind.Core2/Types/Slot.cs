@@ -14,22 +14,27 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Number}")]
-    public struct Slot
+    public struct Slot : IEquatable<Slot>, IComparable<Slot>
     {
         public const int SszLength = sizeof(ulong);
-        
-        public static Slot Genesis = default;
-        
+
         public Slot(ulong number)
         {
             Number = number;
         }
+
+        public static Slot None => new Slot(ulong.MaxValue);
         
+        public static Slot Zero => new Slot(0);
+        
+        public static Slot One => new Slot(1);
+
         public ulong Number { get; }
 
         public static bool operator <(Slot a, Slot b)
@@ -41,7 +46,7 @@ namespace Nethermind.Core2.Types
         {
             return a.Number > b.Number;
         }
-        
+
         public static bool operator <=(Slot a, Slot b)
         {
             return a.Number <= b.Number;
@@ -51,7 +56,7 @@ namespace Nethermind.Core2.Types
         {
             return a.Number >= b.Number;
         }
-        
+
         public static bool operator ==(Slot a, Slot b)
         {
             return a.Number == b.Number;
@@ -62,12 +67,37 @@ namespace Nethermind.Core2.Types
             return !(a == b);
         }
 
+        public static Slot operator -(Slot left, Slot right)
+        {
+            return new Slot(left.Number - right.Number);
+        }
+
+        public static Slot operator %(Slot left, Slot right)
+        {
+            return new Slot(left.Number % right.Number);
+        }
+
+        public static Slot operator *(Slot left, ulong right)
+        {
+            return new Slot(left.Number * right);
+        }
+
+        public static ulong operator /(Slot left, Slot right)
+        {
+            return left.Number / right.Number;
+        }
+
+        public static Slot operator +(Slot left, Slot right)
+        {
+            return new Slot(left.Number + right.Number);
+        }
+
         public bool Equals(Slot other)
         {
             return Number == other.Number;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Slot other && Equals(other);
         }
@@ -76,17 +106,42 @@ namespace Nethermind.Core2.Types
         {
             return Number.GetHashCode();
         }
-        
-        public static implicit operator Slot(ulong value)
+
+        public static explicit operator Slot(ulong value)
         {
             return new Slot(value);
         }
 
+        public static explicit operator Slot(int value)
+        {
+            if (value < 0)
+            {
+                throw new ArgumentException("Slot number must be > 0", nameof(value));
+            }
+
+            return new Slot((ulong) value);
+        }
+
+        public static implicit operator ulong(Slot slot)
+        {
+            return slot.Number;
+        }
+
+        public static explicit operator int(Slot slot)
+        {
+            return (int) slot.Number;
+        }
+
         public static uint Seconds { get; set; } = 12;
-        
+
         public override string ToString()
         {
             return Number.ToString();
+        }
+
+        public int CompareTo(Slot other)
+        {
+            return Number.CompareTo(other.Number);
         }
     }
 }

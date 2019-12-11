@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             => ResultWrapper<Keccak>.From(await _proxy.eth_sendRawTransaction(Rlp.Encode(transaction).Bytes));
 
 
-        public ResultWrapper<byte[]> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
+        public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter blockParameter = null)
         {
             throw new NotSupportedException();
         }

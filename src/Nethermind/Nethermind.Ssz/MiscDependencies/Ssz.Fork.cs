@@ -35,13 +35,18 @@ namespace Nethermind.Ssz
             return fork;
         }
         
-        public static void Encode(Span<byte> span, Fork container)
+        public static void Encode(Span<byte> span, Fork? container)
         {
+            if (container is null)
+            {
+                return;
+            }
+            
             if (span.Length != Fork.SszLength) ThrowTargetLength<Fork>(span.Length, Fork.SszLength);
             int offset = 0;
-            Encode(span, container.PreviousVersion, ref offset);
-            Encode(span, container.CurrentVersion, ref offset);
-            Encode(span, container.Epoch, ref offset);
+            Encode(span, container.Value.PreviousVersion, ref offset);
+            Encode(span, container.Value.CurrentVersion, ref offset);
+            Encode(span, container.Value.Epoch, ref offset);
         }
 
         public static Fork DecodeFork(Span<byte> span)

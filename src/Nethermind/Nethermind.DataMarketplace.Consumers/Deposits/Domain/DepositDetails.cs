@@ -20,7 +20,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 {

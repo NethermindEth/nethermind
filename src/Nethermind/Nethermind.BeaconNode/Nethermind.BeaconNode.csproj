@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.BeaconNode.Containers\Nethermind.BeaconNode.Containers.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cortex.Cryptography.Bls" Version="0.4.0" />
+    <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
+    <PackageReference Include="GitVersionTask" Version="5.1.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="3.0.1" />
+    <PackageReference Include="System.Text.Json" Version="4.6.0" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>netcoreapp3.0</TargetFramework>
+    <Product>Nethermind Eth2.0 blockchain</Product>
+    <Authors>sgryphon</Authors>
+    <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
+    <Version>0.0.1</Version>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>

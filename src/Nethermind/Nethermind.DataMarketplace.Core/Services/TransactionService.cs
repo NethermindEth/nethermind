@@ -78,6 +78,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 
                 var gasPrice = multiplier *  (BigInteger)transaction.GasPrice / 100;
                 transaction.GasPrice = new UInt256(gasPrice);
+                transaction.GasLimit = 21000;
                 transaction.Value = 0;
                 if (_logger.IsInfo) _logger.Info($"Canceling transaction with hash: '{transactionHash}', gas price: {gasPrice} wei ({multiplier}% of original transaction).");
             });

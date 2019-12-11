@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc
         public override string ToString()
         {
             string paramsString =  Params == null ? "" : $"{string.Join(",", Params)}";
-            return $"ID {Id}, version {JsonRpc}, {Method}({paramsString})";
+            return $"ID {Id}, {Method}({paramsString})";
         }
     }
 }

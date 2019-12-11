@@ -68,5 +68,6 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
         Task<ResultWrapper<Keccak>> ndm_cancelDeposit(Keccak depositId);
         Task<ResultWrapper<Keccak>> ndm_cancelRefund(Keccak depositId);
         Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions();
+        ResultWrapper<GasLimitsForRpc> ndm_getConsumerGasLimits();
     }
 }

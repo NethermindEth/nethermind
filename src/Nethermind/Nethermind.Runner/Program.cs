@@ -18,6 +18,7 @@
 
 using System;
 using Nethermind.Logging;
+using Nethermind.Logging.NLog;
 
 namespace Nethermind.Runner
 {

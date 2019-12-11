@@ -122,7 +122,7 @@ namespace Nethermind.DataMarketplace.Test.Services
             _gasPriceService.Types.Fastest.Should().Be(GasPriceDetails.Empty);
             _gasPriceService.Types.Custom.Should().Be(new GasPriceDetails(_config.GasPrice, 0));
             _gasPriceService.Types.Type.Should().Be("custom");
-            _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
+            _gasPriceService.Types.UpdatedAt.Should().Be(0);
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
         }
@@ -132,31 +132,33 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var result = new GasPriceService.Result
             {
-                SafeLow = 1,
+                SafeLow = 10,
                 SafeLowWait = 1000,
-                Average = 10,
+                Average = 100,
                 AvgWait = 100,
-                Fast = 100,
+                Fast = 1000,
                 FastWait = 10,
-                Fastest = 1000,
+                Fastest = 10000,
                 FastestWait = 1
             };
             _client.GetAsync<GasPriceService.Result>(Arg.Any<string>()).Returns(result);
             await _gasPriceService.UpdateAsync();
             _gasPriceService.Types.SafeLow.Should()
-                .Be(new GasPriceDetails(((int) result.SafeLow).GWei(), result.SafeLowWait));
+                .Be(new GasPriceDetails(GetGasPriceGwei(result.SafeLow), result.SafeLowWait));
             _gasPriceService.Types.Average.Should()
-                .Be(new GasPriceDetails(((int) result.Average).GWei(), result.AvgWait));
+                .Be(new GasPriceDetails(GetGasPriceGwei(result.Average), result.AvgWait));
             _gasPriceService.Types.Fast.Should()
-                .Be(new GasPriceDetails(((int) result.Fast).GWei(), result.FastWait));
+                .Be(new GasPriceDetails(GetGasPriceGwei(result.Fast), result.FastWait));
             _gasPriceService.Types.Fastest.Should()
-                .Be(new GasPriceDetails(((int) result.Fastest).GWei(), result.FastestWait));
+                .Be(new GasPriceDetails(GetGasPriceGwei(result.Fastest), result.FastestWait));
             _gasPriceService.Types.Custom.Should()
                 .Be(new GasPriceDetails(_config.GasPrice, 0));
             _gasPriceService.Types.Type.Should().Be(_config.GasPriceType);
             _gasPriceService.Types.UpdatedAt.Should().Be(_timestamper.EpochSeconds);
             await _configManager.Received().GetAsync(ConfigId);
             await _client.Received().GetAsync<GasPriceService.Result>(Arg.Any<string>());
+
+            UInt256 GetGasPriceGwei(decimal gasPrice) => ((int) Math.Ceiling(gasPrice / 10)).GWei();
         }
 
         [TestCase("safelow")]
@@ -167,13 +169,13 @@ namespace Nethermind.DataMarketplace.Test.Services
         {
             var result = new GasPriceService.Result
             {
-                SafeLow = 1,
+                SafeLow = 10,
                 SafeLowWait = 1000,
-                Average = 10,
+                Average = 100,
                 AvgWait = 100,
-                Fast = 100,
+                Fast = 1000,
                 FastWait = 10,
-                Fastest = 1000,
+                Fastest = 10000,
                 FastestWait = 1
             };
             _client.GetAsync<GasPriceService.Result>(Arg.Any<string>()).Returns(result);

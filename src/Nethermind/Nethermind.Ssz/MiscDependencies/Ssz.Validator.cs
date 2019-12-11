@@ -55,8 +55,13 @@ namespace Nethermind.Ssz
             return container;
         }
 
-        public static void Encode(Span<byte> span, Validator[] containers)
+        public static void Encode(Span<byte> span, Validator[]? containers)
         {
+            if (containers is null)
+            {
+                return;
+            }
+            
             if (span.Length != Validator.SszLength * containers.Length)
             {
                 ThrowTargetLength<Validator>(span.Length, Validator.SszLength);

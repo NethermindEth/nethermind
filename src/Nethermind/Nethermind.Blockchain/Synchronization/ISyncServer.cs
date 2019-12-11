@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
@@ -26,11 +27,11 @@ namespace Nethermind.Blockchain.Synchronization
     {
         void HintBlock(Keccak hash, long number, Node receivedFrom);
         void AddNewBlock(Block block, Node node);
-        TxReceipt[][] GetReceipts(Keccak[] blockHashes);
+        TxReceipt[][] GetReceipts(IList<Keccak> blockHashes);
         Block Find(Keccak hash);
         Keccak FindHash(long number);
         BlockHeader[] FindHeaders(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        byte[][] GetNodeData(Keccak[] keys);
+        byte[][] GetNodeData(IList<Keccak> keys);
         int GetPeerCount();
         int ChainId { get; }
         BlockHeader Genesis { get; }

@@ -75,6 +75,23 @@ namespace Nethermind.Core.Test
             byte[] bytes = Bytes.FromHexString(input);
             Assert.AreEqual(expectedResult, bytes.ToHexString(with0x, noLeadingZeros));
         }
+        
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 1, "0x00")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 1, "0x01")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 15, "0x0102030405060708090a0b0c0d0e0f")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 15, "0x000102030405060708090a0b0c0d0e")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 16, "0x0102030405060708090a0b0c0d0e0f00")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 16, "0x000102030405060708090a0b0c0d0e0f")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 0, 17, "0x000102030405060708090a0b0c0d0e0f00")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 1, 17, "0x0102030405060708090a0b0c0d0e0f0000")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 17, 2, "0x0000")]
+        [TestCase("0x000102030405060708090a0b0c0d0e0f", 16, 2, "0x0000")]
+        public void Can_slice_with_zero_padding(string inputHex, int startIndex, int length, string expectedResultHex)
+        {
+            byte[] input = Bytes.FromHexString(inputHex);
+            byte[] result = input.SliceWithZeroPadding(startIndex, length);
+            Assert.AreEqual(expectedResultHex, result.ToHexString(true));
+        }
 
         [TestCase("0x", "0x", true)]
         [TestCase(null, null, true)]
@@ -125,18 +142,21 @@ namespace Nethermind.Core.Test
         [Test]
         public void Reversal()
         {
-            byte[] bytes = Bytes.FromHexString("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
-            byte[] before = bytes.Clone() as byte[];
-            Assert.AreEqual(32, bytes.Length);
-
-            Bytes.Avx2Reverse256InPlace(bytes);
-            for (int i = 0; i < 32; i++)
+            if (System.Runtime.Intrinsics.X86.Avx2.IsSupported)
             {
-                Assert.AreEqual(before[i], bytes[32 - 1 - i]);
-            }
+                byte[] bytes = Bytes.FromHexString("0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f");
+                byte[] before = bytes.Clone() as byte[];
+                Assert.AreEqual(32, bytes.Length);
 
-            TestContext.WriteLine(before.ToHexString());
-            TestContext.WriteLine(bytes.ToHexString());
+                Bytes.Avx2Reverse256InPlace(bytes);
+                for (int i = 0; i < 32; i++)
+                {
+                    Assert.AreEqual(before[i], bytes[32 - 1 - i]);
+                }
+
+                TestContext.WriteLine(before.ToHexString());
+                TestContext.WriteLine(bytes.ToHexString());
+            }
         }
 
         [TestCase("0x00000000", 0U)]

@@ -76,11 +76,12 @@ namespace Nethermind.Blockchain.Find
 
                 if (filter.Matches(receipt.Bloom))
                 {
-                    foreach (var log in receipt.Logs)
+                    for (var index = 0; index < receipt.Logs.Length; index++)
                     {
+                        var log = receipt.Logs[index];
                         if (filter.Accepts(log))
                         {
-                            results.Add(new FilterLog(logIndexInBlock, receipt, log));
+                            results.Add(new FilterLog(logIndexInBlock, index, receipt, log));
                         }
 
                         logIndexInBlock++;

@@ -51,16 +51,16 @@ namespace Nethermind.Clique
             if (config.Epoch == 0) config.Epoch = Clique.DefaultEpochLength;
         }
 
-        public async Task<Block> SealBlock(Block processed, CancellationToken cancellationToken)
+        public async Task<Block?> SealBlock(Block processed, CancellationToken cancellationToken)
         {
-            Block sealedBlock = Seal(processed);
-            if (sealedBlock == null) return null;
+            Block? sealedBlock = Seal(processed);
+            if (sealedBlock is null) return null;
 
             sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
             return await Task.FromResult(sealedBlock);
         }
 
-        private Block Seal(Block block)
+        private Block? Seal(Block block)
         {
             // Bail out if we're unauthorized to sign a block
             if (!CanSeal(block.Number, block.ParentHash))

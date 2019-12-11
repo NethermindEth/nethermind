@@ -22,7 +22,7 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-        public static void Encode(Span<byte> span, PendingAttestation container)
+        public static void Encode(Span<byte> span, PendingAttestation? container)
         {
             if (span.Length != PendingAttestation.SszLength(container)) ThrowTargetLength<PendingAttestation>(span.Length, PendingAttestation.SszLength(container));
             if (container == null) return;
@@ -34,8 +34,13 @@ namespace Nethermind.Ssz
             Encode(span, container.ProposerIndex, ref offset);
         }
 
-        public static void Encode(Span<byte> span, PendingAttestation[] containers)
+        public static void Encode(Span<byte> span, PendingAttestation?[]? containers)
         {
+            if (containers is null)
+            {
+                return;
+            }
+            
             int offset = 0;
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
@@ -48,7 +53,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static PendingAttestation DecodePendingAttestation(Span<byte> span)
+        public static PendingAttestation? DecodePendingAttestation(Span<byte> span)
         {
             if (span.Length == 0) return null;
             int offset = 0;
@@ -61,7 +66,7 @@ namespace Nethermind.Ssz
             return pendingAttestation;
         }
 
-        public static PendingAttestation[] DecodePendingAttestations(Span<byte> span)
+        public static PendingAttestation?[] DecodePendingAttestations(Span<byte> span)
         {
             if (span.Length == 0)
             {
@@ -72,12 +77,12 @@ namespace Nethermind.Ssz
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset);
 
             int itemsCount = dynamicOffset / VarOffsetSize;
-            PendingAttestation[] containers = new PendingAttestation[itemsCount];
+            PendingAttestation?[] containers = new PendingAttestation?[itemsCount];
             for (int i = 0; i < itemsCount; i++)
             {
                 int nextDynamicOffset = i == itemsCount - 1 ? span.Length : BinaryPrimitives.ReadInt32LittleEndian(span.Slice(offset, VarOffsetSize));
                 int length = nextDynamicOffset - dynamicOffset;
-                PendingAttestation container = DecodePendingAttestation(span.Slice(dynamicOffset, length));
+                PendingAttestation? container = DecodePendingAttestation(span.Slice(dynamicOffset, length));
                 containers[i] = container;
                 dynamicOffset = nextDynamicOffset;
                 offset += VarOffsetSize;

@@ -83,19 +83,19 @@ namespace Ethereum2.Ssz.Test
             {
                 TestContext.Out.WriteLine(validDir);
                 string[] files = Directory.GetFiles(validDir);
-                (YamlNode valueNode, YamlNodeType valueType) = LoadValue(files[2]); // value.yaml
-                (YamlNode merkleRootYaml, _) = LoadValue(files[0]); // meta.yaml
+                (YamlNode valueNode, YamlNodeType valueType) = LoadValue(Path.Combine(validDir, "value.yaml"));
+                (YamlNode merkleRootYaml, _) = LoadValue(Path.Combine(validDir, "meta.yaml"));
                 UInt256.CreateFromLittleEndian(out UInt256 expectedMerkleRoot, Bytes.FromHexString(((YamlScalarNode) merkleRootYaml["root"]).Value));
 
                 Span<byte> output = null;
-                Span<byte> ssz = File.ReadAllBytes(files[1]);
+                Span<byte> ssz = File.ReadAllBytes(Path.Combine(validDir, "serialized.ssz"));
 
                 if (valueType == YamlNodeType.Sequence)
                 {
                     YamlSequenceNode sequenceNode = (YamlSequenceNode) valueNode;
                     if (validDir.Contains("bool"))
                     {
-                        bool[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => bool.Parse(sn.Value)).ToArray();
+                        bool[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => bool.Parse(sn?.Value ?? "false")).ToArray();
                         bool[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeBools(ssz).ToArray();
                         output = new byte[value.Length];
                         Nethermind.Ssz.Ssz.Encode(output, value);
@@ -134,7 +134,7 @@ namespace Ethereum2.Ssz.Test
                     }
                     else if (validDir.Contains("uint64"))
                     {
-                        ulong[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => ulong.Parse(sn.Value)).ToArray();
+                        ulong[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => ulong.Parse(sn.Value ?? ulong.MinValue.ToString())).ToArray();
                         ulong[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeULongs(ssz).ToArray();
                         output = new byte[value.Length * 8];
                         Nethermind.Ssz.Ssz.Encode(output, value);
@@ -147,7 +147,7 @@ namespace Ethereum2.Ssz.Test
                     }
                     else if (validDir.Contains("uint32"))
                     {
-                        uint[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => uint.Parse(sn.Value)).ToArray();
+                        uint[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => uint.Parse(sn.Value ?? uint.MinValue.ToString())).ToArray();
                         uint[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeUInts(ssz).ToArray();
                         output = new byte[value.Length * 4];
                         Nethermind.Ssz.Ssz.Encode(output, value);
@@ -160,7 +160,7 @@ namespace Ethereum2.Ssz.Test
                     }
                     else if (validDir.Contains("uint16"))
                     {
-                        ushort[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => ushort.Parse(sn.Value)).ToArray();
+                        ushort[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => ushort.Parse(sn.Value ?? ushort.MinValue.ToString())).ToArray();
                         ushort[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeUShorts(ssz).ToArray();
                         output = new byte[value.Length * 2];
                         Nethermind.Ssz.Ssz.Encode(output, value);
@@ -173,7 +173,7 @@ namespace Ethereum2.Ssz.Test
                     }
                     else if (validDir.Contains("uint8"))
                     {
-                        byte[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => byte.Parse(sn.Value)).ToArray();
+                        byte[] value = sequenceNode.Children.Cast<YamlScalarNode>().Select(sn => byte.Parse(sn.Value ?? byte.MinValue.ToString())).ToArray();
                         byte[] valueFromSsz = Nethermind.Ssz.Ssz.DecodeBytes(ssz).ToArray();
                         output = new byte[value.Length];
                         Nethermind.Ssz.Ssz.Encode(output, value);
@@ -219,13 +219,14 @@ namespace Ethereum2.Ssz.Test
                     }
                     else if (validDir.Contains("boolean"))
                     {
-                        bool value = bool.Parse(((YamlScalarNode) valueNode).Value);
-                        bool valueFromSsz = Nethermind.Ssz.Ssz.DecodeBool(ssz);
+                        string yamlValue = ((YamlScalarNode) valueNode)?.Value;
+                        bool? value = yamlValue is null ? null : (bool?)bool.Parse(yamlValue);
+                        bool? valueFromSsz = Nethermind.Ssz.Ssz.DecodeBool(ssz);
                         Assert.AreEqual(value, valueFromSsz);
                         output = new byte[1];
-                        output[0] = Nethermind.Ssz.Ssz.Encode(value);
+                        output[0] = Nethermind.Ssz.Ssz.Encode(value ?? false);
 
-                        Merkle.Ize(out UInt256 root, valueFromSsz);
+                        Merkle.Ize(out UInt256 root, valueFromSsz ?? false);
                         Assert.AreEqual(expectedMerkleRoot, root);
                     }
                     else if (validDir.Contains("uint_256"))

@@ -32,7 +32,7 @@ namespace Nethermind.Ssz
             Encode(span.Slice(HistoricalBatch.SszLength / 2), container.StateRoots);
         }
 
-        public static HistoricalBatch DecodeHistoricalBatch(Span<byte> span)
+        public static HistoricalBatch? DecodeHistoricalBatch(Span<byte> span)
         {
             if (span.Length != HistoricalBatch.SszLength) ThrowSourceLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
 

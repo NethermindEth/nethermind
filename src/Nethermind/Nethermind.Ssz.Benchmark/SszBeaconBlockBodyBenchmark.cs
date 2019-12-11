@@ -18,7 +18,6 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using NLog.Targets;
 
 namespace Nethermind.Ssz.Benchmarks
 {
@@ -51,7 +50,7 @@ namespace Nethermind.Ssz.Benchmarks
             
             Deposit deposit = new Deposit();
             deposit.Data = depositData;
-            deposit.Proof = new Sha256[Deposit.ContractTreeDepth + 1];
+            deposit.Proof = new Hash32[Deposit.ContractTreeDepth + 1];
             
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;

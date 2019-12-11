@@ -45,9 +45,14 @@ namespace Nethermind.Blockchain.Receipts
         public TxReceipt Find(Keccak hash)
         {
             var receiptData = _database.Get(hash);
-            return receiptData == null
-                ? null
-                : Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
+            if (receiptData != null)
+            {
+                var receipt = Rlp.Decode<TxReceipt>(new Rlp(receiptData), RlpBehaviors.Storage);
+                receipt.TxHash = hash;
+                return receipt;
+            }
+
+            return null;
         }
 
         public void Add(TxReceipt txReceipt, bool isProcessed)

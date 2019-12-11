@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Extensions;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Core2.Containers
@@ -26,19 +25,19 @@ namespace Nethermind.Core2.Containers
         
         public static readonly uint MaxValidatorsPerCommittee = 2048;
         
-        public static int SszLength(Attestation container)
+        public static int SszLength(Attestation? container)
         {
             if (container == null)
             {
                 return 0;
             }
             
-            return SszDynamicOffset + container.AggregationBits.Length;
+            return SszDynamicOffset + container.AggregationBits?.Length ?? 0;
         }
         
-        public byte[] AggregationBits { get; set; }
-        public AttestationData Data { get; set; }
-        public BlsSignature Signature { get; set; }
+        public byte[]? AggregationBits { get; set; }
+        public AttestationData? Data { get; set; }
+        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
 
         public bool Equals(Attestation other)
         {
@@ -47,7 +46,7 @@ namespace Nethermind.Core2.Containers
                    Equals(Signature, other.Signature);
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;

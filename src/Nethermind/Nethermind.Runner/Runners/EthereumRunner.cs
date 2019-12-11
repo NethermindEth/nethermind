@@ -83,6 +83,7 @@ using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Crypto;
@@ -136,6 +137,7 @@ namespace Nethermind.Runner.Runners
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private IJsonSerializer _ethereumJsonSerializer;
+        private readonly IMonitoringService _monitoringService;
         private CancellationTokenSource _runnerCancellation;
         private IBlockchainProcessor _blockchainProcessor;
         private IDiscoveryApp _discoveryApp;
@@ -186,10 +188,10 @@ namespace Nethermind.Runner.Runners
         public const string PeersDbPath = "peers";
 
         public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider,
-            ILogManager logManager, IGrpcServer grpcServer, 
+            ILogManager logManager, IGrpcServer grpcServer,
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
             INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager,
-            IJsonSerializer ethereumJsonSerializer)
+            IJsonSerializer ethereumJsonSerializer, IMonitoringService monitoringService)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _grpcServer = grpcServer;
@@ -198,6 +200,7 @@ namespace Nethermind.Runner.Runners
             _ndmInitializer = ndmInitializer;
             _webSocketsManager = webSocketsManager;
             _ethereumJsonSerializer = ethereumJsonSerializer;
+            _monitoringService = monitoringService;
             _logger = _logManager.GetClassLogger();
 
             _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
@@ -265,7 +268,7 @@ namespace Nethermind.Runner.Runners
                     _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
                     break;
                 default:
-                    _wallet = new NullWallet();
+                    _wallet = NullWallet.Instance;
                     break;
             }
 
@@ -999,7 +1002,7 @@ namespace Nethermind.Runner.Runners
                     _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer,
                     _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
                     _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager, _blockProcessor,
-                    _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient);
+                    _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService);
                 capabilityConnector.Init();
                 if (_logger.IsInfo) _logger.Info($"NDM initialized.");
             }

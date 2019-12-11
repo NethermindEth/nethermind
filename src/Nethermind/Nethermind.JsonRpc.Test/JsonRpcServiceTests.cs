@@ -87,9 +87,9 @@ namespace Nethermind.JsonRpc.Test
             EthereumJsonSerializer serializer = new EthereumJsonSerializer();
             string serialized = serializer.Serialize(new TransactionForRpc());
             IEthModule ethModule = Substitute.For<IEthModule>();
-            ethModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<byte[]>.Success(new byte[] {1}));
+            ethModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
             JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_call", serialized);
-            Assert.AreEqual(1, (response.Result as byte[]).Length);
+            Assert.AreEqual("0x1", response.Result);
         }
         
         [Test]

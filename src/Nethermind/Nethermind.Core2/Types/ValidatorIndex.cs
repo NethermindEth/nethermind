@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Number}")]
-    public struct ValidatorIndex
+    public struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
     {
         public const int SszLength = sizeof(ulong);
 
@@ -29,6 +30,19 @@ namespace Nethermind.Core2.Types
         }
         
         public ulong Number { get; }
+        
+        public static ValidatorIndex None => new ValidatorIndex(ulong.MaxValue);
+
+        public static implicit operator ulong(ValidatorIndex validatorIndex) => validatorIndex.Number;
+        
+        public static explicit operator int(ValidatorIndex validatorIndex) => (int)validatorIndex.Number;
+
+        public static implicit operator ValidatorIndex(ulong value) => new ValidatorIndex(value);
+
+        public static ValidatorIndex Max(ValidatorIndex val1, ValidatorIndex val2)
+        {
+            return new ValidatorIndex(Math.Max(val1.Number, val2.Number));
+        }
         
         public static bool operator ==(ValidatorIndex a, ValidatorIndex b)
         {
@@ -45,7 +59,7 @@ namespace Nethermind.Core2.Types
             return Number == other.Number;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is ValidatorIndex other && Equals(other);
         }
@@ -58,6 +72,11 @@ namespace Nethermind.Core2.Types
         public override string ToString()
         {
             return Number.ToString();
+        }
+
+        public int CompareTo(ValidatorIndex other)
+        {
+            return Number.CompareTo(other.Number);
         }
     }
 }

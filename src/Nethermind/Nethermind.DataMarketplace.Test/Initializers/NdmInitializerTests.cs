@@ -36,12 +36,12 @@ using Nethermind.Grpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
+using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
-using NLog;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -82,6 +82,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
         private IJsonRpcClientProxy _jsonRpcClientProxy;
         private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
         private IHttpClient _httpClient;
+        private IMonitoringService _monitoringService;
         private NdmConfig _ndmConfig;
         private NdmInitializer _ndmInitializer;
 
@@ -119,6 +120,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
             _jsonRpcClientProxy = Substitute.For<IJsonRpcClientProxy>();
             _ethJsonRpcClientProxy = Substitute.For<IEthJsonRpcClientProxy>();
             _httpClient = Substitute.For<IHttpClient>();
+            _monitoringService = Substitute.For<IMonitoringService>();
             _enableUnsecuredDevWallet = false;
             _ndmConfig = new NdmConfig {Enabled = true, StoreConfigInDatabase = false};
             _configProvider.GetConfig<INdmConfig>().Returns(_ndmConfig);
@@ -135,7 +137,7 @@ namespace Nethermind.DataMarketplace.Test.Initializers
                 _rpcModuleProvider, _keyStore, _jsonSerializer, _cryptoRandom, _enode, _consumerChannelManager,
                 _dataPublisher, _grpcServer, _nodeStatsManager, _protocolsManager, _protocolValidator,
                 _messageSerializationService, _enableUnsecuredDevWallet, _webSocketsManager, _logManager,
-                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient);
+                _blockProcessor, _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService);
             _ndmInitializer.DbPath.Should().Be(Path.Combine(_baseDbPath, _ndmConfig.DatabasePath));
         }
     }

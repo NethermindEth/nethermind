@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models
 {

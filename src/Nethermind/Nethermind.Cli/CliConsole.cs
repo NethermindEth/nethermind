@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using Console = Colorful.Console;
 
@@ -54,9 +55,13 @@ namespace Nethermind.Cli
                 Console.Clear();
             }
 
+            Assembly assembly = typeof(CliConsole).Assembly;
+            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+            string version = versionAttribute?.InformationalVersion;
+
             Console.WriteLine("**********************************************", _colorScheme.Comment);
             Console.WriteLine();
-            Console.WriteLine("Nethermind CLI", GetColor(_colorScheme.Good));
+            Console.WriteLine("Nethermind CLI {0}", GetColor(_colorScheme.Good), version);
             Console.WriteLine("  https://github.com/NethermindEth/nethermind", GetColor(_colorScheme.Interesting));
             Console.WriteLine("  https://nethermind.readthedocs.io/en/latest/", GetColor( _colorScheme.Interesting));
             Console.WriteLine();

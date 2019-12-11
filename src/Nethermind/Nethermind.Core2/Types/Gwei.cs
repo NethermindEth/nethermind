@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Core2.Types
 {
     [DebuggerDisplay("{Amount}")]
-    public struct Gwei
+    public struct Gwei : IEquatable<Gwei>, IComparable<Gwei>
     {
         public const int SszLength = sizeof(ulong);
 
@@ -69,7 +70,7 @@ namespace Nethermind.Core2.Types
             return Amount == other.Amount;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return obj is Gwei other && Equals(other);
         }
@@ -78,18 +79,67 @@ namespace Nethermind.Core2.Types
         {
             return Amount.GetHashCode();
         }
-        
-        public static implicit operator Gwei(ulong amount)
+
+        public static Gwei MinDepositAmount { get; set; } = (Gwei)1_000_000_000UL;
+
+        public static Gwei MaxEffectiveBalance { get; set; } = (Gwei)32_000_000_000UL;
+
+        public static Gwei EjectionBalance { get; set; } = (Gwei)16_000_000_000UL;
+
+        public static Gwei EffectiveBalanceIncrement { get; set; } = (Gwei)1_000_000_000UL;
+
+        public static explicit operator Gwei(ulong value) => new Gwei(value);
+
+        public static implicit operator ulong(Gwei slot) => slot.Amount;
+
+        public static Gwei Min(Gwei val1, Gwei val2)
         {
-            return new Gwei(amount);
+            return new Gwei(Math.Min(val1.Amount, val2.Amount));
+        }
+        
+        public static Gwei Max(Gwei val1, Gwei val2)
+        {
+            return new Gwei(Math.Max(val1.Amount, val2.Amount));
         }
 
-        public static Gwei MinDepositAmount { get; set; } = 1_000_000_000UL;
+        public static Gwei operator -(Gwei left, Gwei right)
+        {
+            return new Gwei(left.Amount - right.Amount);
+        }
 
-        public static Gwei MaxEffectiveBalance { get; set; } = 32_000_000_000UL;
+        public static Gwei operator %(Gwei left, Gwei right)
+        {
+            return new Gwei(left.Amount % right.Amount);
+        }
 
-        public static Gwei EjectionBalance { get; set; } = 16_000_000_000UL;
+        public static Gwei operator *(Gwei left, ulong right)
+        {
+            return new Gwei(left.Amount * right);
+        }
 
-        public static Gwei EffectiveBalanceIncrement { get; set; } = 1_000_000_000UL;
+        public static Gwei operator /(Gwei left, ulong right)
+        {
+            return new Gwei(left.Amount / right);
+        }
+
+        public static Gwei operator +(Gwei left, Gwei right)
+        {
+            return new Gwei(left.Amount + right.Amount);
+        }
+
+        public Gwei IntegerSquareRoot()
+        {
+            return (Gwei)Amount.SquareRoot();
+        }
+
+        public override string ToString()
+        {
+            return Amount.ToString();
+        }
+
+        public int CompareTo(Gwei other)
+        {
+            return Amount.CompareTo(other.Amount);
+        }
     }
 }

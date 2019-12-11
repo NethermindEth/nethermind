@@ -15,17 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
     public class HistoricalBatch
     {
-        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * Sha256.SszLength;
+        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * Hash32.SszLength;
 
-        public Sha256[] BlockRoots = new Sha256[Time.SlotsPerHistoricalRoot];
-        public Sha256[] StateRoots = new Sha256[Time.SlotsPerHistoricalRoot];
-        
+        public Hash32[] BlockRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+        public Hash32[] StateRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+
         public bool Equals(HistoricalBatch other)
         {
             for (int i = 0; i < Time.SlotsPerHistoricalRoot; i++)
@@ -34,7 +36,7 @@ namespace Nethermind.Core2.Containers
                 {
                     return false;
                 }
-                
+
                 if (BlockRoots[i] != other.BlockRoots[i])
                 {
                     return false;
@@ -44,7 +46,7 @@ namespace Nethermind.Core2.Containers
             return true;
         }
 
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
