@@ -19,7 +19,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Nethermind.BeaconNode.Api;
+using Nethermind.BeaconNode.OApi;
 
 namespace Nethermind.BeaconNode.Host
 {
@@ -58,7 +58,7 @@ namespace Nethermind.BeaconNode.Host
 
         public void ConfigureServices(IServiceCollection services)
         {
-            services.AddBeaconNodeApi();
+            services.AddBeaconNodeOApi();
         }
     }
 }

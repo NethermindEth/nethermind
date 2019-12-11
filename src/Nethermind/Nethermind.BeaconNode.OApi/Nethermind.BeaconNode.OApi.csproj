@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Remove="BeaconNodeApi-generated.cs" />
+    <Compile Remove="BeaconNodeOApi-generated.cs" />
   </ItemGroup>
 
   <ItemGroup>

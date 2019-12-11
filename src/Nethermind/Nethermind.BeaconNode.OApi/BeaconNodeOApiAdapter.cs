@@ -5,19 +5,19 @@ using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using BeaconBlock = Nethermind.BeaconNode.Api.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.Api.BeaconBlockBody;
-using IndexedAttestation = Nethermind.BeaconNode.Api.IndexedAttestation;
+using BeaconBlock = Nethermind.BeaconNode.OApi.BeaconBlock;
+using BeaconBlockBody = Nethermind.BeaconNode.OApi.BeaconBlockBody;
+using IndexedAttestation = Nethermind.BeaconNode.OApi.IndexedAttestation;
 
-namespace Nethermind.BeaconNode.Api
+namespace Nethermind.BeaconNode.OApi
 {
-    public class BeaconNodeApiAdapter : IBeaconNodeApiController
+    public class BeaconNodeOApiAdapter : IBeaconNodeOApiController
     {
         private readonly BeaconNodeConfiguration _beaconNodeConfiguration;
         private readonly BlockProducer _blockProducer;
         private readonly ILogger _logger;
 
-        public BeaconNodeApiAdapter(ILogger<BeaconNodeApiAdapter> logger,
+        public BeaconNodeOApiAdapter(ILogger<BeaconNodeOApiAdapter> logger,
             BeaconNodeConfiguration beaconNodeConfiguration,
             BlockProducer blockProducer)
         {
@@ -59,9 +59,9 @@ namespace Nethermind.BeaconNode.Api
         /// <returns>Success response</returns>
         public async Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal)
         {
-            var data = await _blockProducer.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal));
+            Containers.BeaconBlock data = await _blockProducer.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal));
 
-            var result = new BeaconBlock()
+            BeaconBlock result = new BeaconBlock()
             {
                 Slot = (ulong)data.Slot,
                 Body = new BeaconBlockBody()
@@ -98,7 +98,7 @@ namespace Nethermind.BeaconNode.Api
         /// <returns>Request successful</returns>
         public async Task<ulong> TimeAsync()
         {
-            var state = await _blockProducer.GetHeadStateAsync();
+            BeaconState state = await _blockProducer.GetHeadStateAsync();
             if (state != null)
             {
                 return state.GenesisTime;

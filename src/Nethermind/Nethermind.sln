@@ -213,13 +213,13 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode", "Ne
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Containers", "Nethermind.BeaconNode.Containers\Nethermind.BeaconNode.Containers.csproj", "{08F0BCF8-E792-47C2-BAF1-38E2354DC155}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Api", "Nethermind.BeaconNode.Api\Nethermind.BeaconNode.Api.csproj", "{2E104D62-E636-45CB-8FE0-45E90D822DEC}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.OApi", "Nethermind.BeaconNode.OApi\Nethermind.BeaconNode.OApi.csproj", "{2E104D62-E636-45CB-8FE0-45E90D822DEC}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Storage", "Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj", "{D2C3497F-3DD6-4035-96B4-21E8EF31E48A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Host", "Nethermind.BeaconNode.Host\Nethermind.BeaconNode.Host.csproj", "{DBB4C4B6-4C18-4996-9AF4-BDE2BD401BDC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.ApiClient", "Nethermind.BeaconNode.ApiClient\Nethermind.BeaconNode.ApiClient.csproj", "{4E4246A8-0D78-4B2F-A87B-FF34A4E1F42A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.OApiClient", "Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj", "{4E4246A8-0D78-4B2F-A87B-FF34A4E1F42A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Test", "Nethermind.BeaconNode.Test\Nethermind.BeaconNode.Test.csproj", "{452A57AE-D25A-4F27-B297-7D28265134DD}"
 EndProject

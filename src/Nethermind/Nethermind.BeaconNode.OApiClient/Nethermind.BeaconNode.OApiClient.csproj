@@ -7,6 +7,7 @@
     <Version>0.0.1</Version>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <RootNamespace>Nethermind.BeaconNode.ApiClient</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="GitVersionTask" Version="5.1.2">
@@ -17,7 +18,7 @@
     <PackageReference Include="System.ComponentModel.Annotations" Version="4.6.0" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Remove="BeaconNodeClient-generated.cs" />
+    <Compile Remove="BeaconNodeOApiClient-generated.cs" />
   </ItemGroup>
   <ItemGroup>
     <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />

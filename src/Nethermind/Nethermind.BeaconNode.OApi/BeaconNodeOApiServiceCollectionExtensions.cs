@@ -1,14 +1,14 @@
 ﻿using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace Nethermind.BeaconNode.Api
+namespace Nethermind.BeaconNode.OApi
 {
     public static class BeaconNodeServiceCollectionExtensions
     {
-        public static void AddBeaconNodeApi(this IServiceCollection services)
+        public static void AddBeaconNodeOApi(this IServiceCollection services)
         {
             // Register adapter
-            services.AddScoped<IBeaconNodeApiController, BeaconNodeApiAdapter>();
+            services.AddScoped<IBeaconNodeOApiController, BeaconNodeOApiAdapter>();
             // Register controllers
             var apiAssembly = typeof(BeaconNodeServiceCollectionExtensions).GetTypeInfo().Assembly;
             //services.AddControllers()
