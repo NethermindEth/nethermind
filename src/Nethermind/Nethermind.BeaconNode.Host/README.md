@@ -30,6 +30,7 @@ Run, as above, then open a browser to ```https://localhost:5001/node/version``` 
 Other GET queries:
 
 * genesis time: ```https://localhost:5001/node/genesis_time```
+* fork: ```https://localhost:5001/node/fork```
 * get an unsigned block, ready for signing: ```https://localhost:5001/validator/block?slot=10&randao_reveal=0x0102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f100102030405060708090a0b0c0d0e0f10```
 
 (this last one is only mocked up so far, and not actually implemented yet)

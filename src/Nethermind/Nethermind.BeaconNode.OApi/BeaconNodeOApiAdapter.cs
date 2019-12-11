@@ -83,11 +83,15 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Request successful</returns>
         public async Task<Response2> ForkAsync()
         {
-            ForkVersion forkVersion = await _beaconNode.GetNodeForkAsync();
-            Response2 response = new Response2();
-            response.Fork = new Fork();
-            //response.Fork.Current_version;
-            throw new NotImplementedException();
+            Core2.Containers.Fork fork = await _beaconNode.GetNodeForkAsync();
+            Response2 response2 = new Response2();
+            // TODO: Not sure what chain ID should be.
+            response2.Chain_id = 0;
+            response2.Fork = new Fork();
+            response2.Fork.Epoch = fork.Epoch;
+            response2.Fork.Current_version = fork.CurrentVersion.AsSpan().ToArray();
+            response2.Fork.Previous_version = fork.PreviousVersion.AsSpan().ToArray();
+            return response2;
         }
 
         /// <summary>Poll to see if the the beacon node is syncing.</summary>

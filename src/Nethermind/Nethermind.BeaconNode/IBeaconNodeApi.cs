@@ -15,9 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 
 namespace Nethermind.BeaconNode
 {
@@ -32,7 +33,7 @@ namespace Nethermind.BeaconNode
         Task<string> GetNodeVersionAsync();
         Task<ulong> GetGenesisTimeAsync();
         Task<bool> GetIsSyncingAsync();
-        Task<ForkVersion> GetNodeForkAsync();
+        Task<Fork> GetNodeForkAsync();
 //        IList<ValidatorDuty> ValidatorDuties(IEnumerable<BlsPublicKey> validatorPublicKeys);
         Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal);
 //        bool PublishBlock(BeaconBlock block);

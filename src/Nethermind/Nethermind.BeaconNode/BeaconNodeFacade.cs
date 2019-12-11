@@ -16,10 +16,12 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode
 {
@@ -41,8 +43,7 @@ namespace Nethermind.BeaconNode
             _storeProvider = storeProvider;
             _blockProducer = blockProducer;
         }
-
-
+        
         public async Task<string> GetNodeVersionAsync()
         {
             return await Task.Run(() => _beaconNodeConfiguration.Version);
@@ -51,11 +52,7 @@ namespace Nethermind.BeaconNode
         public async Task<ulong> GetGenesisTimeAsync()
         {
             BeaconState state = await GetHeadStateAsync();
-            if (state != null)
-            {
-                return state.GenesisTime;
-            }
-            return 0;
+            return state.GenesisTime;
         }
 
         public Task<bool> GetIsSyncingAsync()
@@ -63,9 +60,10 @@ namespace Nethermind.BeaconNode
             throw new System.NotImplementedException();
         }
 
-        public Task<ForkVersion> GetNodeForkAsync()
+        public async Task<Fork> GetNodeForkAsync()
         {
-            throw new System.NotImplementedException();
+            BeaconState state = await GetHeadStateAsync();
+            return state.Fork;
         }
 
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
