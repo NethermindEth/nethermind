@@ -611,7 +611,7 @@ namespace Nethermind.Core.Extensions
                 {
                     charsRef = '0';
                     Unsafe.Add(ref charsRef, 1) = 'x';
-                    charsRef = Unsafe.Add(ref charsRef, 2);
+                    charsRef = ref Unsafe.Add(ref charsRef, 2);
                 }
 
                 ref var input = ref state.Bytes[0];
