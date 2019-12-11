@@ -522,10 +522,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var depositId = TestItem.KeccakA;
             var gasPrice = 20.GWei();
-            var transactionHash = TestItem.KeccakB;
-            _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, gasPrice).Returns(transactionHash);
+            var info = new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, TestItem.KeccakB);
+            _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, gasPrice).Returns(info);
             var result = await _rpc.ndm_updateDepositGasPrice(depositId, gasPrice);
-            result.Data.Should().Be(transactionHash);
+            result.Data.Status.Should().Be(info.Status.ToString().ToLowerInvariant());
+            result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().UpdateDepositGasPriceAsync(depositId, gasPrice);
         }
         
@@ -534,10 +535,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var depositId = TestItem.KeccakA;
             var gasPrice = 20.GWei();
-            var transactionHash = TestItem.KeccakB;
-            _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, gasPrice).Returns(transactionHash);
+            var info = new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, TestItem.KeccakB);
+            _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, gasPrice).Returns(info);
             var result = await _rpc.ndm_updateRefundGasPrice(depositId, gasPrice);
-            result.Data.Should().Be(transactionHash);
+            result.Data.Status.Should().Be(info.Status.ToString().ToLowerInvariant());
+            result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().UpdateRefundGasPriceAsync(depositId, gasPrice);
         }
         
@@ -545,10 +547,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task cancel_deposit_should_return_transaction_hash()
         {
             var depositId = TestItem.KeccakA;
-            var canceledTransactionHash = TestItem.KeccakB;
-            _consumerTransactionsService.CancelDepositAsync(depositId).Returns(canceledTransactionHash);
+            var info = new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, TestItem.KeccakB);
+            _consumerTransactionsService.CancelDepositAsync(depositId).Returns(info);
             var result = await _rpc.ndm_cancelDeposit(depositId);
-            result.Data.Should().Be(canceledTransactionHash);
+            result.Data.Status.Should().Be(info.Status.ToString().ToLowerInvariant());
+            result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().CancelDepositAsync(depositId);
         }
         
@@ -556,10 +559,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         public async Task cancel_refund_should_return_transaction_hash()
         {
             var depositId = TestItem.KeccakA;
-            var canceledTransactionHash = TestItem.KeccakB;
-            _consumerTransactionsService.CancelRefundAsync(depositId).Returns(canceledTransactionHash);
+            var info = new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, TestItem.KeccakB);
+            _consumerTransactionsService.CancelRefundAsync(depositId).Returns(info);
             var result = await _rpc.ndm_cancelRefund(depositId);
-            result.Data.Should().Be(canceledTransactionHash);
+            result.Data.Status.Should().Be(info.Status.ToString().ToLowerInvariant());
+            result.Data.Hash.Should().Be(info.Hash);
             await _consumerTransactionsService.Received().CancelRefundAsync(depositId);
         }
 
@@ -568,7 +572,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         {
             var pendingTransactions = new List<PendingTransaction>
             {
-                new PendingTransaction(TestItem.KeccakA.ToString(), "test", new TransactionInfo(TestItem.KeccakB,
+                new PendingTransaction(TestItem.KeccakA.ToString(), "test", TransactionInfo.Default(TestItem.KeccakB,
                     1.Ether(), 20.GWei(), 10, _timestamper.EpochSeconds))
             };
             var transaction = pendingTransactions[0];
@@ -737,7 +741,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
         private static DepositDetails GetDepositDetails()
             => new DepositDetails(new Deposit(Keccak.OfAnEmptyString, 1, DepositExpiryTime, 1),
                 GetDataAsset(), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1));
+                new[] {TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)});
 
         private static DepositReportItem GetDepositReportItem()
             => new DepositReportItem(Keccak.Zero, TestItem.KeccakA, "test", TestItem.AddressA,

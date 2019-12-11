@@ -139,8 +139,9 @@ namespace Nethermind.DataMarketplace.Test.Services
             _blockchainBridge.GetTransactionAsync(transactionHash)
                 .Returns(new NdmTransaction(transaction, true, 1, TestItem.KeccakB, 1));
             _blockchainBridge.SendOwnTransactionAsync(transaction).Returns(sentTransactionHash);
-            var hash = await _transactionService.CancelAsync(transactionHash);
-            hash.Should().Be(sentTransactionHash);
+            var transactionInfo = await _transactionService.CancelAsync(transactionHash);
+            transactionInfo.Hash.Should().Be(sentTransactionHash);
+            transaction.GasLimit.Should().Be(21000);
             transaction.Value.Should().Be(0);
             transaction.GasLimit.Should().Be(21000);
             var expectedGasPrice = _config.CancelTransactionGasPricePercentageMultiplier * (BigInteger) gasPrice / 100;

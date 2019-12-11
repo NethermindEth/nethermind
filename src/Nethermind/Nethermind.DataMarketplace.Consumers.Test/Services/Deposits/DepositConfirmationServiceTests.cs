@@ -60,7 +60,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var deposit = GetDepositDetails();
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
-            deposit.SetTransaction(new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1));
+            deposit.AddTransaction(TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1));
             await _depositConfirmationService.TryConfirmAsync(deposit);
             await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
             deposit.Confirmed.Should().BeTrue();
@@ -217,7 +217,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         private static DepositDetails GetDepositDetails(uint timestamp = 0)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1), timestamp);
+                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, timestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

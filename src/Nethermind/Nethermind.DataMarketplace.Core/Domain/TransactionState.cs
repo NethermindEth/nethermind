@@ -20,6 +20,6 @@ namespace Nethermind.DataMarketplace.Core.Domain
     {
         Pending,
         Included,
-        Canceled
+        Rejected
     }
 }

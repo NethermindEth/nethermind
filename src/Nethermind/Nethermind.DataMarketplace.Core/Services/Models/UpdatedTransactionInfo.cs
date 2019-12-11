@@ -14,17 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.DataMarketplace.Core.Services.Models;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.DataMarketplace.Core.Services
+namespace Nethermind.DataMarketplace.Core.Services.Models
 {
-    public interface ITransactionService
+    public class UpdatedTransactionInfo
     {
-        Task<Keccak> UpdateGasPriceAsync(Keccak transactionHash, UInt256 gasPrice);
-        Task<Keccak> UpdateValueAsync(Keccak transactionHash, UInt256 value);
-        Task<CanceledTransactionInfo> CancelAsync(Keccak transactionHash);
+        public UpdatedTransactionStatus Status { get; }
+        public Keccak Hash { get; }
+
+        public UpdatedTransactionInfo(UpdatedTransactionStatus status, Keccak hash = null)
+        {
+            Status = status;
+            Hash = hash;
+        }
     }
 }
