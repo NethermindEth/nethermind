@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Containers;
@@ -64,6 +65,11 @@ namespace Nethermind.BeaconNode
         {
             BeaconState state = await GetHeadStateAsync();
             return state.Fork;
+        }
+
+        public Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys)
+        {
+            throw new NotImplementedException();
         }
 
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)

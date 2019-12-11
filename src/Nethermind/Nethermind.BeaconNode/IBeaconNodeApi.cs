@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -34,14 +35,14 @@ namespace Nethermind.BeaconNode
         Task<ulong> GetGenesisTimeAsync();
         Task<bool> GetIsSyncingAsync();
         Task<Fork> GetNodeForkAsync();
-//        IList<ValidatorDuty> ValidatorDuties(IEnumerable<BlsPublicKey> validatorPublicKeys);
+        Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys);
         Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal);
 //        bool PublishBlock(BeaconBlock block);
 //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
 //        bool PublishAttestation(BeaconBlock block);
     }
 
-//    public class ValidatorDuty
-//    {
-//    }
+    public class ValidatorDuty
+    {
+    }
 }
