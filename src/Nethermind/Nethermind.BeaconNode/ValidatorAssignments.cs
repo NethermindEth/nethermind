@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Resources;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -157,45 +158,49 @@ namespace Nethermind.BeaconNode
             }
 
             Slot attestationSlot = Slot.None;
-            Shard attestationShard = Shard.Zero;
+            CommitteeIndex attestationCommitteeIndex = CommitteeIndex.None;
             Slot blockProposalSlot = Slot.None;
 
             ValidatorIndex validatorIndex = FindValidatorIndexByPublicKey(state, validatorPublicKey);
 
             // Check state
-            (attestationSlot, blockProposalSlot) =
-                CheckStateDuty(state, validatorIndex, attestationSlot, blockProposalSlot);
+            (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
+                CheckStateDuty(state, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
 
             // Check historical states
-            Slot previousSlot = state.Slot - Slot.One;
-            IReadOnlyList<Hash32> blockRoots = state.BlockRoots;
-            while (previousSlot >= startSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
+            if (startSlot < state.Slot)
             {
-                int index = (int) (previousSlot % _timeParameterOptions.CurrentValue.SlotsPerEpoch);
-                Hash32 historicalRoot = blockRoots[index];
-                if (!store.TryGetBlockState(historicalRoot, out BeaconState historicalState))
+                Slot previousSlot = state.Slot - Slot.One;
+                IReadOnlyList<Hash32> blockRoots = state.BlockRoots;
+                while (previousSlot >= startSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
                 {
-                    throw new Exception($"Historical state {historicalRoot} for slot {previousSlot} not found.");
+                    int index = (int) (previousSlot % _timeParameterOptions.CurrentValue.SlotsPerEpoch);
+                    Hash32 historicalRoot = blockRoots[index];
+                    if (!store.TryGetBlockState(historicalRoot, out BeaconState historicalState))
+                    {
+                        throw new Exception($"Historical state {historicalRoot} for slot {previousSlot} not found.");
+                    }
+
+                    (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
+                        CheckStateDuty(historicalState!, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
+
+                    previousSlot -= Slot.One;
                 }
-
-                (attestationSlot, blockProposalSlot) =
-                    CheckStateDuty(historicalState!, validatorIndex, attestationSlot, blockProposalSlot);
-
-                previousSlot -= Slot.One;
             }
 
             // Check future states
             Slot nextSlot = state.Slot + Slot.One;
-            while (nextSlot <= endSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
+            while (nextSlot < endSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
             {
                 _beaconStateTransition.ProcessSlots(state, nextSlot);
 
-                (attestationSlot, blockProposalSlot) =
-                    CheckStateDuty(state, validatorIndex, attestationSlot, blockProposalSlot);
+                (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
+                    CheckStateDuty(state, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
 
                 nextSlot += Slot.One;
             }
 
+            Shard attestationShard = new Shard((ulong)attestationCommitteeIndex);
             ValidatorDuty validatorDuty =
                 new ValidatorDuty(validatorPublicKey, attestationSlot, attestationShard, blockProposalSlot);
             return validatorDuty;
@@ -207,8 +212,8 @@ namespace Nethermind.BeaconNode
             return stateProposerIndex.Equals(validatorIndex);
         }
         
-        private (Slot attestationSlot, Slot blockProposalSlot) CheckStateDuty(BeaconState state,
-            ValidatorIndex validatorIndex, Slot attestationSlot, Slot blockProposalSlot)
+        private (Slot attestationSlot, CommitteeIndex attestationCommitteeIndex, Slot blockProposalSlot) CheckStateDuty(BeaconState state,
+            ValidatorIndex validatorIndex, Slot attestationSlot, CommitteeIndex attestationCommitteeIndex, Slot blockProposalSlot)
         {
             // check attestation
             if (attestationSlot == Slot.None)
@@ -223,6 +228,7 @@ namespace Nethermind.BeaconNode
                     if (committee.Contains(validatorIndex))
                     {
                         attestationSlot = state.Slot;
+                        attestationCommitteeIndex = index;
                     }
                 }
             }
@@ -237,7 +243,7 @@ namespace Nethermind.BeaconNode
                 }
             }
 
-            return (attestationSlot, blockProposalSlot);
+            return (attestationSlot, attestationCommitteeIndex, blockProposalSlot);
         }
 
         private ValidatorIndex FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
