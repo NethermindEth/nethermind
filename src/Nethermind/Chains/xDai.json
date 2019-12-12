@@ -1,5 +1,5 @@
 {
-  "name": "DaiChain",
+  "name": "xDai Chain",
   "engine": {
     "authorityRound": {
       "params": {
@@ -36,14 +36,12 @@
     "eip1052Transition": 1604400,
     "eip1283Transition": 1604400,
     "eip1283DisableTransition": 2508800,
-    "registrar": "0x1ec97dc137f5168af053c24460a1200502e1a9d2",
-
-    "eip152Transition": "0xFFFFFFFF",
-    "eip1108Transition": "0xFFFFFFFF",
-    "eip1344Transition": "0xFFFFFFFF",
-    "eip1884Transition": "0xFFFFFFFF",
-    "eip2028Transition": "0xFFFFFFFF",
-    "eip2200Transition": "0xFFFFFFFF"
+    "eip1283ReenableTransition": 7298030,
+    "eip1344Transition": 7298030,
+    "eip1706Transition": 7298030,
+    "eip1884Transition": 7298030,
+    "eip2028Transition": 7298030,
+    "registrar": "0x1ec97dc137f5168af053c24460a1200502e1a9d2"
   },
   "genesis": {
     "seal": {
@@ -60,49 +58,73 @@
     "enode://c1c3a604950119f82d78189792b73f5a82a239017c77465e3c32fc51c1d758a9a772ffddd58436d465342f2cfa6d4a442a49e526743f4d8354d7c5ce794c3ee5@95.179.222.48:30303"
   ],
   "accounts": {
-    "0000000000000000000000000000000000000005": {
+    "0x0000000000000000000000000000000000000005": {
       "builtin": {
         "name": "modexp",
-        "activate_at": "0x0",
         "pricing": {
-          "modexp": {
-            "divisor": 20
+          "0": {
+            "price": {
+              "modexp": {
+                "divisor": 20
+              }
+            }
           }
         }
       }
     },
-    "0000000000000000000000000000000000000006": {
+    "0x0000000000000000000000000000000000000006": {
       "builtin": {
         "name": "alt_bn128_add",
-        "activate_at": "0x0",
         "pricing": {
-          "linear": {
-            "base": 500,
-            "word": 0
+          "0": {
+            "price": { "alt_bn128_const_operations": { "price": 500 }}
+          },
+          "7298030": {
+            "info": "EIP 1108 transition",
+            "price": { "alt_bn128_const_operations": { "price": 150 }}
           }
         }
       }
     },
-    "0000000000000000000000000000000000000007": {
+    "0x0000000000000000000000000000000000000007": {
       "builtin": {
         "name": "alt_bn128_mul",
-        "activate_at": "0x0",
         "pricing": {
-          "linear": {
-            "base": 40000,
-            "word": 0
+          "0": {
+            "price": { "alt_bn128_const_operations": { "price": 40000 }}
+          },
+          "7298030": {
+            "info": "EIP 1108 transition",
+            "price": { "alt_bn128_const_operations": { "price": 6000 }}
           }
         }
       }
     },
-    "0000000000000000000000000000000000000008": {
+    "0x0000000000000000000000000000000000000008": {
       "builtin": {
         "name": "alt_bn128_pairing",
-        "activate_at": "0x0",
         "pricing": {
-          "alt_bn128_pairing": {
-            "base": 100000,
-            "pair": 80000
+          "0": {
+            "price": { "alt_bn128_pairing": { "base": 100000, "pair": 80000 }}
+          },
+          "7298030": {
+            "info": "EIP 1108 transition",
+            "price": { "alt_bn128_pairing": { "base": 45000, "pair": 34000 }}
+          }
+        }
+      }
+    },
+    "0x0000000000000000000000000000000000000009": {
+      "builtin": {
+        "name": "blake2_f",
+        "pricing": {
+          "7298030": {
+            "info": "EIP 1108 transition",
+            "price": {
+              "blake2_f": {
+                "gas_per_round": 1
+              }
+            }
           }
         }
       }
@@ -112,9 +134,13 @@
       "builtin": {
         "name": "ecrecover",
         "pricing": {
-          "linear": {
-            "base": 3000,
-            "word": 0
+          "0": {
+            "price": {
+              "linear": {
+                "base": 3000,
+                "word": 0
+              }
+            }
           }
         }
       }
@@ -124,9 +150,13 @@
       "builtin": {
         "name": "sha256",
         "pricing": {
-          "linear": {
-            "base": 60,
-            "word": 12
+          "0": {
+            "price": {
+              "linear": {
+                "base": 60,
+                "word": 12
+              }
+            }
           }
         }
       }
@@ -136,9 +166,13 @@
       "builtin": {
         "name": "ripemd160",
         "pricing": {
-          "linear": {
-            "base": 600,
-            "word": 120
+          "0": {
+            "price": {
+              "linear": {
+                "base": 600,
+                "word": 120
+              }
+            }
           }
         }
       }
@@ -148,9 +182,13 @@
       "builtin": {
         "name": "identity",
         "pricing": {
-          "linear": {
-            "base": 15,
-            "word": 3
+          "0": {
+            "price": {
+              "linear": {
+                "base": 15,
+                "word": 3
+              }
+            }
           }
         }
       }

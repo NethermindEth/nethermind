@@ -73,6 +73,8 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
 
         private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
         {
+            ValidateParams(chainSpecJson.Params);
+
             chainSpec.Parameters = new ChainParameters
             {
                 AccountStartNonce = chainSpecJson.Params.AccountStartNonce ?? UInt256.Zero,
@@ -100,11 +102,26 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 Eip1108Transition = chainSpecJson.Params.Eip1108Transition,
                 Eip1283Transition = chainSpecJson.Params.Eip1283Transition,
                 Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition,
+                Eip1283ReenableTransition = chainSpecJson.Params.Eip1283ReenableTransition,
                 Eip1344Transition = chainSpecJson.Params.Eip1344Transition,
+                Eip1706Transition = chainSpecJson.Params.Eip1706Transition,
                 Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
                 Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
                 Eip2200Transition = chainSpecJson.Params.Eip2200Transition,
             };
+        }
+
+        private static void ValidateParams(ChainSpecParamsJson parameters)
+        {
+            if (parameters.Eip1283ReenableTransition != parameters.Eip1706Transition && parameters.Eip1283DisableTransition.HasValue)
+            {
+                throw new InvalidOperationException("When 'Eip1283ReenableTransition' or 'Eip1706Transition' are provided they have to have same value as they are both part of 'Eip2200Transition'.");
+            }
+
+            if (parameters.Eip1706Transition.HasValue && parameters.Eip2200Transition.HasValue)
+            {
+                throw new InvalidOperationException("Both 'Eip2200Transition' and 'Eip1706Transition' are provided. Please provide either 'Eip2200Transition' or pair of 'Eip1283ReenableTransition' and 'Eip1706Transition' as they have same meaning.");
+            }
         }
 
         private void LoadTransitions(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
