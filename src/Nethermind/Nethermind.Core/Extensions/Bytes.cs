@@ -619,28 +619,27 @@ namespace Nethermind.Core.Extensions
 
                 int toProcess = state.Bytes.Length;
 
-                const int unroll = 8;
-
-                while (toProcess > unroll)
+                var lookup32 = Lookup32;
+                while (toProcess > 8)
                 {
-                    output = Lookup32[input];
-                    Unsafe.Add(ref output, 1) = Lookup32[Unsafe.Add(ref input, 1)];
-                    Unsafe.Add(ref output, 2) = Lookup32[Unsafe.Add(ref input, 2)];
-                    Unsafe.Add(ref output, 3) = Lookup32[Unsafe.Add(ref input, 3)];
-                    Unsafe.Add(ref output, 4) = Lookup32[Unsafe.Add(ref input, 4)];
-                    Unsafe.Add(ref output, 5) = Lookup32[Unsafe.Add(ref input, 5)];
-                    Unsafe.Add(ref output, 6) = Lookup32[Unsafe.Add(ref input, 6)];
-                    Unsafe.Add(ref output, 7) = Lookup32[Unsafe.Add(ref input, 7)];
+                    output = lookup32[input];
+                    Unsafe.Add(ref output, 1) = lookup32[Unsafe.Add(ref input, 1)];
+                    Unsafe.Add(ref output, 2) = lookup32[Unsafe.Add(ref input, 2)];
+                    Unsafe.Add(ref output, 3) = lookup32[Unsafe.Add(ref input, 3)];
+                    Unsafe.Add(ref output, 4) = lookup32[Unsafe.Add(ref input, 4)];
+                    Unsafe.Add(ref output, 5) = lookup32[Unsafe.Add(ref input, 5)];
+                    Unsafe.Add(ref output, 6) = lookup32[Unsafe.Add(ref input, 6)];
+                    Unsafe.Add(ref output, 7) = lookup32[Unsafe.Add(ref input, 7)];
 
-                    output = ref Unsafe.Add(ref output, unroll);
-                    input = ref Unsafe.Add(ref input, unroll);
+                    output = ref Unsafe.Add(ref output, 8);
+                    input = ref Unsafe.Add(ref input, 8);
                     
-                    toProcess -= unroll;
+                    toProcess -= 8;
                 }
 
                 while (toProcess > 0)
                 {
-                    output = Lookup32[input];
+                    output = lookup32[input];
 
                     output = ref Unsafe.Add(ref output, 1);
                     input = ref Unsafe.Add(ref input, 1);
