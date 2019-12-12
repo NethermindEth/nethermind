@@ -25,6 +25,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -151,6 +152,152 @@ namespace Nethermind.BeaconNode.Tests
             validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
             validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
             validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
+        }
+        
+        
+        [TestMethod]
+        public async Task FutureEpochValidatorDuty()
+        {
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
+            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            // Get genesis store initialise MemoryStoreProvider with the state
+            IStore store = forkChoice.GetGenesisStore(state);
+            
+            // Move forward time
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            ulong time = state.GenesisTime + 1;
+            ulong nextSlotTime = state.GenesisTime + timeParameters.SecondsPerSlot;
+            // halfway through epoch 4
+            ulong slots = 4uL * timeParameters.SlotsPerEpoch + timeParameters.SlotsPerEpoch / 2;
+            for (ulong slot = 1; slot < slots; slot++)
+            {
+                while (time < nextSlotTime)
+                {
+                    forkChoice.OnTick(store, time);
+                    time++;
+                }
+                forkChoice.OnTick(store, time);
+                time++;
+//                Hash32 head = await forkChoice.GetHeadAsync(store);
+//                store.TryGetBlockState(head, out BeaconState headState);
+                BeaconState headState = state;
+                BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState, signed: true);
+                TestState.StateTransitionAndSignBlock(testServiceProvider, headState, block);
+                forkChoice.OnBlock(store, block);
+                nextSlotTime = nextSlotTime + timeParameters.SecondsPerSlot;
+            }
+            // halfway through slot
+            ulong futureTime = nextSlotTime + timeParameters.SecondsPerSlot / 2;
+            while (time < futureTime)
+            {
+                forkChoice.OnTick(store, time);
+                time++;
+            }
+            
+            Console.WriteLine("");
+            Console.WriteLine("***** State advanced to time {0}, ready to start tests *****", time);
+            Console.WriteLine("");
+
+            List<object[]> data = FutureEpochValidatorDutyData().ToList();
+            for (int dataIndex = 0; dataIndex < data.Count; dataIndex++)
+            {
+                object[] dataRow = data[dataIndex];
+                string publicKey = (string)dataRow[0];
+                ulong epoch = (ulong)dataRow[1];
+                bool success = (bool)dataRow[2];
+                ulong attestationSlot = (ulong)dataRow[3];
+                ulong attestationShard = (ulong)dataRow[4];
+                ulong? blockProposalSlot = (ulong?)dataRow[5];
+                
+                Console.WriteLine("** Test {0}, public key {1}, epoch {2}", dataIndex, publicKey, epoch);
+                    
+                // Act
+                ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
+                BlsPublicKey validatorPublicKey = new BlsPublicKey(publicKey);
+                Epoch targetEpoch = new Epoch(epoch);
+
+                // failure expected
+                if (!success)
+                {
+                    Should.Throw<Exception>(async () =>
+                    {
+                        ValidatorDuty validatorDuty =
+                            await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
+                        Console.WriteLine(
+                            "Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
+                            validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot,
+                            (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                    });
+                    continue;
+                }
+
+                ValidatorDuty validatorDuty =
+                    await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
+                Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
+                    validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+
+                // Assert
+                validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
+
+                Slot expectedBlockProposalSlot =
+                    blockProposalSlot.HasValue ? new Slot(blockProposalSlot.Value) : Slot.None;
+                Slot expectedAttestationSlot = new Slot(attestationSlot);
+                Shard expectedAttestationShard = new Shard(attestationShard);
+
+                validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
+                validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
+                validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
+            }
+        }
+
+        private IEnumerable<object[]> FutureEpochValidatorDutyData()
+        {
+            // TODO: Values not validated against manual check or another client; just set based on first run.
+            // invalid tests
+            yield return new object[]
+            {
+                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+                6uL, false, 0uL, 0uL, null
+            };
+            yield return new object[]
+            {
+                "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
+                4uL, false, 0uL, 0uL, null
+            };
+            // epoch 0 tests
+//            yield return new object[]
+//            {
+//                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+//                0uL, true, 6uL, 1uL, null
+//            };
+//            // epoch 1 tests
+//            yield return new object[]
+//            {
+//                "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
+//                1uL, true, 14uL, 1uL, null
+//            };
+            // epoch 10 tests
+            yield return new object[]
+            {
+                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+                4uL, true, 36uL, 1uL, null
+            };
+            yield return new object[]
+            {
+                "0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224",
+                4uL, true, 35uL, 1uL, null
+            };
+            // epoch 11 tests
+            yield return new object[]
+            {
+                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+                5uL, true, 40uL, 1uL, null
+            };
         }
     }
 }
