@@ -57,6 +57,8 @@ namespace Nethermind.BeaconNode
         
         public bool CheckIfValidatorActive(BeaconState state, ValidatorIndex validatorIndex)
         {
+            if ((int) validatorIndex >= state.Validators.Count) return false;
+            
             Validator validator = state.Validators[(int)validatorIndex];
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             bool isActive = _beaconChainUtility.IsActiveValidator(validator, currentEpoch);
