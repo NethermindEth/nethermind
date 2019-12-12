@@ -90,9 +90,17 @@ namespace Nethermind.BeaconNode.Tests
 
         [DataTestMethod]
         // TODO: Values not validated against manual check or another client; just set based on first run.
-        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 6uL, 1uL, null)]
+        // invalid tests
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 2uL, false, 0uL, 0uL, null)]
         [DataRow("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", 0uL, false, 0uL, 0uL, null)]
+        // epoch 0 tests
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 6uL, 1uL, null)]
+        [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 0uL, true, 0uL, 0uL, null)]
+        [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 0uL, true, 2uL, 1uL, null)]
+        // epoch 1 tests
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 1uL, true, 10uL, 0uL, null)]
+        [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 1uL, true, 14uL, 1uL, null)]
+        [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 1uL, true, 8uL, 1uL, null)]
         public async Task BasicValidatorDuty(string publicKey, ulong epoch,  bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
