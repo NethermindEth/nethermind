@@ -200,6 +200,7 @@ namespace Nethermind.BeaconNode
                 nextSlot += Slot.One;
             }
 
+            // HACK: Shards were removed from Phase 0, but analogy is committee index, so use for initial testing.
             Shard attestationShard = new Shard((ulong)attestationCommitteeIndex);
             ValidatorDuty validatorDuty =
                 new ValidatorDuty(validatorPublicKey, attestationSlot, attestationShard, blockProposalSlot);
