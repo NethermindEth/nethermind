@@ -86,8 +86,9 @@ namespace Nethermind.BeaconNode
                     $"Committee epoch cannot be greater than next epoch {nextEpoch}.");
             }
 
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
-            ulong endSlot = startSlot + _timeParameterOptions.CurrentValue.SlotsPerEpoch;
+            ulong endSlot = startSlot + timeParameters.SlotsPerEpoch;
             for (Slot slot = startSlot; slot < endSlot; slot += Slot.One)
             {
                 ulong committeeCount = _beaconStateAccessor.GetCommitteeCountAtSlot(state, slot);
@@ -135,8 +136,9 @@ namespace Nethermind.BeaconNode
                     $"Duties cannot look ahead more than the next epoch {nextEpoch}.");
             }
 
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
-            Slot endSlot = startSlot + new Slot(_timeParameterOptions.CurrentValue.SlotsPerEpoch);
+            Slot endSlot = startSlot + new Slot(timeParameters.SlotsPerEpoch);
             BeaconState state;
             if (epoch == nextEpoch)
             {
@@ -187,7 +189,7 @@ namespace Nethermind.BeaconNode
                 while (true)
                 {
                     previousSlot -= Slot.One;
-                    int index = (int) (previousSlot % _timeParameterOptions.CurrentValue.SlotsPerEpoch);
+                    int index = (int) (previousSlot % timeParameters.SlotsPerHistoricalRoot);
                     Hash32 previousRoot = blockRoots[index];
                     if (!store.TryGetBlockState(previousRoot, out BeaconState previousState))
                     {

@@ -276,11 +276,11 @@ namespace Nethermind.BeaconNode.Tests
                 0uL, true, 6uL, 1uL, null
             };
             // epoch 1 tests
-//            yield return new object[]
-//            {
-//                "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
-//                1uL, true, 14uL, 1uL, null
-//            };
+            yield return new object[]
+            {
+                "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
+                1uL, true, 14uL, 1uL, null
+            };
             // epoch 10 tests
             yield return new object[]
             {
