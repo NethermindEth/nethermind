@@ -31,17 +31,20 @@ namespace Nethermind.BeaconNode
         private readonly ClientVersion _clientVersion;
         private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
+        private readonly ValidatorAssignments _validatorAssignments;
         private readonly BlockProducer _blockProducer;
 
         public BeaconNodeFacade(            
             ClientVersion clientVersion,
             ForkChoice forkChoice, 
             IStoreProvider storeProvider,
+            ValidatorAssignments validatorAssignments,
             BlockProducer blockProducer)
         {
             _clientVersion = clientVersion;
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
+            _validatorAssignments = validatorAssignments;
             _blockProducer = blockProducer;
         }
         
@@ -67,11 +70,18 @@ namespace Nethermind.BeaconNode
             return state.Fork;
         }
 
-        public Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys)
+        public async Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch)
         {
-            throw new NotImplementedException();
+            // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
+            List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
+            foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
+            {
+                ValidatorDuty validatorDuty = await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch);
+                validatorDuties.Add(validatorDuty);
+            }
+            return validatorDuties;
         }
-
+        
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
         {
             return await _blockProducer.NewBlockAsync(slot, randaoReveal);

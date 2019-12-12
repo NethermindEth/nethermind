@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
@@ -74,9 +75,22 @@ namespace Nethermind.BeaconNode.OApi
         /// <summary>Get validator duties for the requested validators.</summary>
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
-        public Task<ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, int? epoch)
+        public async Task<ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, int? epoch)
         {
-            throw new NotImplementedException();
+            IEnumerable<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x));
+            Epoch targetEpoch = epoch.HasValue ? new Epoch((ulong)epoch) : Epoch.None;
+            IList<BeaconNode.ValidatorDuty> duties = await _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch);
+            List<ValidatorDuty> result = duties.Select(x =>
+                {
+                    ValidatorDuty validatorDuty = new ValidatorDuty();
+                    validatorDuty.Validator_pubkey = x.ValidatorPublicKey.Bytes;
+                    validatorDuty.Attestation_slot = (int)x.AttestationSlot;
+                    validatorDuty.Attestation_shard = (int)(ulong)x.AttestationShard;
+                    validatorDuty.Block_proposal_slot = x.BlockProposalSlot == Slot.None ? null : (int?)x.BlockProposalSlot;
+                    return validatorDuty;
+                })
+                .ToList();
+            return result;
         }
 
         /// <summary>Get fork information from running beacon node.</summary>

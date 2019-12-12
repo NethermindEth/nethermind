@@ -35,14 +35,10 @@ namespace Nethermind.BeaconNode
         Task<ulong> GetGenesisTimeAsync();
         Task<bool> GetIsSyncingAsync();
         Task<Fork> GetNodeForkAsync();
-        Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys);
+        Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch);
         Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal);
 //        bool PublishBlock(BeaconBlock block);
 //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
 //        bool PublishAttestation(BeaconBlock block);
-    }
-
-    public class ValidatorDuty
-    {
     }
 }

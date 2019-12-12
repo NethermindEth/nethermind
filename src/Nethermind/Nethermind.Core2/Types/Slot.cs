@@ -131,8 +131,11 @@ namespace Nethermind.Core2.Types
         {
             return (int) slot.Number;
         }
-
-        public static uint Seconds { get; set; } = 12;
+        
+        public static Slot Min(Slot val1, Slot val2)
+        {
+            return val1 <= val2 ? val1 : val2;
+        }
 
         public override string ToString()
         {
