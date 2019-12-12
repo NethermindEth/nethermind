@@ -62,8 +62,10 @@ namespace Nethermind.BeaconNode.Tests
             validatorActive.ShouldBe(shouldBeActive);
         }
 
-        [TestMethod]
-        public void BasicGetCommitteeAssignment()
+        [DataTestMethod]
+        // TODO: Values not validated against manual check or another client; just set based on first run.
+        [DataRow(0uL, 6uL, 1uL)]
+        public void BasicGetCommitteeAssignment(ulong index, ulong slot, ulong committeeIndex)
         {
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
@@ -73,20 +75,23 @@ namespace Nethermind.BeaconNode.Tests
             
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
-            ValidatorIndex validatorIndex = new ValidatorIndex(0);
+            ValidatorIndex validatorIndex = new ValidatorIndex(index);
             CommitteeAssignment committeeAssignment = validatorAssignments.GetCommitteeAssignment(state, Epoch.Zero, validatorIndex);
 
             // Assert
             Console.WriteLine("Validator [{0}] {1} in slot {2} committee {3}", 
                 validatorIndex, state.Validators[(int)validatorIndex].PublicKey, committeeAssignment.Slot, committeeAssignment.CommitteeIndex);
             
-            // TODO: Values not validated against manual check or another client; just set based on first run.
-            committeeAssignment.Slot.ShouldBe(new Slot(6));
-            committeeAssignment.CommitteeIndex.ShouldBe(new CommitteeIndex(1));
+            var expectedSlot = new Slot(slot);
+            var expectedCommitteeIndex = new CommitteeIndex(committeeIndex);
+            committeeAssignment.Slot.ShouldBe(expectedSlot);
+            committeeAssignment.CommitteeIndex.ShouldBe(expectedCommitteeIndex);
         }
 
-        [TestMethod]
-        public async Task BasicValidatorDuty()
+        [DataTestMethod]
+        // TODO: Values not validated against manual check or another client; just set based on first run.
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 6uL, 1uL, null)]
+        public async Task BasicValidatorDuty(string publicKey, ulong epoch,  bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
@@ -107,15 +112,35 @@ namespace Nethermind.BeaconNode.Tests
 
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
-            BlsPublicKey validatorPublicKey = new BlsPublicKey("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb");
+            BlsPublicKey validatorPublicKey = new BlsPublicKey(publicKey);
+            Epoch targetEpoch = new Epoch(epoch);
+            
+            // failure expected
+            if (!success)
+            {
+                Should.Throw<Exception>( async () =>
+                {
+                    ValidatorDuty validatorDuty = await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, Epoch.Zero);
+                    Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}", 
+                        validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                });
+                return;
+            }
+            
             ValidatorDuty validatorDuty = await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, Epoch.Zero);
+            Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}", 
+                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
 
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
-            // TODO: Values not validated against manual check or another client; just set based on first run.
-            validatorDuty.BlockProposalSlot.ShouldBe(Slot.None);
-            validatorDuty.AttestationSlot.ShouldBe(new Slot(6));
-            validatorDuty.AttestationShard.ShouldBe(new Shard(1));
+
+            Slot expectedBlockProposalSlot = blockProposalSlot.HasValue ? new Slot(blockProposalSlot.Value) : Slot.None;
+            Slot expectedAttestationSlot = new Slot(attestationSlot);
+            Shard expectedAttestationShard = new Shard(attestationShard);
+            
+            validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
+            validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
+            validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
         }
     }
 }
