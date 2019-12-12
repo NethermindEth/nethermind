@@ -171,8 +171,9 @@ namespace Nethermind.BeaconNode.Tests
             TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             ulong time = state.GenesisTime + 1;
             ulong nextSlotTime = state.GenesisTime + timeParameters.SecondsPerSlot;
-            // halfway through epoch 4
-            ulong slots = 4uL * timeParameters.SlotsPerEpoch + timeParameters.SlotsPerEpoch / 2;
+            // half way through epoch 4
+            ulong futureEpoch = 4uL;
+            ulong slots = futureEpoch * timeParameters.SlotsPerEpoch + timeParameters.SlotsPerEpoch / 2;
             for (ulong slot = 1; slot < slots; slot++)
             {
                 while (time < nextSlotTime)
@@ -199,7 +200,7 @@ namespace Nethermind.BeaconNode.Tests
             }
             
             Console.WriteLine("");
-            Console.WriteLine("***** State advanced to time {0}, ready to start tests *****", time);
+            Console.WriteLine("***** State advanced to epoch {0}, slot {1}, time {2}, ready to start tests *****", futureEpoch, state.Slot, store.Time);
             Console.WriteLine("");
 
             List<object[]> data = FutureEpochValidatorDutyData().ToList();
@@ -289,8 +290,23 @@ namespace Nethermind.BeaconNode.Tests
             };
             yield return new object[]
             {
+                "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
+                4uL, true, 34uL, 1uL, null
+            };
+            yield return new object[]
+            {
                 "0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224",
                 4uL, true, 35uL, 1uL, null
+            };
+            yield return new object[]
+            {
+                "0xac9b60d5afcbd5663a8a44b7c5a02f19e9a77ab0a35bd65809bb5c67ec582c897feb04decc694b13e08587f3ff9b5b60",
+                4uL, true, 39uL, 1uL, null
+            };
+            yield return new object[]
+            {
+                "0xb0e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc",
+                4uL, true, 34uL, 0uL, null
             };
             // epoch 11 tests
             yield return new object[]
