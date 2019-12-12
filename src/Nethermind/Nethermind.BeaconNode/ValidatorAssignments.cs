@@ -150,7 +150,7 @@ namespace Nethermind.BeaconNode
             }
             else
             {
-                Hash32 endRoot = _forkChoice.GetAncestor(store, head, endSlot);
+                Hash32 endRoot = _forkChoice.GetAncestor(store, head, endSlot - Slot.One);
                 if (!store.TryGetBlockState(endRoot, out BeaconState endState))
                 {
                     throw new Exception($"State {endRoot} for slot {endSlot} not found.");
@@ -182,21 +182,25 @@ namespace Nethermind.BeaconNode
             // Check historical states
             if (startSlot < state.Slot)
             {
-                Slot previousSlot = state.Slot - Slot.One;
+                Slot previousSlot = state.Slot;
                 IReadOnlyList<Hash32> blockRoots = state.BlockRoots;
-                while (previousSlot >= startSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
+                while (true)
                 {
+                    previousSlot -= Slot.One;
                     int index = (int) (previousSlot % _timeParameterOptions.CurrentValue.SlotsPerEpoch);
-                    Hash32 historicalRoot = blockRoots[index];
-                    if (!store.TryGetBlockState(historicalRoot, out BeaconState historicalState))
+                    Hash32 previousRoot = blockRoots[index];
+                    if (!store.TryGetBlockState(previousRoot, out BeaconState previousState))
                     {
-                        throw new Exception($"Historical state {historicalRoot} for slot {previousSlot} not found.");
+                        throw new Exception($"Historical state {previousRoot} for slot {previousSlot} not found.");
                     }
 
                     (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
-                        CheckStateDuty(historicalState!, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
-
-                    previousSlot -= Slot.One;
+                        CheckStateDuty(previousState!, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
+                    
+                    if (previousSlot <= startSlot || (attestationSlot != Slot.None && blockProposalSlot != Slot.None))
+                    {
+                        break;
+                    }
                 }
             }
 

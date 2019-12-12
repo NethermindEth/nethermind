@@ -231,7 +231,7 @@ namespace Nethermind.BeaconNode.Tests
                             "Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}",
                             validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot,
                             (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
-                    });
+                    }, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
                     continue;
                 }
 
@@ -249,9 +249,9 @@ namespace Nethermind.BeaconNode.Tests
                 Slot expectedAttestationSlot = new Slot(attestationSlot);
                 Shard expectedAttestationShard = new Shard(attestationShard);
 
-                validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot);
-                validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
-                validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
+                validatorDuty.BlockProposalSlot.ShouldBe(expectedBlockProposalSlot, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
+                validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
+                validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
             }
         }
 
@@ -270,12 +270,12 @@ namespace Nethermind.BeaconNode.Tests
                 4uL, false, 0uL, 0uL, null
             };
             // epoch 0 tests
-//            yield return new object[]
-//            {
-//                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-//                0uL, true, 6uL, 1uL, null
-//            };
-//            // epoch 1 tests
+            yield return new object[]
+            {
+                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
+                0uL, true, 6uL, 1uL, null
+            };
+            // epoch 1 tests
 //            yield return new object[]
 //            {
 //                "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
