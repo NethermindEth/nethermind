@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Synchronization
                             if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing.", bodiesTask.Exception);
                         }
 
-                        throw new EthSynchronizationException($"{entities} task faulted", bodiesTask.Exception);
+                        throw new EthSynchronizationException($"{entities} task faulted", t.Exception);
                     }
 
                     return default;
