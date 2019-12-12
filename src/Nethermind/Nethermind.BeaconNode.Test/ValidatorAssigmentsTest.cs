@@ -14,10 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Types;
@@ -54,6 +57,28 @@ namespace Nethermind.BeaconNode.Tests
             // Assert
             validatorActive.ShouldBe(shouldBeActive);
         }
-        
+
+        [TestMethod]
+        public void BasicGetCommitteeAssignment()
+        {
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
+            
+            // Act
+            ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
+            ValidatorIndex validatorIndex = new ValidatorIndex(0);
+            CommitteeAssignment committeeAssignment = validatorAssignments.GetCommitteeAssignment(state, Epoch.Zero, validatorIndex);
+
+            // Assert
+            Console.WriteLine("Validator [{0}] {1} in slot {2} committee {3}", 
+                validatorIndex, state.Validators[(int)validatorIndex].PublicKey, committeeAssignment.Slot, committeeAssignment.CommitteeIndex);
+            
+            // TODO: Values not validated against manual check or another client; just set based on first run.
+            committeeAssignment.Slot.ShouldBe(new Slot(6));
+            committeeAssignment.CommitteeIndex.ShouldBe(new CommitteeIndex(1));
+        }
     }
 }
