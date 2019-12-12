@@ -57,7 +57,10 @@ namespace Nethermind.BeaconNode
 
         public bool CheckIfValidatorActive(BeaconState state, ValidatorIndex validatorIndex)
         {
-            if ((int) validatorIndex >= state.Validators.Count) return false;
+            if ((int) validatorIndex >= state.Validators.Count)
+            {
+                return false;
+            }
 
             Validator validator = state.Validators[(int) validatorIndex];
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
@@ -77,8 +80,10 @@ namespace Nethermind.BeaconNode
         {
             Epoch nextEpoch = _beaconStateAccessor.GetCurrentEpoch(state) + Epoch.One;
             if (epoch > nextEpoch)
+            {
                 throw new ArgumentOutOfRangeException(nameof(epoch), epoch,
                     $"Committee epoch cannot be greater than next epoch {nextEpoch}.");
+            }
 
             Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
             ulong endSlot = startSlot + _timeParameterOptions.CurrentValue.SlotsPerEpoch;
@@ -105,20 +110,29 @@ namespace Nethermind.BeaconNode
         public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch epoch)
         {
             if (!_storeProvider.TryGetStore(out IStore retrievedStore))
+            {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
+            }
 
             IStore store = retrievedStore!;
             Hash32 head = await _forkChoice.GetHeadAsync(store);
-            if (!store.TryGetBlockState(head, out BeaconState headState)) throw new Exception($"Head state {head} not found.");
+            if (!store.TryGetBlockState(head, out BeaconState headState))
+            {
+                throw new Exception($"Head state {head} not found.");
+            }
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(headState!);
             Epoch nextEpoch = currentEpoch + Epoch.One;
 
             if (epoch == Epoch.None)
+            {
                 epoch = currentEpoch;
+            }
             else if (epoch > nextEpoch)
+            {
                 throw new ArgumentOutOfRangeException(nameof(epoch), epoch,
                     $"Duties cannot look ahead more than the next epoch {nextEpoch}.");
+            }
 
             Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
             Slot endSlot = startSlot + new Slot(_timeParameterOptions.CurrentValue.SlotsPerEpoch);
@@ -160,7 +174,9 @@ namespace Nethermind.BeaconNode
                 int index = (int) (previousSlot % _timeParameterOptions.CurrentValue.SlotsPerEpoch);
                 Hash32 historicalRoot = blockRoots[index];
                 if (!store.TryGetBlockState(historicalRoot, out BeaconState historicalState))
+                {
                     throw new Exception($"Historical state {historicalRoot} for slot {previousSlot} not found.");
+                }
 
                 (attestationSlot, blockProposalSlot) =
                     CheckStateDuty(historicalState!, validatorIndex, attestationSlot, blockProposalSlot);
@@ -204,7 +220,10 @@ namespace Nethermind.BeaconNode
                 {
                     IReadOnlyList<ValidatorIndex> committee =
                         _beaconStateAccessor.GetBeaconCommittee(state, state.Slot, index);
-                    if (committee.Contains(validatorIndex)) attestationSlot = state.Slot;
+                    if (committee.Contains(validatorIndex))
+                    {
+                        attestationSlot = state.Slot;
+                    }
                 }
             }
 
@@ -212,7 +231,10 @@ namespace Nethermind.BeaconNode
             if (blockProposalSlot == Slot.None)
             {
                 bool isProposer = IsProposer(state, validatorIndex);
-                if (isProposer) blockProposalSlot = state.Slot;
+                if (isProposer)
+                {
+                    blockProposalSlot = state.Slot;
+                }
             }
 
             return (attestationSlot, blockProposalSlot);
@@ -221,8 +243,12 @@ namespace Nethermind.BeaconNode
         private ValidatorIndex FindValidatorIndexByPublicKey(BeaconState state, BlsPublicKey validatorPublicKey)
         {
             for (int index = 0; index < state.Validators.Count; index++)
+            {
                 if (state.Validators[index].PublicKey.Equals(validatorPublicKey))
+                {
                     return new ValidatorIndex((ulong) index);
+                }
+            }
 
             return ValidatorIndex.None;
         }
