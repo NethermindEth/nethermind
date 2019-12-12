@@ -100,6 +100,7 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 Eip1108Transition = chainSpecJson.Params.Eip1108Transition,
                 Eip1283Transition = chainSpecJson.Params.Eip1283Transition,
                 Eip1283DisableTransition = chainSpecJson.Params.Eip1283DisableTransition,
+                Eip1283ReenableTransition = chainSpecJson.Params.Eip1283ReenableTransition,
                 Eip1344Transition = chainSpecJson.Params.Eip1344Transition,
                 Eip1884Transition = chainSpecJson.Params.Eip1884Transition,
                 Eip2028Transition = chainSpecJson.Params.Eip2028Transition,
