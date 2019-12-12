@@ -38,9 +38,9 @@
     "eip1283DisableTransition": 2508800,
     "eip1283ReenableTransition": 7298030,
     "eip1344Transition": 7298030,
+    "eip1706Transition": 7298030,
     "eip1884Transition": 7298030,
     "eip2028Transition": 7298030,
-    "eip2200Transition": 7298030,
     "registrar": "0x1ec97dc137f5168af053c24460a1200502e1a9d2"
   },
   "genesis": {
