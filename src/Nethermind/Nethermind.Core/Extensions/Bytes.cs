@@ -602,26 +602,53 @@ namespace Nethermind.Core.Extensions
             
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0);
             StateSmall stateToPass = new StateSmall(bytes, withZeroX);
+            
             return string.Create(length, stateToPass, (chars, state) =>
             {
-                int offset0x = 0;
+                ref var charsRef = ref MemoryMarshal.GetReference(chars);
+
                 if (state.WithZeroX)
                 {
-                    chars[0] = '0';
-                    chars[1] = 'x';
-                    offset0x += 2;
+                    charsRef = '0';
+                    Unsafe.Add(ref charsRef, 1) = 'x';
+                    charsRef = ref Unsafe.Add(ref charsRef, 2);
                 }
 
-                Span<uint> charsAsInts = MemoryMarshal.Cast<char, uint>(chars.Slice(offset0x));
-                int targetLength = state.Bytes.Length;
-                for (int i = 0; i < targetLength; i += 1)
+                ref var input = ref state.Bytes[0];
+                ref var output = ref Unsafe.As<char, uint>(ref charsRef);
+
+                int toProcess = state.Bytes.Length;
+
+                var lookup32 = Lookup32;
+                while (toProcess > 8)
                 {
-                    uint val = Lookup32[state.Bytes[i]];
-                    charsAsInts[i] = val;
+                    output = lookup32[input];
+                    Unsafe.Add(ref output, 1) = lookup32[Unsafe.Add(ref input, 1)];
+                    Unsafe.Add(ref output, 2) = lookup32[Unsafe.Add(ref input, 2)];
+                    Unsafe.Add(ref output, 3) = lookup32[Unsafe.Add(ref input, 3)];
+                    Unsafe.Add(ref output, 4) = lookup32[Unsafe.Add(ref input, 4)];
+                    Unsafe.Add(ref output, 5) = lookup32[Unsafe.Add(ref input, 5)];
+                    Unsafe.Add(ref output, 6) = lookup32[Unsafe.Add(ref input, 6)];
+                    Unsafe.Add(ref output, 7) = lookup32[Unsafe.Add(ref input, 7)];
+
+                    output = ref Unsafe.Add(ref output, 8);
+                    input = ref Unsafe.Add(ref input, 8);
+                    
+                    toProcess -= 8;
+                }
+
+                while (toProcess > 0)
+                {
+                    output = lookup32[input];
+
+                    output = ref Unsafe.Add(ref output, 1);
+                    input = ref Unsafe.Add(ref input, 1);
+
+                    toProcess -= 1;
                 }
             });
         }
-        
+
         [DebuggerStepThrough]
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
