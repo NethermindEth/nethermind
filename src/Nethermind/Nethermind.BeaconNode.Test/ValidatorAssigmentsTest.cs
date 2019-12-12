@@ -91,6 +91,8 @@ namespace Nethermind.BeaconNode.Tests
         [DataTestMethod]
         // TODO: Values not validated against manual check or another client; just set based on first run.
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 0uL, true, 6uL, 1uL, null)]
+        [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 2uL, false, 0uL, 0uL, null)]
+        [DataRow("0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0", 0uL, false, 0uL, 0uL, null)]
         public async Task BasicValidatorDuty(string publicKey, ulong epoch,  bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
@@ -120,16 +122,16 @@ namespace Nethermind.BeaconNode.Tests
             {
                 Should.Throw<Exception>( async () =>
                 {
-                    ValidatorDuty validatorDuty = await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, Epoch.Zero);
+                    ValidatorDuty validatorDuty = await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
                     Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}", 
-                        validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                        validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, (ulong)validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
                 });
                 return;
             }
             
-            ValidatorDuty validatorDuty = await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, Epoch.Zero);
+            ValidatorDuty validatorDuty = await validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, targetEpoch);
             Console.WriteLine("Validator {0}, epoch {1}: attestation slot {2}, shard {3}, proposal slot {4}", 
-                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                validatorPublicKey, targetEpoch, validatorDuty.AttestationSlot, (ulong)validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
 
             // Assert
             validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);

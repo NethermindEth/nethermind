@@ -152,7 +152,9 @@ namespace Nethermind.BeaconNode
             {
                 Hash32 endRoot = _forkChoice.GetAncestor(store, head, endSlot);
                 if (!store.TryGetBlockState(endRoot, out BeaconState endState))
+                {
                     throw new Exception($"State {endRoot} for slot {endSlot} not found.");
+                }
 
                 state = endState!;
             }
@@ -162,7 +164,17 @@ namespace Nethermind.BeaconNode
             Slot blockProposalSlot = Slot.None;
 
             ValidatorIndex validatorIndex = FindValidatorIndexByPublicKey(state, validatorPublicKey);
+            if (validatorIndex == ValidatorIndex.None)
+            {
+                throw new ArgumentOutOfRangeException(nameof(validatorPublicKey), validatorPublicKey, $"Could not find specified validator at epoch {epoch}.");
+            }
 
+            bool validatorActive = CheckIfValidatorActive(state, validatorIndex);
+            if (!validatorActive)
+            {
+                throw new Exception($"Validator {validatorPublicKey} (index {validatorIndex}) not not active at epoch {epoch}.");
+            }
+            
             // Check state
             (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
                 CheckStateDuty(state, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
