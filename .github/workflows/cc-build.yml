@@ -19,7 +19,9 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v2-beta
+    - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
@@ -31,9 +33,15 @@ jobs:
     - name: Nethermind.AuRa.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.AuRa.Test
+    - name: Nethermind.BeaconNode.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.BeaconNode.Test
     - name: Nethermind.Blockchain.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Blockchain.Test
+    - name: Nethermind.Bls.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Bls.Test
     - name: Nethermind.Clique.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Clique.Test
@@ -49,6 +57,9 @@ jobs:
     - name: Nethermind.Facade.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Facade.Test
+    - name: Nethermind.Logging.NLog.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Logging.NLog.Test
     - name: Nethermind.JsonRpc.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.JsonRpc.Test
@@ -67,6 +78,9 @@ jobs:
     - name: Nethermind.Ssz.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Ssz.Test
+    - name: Nethermind.Core2.Test
+      run: |
+        dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Core2.Test
     - name: Nethermind.Store.Test
       run: |
         dotnet test -c Release $EXCLUDE_TEST_PROJECTS src/Nethermind/Nethermind.Store.Test
@@ -94,7 +108,9 @@ jobs:
       #  os: [ubuntu-latest, windows-latest, macOS]
         os: [ubuntu-latest]
     steps:
-    - uses: actions/checkout@v2-beta
+    - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
     - name: Updating submodules
       run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Basic.Test
