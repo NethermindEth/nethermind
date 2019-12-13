@@ -21,7 +21,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
+        fetch-depth: 10000
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages
@@ -98,7 +98,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
-        fetch-depth: 0
+        fetch-depth: 10000
     - name: Updating submodules
       run: git -c submodule."src/eth2.0-spec-tests".update=none submodule update --init
     - name: Ethereum.Basic.Test
