@@ -167,6 +167,8 @@ namespace Nethermind.Core.Test.Builders
                     .TestObject;
             }
 
+            current.Header.AuRaStep = blockIndex;
+            
             return current;
         }
 

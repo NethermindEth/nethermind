@@ -26,6 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
+using Nito.Collections;
 
 namespace Nethermind.AuRa
 {
@@ -87,11 +88,11 @@ namespace Nethermind.AuRa
             if (finalizedBlocks.Any())
             {
                 if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
-                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)} : {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
+                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
                         : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
                 
+                LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
                 BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
-                LastFinalizedBlockLevel = finalizedBlocks[finalizedBlocks.Count - 1].Number;
             }
         }
         
@@ -108,28 +109,36 @@ namespace Nethermind.AuRa
             var originalBlock = block;
             
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
-            bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.CountWith(block) >= minSealersForFinalization;
+            bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
 
             List<BlockHeader> finalizedBlocks;
             var isConsecutiveBlock = IsConsecutiveBlock();
-            
-            // Optimization:
-            // if block is consecutive than we can just check if this sealer will cause any blocks get finalized
-            // using cache of vallidators of not yet finalized blocks from previous block operation
-            if (isConsecutiveBlock && !ConsecutiveBlockWillFinalizeBlocks())
+            HashSet<Address> validators = null;
+            bool iterateThroughBlocks = true;
+            // For consecutive blocks we can do a lot of optimizations.
+            if (isConsecutiveBlock)
             {
-                finalizedBlocks = Empty;
                 _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
+                
+                // if block is consecutive than we can just check if this sealer will cause any blocks get finalized
+                // using cache of validators of not yet finalized blocks from previous block operation
+                iterateThroughBlocks = ConsecutiveBlockWillFinalizeBlocks();
+
+                if (iterateThroughBlocks)
+                {
+                    // if its consecutive block we already checked there will be finalization of some blocks. Lets start processing directly from the first block that will be finalized.
+                    block = _consecutiveValidatorsForNotYetFinalizedBlocks.GetBlockThatWillBeFinalized(out validators, minSealersForFinalization) ?? block;
+                }
             }
             else
             {
-                if (!isConsecutiveBlock)
-                {
-                    _consecutiveValidatorsForNotYetFinalizedBlocks.Clear();
-                }
+                _consecutiveValidatorsForNotYetFinalizedBlocks.Clear();
+                validators = new HashSet<Address>();
+            }
 
+            if (iterateThroughBlocks)
+            {
                 finalizedBlocks = new List<BlockHeader>();
-                var validators = new HashSet<Address>();
                 var originalBlockSealer = originalBlock.Beneficiary;
                 bool ancestorsNotYetRemoved = true;
 
@@ -137,12 +146,11 @@ namespace Nethermind.AuRa
                 {
                     var (chainLevel, blockInfo) = GetBlockInfo(block);
 
-                    // Optimization:
                     // if this block sealer seals for 2nd time than this seal can not finalize any blocks
                     // as the 1st seal or some seal between 1st seal and current one would already finalize some of them
                     bool OriginalBlockSealerSignedOnlyOnce() => !validators.Contains(originalBlockSealer) || block.Beneficiary != originalBlockSealer;
                     
-                    while (!blockInfo.IsFinalized && OriginalBlockSealerSignedOnlyOnce())
+                    while (!blockInfo.IsFinalized && (isConsecutiveBlock || OriginalBlockSealerSignedOnlyOnce()))
                     {
                         validators.Add(block.Beneficiary);
                         if (validators.Count >= minSealersForFinalization)
@@ -171,6 +179,10 @@ namespace Nethermind.AuRa
                 }
 
                 finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
+            }
+            else
+            {
+                finalizedBlocks = Empty;
             }
 
             _lastProcessedBlockHash = originalBlock.Hash;
@@ -222,6 +234,55 @@ namespace Nethermind.AuRa
         */
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
+        
+        public long GetLastLevelFinalizedBy(Keccak headHash)
+        {
+            var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = _auRaValidator.MinSealersForFinalization;
+            while (block.Number > 0)
+            {
+                validators.Add(block.Beneficiary);
+                if (validators.Count >= minSealersForFinalization)
+                {
+                    return block.Number;
+                }
+
+                block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+            }
+            
+            return 0;
+        }
+
+        public long? GetFinalizedLevel(long blockLevel)
+        {
+            BlockInfo GetBlockInfo(long level)
+            {
+                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(level);
+                return  chainLevelInfo?.MainChainBlock ?? chainLevelInfo?.BlockInfos[0];
+            }
+
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = _auRaValidator.MinSealersForFinalization;
+            var blockInfo = GetBlockInfo(blockLevel);
+            while (blockInfo != null)
+            {
+                var block = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+                if (_auRaValidator.IsValidSealer(block.Beneficiary, block.AuRaStep.Value))
+                {
+                    validators.Add(block.Beneficiary);
+                    if (validators.Count >= minSealersForFinalization)
+                    {
+                        return block.Number;
+                    }
+                }
+
+                blockLevel++;
+                blockInfo = GetBlockInfo(blockLevel);
+            }
+
+            return null;
+        }
 
         public long LastFinalizedBlockLevel
         {
@@ -245,16 +306,24 @@ namespace Nethermind.AuRa
         private class ValidationStampCollection
         {
             private readonly IDictionary<Address, int> _validatorCount = new Dictionary<Address, int>();
-            [Todo("Optimization: circular sorted list?")]
-            private readonly SortedDictionary<long, Address> _blockValidator = new SortedDictionary<long, Address>();
-            
-            public int CountWith(BlockHeader block) => _validatorCount.ContainsKey(block.Beneficiary) ? _validatorCount.Count : _validatorCount.Count + 1;
+            private readonly Deque<BlockHeader> _blocks = new Deque<BlockHeader>();
+
+            public int Count => _validatorCount.Count;
 
             public void Add(BlockHeader blockHeader)
             {
-                if (!_blockValidator.ContainsKey(blockHeader.Number))
+                bool DoesNotContainBlock() => _blocks.Count == 0 || _blocks[0].Number > blockHeader.Number || _blocks[^1].Number < blockHeader.Number;
+
+                if (DoesNotContainBlock())
                 {
-                    _blockValidator[blockHeader.Number] = blockHeader.Beneficiary;
+                    if (_blocks.Count == 0 || _blocks[0].Number < blockHeader.Number)
+                    {
+                        _blocks.AddToFront(blockHeader);
+                    }
+                    else
+                    {
+                        _blocks.AddToBack(blockHeader);
+                    }
                     int count = _validatorCount.TryGetValue(blockHeader.Beneficiary, out count) ? count + 1 : 1;
                     _validatorCount[blockHeader.Beneficiary] = count;
                 }
@@ -262,28 +331,49 @@ namespace Nethermind.AuRa
 
             public void RemoveAncestors(long blockNumber)
             {
-                var itemsToDelete = _blockValidator.TakeWhile(k => k.Key <= blockNumber).ToArray();
-                for (int i = 0; i < itemsToDelete.Length; i++)
+                for (int i = _blocks.Count - 1; i >= 0; i--)
                 {
-                    var item = itemsToDelete[i];
-                    var setCount = _validatorCount[item.Value];
-                    if (setCount == 1)
+                    var item = _blocks[i];
+                    if (item.Number <= blockNumber)
                     {
-                        _validatorCount.Remove(item.Value);
+                        _blocks.RemoveFromBack();
+                        var setCount = _validatorCount[item.Beneficiary];
+                        if (setCount == 1)
+                        {
+                            _validatorCount.Remove(item.Beneficiary);
+                        }
+                        else
+                        {
+                            _validatorCount[item.Beneficiary] = setCount - 1;
+                        }
                     }
                     else
                     {
-                        _validatorCount[item.Value] = setCount - 1;
+                        break;
                     }
-
-                    _blockValidator.Remove(item.Key);
                 }
             }
 
             public void Clear()
             {
                 _validatorCount.Clear();;
-                _blockValidator.Clear();
+                _blocks.Clear();
+            }
+
+            public BlockHeader GetBlockThatWillBeFinalized(out HashSet<Address> validators, int minSealersForFinalization)
+            {
+                validators = new HashSet<Address>();
+                for (int i = 0; i < _blocks.Count; i++)
+                {
+                    var block = _blocks[i];
+                    validators.Add(block.Beneficiary);
+                    if (validators.Count >= minSealersForFinalization)
+                    {
+                        return block;
+                    }
+                }
+
+                return null;
             }
         }
     }
