@@ -135,7 +135,9 @@ namespace Nethermind.AuRa.Validators
                     bool reorganisationHappened = block.Number <= _lastProcessedBlockNumber;
                     if (reorganisationHappened)
                     {
-                        SetPendingValidators(block.Number <= CurrentPendingValidators?.BlockNumber ? null : LoadPendingValidators());
+                        var reorganisationToBlockBeforePendingValidatorsInitChange = block.Number <= CurrentPendingValidators?.BlockNumber;
+                        var pendingValidators = reorganisationToBlockBeforePendingValidatorsInitChange ? null : LoadPendingValidators();
+                        SetPendingValidators(pendingValidators);
                     }
                     else if (block.Number > _lastProcessedBlockNumber + 1) // blocks skipped, like fast sync
                     {
@@ -218,8 +220,7 @@ namespace Nethermind.AuRa.Validators
             // We are ignoring the signal if there are already pending validators. This replicates Parity behaviour which can be seen as a bug.
             if (CurrentPendingValidators == null && potentialValidators.Length > 0)
             {
-                SetPendingValidators(
-                    new PendingValidators(block.Number, block.Hash, potentialValidators)
+                SetPendingValidators(new PendingValidators(block.Number, block.Hash, potentialValidators)
                     {
                         AreFinalized = initiateChangeIsImmediatelyFinalized
                     },

@@ -162,9 +162,9 @@ namespace Nethermind.AuRa
                 public static bool operator!=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
             }
             
-            private class AuthorBLockForStep
+            private class AuthorBlockForStep
             {
-                public AuthorBLockForStep(in long step, AuthorBlock? authorBlock)
+                public AuthorBlockForStep(in long step, AuthorBlock? authorBlock)
                 {
                     Step = step;
                     AuthorBlock = authorBlock;
@@ -175,18 +175,18 @@ namespace Nethermind.AuRa
                 public ISet<AuthorBlock> AuthorBlocks { get; set; }
             }
             
-            private class StepElementComparer : IComparer<AuthorBLockForStep>
+            private class StepElementComparer : IComparer<AuthorBlockForStep>
             {
                 public static readonly StepElementComparer Instance = new StepElementComparer();
 
-                public int Compare(AuthorBLockForStep x, AuthorBLockForStep y)
+                public int Compare(AuthorBlockForStep x, AuthorBlockForStep y)
                 {
                     return x.Step.CompareTo(y.Step);
                 }
             }
             
-            private readonly List<AuthorBLockForStep> _list 
-                = new List<AuthorBLockForStep>();
+            private readonly List<AuthorBlockForStep> _list 
+                = new List<AuthorBlockForStep>();
             
             private const int CacheSizeFullRoundsMultiplier = 4;
 
@@ -219,7 +219,7 @@ namespace Nethermind.AuRa
                 }
                 else
                 {
-                    _list.Add(new AuthorBLockForStep(step, item));
+                    _list.Add(new AuthorBlockForStep(step, item));
                 }
                 
                 ClearOldCache(step, validatorCount);
@@ -227,7 +227,7 @@ namespace Nethermind.AuRa
                 return contains;
             }
 
-            private int BinarySearch(long step) => _list.BinarySearch(new AuthorBLockForStep(step, null), StepElementComparer.Instance);
+            private int BinarySearch(long step) => _list.BinarySearch(new AuthorBlockForStep(step, null), StepElementComparer.Instance);
 
             /// <summary>
             /// Remove hash records older than two full N of steps (picked as a reasonable trade-off between memory consumption and fault-tolerance).
