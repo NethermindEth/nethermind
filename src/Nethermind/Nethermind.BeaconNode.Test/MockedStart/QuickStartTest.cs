@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -113,8 +115,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             BlsPublicKey expectedKey0 = new BlsPublicKey(_testDataItems[0].PublicKey);
             state!.Validators[0].PublicKey.ShouldBe(expectedKey0);
         }
-
-
+        
         [TestMethod]
         public async Task TestValidatorKeyGeneration10()
         {
@@ -143,6 +144,97 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
                 BlsPublicKey expectedKey = new BlsPublicKey(_testDataItems[index].PublicKey);
                 state!.Validators[index].PublicKey.ShouldBe(expectedKey, $"Validator index {index}");
             }
+        }
+
+        [TestMethod]
+        public async Task TestValidatorKeyGeneration64()
+        {
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            IConfigurationRoot configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "64"})
+                .Build();
+            testServiceCollection.AddQuickStart(configuration);
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+
+            // Act
+            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
+            await quickStart.InitializeNodeAsync();
+
+            // Assert
+            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
+            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
+            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
+            {
+                throw new InvalidDataException("Missing finalized checkpoint block state");
+            }
+            state!.Validators.Count.ShouldBe(64);
+        }
+
+        
+//        [TestMethod]
+//        public async Task TestValidatorKeyGeneration10000()
+//        {
+//            Stopwatch stopwatch = Stopwatch.StartNew();
+//            
+//            // Arrange
+//            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+//            IConfigurationRoot configuration = new ConfigurationBuilder()
+//                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "10000"})
+//                .Build();
+//            testServiceCollection.AddQuickStart(configuration);
+//            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+//
+//            // Act
+//            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
+//            await quickStart.InitializeNodeAsync();
+//
+//            // Assert
+//            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
+//            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
+//            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
+//            {
+//                throw new InvalidDataException("Missing finalized checkpoint block state");
+//            }
+//            state!.Validators.Count.ShouldBe(10000);
+//            
+//            Console.WriteLine("Generate quickstart 10,000, took {0}", stopwatch.Elapsed);
+//        }
+
+        [TestMethod]
+        public async Task GeneratePrivateKey63()
+        {
+            // Hash of the validator index (as little endian bytes), is converted to integer as little endian,
+            // then that integer (after modulus) is used as the big endian private key.
+            // However, Hash(63) is small enough that it only has 31 bytes (not 32),
+            // so when writing we have to ensure the padding is at the correct end.
+            //
+            // i.e. little endian 63 = 0x3f,
+            // Hash(0x3f00000000000000000000000000000000000000000000000000000000000000)
+            //    = 0xbdd4daa5482af796206dc02a6780cfb51efe5e16c491c61bd9bf64cfc0da6e00
+            // Little endian this is 195862955980072989385619164996948568652240008241846978685122117889393611965
+            // When converted to bytes big endian (as per Eth BLS), this is only 31 bytes:
+            //      0x6edac0cf64bfd91bc691c4165efe1eb5cf80672ac06d2096f72a48a5dad4bd
+            // If written to an array/span it would pad on the right, but needs to pad on the left:
+            //      0x006edac0cf64bfd91bc691c4165efe1eb5cf80672ac06d2096f72a48a5dad4bd
+            
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            IConfigurationRoot configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "64"})
+                .Build();
+            testServiceCollection.AddQuickStart(configuration);
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+
+            // Act
+            QuickStart quickStart = testServiceProvider.GetService<INodeStart>() as QuickStart;
+            var privateKey = quickStart.GeneratePrivateKey(63);
+
+            // Assert
+            privateKey.Length.ShouldBe(32);
+            privateKey[0].ShouldBe((byte)0x00);
+            privateKey[1].ShouldBe((byte)0x6e);
+            privateKey[31].ShouldBe((byte)0xbd);
         }
 
         private class TestData
