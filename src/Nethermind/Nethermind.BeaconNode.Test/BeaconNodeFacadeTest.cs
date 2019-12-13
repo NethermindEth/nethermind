@@ -18,12 +18,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.MockedStart;
+using Nethermind.BeaconNode.Services;
+using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Tests.Helpers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -156,6 +160,56 @@ namespace Nethermind.BeaconNode.Tests
             groupsByProposalSlot[new Slot(14)].Count().ShouldBe(1);
             groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
             //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 8);
+        }
+        
+        [TestMethod]
+        public async Task QuickStart64DutiesForEpochZeroHaveExactlyOneProposerPerSlot()
+        {
+            // Arrange
+            int numberOfValidators = 63;
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            IConfigurationRoot configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = $"{numberOfValidators}"})
+                .Build();
+            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+            
+            INodeStart quickStart = testServiceProvider.GetService<INodeStart>();
+            await quickStart.InitializeNodeAsync();
+
+            IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
+            storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
+            store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state).ShouldBeTrue();
+            
+            // Act
+            Epoch targetEpoch = new Epoch(0);
+            var validatorPublicKeys = state!.Validators.Select(x => x.PublicKey);
+            IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
+            beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
+            var validatorDuties = await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch);
+
+            for (var index = 0; index < validatorDuties.Count; index++)
+            {
+                ValidatorDuty validatorDuty = validatorDuties[index];
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    index, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+            }
+            
+            // Assert
+            Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
+                .GroupBy(x => x.BlockProposalSlot)
+                .ToDictionary(x => x.Key, x => x);
+            groupsByProposalSlot[new Slot(0)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(1)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(2)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(3)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(4)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(5)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
+            groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 8);
         }
     }
 }
