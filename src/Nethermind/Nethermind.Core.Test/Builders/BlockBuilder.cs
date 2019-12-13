@@ -139,6 +139,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Bloom = bloom;
             return this;
         }
+        
+        public BlockBuilder WithAuraStep(long step)
+        {
+            TestObjectInternal.Header.AuRaStep = step;
+            return this;
+        }
 
         public BlockBuilder Genesis => WithNumber(0).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
 

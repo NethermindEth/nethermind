@@ -52,7 +52,7 @@ namespace Nethermind.AuRa.Validators
         
         private ValidatorContract _validatorContract;
         private PendingValidators _currentPendingValidators;
-        private long _lastProcessedBlockNumber = -1;
+        private long _lastProcessedBlockNumber = 0;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
@@ -161,7 +161,7 @@ namespace Nethermind.AuRa.Validators
         private PendingValidators TryGetInitChangeFromPastBlocks(Keccak blockHash)
         {
             PendingValidators pendingValidators = null;
-            var lastFinalized = _blockFinalizationManager.GetLastFinalizedBy(blockHash);
+            var lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
             var toBlock = Math.Max(lastFinalized, InitBlockNumber);
             var block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.None);
             while (block?.Number >= toBlock)

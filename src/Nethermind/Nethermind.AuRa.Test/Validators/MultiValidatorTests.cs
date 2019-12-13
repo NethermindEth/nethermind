@@ -167,15 +167,33 @@ namespace Nethermind.AuRa.Test.Validators
             EnsureInnerValidatorsCalled(i => (_innerValidators.ElementAt(i).Value, 0));
         }
         
-        [Test]
-        public void initializes_validator_when_producing_block()
+        [TestCase(16L, ExpectedResult = 11)]
+        [TestCase(21L, ExpectedResult = 21)]
+        public long initializes_validator_when_producing_block(long blockNumber)
         {
             IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
-            var blockNumber = 15;
             _block.Number = blockNumber;
             validator.PreProcess(_block, ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(1);
-            _innerValidators.Keys.First().Should().Be(blockNumber + 1);
+            return _innerValidators.Keys.First();
+        }
+        
+        [TestCase(16L, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11)]
+        [TestCase(21L, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21)]
+        [TestCase(16L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15)]
+        [TestCase(23L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22)]
+        [TestCase(16L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1)]
+        [TestCase(21L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11)]
+        public long initializes_validator_when_on_nonconsecutive_block(long blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
+        {
+            _validator = GetValidator(validatorType);
+            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
+            validator.SetFinalizationManager(_finalizationManager);
+            var validatorBlockLevel = (blockNumber - 1)/10*10;
+            _finalizationManager.GetFinalizedLevel(validatorBlockLevel).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
+            _block.Number = blockNumber;
+            validator.PreProcess(_block);
+            return _innerValidators.Keys.Last();
         }
         
         private void ProcessBlocks(long count, IAuRaValidatorProcessor validator, int blocksToFinalization)

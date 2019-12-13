@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain
     {
         long LastFinalizedBlockLevel { get; }
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
-        long GetLastFinalizedBy(Keccak headHash);
+        long GetLastLevelFinalizedBy(Keccak headHash);
         long? GetFinalizedLevel(long blockLevel);
     }
 }

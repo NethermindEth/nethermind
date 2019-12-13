@@ -235,7 +235,7 @@ namespace Nethermind.AuRa
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
         
-        public long GetLastFinalizedBy(Keccak headHash)
+        public long GetLastLevelFinalizedBy(Keccak headHash)
         {
             var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();

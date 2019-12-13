@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Test;
@@ -560,6 +561,71 @@ namespace Nethermind.AuRa.Test.Validators
             
             ValidateFinalizationForChain(test.Current);
         }
+        
+        [TestCase(8, 5, null)]
+        [TestCase(7, 5, 7)]
+        [TestCase(6, 5, 7)]
+        [TestCase(5, 5, 7)]
+        [TestCase(4, 4, 7)]
+        [TestCase(2, 2, 4)]
+        [TestCase(1, 1, 4)]
+        [TestCase(1, 7, null)]
+        public void nonconsecutive_non_producing_preProcess_loads_pending_validators_from_receipts(int lastLevelFinalized, int initialValidatorsIndex, int? expectedBlockValidators)
+        {
+            IEnumerable<Block> GetAllBlocks(BlockTree bt)
+            {
+
+                var block = bt.FindBlock(bt.Head.Hash, BlockTreeLookupOptions.None);
+                while (block != null)
+                {
+                    yield return block;
+                    block = bt.FindBlock(block.ParentHash, BlockTreeLookupOptions.None);
+                }
+            }
+
+            var validators = TestItem.Addresses[initialValidatorsIndex * 10];
+            var inMemoryReceiptStorage = new InMemoryReceiptStorage();
+            var blockTreeBuilder = Build.A.BlockTree().WithTransactions(inMemoryReceiptStorage,
+                    RopstenSpecProvider.Instance, delegate(Block block, Transaction transaction)
+                    {
+                        byte i = 0;
+                        return new[]
+                        {
+                            Build.A.LogEntry.WithAddress(_contractAddress)
+                                .WithData(new[] {(byte) (block.Number * 10 + i++)})
+                                .WithTopics(ValidatorContract.Definition.initiateChangeEventHash, block.ParentHash)
+                                .TestObject
+                        };
+                    })
+                .OfChainLength(9, 0, 0, validators);
+            
+            var blockTree = blockTreeBuilder.TestObject;
+            SetupInitialValidators(blockTree.Head, validators);
+            IAuRaValidatorProcessor validator = new ContractValidator(_validator, _db, _stateProvider, _abiEncoder, _transactionProcessor, blockTree, inMemoryReceiptStorage, _logManager, 1);
+            validator.SetFinalizationManager(_blockFinalizationManager);
+
+            _abiEncoder.Decode(ValidatorContract.Definition.addressArrayResult, Arg.Any<byte[]>())
+                .Returns(c =>
+                {
+                    var addressIndex = c.Arg<byte[]>()[0];
+                    return new object[] {new Address[] {TestItem.Addresses[addressIndex]}};
+                });
+            
+            _blockFinalizationManager.GetLastLevelFinalizedBy(blockTree.Head.ParentHash).Returns(lastLevelFinalized);
+
+            validator.PreProcess(blockTree.FindBlock(blockTree.Head.Hash, BlockTreeLookupOptions.None));
+
+            byte[] expectedPendingValidatorsBytes =  Rlp.OfEmptySequence.Bytes;
+            if (expectedBlockValidators.HasValue)
+            {
+                var block = GetAllBlocks(blockTree).First(b => b.Number == expectedBlockValidators.Value);
+                var pendingValidators = new ContractValidator.PendingValidators(block.Number, block.Hash, new [] {TestItem.Addresses[block.Number*10]});
+                expectedPendingValidatorsBytes = Rlp.Encode(pendingValidators).Bytes;
+            }
+
+            _db.Received()[ContractValidator.PendingValidatorsKey.Bytes] = Arg.Is<byte[]>(r => r.SequenceEqual(expectedPendingValidatorsBytes));
+        }
+
 
         private void ValidateFinalizationForChain(ConsecutiveInitiateChangeTestParameters.ChainInfo chain)
         {
@@ -577,10 +643,15 @@ namespace Nethermind.AuRa.Test.Validators
 
         private void SetupInitialValidators(params Address[] initialValidators)
         {
+            SetupInitialValidators(_block.Header, initialValidators);
+        }
+
+        private void SetupInitialValidators(BlockHeader header, params Address[] initialValidators)
+        {
             _initialValidators = initialValidators;
             _transactionProcessor.When(x => x.Execute(
                     Arg.Is<Transaction>(t => CheckTransaction(t, _getValidatorsData)),
-                    _block.Header,
+                    header,
                     Arg.Is<ITxTracer>(t => t is CallOutputTracer)))
                 .Do(args =>
                     args.Arg<ITxTracer>().MarkAsSuccess(
