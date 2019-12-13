@@ -141,7 +141,6 @@ namespace Nethermind.AuRa.Validators
                     }
                     else if (block.Number > _lastProcessedBlockNumber + 1) // blocks skipped, like fast sync
                     {
-                        // TODO: Not working as we don't download receipts in fast sync
                         SetPendingValidators(TryGetInitChangeFromPastBlocks(block.ParentHash), true);
                     }
                 }
