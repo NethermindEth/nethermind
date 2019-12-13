@@ -10,7 +10,9 @@ jobs:
     runs-on: ubuntu-18.04
     name: Build on ARM64
     steps:
-      - uses: actions/checkout@v2-beta
+    - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
       - uses: uraimo/run-on-arch-action@v1.0.5
         id: runcmd
         with:
