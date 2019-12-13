@@ -144,8 +144,49 @@ namespace Nethermind.AuRa
 
         private class ReceivedSteps
         {
-            private readonly List<(long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks)> _list 
-                = new List<(long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks)>();
+            private struct AuthorBlock : IEquatable<AuthorBlock>
+            {
+                public AuthorBlock(Address author, Keccak block)
+                {
+                    Author = author;
+                    Block = block;
+                }
+
+                public Address Author { get; }
+                public Keccak Block { get; }
+
+                public bool Equals(AuthorBlock other) => Equals(Author, other.Author) && Equals(Block, other.Block);
+                public override bool Equals(object obj) => obj is AuthorBlock other && Equals(other);
+                public override int GetHashCode() => HashCode.Combine(Author, Block);
+                public static bool operator==(AuthorBlock obj1, AuthorBlock obj2) => obj1.Equals(obj2);
+                public static bool operator!=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
+            }
+            
+            private class AuthorBLockForStep
+            {
+                public AuthorBLockForStep(in long step, AuthorBlock? authorBlock)
+                {
+                    Step = step;
+                    AuthorBlock = authorBlock;
+                }
+
+                public long Step { get; }
+                public AuthorBlock? AuthorBlock { get; set; }
+                public ISet<AuthorBlock> AuthorBlocks { get; set; }
+            }
+            
+            private class StepElementComparer : IComparer<AuthorBLockForStep>
+            {
+                public static readonly StepElementComparer Instance = new StepElementComparer();
+
+                public int Compare(AuthorBLockForStep x, AuthorBLockForStep y)
+                {
+                    return x.Step.CompareTo(y.Step);
+                }
+            }
+            
+            private readonly List<AuthorBLockForStep> _list 
+                = new List<AuthorBLockForStep>();
             
             private const int CacheSizeFullRoundsMultiplier = 4;
 
@@ -156,21 +197,21 @@ namespace Nethermind.AuRa
                 var hash = header.Hash;
                 int index = BinarySearch(step);
                 bool contains = index > 0;
-                var item = (author, hash);
+                var item = new AuthorBlock(author, hash);
                 if (contains)
                 {
                     var stepElement = _list[index];
-                    contains = stepElement.AuthorBlocks?.Contains(item) ?? stepElement.AthtorBlock == item;
+                    contains = stepElement.AuthorBlocks?.Contains(item) ?? stepElement.AuthorBlock == item;
                     if (!contains)
                     {
                         if (stepElement.AuthorBlocks == null)
                         {
-                            stepElement.AuthorBlocks = new HashSet<(Address Author, Keccak Block)>
+                            stepElement.AuthorBlocks = new HashSet<AuthorBlock>
                             {
-                                stepElement.AthtorBlock.Value
+                                stepElement.AuthorBlock.Value
                             };
                             
-                            stepElement.AthtorBlock = null;
+                            stepElement.AuthorBlock = null;
                         }
 
                         stepElement.AuthorBlocks.Add(item);
@@ -178,7 +219,7 @@ namespace Nethermind.AuRa
                 }
                 else
                 {
-                    _list.Add((step, item, null));
+                    _list.Add(new AuthorBLockForStep(step, item));
                 }
                 
                 ClearOldCache(step, validatorCount);
@@ -186,7 +227,7 @@ namespace Nethermind.AuRa
                 return contains;
             }
 
-            private int BinarySearch(long step) => _list.BinarySearch((step, null, null), StepElementComparer.Instance);
+            private int BinarySearch(long step) => _list.BinarySearch(new AuthorBLockForStep(step, null), StepElementComparer.Instance);
 
             /// <summary>
             /// Remove hash records older than two full N of steps (picked as a reasonable trade-off between memory consumption and fault-tolerance).
@@ -204,15 +245,6 @@ namespace Nethermind.AuRa
                     _list.RemoveRange(0, positiveIndex);
                 }
             }
-        }
-        
-        private class StepElementComparer : IComparer<(long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks)>
-        {
-            public static readonly StepElementComparer Instance = new StepElementComparer();
-            
-            public int Compare((long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks) x,
-                (long Step, (Address Author, Keccak Block)? AthtorBlock, ISet<(Address Author, Keccak Block)> AuthorBlocks) y) => 
-                x.Step.CompareTo(y.Step);
         }
     }
 }

@@ -312,9 +312,9 @@ namespace Nethermind.AuRa
 
             public void Add(BlockHeader blockHeader)
             {
-                bool NotContainsBlock() => _blocks.Count == 0 || _blocks[0].Number > blockHeader.Number || _blocks[^1].Number < blockHeader.Number;
+                bool DoesNotContainBlock() => _blocks.Count == 0 || _blocks[0].Number > blockHeader.Number || _blocks[^1].Number < blockHeader.Number;
 
-                if (NotContainsBlock())
+                if (DoesNotContainBlock())
                 {
                     if (_blocks.Count == 0 || _blocks[0].Number < blockHeader.Number)
                     {
