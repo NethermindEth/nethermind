@@ -1,8 +1,8 @@
 language: csharp
 mono: none
 sudo: required
-dist: bionic
-dotnet: 3.0
+dist: xenial
+dotnet: 3.0.100
 env:
   NETHERMIND_TEST_PROJECTS="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Nethermind.DataMarketplace.Test]*"
   ETHEREUM_TEST_PROJECTS="[Nethermind.HashLib]*%2c[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"
@@ -123,7 +123,7 @@ jobs:
         else 
           dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test;
         fi
-      name: "Nethermind.JsonRpc.Test"
+      name: "Nethermind.Logging.NLog.Test"
     #- script: dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
     - script:
