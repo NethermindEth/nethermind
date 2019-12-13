@@ -14,12 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
@@ -53,5 +59,103 @@ namespace Nethermind.BeaconNode.Tests
             fork.PreviousVersion.ShouldBe(new ForkVersion());
         }
         
+        [TestMethod]
+        public async Task TestValidators80DutiesForEpochZeroHaveExactlyOneProposerPerSlot()
+        {
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
+            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            // Get genesis store initialise MemoryStoreProvider with the state
+            _ = forkChoice.GetGenesisStore(state);            
+            
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            int numberOfValidators = state.Validators.Count;
+            Console.WriteLine("Number of validators: {0}", numberOfValidators);
+            BlsPublicKey[] publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
+            byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
+            for (int index = 0; index < numberOfValidators; index++)
+            {
+                Console.WriteLine("[{0}] priv:{1} pub:{2}", index, "0x" + BitConverter.ToString(privateKeys[index]).Replace("-", ""), publicKeys[index]);
+            }
+            
+            // Act
+            Epoch targetEpoch = new Epoch(0);
+            var validatorPublicKeys = publicKeys.Take(numberOfValidators);
+            IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
+            beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
+            var validatorDuties = await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch);
+
+            for (var index = 0; index < validatorDuties.Count; index++)
+            {
+                ValidatorDuty validatorDuty = validatorDuties[index];
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    index, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+            }
+            
+            // Assert
+            Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
+                .GroupBy(x => x.BlockProposalSlot)
+                .ToDictionary(x => x.Key, x => x);
+            groupsByProposalSlot[new Slot(0)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(1)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(2)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(3)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(4)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(5)].Count().ShouldBe(1);
+            //groupsByProposalSlot[new Slot(6)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(7)].Count().ShouldBe(1);
+            //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 7);
+        }
+        
+        [TestMethod]
+        public async Task TestValidators80DutiesForEpochOneHaveExactlyOneProposerPerSlot()
+        {
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
+            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
+            // Get genesis store initialise MemoryStoreProvider with the state
+            _ = forkChoice.GetGenesisStore(state);            
+            
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            int numberOfValidators = state.Validators.Count;
+            Console.WriteLine("Number of validators: {0}", numberOfValidators);
+            BlsPublicKey[] publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
+            
+            // Act
+            Epoch targetEpoch = new Epoch(1);
+            var validatorPublicKeys = publicKeys.Take(numberOfValidators);
+            IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
+            beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
+            var validatorDuties = await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch);
+
+            for (var index = 0; index < validatorDuties.Count; index++)
+            {
+                ValidatorDuty validatorDuty = validatorDuties[index];
+                Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
+                    index, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+            }
+            
+            // Assert
+            Dictionary<Slot, IGrouping<Slot, ValidatorDuty>> groupsByProposalSlot = validatorDuties
+                .GroupBy(x => x.BlockProposalSlot)
+                .ToDictionary(x => x.Key, x => x);
+            groupsByProposalSlot[new Slot(8)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(9)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(10)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(11)].Count().ShouldBe(1);
+            //groupsByProposalSlot[new Slot(12)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(13)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(14)].Count().ShouldBe(1);
+            groupsByProposalSlot[new Slot(15)].Count().ShouldBe(1);
+            //groupsByProposalSlot[Slot.None].Count().ShouldBe(numberOfValidators - 8);
+        }
     }
 }

@@ -113,14 +113,6 @@ namespace Nethermind.BeaconNode.Tests
             // Get genesis store initialise MemoryStoreProvider with the state
             _ = forkChoice.GetGenesisStore(state);            
             
-            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            byte[][] privateKeys = TestKeys.PrivateKeys(timeParameters).ToArray();
-            BlsPublicKey[] publicKeys = TestKeys.PublicKeys(timeParameters).ToArray();
-            for (int index = 0; index < 10; index++)
-            {
-                Console.WriteLine("[{0}] priv:{1} pub:{2}", index, "0x" + BitConverter.ToString(privateKeys[index]).Replace("-", ""), publicKeys[index]);
-            }
-
             // Act
             ValidatorAssignments validatorAssignments = testServiceProvider.GetService<ValidatorAssignments>();
             BlsPublicKey validatorPublicKey = new BlsPublicKey(publicKey);
@@ -153,7 +145,6 @@ namespace Nethermind.BeaconNode.Tests
             validatorDuty.AttestationSlot.ShouldBe(expectedAttestationSlot);
             validatorDuty.AttestationShard.ShouldBe(expectedAttestationShard);
         }
-        
         
         [TestMethod]
         public async Task FutureEpochValidatorDuty()
