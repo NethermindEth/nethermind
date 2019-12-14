@@ -32,6 +32,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
@@ -47,6 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ISyncConfig _syncConfig;
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataDownloader _nodeDataDownloader;
+        private readonly INodeStatsManager _nodeStatsManager;
         private readonly ISyncReport _syncReport;
 
         private readonly BlockDownloader _blockDownloader;
@@ -57,7 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
         private CancellationTokenSource _peerSyncCancellation;
         private SyncPeerAllocation _blocksSyncAllocation;
         private System.Timers.Timer _syncTimer;
-        private SyncModeSelector _syncMode;
+        private ISyncModeSelector _syncMode;
         private bool _cancelDueToBetterPeer;
         private Task _syncLoopTask;
 
@@ -73,7 +75,7 @@ namespace Nethermind.Blockchain.Synchronization
             IEthSyncPeerPool peerPool,
             ISyncConfig syncConfig,
             INodeDataDownloader nodeDataDownloader,
-            ISyncReport syncReport,
+            INodeStatsManager nodeStatsManager,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -83,13 +85,12 @@ namespace Nethermind.Blockchain.Synchronization
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
-            _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
-
+            _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
+            
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
-
-            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, syncReport, receiptStorage, specProvider, logManager);
-
+            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, syncProgressResolver, _syncMode, logManager);
+            _blockDownloader = new BlockDownloader(_blockTree, blockValidator, sealValidator, _syncReport, receiptStorage, specProvider, logManager);
             if (syncConfig.FastBlocks)
             {
                 FastBlocksFeed feed = new FastBlocksFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, syncConfig, _syncReport, logManager);
@@ -114,13 +115,13 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     switch (task)
                     {
-                        case Task t when t.IsFaulted:
+                        case { } t when t.IsFaulted:
                             if (_logger.IsError) _logger.Error("Sync loop encountered an exception.", t.Exception);
                             break;
-                        case Task t when t.IsCanceled:
+                        case { } t when t.IsCanceled:
                             if (_logger.IsInfo) _logger.Info("Sync loop canceled.");
                             break;
-                        case Task t when t.IsCompletedSuccessfully:
+                        case { } t when t.IsCompletedSuccessfully:
                             if (_logger.IsInfo) _logger.Info("Sync loop completed successfully.");
                             break;
                         default:
@@ -329,7 +330,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             switch (task)
             {
-                case Task<long> t when t.IsFaulted:
+                case { } t when t.IsFaulted:
                     string reason;
                     if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                     {
@@ -349,7 +350,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     break;
-                case Task<long> t when t.IsCanceled:
+                case { } t when t.IsCanceled:
                     if (_cancelDueToBetterPeer)
                     {
                         _cancelDueToBetterPeer = false;
@@ -364,7 +365,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
 
                     break;
-                case Task<long> t when t.IsCompletedSuccessfully:
+                case { } t when t.IsCompletedSuccessfully:
                     if (_logger.IsDebug) _logger.Debug($"{_syncMode.Current} sync with {peerInfo} completed with progress {t.Result}.");
                     if (peerInfo != null) // fix this for node data sync
                     {
