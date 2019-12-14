@@ -191,7 +191,7 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing.", downloadTask.Exception);
                 }
 
-                if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing", downloadTask.Exception);
+                if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing - {downloadTask.Exception?.GetType().Name}");
                 throw new EthSynchronizationException($"{entities} task faulted", downloadTask.Exception);
             }
 
@@ -584,7 +584,7 @@ namespace Nethermind.Blockchain.Synchronization
                 Block block = Blocks[_indexMapping[index]];
                 if (receipts == null)
                 {
-                    throw new EthSynchronizationException($"{_syncPeer} sent empty receipts for {block.ToString(Block.Format.Short)}.");
+                    receipts = Array.Empty<TxReceipt>();
                 }
 
                 if (block.Transactions.Length == receipts.Length)

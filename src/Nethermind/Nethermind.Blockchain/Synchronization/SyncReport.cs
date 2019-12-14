@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using System.Text;
 using System.Timers;
 using Nethermind.Logging;
@@ -26,6 +27,7 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncReport : ISyncReport
     {
+        private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly ISyncModeSelector _syncModeSelector;
@@ -46,6 +48,7 @@ namespace Nethermind.Blockchain.Synchronization
         public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ISyncProgressResolver syncProgressResolver, ISyncModeSelector syncModeSelector, ILogManager logManager, double tickTime = 1000)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
             _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
@@ -138,6 +141,12 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport();
+            }
+
+            if (!_syncPeerPool.UsefulPeers.Any())
+            {
+                WriteFullSyncReport($"Waiting for useful peers in '{CurrentSyncMode}' sync mode");
+                return;
             }
             
             switch (CurrentSyncMode)
