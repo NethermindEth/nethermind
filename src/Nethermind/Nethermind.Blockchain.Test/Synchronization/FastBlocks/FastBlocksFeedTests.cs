@@ -144,6 +144,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncConfig.PivotHash = _validTree2048.Head.Hash.ToString();
             _syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
             _syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
+            _syncConfig.UseGethLimitsInFastBlocks = false;
 
             SetupLocalTree();
             SetupFeed();
@@ -174,7 +175,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer);
             RunFeed(5000, 9);
-            Assert.AreEqual(78, _time);
+            Assert.AreEqual(114, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -186,7 +187,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer);
             RunFeed();
-            Assert.AreEqual(48, _time);
+            Assert.AreEqual(72, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -210,7 +211,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupFeed(true);
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(26, _time);
+            Assert.AreEqual(38, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -239,7 +240,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupSyncPeers(syncPeer1, syncPeer2);
 
             RunFeed();
-            Assert.AreEqual(170, _time);
+            Assert.AreEqual(175, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -284,7 +285,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(38, _time);
+            Assert.AreEqual(62, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -299,7 +300,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(38, _time);
+            Assert.AreEqual(62, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -328,7 +329,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(49, _time);
+            Assert.AreEqual(73, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -357,7 +358,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(49, _time);
+            Assert.AreEqual(73, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -386,7 +387,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(49, _time);
+            Assert.AreEqual(73, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -415,7 +416,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(120, _time);
+            Assert.AreEqual(114, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -444,7 +445,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(49, _time);
+            Assert.AreEqual(73, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -473,7 +474,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed(20000);
-            Assert.AreEqual(5031, _time);
+            Assert.AreEqual(5055, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -500,7 +501,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(2409, _time);
+            Assert.AreEqual(3613, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -527,7 +528,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             SetupSyncPeers(syncPeer1, syncPeer2);
             RunFeed();
-            Assert.AreEqual(1806, _time);
+            Assert.AreEqual(3010, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -600,7 +601,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             SetupSyncPeers(syncPeer1, syncPeer2);
             SetupFeed(true);
             RunFeed();
-            Assert.AreEqual(36, _time);
+            Assert.AreEqual(54, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
@@ -665,7 +666,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
 
             RunFeed();
 
-            Assert.AreEqual(480, _time);
+            Assert.AreEqual(672, _time);
 
             AssertTreeSynced(_validTree2048, true);
         }
