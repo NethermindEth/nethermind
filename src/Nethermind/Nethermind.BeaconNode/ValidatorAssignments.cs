@@ -111,14 +111,14 @@ namespace Nethermind.BeaconNode
 
         public async Task<ValidatorDuty> GetValidatorDutyAsync(BlsPublicKey validatorPublicKey, Epoch epoch)
         {
-            if (!_storeProvider.TryGetStore(out IStore retrievedStore))
+            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
             {
                 throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
             }
 
             IStore store = retrievedStore!;
             Hash32 head = await _forkChoice.GetHeadAsync(store);
-            if (!store.TryGetBlockState(head, out BeaconState headState))
+            if (!store.TryGetBlockState(head, out BeaconState? headState))
             {
                 throw new Exception($"Head state {head} not found.");
             }
@@ -161,8 +161,8 @@ namespace Nethermind.BeaconNode
             else if (epoch == currentEpoch)
             {
                 // Take block slot and roots before cloning (for historical checks)
-                IReadOnlyList<Hash32> historicalBlockRoots = headState.BlockRoots;
-                Slot fromSlot = headState.Slot;
+                IReadOnlyList<Hash32> historicalBlockRoots = headState!.BlockRoots;
+                Slot fromSlot = headState!.Slot;
                 BeaconState state = BeaconState.Clone(headState!);
                 
                 // Check base state
@@ -183,7 +183,7 @@ namespace Nethermind.BeaconNode
             else
             {
                 Hash32 endRoot = _forkChoice.GetAncestor(store, head, endSlot - Slot.One);
-                if (!store.TryGetBlockState(endRoot, out BeaconState endState))
+                if (!store.TryGetBlockState(endRoot, out BeaconState? endState))
                 {
                     throw new Exception($"State {endRoot} for slot {endSlot} not found.");
                 }
@@ -238,7 +238,7 @@ namespace Nethermind.BeaconNode
                 previousSlot -= Slot.One;
                 int index = (int) (previousSlot % timeParameters.SlotsPerHistoricalRoot);
                 Hash32 previousRoot = historicalBlockRoots[index];
-                if (!store.TryGetBlockState(previousRoot, out BeaconState previousState))
+                if (!store.TryGetBlockState(previousRoot, out BeaconState? previousState))
                 {
                     throw new Exception($"Historical state {previousRoot} for slot {previousSlot} not found.");
                 }
