@@ -39,6 +39,7 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, ForkVersion value, ref int offset)
         {
+            // FIXME: ForkVersion can be created by marshalling a span onto it, with no guarantee the underlying architecture is little endian.
             BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset), value.Number);
             offset += ForkVersion.SszLength;
         }

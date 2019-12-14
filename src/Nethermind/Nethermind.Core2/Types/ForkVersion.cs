@@ -20,16 +20,17 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core2.Types
 {
-    [DebuggerDisplay("{Number}")]
-    public struct ForkVersion : IEquatable<ForkVersion>, IComparable<ForkVersion>
+    public struct ForkVersion : IEquatable<ForkVersion>
     {
         public const int SszLength = sizeof(uint);
 
+        [Obsolete("Fork version is not a number; it is a 4-byte sequence. While internally it may be stored as a number, there is no specification how to convert to a number, i.e. little-endian or big-endian.")]
         public ForkVersion(uint number)
         {
             Number = number;
         }
 
+        [Obsolete("Fork version is not a number; it is a 4-byte sequence. While internally it may be stored as a number, there is no specification how to convert to a number, i.e. little-endian or big-endian.")]
         public uint Number { get; }
 
         public ReadOnlySpan<byte> AsSpan()
@@ -74,12 +75,7 @@ namespace Nethermind.Core2.Types
 
         public override string ToString()
         {
-            return Number.ToString();
-        }
-
-        public int CompareTo(ForkVersion other)
-        {
-            return Number.CompareTo(other.Number);
+            return BitConverter.ToString(AsSpan().ToArray()).Replace("-", "");
         }
     }
 }
