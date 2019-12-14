@@ -150,12 +150,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
             
-            Logger.Info($"Sending receipts request ({blockHashes.Count}) to {this}");
+            // Logger.Info($"Sending receipts request ({blockHashes.Count}) to {this}");
             
             var msg = new GetReceiptsMessage(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             
-            Logger.Info($"Sent receipts request ({blockHashes.Count}) to {this} - received {txReceipts.Length}");
+            // Logger.Info($"Sent receipts request ({blockHashes.Count}) to {this} - received {txReceipts.Length}");
             return txReceipts;
         }
 
@@ -188,7 +188,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
-                Logger.Warn($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
@@ -227,7 +227,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
-                Logger.Warn($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
