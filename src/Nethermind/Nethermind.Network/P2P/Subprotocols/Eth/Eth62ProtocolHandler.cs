@@ -542,7 +542,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     }
                 }
                 
-                decimal nullPunishmentRatio = 1m + (decimal) (result.Length - nullResponses) / message.MaxHeaders;
+                decimal nullPunishmentRatio = 1m + (message.MaxHeaders - (decimal) (result.Length - nullResponses)) / message.MaxHeaders;
 
                 long? latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency == null)
@@ -608,7 +608,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
 
                 int requestLength = message.BlockHashes.Count;
-                decimal nullPunishmentRatio = 1m + (decimal) (result.Length - nullResponses) / requestLength;
+                decimal nullPunishmentRatio = 1m + (requestLength - (decimal) (result.Length - nullResponses)) / requestLength;
 
                 long? latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency == null)
@@ -627,6 +627,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
+            if (maxBlocks == 0)
+            {
+                return new BlockHeader[0];
+            }
+            
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
