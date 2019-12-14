@@ -26,7 +26,5 @@ namespace Nethermind.JsonRpc.Modules.Net
         string LocalEnode { get; }
         int NetworkId { get; }
         int PeerCount { get; }
-        
-        bool LogPeerConnectionDetails();
     }
 }

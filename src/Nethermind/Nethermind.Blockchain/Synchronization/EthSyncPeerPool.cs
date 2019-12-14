@@ -283,7 +283,7 @@ namespace Nethermind.Blockchain.Synchronization
                 PeerInfo worstPeer = null;
                 foreach (PeerInfo peerInfo in AllPeers)
                 {
-                    long transferSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100000;
+                    long transferSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
                     if (transferSpeed < worstSpeed)
                     {
                         worstPeer = peerInfo;
@@ -513,7 +513,7 @@ namespace Nethermind.Blockchain.Synchronization
         private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
         {
             if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer for {allocation}");
-            (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : 0);
+            (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : -1);
             foreach ((_, PeerInfo info) in _peers)
             {
                 if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggestedHeader?.Number ?? 0) + allocation.MinBlocksAhead.Value)
@@ -549,7 +549,7 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100000;
+                long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed() ?? 0;
 
                 if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
                 {
@@ -593,8 +593,8 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            var currentSpeed = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100000;
-            var newSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100001;
+            var currentSpeed = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
+            var newSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed() ?? 0;
 
             if (newSpeed / (decimal) Math.Max(1L, currentSpeed) > 1m + _minDiffPercentageForSpeedSwitch
                 && newSpeed > currentSpeed + _minDiffForSpeedSwitch)

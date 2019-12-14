@@ -58,11 +58,5 @@ namespace Nethermind.JsonRpc.Modules.Net
         {
             return ResultWrapper<int>.Success(_netBridge.PeerCount);
         }
-        
-        public ResultWrapper<bool> net_dumpPeerConnectionDetails()
-        {
-            var result = _netBridge.LogPeerConnectionDetails();
-            return ResultWrapper<bool>.Success(result);
-        }
     }
 }

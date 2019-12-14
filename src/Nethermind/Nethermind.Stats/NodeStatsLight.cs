@@ -138,40 +138,17 @@ namespace Nethermind.Stats
             }
         }
 
-        public void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long milliseconds)
+        public void AddTransferSpeedCaptureEvent(long bytesPerMillisecond)
         {
             lock (_speedLock)
             {
-                switch (transferSpeedType)
-                {
-                    case TransferSpeedType.P2PPingPong:
-                        _pingPongAverageSpeed = ((_pingPongTransferSpeedEventCount * (_pingPongAverageSpeed ?? 0)) + milliseconds) / (++_pingPongTransferSpeedEventCount);
-                        break;
-                    case TransferSpeedType.BlockHeaders:
-                        _headersAverageSpeed = ((_headersTransferSpeedEventCount * (_headersAverageSpeed ?? 0)) + milliseconds) / (++_headersTransferSpeedEventCount);
-                        break;
-                    case TransferSpeedType.BlockBodies:
-                        _bodiesAverageSpeed = ((_bodiesTransferSpeedEventCount * (_bodiesAverageSpeed ?? 0)) + milliseconds) / (++_bodiesTransferSpeedEventCount);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
-                }
+                _headersAverageSpeed = ((_headersTransferSpeedEventCount * (_headersAverageSpeed ?? 0)) + bytesPerMillisecond) / (++_headersTransferSpeedEventCount);
             }
         }
 
-        public long? GetAverageTransferSpeed(TransferSpeedType speedType)
+        public long? GetAverageTransferSpeed()
         {
-            switch (speedType)
-            {
-                case TransferSpeedType.P2PPingPong:
-                    return (long?)_pingPongAverageSpeed;
-                case TransferSpeedType.BlockHeaders:
-                    return (long?)_headersAverageSpeed;
-                case TransferSpeedType.BlockBodies:
-                    return (long?)_bodiesAverageSpeed;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(speedType), speedType, null);
-            }
+            return (long?)_headersAverageSpeed;
         }
 
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()

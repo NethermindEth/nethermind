@@ -43,21 +43,21 @@ namespace Nethermind.Network.Test
         {
             _nodeStats = new NodeStatsLight(_node, _config);
             
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 30);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 51);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 140);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 110);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 133);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 51);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 140);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 110);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 133);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 51);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 140);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 110);
-            _nodeStats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, 133);
+            _nodeStats.AddTransferSpeedCaptureEvent(30);
+            _nodeStats.AddTransferSpeedCaptureEvent(51);
+            _nodeStats.AddTransferSpeedCaptureEvent(140);
+            _nodeStats.AddTransferSpeedCaptureEvent(110);
+            _nodeStats.AddTransferSpeedCaptureEvent(133);
+            _nodeStats.AddTransferSpeedCaptureEvent(51);
+            _nodeStats.AddTransferSpeedCaptureEvent(140);
+            _nodeStats.AddTransferSpeedCaptureEvent(110);
+            _nodeStats.AddTransferSpeedCaptureEvent(133);
+            _nodeStats.AddTransferSpeedCaptureEvent(51);
+            _nodeStats.AddTransferSpeedCaptureEvent(140);
+            _nodeStats.AddTransferSpeedCaptureEvent(110);
+            _nodeStats.AddTransferSpeedCaptureEvent(133);
 
-            var av = _nodeStats.GetAverageTransferSpeed(TransferSpeedType.BlockHeaders);
+            var av = _nodeStats.GetAverageTransferSpeed();
             Assert.AreEqual(102, av);
         }
 

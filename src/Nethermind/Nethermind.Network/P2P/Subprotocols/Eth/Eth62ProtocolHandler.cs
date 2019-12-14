@@ -541,13 +541,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
-                Logger.Warn($"{this} latency is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                Logger.Warn($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
 
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.BlockHeaders, bytesPerMillisecond);
+                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
                 return task.Result;
             }
 
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.BlockHeaders, 0);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, 0);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
@@ -585,13 +585,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
                 long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
-                Logger.Warn($"{this} latency is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.BlockHeaders, bytesPerMillisecond);
+                Logger.Warn($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
             }
 
-            StatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.BlockHeaders, 0L);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
         }
 

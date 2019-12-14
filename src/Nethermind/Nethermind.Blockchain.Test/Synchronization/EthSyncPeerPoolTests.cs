@@ -263,13 +263,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
         }
 
-        private void SetupLatencyStats(PublicKey publicKey, int milliseconds)
+        private void SetupSpeedStats(PublicKey publicKey, int milliseconds)
         {
             Node node = new Node(publicKey, "127.0.0.1", 30303);
             NodeStatsLight stats = new NodeStatsLight(node, new StatsConfig());
-            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, milliseconds);
-            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockBodies, milliseconds);
-            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.P2PPingPong, milliseconds);
+            stats.AddTransferSpeedCaptureEvent(milliseconds);
 
             _stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
         }
@@ -277,8 +275,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Can_replace_peer_with_better()
         {
-            SetupLatencyStats(TestItem.PublicKeyA, 100);
-            SetupLatencyStats(TestItem.PublicKeyB, 50);
+            SetupSpeedStats(TestItem.PublicKeyA, 50);
+            SetupSpeedStats(TestItem.PublicKeyB, 100);
 
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA, "A"));
@@ -295,8 +293,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Does_not_replace_with_a_worse_peer()
         {
-            SetupLatencyStats(TestItem.PublicKeyA, 100);
-            SetupLatencyStats(TestItem.PublicKeyB, 200);
+            SetupSpeedStats(TestItem.PublicKeyA, 200);
+            SetupSpeedStats(TestItem.PublicKeyB, 100);
 
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
@@ -313,8 +311,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Does_not_replace_if_too_small_percentage_change()
         {
-            SetupLatencyStats(TestItem.PublicKeyA, 100);
-            SetupLatencyStats(TestItem.PublicKeyB, 91);
+            SetupSpeedStats(TestItem.PublicKeyA, 91);
+            SetupSpeedStats(TestItem.PublicKeyB, 100);
 
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
@@ -331,8 +329,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Does_not_replace_on_small_difference_in_low_numbers()
         {
-            SetupLatencyStats(TestItem.PublicKeyA, 5);
-            SetupLatencyStats(TestItem.PublicKeyB, 4);
+            SetupSpeedStats(TestItem.PublicKeyA, 5);
+            SetupSpeedStats(TestItem.PublicKeyB, 4);
 
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
@@ -349,8 +347,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [Test]
         public async Task Can_stay_when_current_is_best()
         {
-            SetupLatencyStats(TestItem.PublicKeyA, 100);
-            SetupLatencyStats(TestItem.PublicKeyB, 100);
+            SetupSpeedStats(TestItem.PublicKeyA, 100);
+            SetupSpeedStats(TestItem.PublicKeyB, 100);
 
             _pool.Start();
             _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeyA));
