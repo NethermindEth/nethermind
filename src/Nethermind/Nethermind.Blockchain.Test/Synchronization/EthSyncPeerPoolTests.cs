@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 DisconnectRequested = true;
             }
 
-            public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
             {
                 return Task.FromResult(new BlockBody[0]);
             }

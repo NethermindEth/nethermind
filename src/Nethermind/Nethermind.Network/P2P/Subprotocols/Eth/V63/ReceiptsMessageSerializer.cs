@@ -48,7 +48,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             RlpStream rlpStream = bytes.AsRlpStream();
 
             var data = rlpStream.DecodeArray(itemContext =>
-                itemContext.DecodeArray(nestedContext => Rlp.Decode<TxReceipt>(nestedContext)) ?? new TxReceipt[0]);
+                itemContext.DecodeArray(nestedContext => Rlp.Decode<TxReceipt>(nestedContext)) ?? new TxReceipt[0], true, Array.Empty<TxReceipt>());
             ReceiptsMessage message = new ReceiptsMessage(data);
             
             return message;

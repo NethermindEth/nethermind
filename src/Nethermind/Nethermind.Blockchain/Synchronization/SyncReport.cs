@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Text;
 using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -55,6 +56,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             TickTime = tickTime;
             _timer.Interval = TickTime;
+            _timer.AutoReset = false;
             _timer.Elapsed += TimerOnElapsed;
             _timer.Start();
             
@@ -63,7 +65,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
         {
-            if(_logger.IsInfo) _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
+            _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
         }
 
         private DateTime StartTime { get; }
@@ -85,6 +87,8 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             _reportId++;
+
+            _timer.Enabled = true;
         }
 
         private Timer _timer = new Timer();
@@ -128,6 +132,8 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            WriteSyncConfigReport();
+            
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
@@ -143,7 +149,7 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteFullSyncReport("Full Sync");
                     break;
                 case SyncMode.Headers:
-                    WriteFullSyncReport("Fast Blocks Recent");
+                    WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
                     break;
                 case SyncMode.FastBlocks:
                     WriteFastBlocksReport();
@@ -158,39 +164,78 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteWaitForProcessorReport();
                     break;
                 default:
-                    if(_logger.IsInfo) _logger.Info($"Sync mode: {CurrentSyncMode}");
+                    _logger.Info($"Sync mode: {CurrentSyncMode}");
                     break;
             }
         }
 
+        private void WriteSyncConfigReport()
+        {
+            bool isFastSync = _syncConfig.FastSync;
+            bool isFastBlocks = _syncConfig.FastBlocks;
+            bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
+            bool receiptsInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
+
+            StringBuilder builder = new StringBuilder();
+            if (isFastSync && isFastBlocks)
+            {
+                builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
+                if (bodiesInFastBlocks)
+                {
+                    builder.Append(" + bodies");
+                }
+
+                if (receiptsInFastBlocks)
+                {
+                    builder.Append(" + receipts");
+                }
+            }
+            else if (isFastSync)
+            {
+                builder.Append($"Sync config - fast sync without fast blocks");
+            }
+            else
+            {
+                builder.Append($"Sync config - full archive sync");
+            }
+            
+            _logger.Info(builder.ToString());
+        }
+
         private void WriteWaitForProcessorReport()
         {
-            if(_logger.IsInfo) _logger.Info($"Waiting for block processor to catch up before syncing further");
+            _logger.Info($"Waiting for block processor to catch up before syncing further");
         }
 
         private void WriteStateNodesReport()
         {
-            if(_logger.IsInfo) _logger.Info($"Syncing state nodes");
+            _logger.Info($"Syncing state nodes");
         }
 
         private void WriteDbSyncReport()
         {
-            if(_logger.IsInfo) _logger.Info($"Syncing previously downloaded blocks from DB");
+            _logger.Info($"Syncing previously downloaded blocks from DB");
         }
 
         private void WriteNotStartedReport()
         {
-            if(_logger.IsInfo) _logger.Info($"Sync not started yet... {(DateTime.UtcNow - StartTime).Seconds}s");
+            _logger.Info($"Sync not started yet... {(DateTime.UtcNow - StartTime).Seconds}s");
         }
 
         private void WriteFullSyncReport(string prefix)
         {
+            if (FullSyncBlocksKnown == 0)
+            {
+                _logger.Info($"{prefix} | Waiting for peers to learn about the head number.");
+                return;
+            }
+            
             if (FullSyncBlocksKnown - FullSyncBlocksDownloaded.CurrentValue < 32)
             {
                 return;
             }
             
-            if(_logger.IsInfo) _logger.Info($"{prefix} | Downloaded {FullSyncBlocksDownloaded.CurrentValue,9} | current {FullSyncBlocksDownloaded.CurrentPerSecond:F2}bps | total {FullSyncBlocksDownloaded.TotalPerSecond:F2}bps");
+            _logger.Info($"{prefix} | Downloaded {FullSyncBlocksDownloaded.CurrentValue,9} | current {FullSyncBlocksDownloaded.CurrentPerSecond:F2}bps | total {FullSyncBlocksDownloaded.TotalPerSecond:F2}bps");
             FullSyncBlocksDownloaded.SetMeasuringPoint();
         }
 
@@ -199,16 +244,16 @@ namespace Nethermind.Blockchain.Synchronization
             int blockPaddingLength = FastBlocksPivotNumber.ToString().Length;
             int speedPaddingLength = 5;
 
-            if(_logger.IsInfo) _logger.Info($"Fast Blocks Sync | Headers  {Pad(FastBlocksHeaders.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, speedPaddingLength)}bps");
+            _logger.Info($"Fast Blocks Sync | Headers  {Pad(FastBlocksHeaders.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | current {Pad(FastBlocksHeaders.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksHeaders.TotalPerSecond, speedPaddingLength)}bps");
 
             if (_syncConfig.DownloadBodiesInFastSync)
             {
-                if(_logger.IsInfo) _logger.Info($"Fast Blocks Sync | Bodies   {Pad(FastBlocksBodies.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksBodies.TotalPerSecond, speedPaddingLength)}bps");
+                _logger.Info($"Fast Blocks Sync | Bodies   {Pad(FastBlocksBodies.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | current {Pad(FastBlocksBodies.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksBodies.TotalPerSecond, speedPaddingLength)}bps");
             }
 
             if (_syncConfig.DownloadReceiptsInFastSync)
             {
-                if(_logger.IsInfo) _logger.Info($"Fast Blocks Sync | Receipts {Pad(FastBlocksReceipts.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksReceipts.TotalPerSecond, speedPaddingLength)}bps");
+                _logger.Info($"Fast Blocks Sync | Receipts {Pad(FastBlocksReceipts.CurrentValue, blockPaddingLength)} / {Pad(FastBlocksPivotNumber, blockPaddingLength)} | current {Pad(FastBlocksReceipts.CurrentPerSecond, speedPaddingLength)}bps | total {Pad(FastBlocksReceipts.TotalPerSecond, speedPaddingLength)}bps");
             }
 
             FastBlocksHeaders.SetMeasuringPoint();

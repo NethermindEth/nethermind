@@ -75,6 +75,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private readonly TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
 
+        public override string ToString() => $"[Peer|{Node:s}|{ClientId}]";
+
         private void CheckTxFlooding(object sender, ElapsedEventArgs e)
         {
             if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
@@ -436,7 +438,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (emptyBlocksAtTheEnd != 0)
             {
-                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(0,headers.Length - emptyBlocksAtTheEnd).ToArray();
+                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(0, headers.Length - emptyBlocksAtTheEnd).ToArray();
                 headers = gethFriendlyHeaders;
             }
 
@@ -530,13 +532,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (firstTask == task)
             {
                 delayCancellation.Cancel();
-                var latency = _perfService.EndPerfCalc(perfCalcId);
-                if (latency.HasValue)
+                BlockHeader[] result = task.Result;
+                int nullResponses = 0;
+                for (int i = 0; i < result.Length; i++)
                 {
-                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
+                    if (result[i] == null)
+                    {
+                        nullResponses++;
+                    }
+                }
+                
+                decimal nullPunishmentRatio = 1m + (decimal) (result.Length - nullResponses) / message.MaxHeaders;
+
+                long? latency = _perfService.EndPerfCalc(perfCalcId);
+                if (latency == null)
+                {
+                    throw new InvalidOperationException("Latency guid missing");
                 }
 
-                return task.Result;
+                latency = (long) ((decimal) latency * nullPunishmentRatio);
+                StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
+
+                return result;
             }
 
             _perfService.EndPerfCalc(perfCalcId);
@@ -575,13 +592,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (firstTask == task)
             {
                 delayCancellation.Cancel();
-                var latency = _perfService.EndPerfCalc(perfCalcId);
-                if (latency.HasValue)
+                BlockBody[] result = task.Result;
+                int nullResponses = 0;
+                for (int i = 0; i < result.Length; i++)
                 {
-                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockBodies, latency.Value);
+                    if (result[i] == null)
+                    {
+                        nullResponses++;
+                    }
                 }
 
-                return task.Result;
+                if (message.BlockHashes.Count == 0)
+                {
+                    Logger.Error($"Sent a request for 0 blocks!!! to {this}");
+                }
+
+                int requestLength = message.BlockHashes.Count;
+                decimal nullPunishmentRatio = 1m + (decimal) (result.Length - nullResponses) / requestLength;
+
+                long? latency = _perfService.EndPerfCalc(perfCalcId);
+                if (latency == null)
+                {
+                    throw new InvalidOperationException("Latency guid missing");
+                }
+
+                latency = (long) ((decimal) latency * nullPunishmentRatio);
+                StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
+
+                return result;
             }
 
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
@@ -613,6 +651,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.StartingBlockNumber = number;
 
             BlockHeader[] headers = await SendRequest(msg, token);
+            int nonNullCount = 0;
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (headers[i] != null)
+                {
+                    nonNullCount++;
+                }
+            }
+
+            Logger.Info($"Sent headers request ({number}, {maxBlocks}, {skip}) to {this} - received {headers.Length}, out of which {nonNullCount} non null");
             return headers;
         }
 
@@ -622,7 +670,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
+        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {

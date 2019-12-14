@@ -767,7 +767,7 @@ namespace Nethermind.Core.Encoding
             throw new RlpException($"Unexpected prefix of {prefix} when decoding a byte array at position {Position} in the message of length {Length} starting with {Description}");
         }
 
-        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true)
+        public T[] DecodeArray<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true, T defaultElement = default(T))
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = ReadNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
@@ -776,7 +776,7 @@ namespace Nethermind.Core.Encoding
             {
                 if (PeekByte() == Rlp.OfEmptySequence[0])
                 {
-                    result[i] = default;
+                    result[i] = defaultElement;
                     Position++;
                 }
                 else
