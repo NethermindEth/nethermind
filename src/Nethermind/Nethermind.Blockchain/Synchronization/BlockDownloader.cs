@@ -195,10 +195,9 @@ namespace Nethermind.Blockchain.Synchronization
                         exception = aggregateException.InnerExceptions[0];
                     }
 
-                    if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
+                    if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
                 }
-
-                if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing - {downloadTask.Exception?.GetType().Name}");
+                
                 throw new EthSynchronizationException($"{entities} task faulted", downloadTask.Exception);
             }
 
