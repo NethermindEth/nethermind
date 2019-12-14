@@ -139,15 +139,23 @@ namespace Nethermind.BeaconNode
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
             Slot endSlot = startSlot + new Slot(timeParameters.SlotsPerEpoch);
+
             BeaconState state;
+            Slot? baseSlot;
+            IReadOnlyList<Hash32>? historicalBlockRoots;
             if (epoch == nextEpoch)
             {
+                baseSlot = null;
+                historicalBlockRoots = null;
                 // Clone for next or current, so that it can be safely mutated (transitioned forward)
                 state = BeaconState.Clone(headState!);
                 _beaconStateTransition.ProcessSlots(state, startSlot);
             }
             else if (epoch == currentEpoch)
             {
+                // Take block slot and roots before cloning (for historical checks)
+                baseSlot = headState.Slot;
+                historicalBlockRoots = headState.BlockRoots;
                 state = BeaconState.Clone(headState!);
             }
             else
@@ -157,8 +165,9 @@ namespace Nethermind.BeaconNode
                 {
                     throw new Exception($"State {endRoot} for slot {endSlot} not found.");
                 }
-
                 state = endState!;
+                baseSlot = state.Slot;
+                historicalBlockRoots = state.BlockRoots;
             }
 
             Slot attestationSlot = Slot.None;
@@ -181,16 +190,27 @@ namespace Nethermind.BeaconNode
             (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
                 CheckStateDuty(state, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
 
-            // Check historical states
-            if (startSlot < state.Slot)
+            // Check future states
+            Slot nextSlot = state.Slot + Slot.One;
+            while (nextSlot < endSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
             {
-                Slot previousSlot = state.Slot;
-                IReadOnlyList<Hash32> blockRoots = state.BlockRoots;
+                _beaconStateTransition.ProcessSlots(state, nextSlot);
+
+                (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
+                    CheckStateDuty(state, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
+
+                nextSlot += Slot.One;
+            }
+            
+            // Check historical states
+            if (baseSlot.HasValue && startSlot < baseSlot)
+            {
+                Slot previousSlot = baseSlot.Value;
                 while (true)
                 {
                     previousSlot -= Slot.One;
                     int index = (int) (previousSlot % timeParameters.SlotsPerHistoricalRoot);
-                    Hash32 previousRoot = blockRoots[index];
+                    Hash32 previousRoot = historicalBlockRoots[index];
                     if (!store.TryGetBlockState(previousRoot, out BeaconState previousState))
                     {
                         throw new Exception($"Historical state {previousRoot} for slot {previousSlot} not found.");
@@ -204,18 +224,6 @@ namespace Nethermind.BeaconNode
                         break;
                     }
                 }
-            }
-
-            // Check future states
-            Slot nextSlot = state.Slot + Slot.One;
-            while (nextSlot < endSlot && (attestationSlot == Slot.None || blockProposalSlot == Slot.None))
-            {
-                _beaconStateTransition.ProcessSlots(state, nextSlot);
-
-                (attestationSlot, attestationCommitteeIndex, blockProposalSlot) =
-                    CheckStateDuty(state, validatorIndex, attestationSlot, attestationCommitteeIndex, blockProposalSlot);
-
-                nextSlot += Slot.One;
             }
 
             // HACK: Shards were removed from Phase 0, but analogy is committee index, so use for initial testing.
