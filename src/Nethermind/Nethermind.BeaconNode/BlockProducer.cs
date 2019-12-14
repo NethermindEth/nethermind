@@ -26,24 +26,7 @@ namespace Nethermind.BeaconNode
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
         }
-
-        public async Task<BeaconState> GetHeadStateAsync()
-        {
-            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
-            {
-                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
-            }
-
-            IStore store = retrievedStore!;
-            Hash32 head = await _forkChoice.GetHeadAsync(store);
-            if (!store.TryGetBlockState(head, out BeaconState? state))
-            {
-                throw new Exception($"Beacon chain is currently syncing, head state {head} not found.");
-            }
-
-            return state!;
-        }
-
+        
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
         {
             if (!_storeProvider.TryGetStore(out IStore? store))

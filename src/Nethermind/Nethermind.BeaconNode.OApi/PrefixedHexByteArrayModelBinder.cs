@@ -1,9 +1,10 @@
 ﻿using System;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
-namespace Nethermind.BeaconNode.Api
+namespace Nethermind.BeaconNode.OApi
 {
     public class PrefixedHexByteArrayModelBinder : IModelBinder
     {
@@ -16,22 +17,22 @@ namespace Nethermind.BeaconNode.Api
                 throw new ArgumentNullException(nameof(bindingContext));
             }
 
-            var modelName = bindingContext.ModelName;
-            var valueProviderResult = bindingContext.ValueProvider.GetValue(modelName);
+            string modelName = bindingContext.ModelName;
+            ValueProviderResult valueProviderResult = bindingContext.ValueProvider.GetValue(modelName);
             if (valueProviderResult == ValueProviderResult.None)
             {
                 // no entry
                 return Task.CompletedTask;
             }
 
-            var modelState = bindingContext.ModelState;
+            ModelStateDictionary modelState = bindingContext.ModelState;
             modelState.SetModelValue(modelName, valueProviderResult);
 
-            var metadata = bindingContext.ModelMetadata;
-            var type = metadata.UnderlyingOrModelType;
+            ModelMetadata metadata = bindingContext.ModelMetadata;
+            Type type = metadata.UnderlyingOrModelType;
 
-            var value = valueProviderResult.FirstValue;
-            var culture = valueProviderResult.Culture;
+            string value = valueProviderResult.FirstValue;
+            CultureInfo culture = valueProviderResult.Culture;
 
             object? model;
             if (string.IsNullOrWhiteSpace(value))

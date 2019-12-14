@@ -3,7 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Nethermind.BeaconNode.Api
+namespace Nethermind.BeaconNode.OApi
 {
     internal class PrefixedHexByteArrayJsonConverter : JsonConverter<byte[]>
     {
@@ -13,7 +13,7 @@ namespace Nethermind.BeaconNode.Api
         {
             if (typeToConvert == typeof(string))
             {
-                var hex = reader.GetString();
+                string hex = reader.GetString();
                 if (!string.IsNullOrEmpty(hex) && hex.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
                 {
                     return Enumerable.Range(Prefix.Length, hex.Length - Prefix.Length)
@@ -27,7 +27,7 @@ namespace Nethermind.BeaconNode.Api
 
         public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
         {
-            var stringValue = Prefix + BitConverter.ToString(value).Replace("-", string.Empty);
+            string stringValue = Prefix + BitConverter.ToString(value).Replace("-", string.Empty);
             writer.WriteStringValue(stringValue);
         }
     }
