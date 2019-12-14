@@ -202,7 +202,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
 //        }
 
         [TestMethod]
-        public async Task GeneratePrivateKey63()
+        public void GeneratePrivateKey63()
         {
             // Hash of the validator index (as little endian bytes), is converted to integer as little endian,
             // then that integer (after modulus) is used as the big endian private key.
@@ -227,7 +227,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            QuickStart quickStart = testServiceProvider.GetService<INodeStart>() as QuickStart;
+            QuickStart quickStart = (testServiceProvider.GetService<INodeStart>() as QuickStart)!;
             var privateKey = quickStart.GeneratePrivateKey(63);
 
             // Assert

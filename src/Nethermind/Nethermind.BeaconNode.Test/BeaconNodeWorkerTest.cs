@@ -68,7 +68,7 @@ namespace Nethermind.BeaconNode.Tests
 
             // Assert
             signal.ShouldBeTrue();
-            mockStoreProvider.Received(4).TryGetStore(out IStore store);
+            mockStoreProvider.Received(4).TryGetStore(out IStore? store);
         }
 
     }

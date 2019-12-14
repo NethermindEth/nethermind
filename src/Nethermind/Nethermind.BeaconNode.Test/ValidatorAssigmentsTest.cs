@@ -258,15 +258,15 @@ namespace Nethermind.BeaconNode.Tests
             Console.WriteLine("***** State advanced to epoch {0}, slot {1}, time {2}, ready to start tests *****", futureEpoch, state.Slot, store.Time);
             Console.WriteLine("");
 
-            List<object[]> data = FutureEpochValidatorDutyData().ToList();
+            List<object?[]> data = FutureEpochValidatorDutyData().ToList();
             for (int dataIndex = 0; dataIndex < data.Count; dataIndex++)
             {
-                object[] dataRow = data[dataIndex];
-                string publicKey = (string)dataRow[0];
-                ulong epoch = (ulong)dataRow[1];
-                bool success = (bool)dataRow[2];
-                ulong attestationSlot = (ulong)dataRow[3];
-                ulong attestationShard = (ulong)dataRow[4];
+                object?[] dataRow = data[dataIndex];
+                string publicKey = (string)dataRow[0]!;
+                ulong epoch = (ulong)dataRow[1]!;
+                bool success = (bool)dataRow[2]!;
+                ulong attestationSlot = (ulong)dataRow[3]!;
+                ulong attestationShard = (ulong)dataRow[4]!;
                 ulong? blockProposalSlot = (ulong?)dataRow[5];
                 
                 Console.WriteLine("** Test {0}, public key {1}, epoch {2}", dataIndex, publicKey, epoch);
@@ -311,65 +311,65 @@ namespace Nethermind.BeaconNode.Tests
             }
         }
 
-        private IEnumerable<object[]> FutureEpochValidatorDutyData()
+        private IEnumerable<object?[]> FutureEpochValidatorDutyData()
         {
             // TODO: Values not validated against manual check or another client; just set based on first run.
             // invalid tests
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
                 6uL, false, 0uL, 0uL, null
             };
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0",
                 4uL, false, 0uL, 0uL, null
             };
             // epoch 0 tests
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef",
                 0uL, true, 6uL, 0uL, 0uL
             };
             // looking backwards, should find 6uL proposal slot
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d",
                 0uL, true, 4uL, 0uL, 6uL
             };
             // epoch 1 tests
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 1uL, true, 8uL, 0uL, 9uL
             };
             // epoch 10 tests
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
                 4uL, true, 36uL, 1uL, null
             };
-            yield return new object[]
+            yield return new object?[]
             {
                 "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
                 4uL, true, 34uL, 1uL, null
             };
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224",
                 4uL, true, 35uL, 1uL, null
             };
-            yield return new object[]
+            yield return new object?[]
             {
                 "0xac9b60d5afcbd5663a8a44b7c5a02f19e9a77ab0a35bd65809bb5c67ec582c897feb04decc694b13e08587f3ff9b5b60",
                 4uL, true, 39uL, 1uL, null
             };
-            yield return new object[]
+            yield return new object?[]
             {
                 "0xb0e7791fb972fe014159aa33a98622da3cdc98ff707965e536d8636b5fcc5ac7a91a8c46e59a00dca575af0f18fb13dc",
                 4uL, true, 34uL, 0uL, null
             };
             // epoch 11 tests
-            yield return new object[]
+            yield return new object?[]
             {
                 "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
                 5uL, true, 40uL, 1uL, null
