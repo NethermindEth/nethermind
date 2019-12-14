@@ -99,11 +99,13 @@ namespace Nethermind.BeaconNode.Tests
         [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 0uL, true, 0uL, 0uL, null)]
         [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 0uL, true, 2uL, 1uL, null)]
         [DataRow("0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef", 0uL, true, 6uL, 0uL, 0uL)]
+        // looking forward, find the 2uL proposal slot
         [DataRow("0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, true, 4uL, 0uL, 2uL)]
         // epoch 1 tests
         [DataRow("0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb", 1uL, true, 10uL, 0uL, null)]
         [DataRow("0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e", 1uL, true, 14uL, 1uL, null)]
         [DataRow("0x89ece308f9d1f0131765212deca99697b112d61f9be9a5f1f3780a51335b3ff981747a0b2ca2179b96d2c0c9024e5224", 1uL, true, 8uL, 1uL, null)]
+        [DataRow("0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 1uL, true, 8uL, 0uL, 9uL)]
         public async Task BasicValidatorDuty(string publicKey, ulong epoch, bool success, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
             // Arrange
@@ -155,6 +157,11 @@ namespace Nethermind.BeaconNode.Tests
         [DataRow(18uL, "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d", 0uL, 4uL, 0uL, 6uL)]
         public async Task ValidatorDutyAtSpecificTime(ulong targetTime, string publicKey, ulong epoch, ulong attestationSlot, ulong attestationShard, ulong? blockProposalSlot)
         {
+            // NOTE: Current algorithm for GetBeaconProposerIndex() someimtes allocates multiple proposal slots in an epoch, e.g. above index 23 gets slot 2 and 6
+            // It could be an error in the algorithm (need to check; domain type could be wrong), or due to the pre-shard algorithm.
+            // The algorithm before shards were removed was different, so maybe ignore for now, implement phase 1 (with shards), and worry about it then.
+            // This test for now will simply detect if things unintentionally change.
+            
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
@@ -321,14 +328,19 @@ namespace Nethermind.BeaconNode.Tests
             // epoch 0 tests
             yield return new object[]
             {
-                "0x97f1d3a73197d7942695638c4fa9ac0fc3688c4f9774b905a14e3a3f171bac586c55e83ff97a1aeffb3af00adb22c6bb",
-                0uL, true, 6uL, 1uL, null
+                "0x8774d1d544c4cc583fb649d0bbba86c2d2b5abb4c0395d7d1dac08ab1a2cc795030bdbdce6e3213154d4f2c748ccdaef",
+                0uL, true, 6uL, 0uL, 0uL
+            };
+            // looking backwards, should find 6uL proposal slot
+            yield return new object[]
+            {
+                "0x9717182463fbe215168e6762abcbb55c5c65290f2b5a2af616f8a6f50d625b46164178a11622d21913efdfa4b800648d",
+                0uL, true, 4uL, 0uL, 6uL
             };
             // epoch 1 tests
             yield return new object[]
             {
-                "0xa572cbea904d67468808c8eb50a9450c9721db309128012543902d0ac358a62ae28f75bb8f1c7c42c39a8c5529bf0f4e",
-                1uL, true, 14uL, 1uL, null
+                "0x95906ec0660892c205634e21ad540cbe0b6f7729d101d5c4639b864dea09be7f42a4252c675d46dd90a2661b3a94e8ca", 1uL, true, 8uL, 0uL, 9uL
             };
             // epoch 10 tests
             yield return new object[]
