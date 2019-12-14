@@ -267,9 +267,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             Node node = new Node(publicKey, "127.0.0.1", 30303);
             NodeStatsLight stats = new NodeStatsLight(node, new StatsConfig());
-            stats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, milliseconds);
-            stats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockBodies, milliseconds);
-            stats.AddLatencyCaptureEvent(NodeLatencyStatType.P2PPingPong, milliseconds);
+            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockHeaders, milliseconds);
+            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.BlockBodies, milliseconds);
+            stats.AddTransferSpeedCaptureEvent(TransferSpeedType.P2PPingPong, milliseconds);
 
             _stats.GetOrAdd(Arg.Is<Node>(n => n.Id == publicKey)).Returns(stats);
         }

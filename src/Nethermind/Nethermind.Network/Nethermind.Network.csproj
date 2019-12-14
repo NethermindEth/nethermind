@@ -41,10 +41,4 @@
   <ItemGroup>
     <None Remove="Whisper\**" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="P2P\Subprotocols\Bzz" />
-    <Folder Include="P2P\Subprotocols\Les" />
-    <Folder Include="P2P\Subprotocols\Par" />
-    <Folder Include="P2P\Subprotocols\Shh" />
-  </ItemGroup>
 </Project>

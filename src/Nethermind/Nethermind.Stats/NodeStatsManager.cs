@@ -55,14 +55,14 @@ namespace Nethermind.Stats
         
         private readonly IStatsDumper _statsDumper;
         private readonly IStatsConfig _statsConfig;
-        private readonly ILogManager _logManager;
+        private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Node, INodeStats> _nodeStats = new ConcurrentDictionary<Node, INodeStats>(new NodeComparer());
 
         public NodeStatsManager(IStatsConfig statsConfig, ILogManager logManager)
         {
             _statsDumper = new StatsDumper(logManager, statsConfig);
             _statsConfig = statsConfig ?? throw new ArgumentNullException(nameof(statsConfig));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private INodeStats AddStats(Node node)
@@ -175,10 +175,10 @@ namespace Nethermind.Stats
             return stats.FailedCompatibilityValidation != null;
         }
 
-        public void ReportLatencyCaptureEvent(Node node, NodeLatencyStatType latencyType, long value)
+        public void ReportTransferSpeedEvent(Node node, TransferSpeedType transferSpeedType, long value)
         {
             INodeStats stats = GetOrAdd(node);
-            stats.AddLatencyCaptureEvent(latencyType, value);
+            stats.AddTransferSpeedCaptureEvent(transferSpeedType, value);
         }
     }
 }

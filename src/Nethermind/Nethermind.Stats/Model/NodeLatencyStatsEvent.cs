@@ -20,9 +20,9 @@ using System;
 
 namespace Nethermind.Stats.Model
 {
-    public class NodeLatencyStatsEvent
+    public class NodeTransferSpeedStatsEvent
     {
-        public NodeLatencyStatType StatType { get; set; }
+        public TransferSpeedType StatType { get; set; }
         public DateTime CaptureTime { get; set; }
         public long Latency { get; set; }
     }

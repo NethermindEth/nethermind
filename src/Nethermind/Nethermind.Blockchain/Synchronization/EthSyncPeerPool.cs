@@ -34,8 +34,8 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class EthSyncPeerPool : IEthSyncPeerPool
     {
-        private const decimal _minDiffPercentageForLatencySwitch = 0.10m;
-        private const int _minDiffForLatencySwitch = 5;
+        private const decimal _minDiffPercentageForSpeedSwitch = 0.10m;
+        private const int _minDiffForSpeedSwitch = 10;
         
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
@@ -279,12 +279,12 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (PeerCount == PeerMaxCount)
             {
-                int worstLatency = 0;
+                long worstSpeed = long.MaxValue;
                 PeerInfo worstPeer = null;
                 foreach (PeerInfo peerInfo in AllPeers)
                 {
-                    long latency = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
-                    if (latency > worstLatency)
+                    long transferSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100000;
+                    if (transferSpeed < worstSpeed)
                     {
                         worstPeer = peerInfo;
                     }
@@ -513,7 +513,7 @@ namespace Nethermind.Blockchain.Synchronization
         private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
         {
             if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer for {allocation}");
-            (PeerInfo Info, long Latency) bestPeer = (null, isLowPriority ? 0 : 100000);
+            (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : 0);
             foreach ((_, PeerInfo info) in _peers)
             {
                 if (allocation.MinBlocksAhead.HasValue && info.HeadNumber < (_blockTree.BestSuggestedHeader?.Number ?? 0) + allocation.MinBlocksAhead.Value)
@@ -549,11 +549,11 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                long latency = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
+                long averageTransferSpeed = _stats.GetOrAdd(info.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100000;
 
-                if (isLowPriority ? (latency > bestPeer.Latency) : (latency <= bestPeer.Latency))
+                if (isLowPriority ? (averageTransferSpeed <= bestPeer.TransferSpeed) : (averageTransferSpeed > bestPeer.TransferSpeed))
                 {
-                    bestPeer = (info, latency);
+                    bestPeer = (info, averageTransferSpeed);
                 }
             }
 
@@ -563,7 +563,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvLatency: {bestPeer.Latency}");
+                if (_logger.IsTrace) _logger.Trace($"[{reason}] Best ETH sync peer: {bestPeer.Info} | BlockHeaderAvSpeed: {bestPeer.TransferSpeed}");
             }
 
             return bestPeer.Info;
@@ -593,18 +593,18 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            var currentLatency = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000;
-            var newLatency = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100001;
+            var currentSpeed = _stats.GetOrAdd(allocation.Current?.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100000;
+            var newSpeed = _stats.GetOrAdd(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.BlockHeaders) ?? 100001;
 
-            if (newLatency / (decimal) Math.Max(1L, currentLatency) < 1m - _minDiffPercentageForLatencySwitch
-                && newLatency < currentLatency - _minDiffForLatencySwitch)
+            if (newSpeed / (decimal) Math.Max(1L, currentSpeed) > 1m + _minDiffPercentageForSpeedSwitch
+                && newSpeed > currentSpeed + _minDiffForSpeedSwitch)
             {
-                if (_logger.IsInfo) _logger.Info($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentLatency}]{Environment.NewLine}  IN : {peerInfo}[{newLatency}]");
+                if (_logger.IsInfo) _logger.Info($"Sync peer substitution{Environment.NewLine}  OUT: {allocation.Current}[{currentSpeed}]{Environment.NewLine}  IN : {peerInfo}[{newSpeed}]");
                 allocation.ReplaceCurrent(peerInfo);
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Staying with current peer {allocation.Current}[{currentLatency}] (ignoring {peerInfo}[{newLatency}])");
+                if (_logger.IsTrace) _logger.Trace($"Staying with current peer {allocation.Current}[{currentSpeed}] (ignoring {peerInfo}[{newSpeed}])");
             }
         }
 

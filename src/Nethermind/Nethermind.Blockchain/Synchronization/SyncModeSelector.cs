@@ -83,6 +83,11 @@ namespace Nethermind.Blockchain.Synchronization
                     maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
                 }
 
+                if (maxBlockNumberAmongPeers == 0)
+                {
+                    return;
+                }
+
                 SyncMode newSyncMode;
                 if (!_syncProgressResolver.IsFastBlocksFinished())
                 {

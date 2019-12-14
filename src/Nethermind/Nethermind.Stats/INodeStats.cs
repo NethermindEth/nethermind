@@ -33,8 +33,8 @@ namespace Nethermind.Stats
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
 
-        void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long milliseconds);
-        long? GetAverageLatency(NodeLatencyStatType latencyType);
+        void AddTransferSpeedCaptureEvent(TransferSpeedType transferSpeedType, long milliseconds);
+        long? GetAverageTransferSpeed(TransferSpeedType speedType);
 
         (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed();
         
@@ -48,6 +48,6 @@ namespace Nethermind.Stats
         Node Node { get; }
 
         IEnumerable<NodeStatsEvent> EventHistory { get; }
-        IEnumerable<NodeLatencyStatsEvent> LatencyHistory { get; }
+        IEnumerable<NodeTransferSpeedStatsEvent> SpeedHistory { get; }
     }
 }

@@ -18,7 +18,7 @@ namespace Nethermind.Blockchain.Synchronization.SyncLimits
 {
     public static class ParitySyncLimits
     {
-        public static int MaxHeaderFetch = 512; // Amount of block headers to be fetched per retrieval request
+        public static int MaxHeaderFetch = 1024; // Amount of block headers to be fetched per retrieval request
         public static int MaxBodyFetch = 256; // Amount of block bodies to be fetched per retrieval request
         public static int MaxReceiptFetch = 256; // Amount of transaction receipts to allow fetching per request
         public static int MaxCodeFetch = 1024; // Amount of contract codes to allow fetching per request

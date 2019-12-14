@@ -39,6 +39,6 @@ namespace Nethermind.Stats
         long GetCurrentPersistedReputation(Node node);
         void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent);
         bool HasFailedValidation(Node node);
-        void ReportLatencyCaptureEvent(Node node, NodeLatencyStatType latencyType, long value);
+        void ReportTransferSpeedEvent(Node node, TransferSpeedType transferSpeedType, long value);
     }
 }

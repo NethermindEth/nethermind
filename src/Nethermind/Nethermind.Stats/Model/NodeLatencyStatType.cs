@@ -18,7 +18,7 @@
 
 namespace Nethermind.Stats.Model
 {
-    public enum NodeLatencyStatType
+    public enum TransferSpeedType
     {
         P2PPingPong,
         BlockHeaders,

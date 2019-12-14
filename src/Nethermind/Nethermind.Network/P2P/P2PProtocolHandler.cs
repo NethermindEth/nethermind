@@ -241,7 +241,9 @@ namespace Nethermind.Network.P2P
             var latency = _perfService.EndPerfCalc(pingPerfCalcId);
             if (latency.HasValue)
             {
-                _nodeStatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.P2PPingPong, latency.Value);
+                // TODO: this used to be latency - now, not so cool
+                // maybe should request some standard headers to compare speed?
+                _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.P2PPingPong, 10000 / latency.Value);
             }
 
             return true;

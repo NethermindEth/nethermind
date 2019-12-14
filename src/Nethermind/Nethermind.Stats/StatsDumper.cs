@@ -74,11 +74,11 @@ namespace Nethermind.Stats
                           $"CLIENTS:{Environment.NewLine}" +
                           $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
 
-            var peersWithLatencyStats = nodes.Where(x => x.LatencyHistory.Any()).ToArray();
-            if (peersWithLatencyStats.Any())
+            var peersWithTransferSpeedStats = nodes.Where(x => x.SpeedHistory.Any()).ToArray();
+            if (peersWithTransferSpeedStats.Any())
             {
-                var latencyLog = GetLatencyComparisonLog(peersWithLatencyStats);
-                sb.AppendLine(latencyLog);
+                var speedLog = GetTrasferSpeedComparisonLog(peersWithTransferSpeedStats);
+                sb.AppendLine(speedLog);
             }
 
             if (_statsConfig.CaptureNodeStatsEventHistory && logEventDetails)
@@ -154,17 +154,17 @@ namespace Nethermind.Stats
             }
 
             sb.AppendLine();
-            sb.AppendLine("Latency averages:");
-            var averageLatencies = GetAverageLatencies(nodeStats);
-            foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
+            sb.AppendLine("Speed averages:");
+            var averageSpeeds = GetAverageSpeeds(nodeStats);
+            foreach (var speed in averageSpeeds.Where(x => x.Value.HasValue))
             {
-                sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
+                sb.AppendLine($"{speed.Key.ToString()} = {speed.Value}");
             }
 
-            if (nodeStats.LatencyHistory.Any())
+            if (nodeStats.SpeedHistory.Any())
             {
-                sb.AppendLine("Latency events:");
-                foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
+                sb.AppendLine("Speed events:");
+                foreach (var statsEvent in nodeStats.SpeedHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
                 {
                     sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(DetailedTimeDateFormat)} | {statsEvent.Latency}");
                 }
@@ -186,12 +186,12 @@ namespace Nethermind.Stats
             if (_logger.IsTrace) _logger.Trace(log);
         }
 
-        private string GetLatencyComparisonLog(INodeStats[] nodeStats)
+        private string GetTrasferSpeedComparisonLog(INodeStats[] nodeStats)
         {
             var latencyDict = nodeStats
-                .Select(x => new {Node = x.Node, Average = GetAverageLatencies(x)})
-                .OrderBy(x => x.Average.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
-            return $"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.Node.Id}: {string.Join(" | ", x.Average.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}";
+                .Select(x => new {Node = x.Node, Average = GetAverageSpeeds(x)})
+                .OrderBy(x => x.Average.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == TransferSpeedType.BlockHeaders)?.Value ?? 10000);
+            return $"Overall speed stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.Node.Id}: {string.Join(" | ", x.Average.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}";
         }
 
         private string GetCapabilities(P2PNodeDetails nodeDetails)
@@ -204,9 +204,9 @@ namespace Nethermind.Stats
             return string.Join("|", nodeDetails.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"));
         }
 
-        private static Dictionary<NodeLatencyStatType, long?> GetAverageLatencies(INodeStats nodeStats)
+        private static Dictionary<TransferSpeedType, long?> GetAverageSpeeds(INodeStats nodeStats)
         {
-            return Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);
+            return Enum.GetValues(typeof(TransferSpeedType)).OfType<TransferSpeedType>().ToDictionary(x => x, nodeStats.GetAverageTransferSpeed);
         }
     }
 }
