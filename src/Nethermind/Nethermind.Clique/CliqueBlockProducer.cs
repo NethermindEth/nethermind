@@ -357,7 +357,7 @@ namespace Nethermind.Clique
             int extraDataLength = mainBytesLength + signerBytesLength;
             header.ExtraData = new byte[extraDataLength];
 
-            byte[] clientName = Encoding.UTF8.GetBytes("Nethermind");
+            byte[] clientName = Encoding.UTF8.GetBytes("Nethermind " + ClientVersion.Version);
             Array.Copy(clientName, header.ExtraData, clientName.Length);
 
             if (isEpochBlock)

@@ -24,6 +24,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,9 +38,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
-        private const int BodiesRequestSize = 512;
-        private const int HeadersRequestSize = 512;
-        private const int ReceiptsRequestStats = 256;
+        private const int BodiesRequestSize = GethSyncLimits.MaxBodyFetch;
+        private const int HeadersRequestSize = GethSyncLimits.MaxHeaderFetch;
+        private const int ReceiptsRequestStats = GethSyncLimits.MaxReceiptFetch;
 
         private ILogger _logger;
         private readonly ISpecProvider _specProvider;

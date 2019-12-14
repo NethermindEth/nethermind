@@ -18,13 +18,13 @@ namespace Nethermind.Blockchain.Synchronization.SyncLimits
 {
     public static class GethSyncLimits
     {
-        public static int MaxHeaderFetch = 192; // Amount of block headers to be fetched per retrieval request
-        public static int MaxBodyFetch = 32; // Amount of block bodies to be fetched per retrieval request
-        public static int MaxReceiptFetch = 128; // Amount of transaction receipts to allow fetching per request
-        public static int MaxCodeFetch = 64; // Amount of contract codes to allow fetching per request
-        public static int MaxProofsFetch = 64; // Amount of merkle proofs to be fetched per retrieval request
-        public static int MaxHelperTrieProofsFetch = 64; // Amount of helper tries to be fetched per retrieval request
-        public static int MaxTxSend = 64; // Amount of transactions to be send per request
-        public static int MaxTxStatus = 256; // Amount of transactions to queried per request   
+        public const int MaxHeaderFetch = 192; // Amount of block headers to be fetched per retrieval request
+        public const int MaxBodyFetch = 32; // Amount of block bodies to be fetched per retrieval request
+        public const int MaxReceiptFetch = 128; // Amount of transaction receipts to allow fetching per request
+        public const int MaxCodeFetch = 64; // Amount of contract codes to allow fetching per request
+        public const int MaxProofsFetch = 64; // Amount of merkle proofs to be fetched per retrieval request
+        public const int MaxHelperTrieProofsFetch = 64; // Amount of helper tries to be fetched per retrieval request
+        public const int MaxTxSend = 64; // Amount of transactions to be send per request
+        public const int MaxTxStatus = 256; // Amount of transactions to queried per request   
     }
 }
