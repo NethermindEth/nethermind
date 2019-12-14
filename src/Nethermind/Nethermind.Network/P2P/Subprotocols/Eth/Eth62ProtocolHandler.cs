@@ -650,6 +650,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Skip = skip;
             msg.StartingBlockNumber = number;
 
+            Logger.Info($"Sending headers request ({number}, {maxBlocks}, {skip}) to {this}");
+            
             BlockHeader[] headers = await SendRequest(msg, token);
             int nonNullCount = 0;
             for (int i = 0; i < headers.Length; i++)
@@ -672,6 +674,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
         {
+            Logger.Info($"Sending bodies request ({blockHashes.Count}) to {this}");
             if (blockHashes.Count == 0)
             {
                 return new BlockBody[0];
@@ -680,6 +683,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
+            
+            int nonNullCount = 0;
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                if (blocks[i] != null)
+                {
+                    nonNullCount++;
+                }
+            }
+            
+            Logger.Info($"Sent bodies request ({blockHashes.Count}) to {this} - received {blocks.Length}, out of which {nonNullCount} non null");
             return blocks;
         }
 

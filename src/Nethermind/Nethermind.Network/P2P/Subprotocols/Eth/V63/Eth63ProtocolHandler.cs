@@ -147,8 +147,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
             
+            Logger.Info($"Sending receipts request ({blockHashes.Count}) to {this}");
+            
             var msg = new GetReceiptsMessage(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
+            
+            Logger.Info($"Sent receipts request ({blockHashes.Count}) to {this} - received {txReceipts.Length}");
             return txReceipts;
         }
 

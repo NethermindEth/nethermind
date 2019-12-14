@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            WriteSyncConfigReport();
+            if(_logger.IsDebug) WriteSyncConfigReport();
             
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
@@ -199,7 +199,7 @@ namespace Nethermind.Blockchain.Synchronization
                 builder.Append($"Sync config - full archive sync");
             }
             
-            _logger.Info(builder.ToString());
+            _logger.Debug(builder.ToString());
         }
 
         private void WriteWaitForProcessorReport()

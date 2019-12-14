@@ -26,6 +26,7 @@ using System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -102,7 +103,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
-                int headersToRequest = (int) BigInteger.Min(blocksLeft + 1, _syncBatchSize.Current);
+                int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
                     break;
@@ -190,12 +191,52 @@ namespace Nethermind.Blockchain.Synchronization
                     if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing.", downloadTask.Exception);
                 }
 
+                if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing", downloadTask.Exception);
                 throw new EthSynchronizationException($"{entities} task faulted", downloadTask.Exception);
             }
 
             return default;
         }
 
+        private int MaxHeadersForPeer(PeerInfo peer)
+        {
+            return peer.PeerClientType switch
+            {
+                PeerClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
+                PeerClientType.Geth => GethSyncLimits.MaxHeaderFetch,
+                PeerClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
+                PeerClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+                PeerClientType.Unknown => 192,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
+        private int MaxBodiesForPeer(PeerInfo peer)
+        {
+            return peer.PeerClientType switch
+            {
+                PeerClientType.BeSu => BeSuSyncLimits.MaxBodyFetch,
+                PeerClientType.Geth => GethSyncLimits.MaxBodyFetch,
+                PeerClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
+                PeerClientType.Parity => ParitySyncLimits.MaxBodyFetch,
+                PeerClientType.Unknown => 32,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
+        private int MaxReceiptsForPeer(PeerInfo peer)
+        {
+            return peer.PeerClientType switch
+            {
+                PeerClientType.BeSu => BeSuSyncLimits.MaxReceiptFetch,
+                PeerClientType.Geth => GethSyncLimits.MaxReceiptFetch,
+                PeerClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
+                PeerClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
+                PeerClientType.Unknown => 128,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, DownloadOptions options = DownloadOptions.DownloadAndProcess)
         {
             bool downloadReceipts = options == DownloadOptions.DownloadWithReceipts;
@@ -222,16 +263,18 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
-                int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _syncBatchSize.Current);
-                if (blocksToRequest <= 1)
+                int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
+                if (headersToRequest <= 1)
                 {
                     break;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{blocksToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
+                headersToRequest = Math.Min(headersToRequest, MaxHeadersForPeer(bestPeer));
+
+                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, blocksToRequest);
+                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
                 BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts);
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
@@ -325,7 +368,7 @@ namespace Nethermind.Blockchain.Synchronization
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset);
+                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, MaxBodiesForPeer(peer));
                 Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(t => DownloadFailHandler(getBodiesRequest, "bodies"));
                 BlockBody[] result = getBodiesRequest.Result;
@@ -343,7 +386,7 @@ namespace Nethermind.Blockchain.Synchronization
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset);
+                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, MaxReceiptsForPeer(peer));
                 Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(t => DownloadFailHandler(request, "bodies"));
 
@@ -450,8 +493,8 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new NotImplementedException($"Unknown {nameof(AddBlockResult)} {addResult}");
             }
         }
-        
-        
+
+
         private class BlockDownloadContext
         {
             private Dictionary<int, int> _indexMapping;
@@ -499,18 +542,24 @@ namespace Nethermind.Blockchain.Synchronization
             public int FullBlocksCount => Blocks.Length;
 
             public Block[] Blocks { get; set; }
-            
+
             public TxReceipt[][] ReceiptsForBlocks { get; private set; }
 
             public List<Keccak> NonEmptyBlockHashes { get; set; }
 
-            public IList<Keccak> GetHashesByOffset(int offset)
+            public IList<Keccak> GetHashesByOffset(int offset, int maxLength)
             {
-                IList<Keccak> hashesToRequest =
+                var hashesToRequest =
                     offset == 0
                         ? NonEmptyBlockHashes
-                        : NonEmptyBlockHashes.Skip(offset).ToList();
-                return hashesToRequest;
+                        : NonEmptyBlockHashes.Skip(offset);
+
+                if (maxLength < NonEmptyBlockHashes.Count - offset)
+                {
+                    hashesToRequest = hashesToRequest.Take(maxLength);
+                }
+                
+                return hashesToRequest.ToList();
             }
 
             public void SetBody(int index, BlockBody body)
@@ -530,7 +579,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     throw new InvalidOperationException($"Unexpected call to {nameof(SetReceipts)} when not downloading receipts");
                 }
-                
+
                 int mappedIndex = _indexMapping[index];
                 Block block = Blocks[_indexMapping[index]];
                 if (receipts == null)
@@ -560,7 +609,7 @@ namespace Nethermind.Blockchain.Synchronization
                     throw new EthSynchronizationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
                 }
             }
-            
+
             private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
             {
                 receipt.BlockHash = block.Hash;
@@ -586,6 +635,5 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
         }
-
     }
 }
