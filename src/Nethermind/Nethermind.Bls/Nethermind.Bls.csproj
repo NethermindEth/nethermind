@@ -10,7 +10,7 @@
       <Content Include="runtimes\linux-x64\native\libbls384_256.so">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
-      <Content Include="runtimes\osx-x64\native\libbls384_256.dylib">
+      <Content Include="runtimes\osx-x64\native\bls384_256.dylib">
         <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       </Content>
       <Content Include="runtimes\win-x64\native\bls384_256.dll">

@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using FluentAssertions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
@@ -83,9 +84,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         [Test]
         public void Chain_id_is_set_correctly()
         {
-            ChainSpec chainSpec = new ChainSpec();
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.ChainId = 5;
+            ChainSpec chainSpec = new ChainSpec {Parameters = new ChainParameters(), ChainId = 5};
 
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(5, provider.ChainId);
@@ -105,11 +104,11 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         [Test]
         public void Bound_divisors_set_correctly()
         {
-            ChainSpec chainSpec = new ChainSpec();
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.Parameters.GasLimitBoundDivisor = 17;
-            chainSpec.Ethash = new EthashParameters();
-            chainSpec.Ethash.DifficultyBoundDivisor = 19;
+            ChainSpec chainSpec = new ChainSpec
+            {
+                Parameters = new ChainParameters {GasLimitBoundDivisor = 17},
+                Ethash = new EthashParameters {DifficultyBoundDivisor = 19}
+            };
 
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(19, provider.GenesisSpec.DifficultyBoundDivisor);
@@ -119,16 +118,20 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
         [Test]
         public void Difficulty_bomb_delays_loaded_correctly()
         {
-            ChainSpec chainSpec = new ChainSpec();
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.Ethash = new EthashParameters();
-            chainSpec.Ethash.DifficultyBombDelays = new Dictionary<long, long>
+            ChainSpec chainSpec = new ChainSpec
             {
-                {3, 100},
-                {7, 200},
-                {13, 300},
-                {17, 400},
-                {19, 500},
+                Parameters = new ChainParameters(),
+                Ethash = new EthashParameters
+                {
+                    DifficultyBombDelays = new Dictionary<long, long>
+                    {
+                        {3, 100},
+                        {7, 200},
+                        {13, 300},
+                        {17, 400},
+                        {19, 500},
+                    }
+                }
             };
 
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
@@ -145,15 +148,54 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             const long maxCodeTransition = 13;
             const long maxCodeSize = 100;
 
-            ChainSpec chainSpec = new ChainSpec();
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.Parameters.MaxCodeSizeTransition = maxCodeTransition;
-            chainSpec.Parameters.MaxCodeSize = maxCodeSize;
+            ChainSpec chainSpec = new ChainSpec
+            {
+                Parameters = new ChainParameters
+                {
+                    MaxCodeSizeTransition = maxCodeTransition, MaxCodeSize = maxCodeSize
+                }
+            };
 
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
             Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition).MaxCodeSize, "at transition");
             Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
+        }
+        
+        [Test]
+        public void Eip2200_is_set_correctly_directly()
+        {
+            ChainSpec chainSpec = new ChainSpec {Parameters = new ChainParameters {Eip2200Transition = 5}};
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
+        }
+        
+        [Test]
+        public void Eip2200_is_set_correctly_indirectly()
+        {
+            ChainSpec chainSpec = new ChainSpec {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 5}};
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
+        }
+        
+        [Test]
+        public void Eip2200_is_set_correctly_indirectly_after_disabling_eip1283_and_reenabling()
+        {
+            ChainSpec chainSpec = new ChainSpec {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4, Eip1283ReenableTransition = 5}};
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeTrue();
+        }
+        
+        [Test]
+        public void Eip2200_is_not_set_correctly_indirectly_after_disabling_eip1283()
+        {
+            ChainSpec chainSpec = new ChainSpec {Parameters = new ChainParameters {Eip1706Transition = 5, Eip1283Transition = 1, Eip1283DisableTransition = 4}};
+
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            provider.GetSpec(5).IsEip2200Enabled.Should().BeFalse();
         }
 
         [Test]
@@ -162,42 +204,42 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             const long maxCodeTransition = 1;
             const long maxCodeSize = 1;
 
-            ChainSpec chainSpec = new ChainSpec();
-            chainSpec.Ethash = new EthashParameters();
-            chainSpec.Ethash.HomesteadTransition = 70;
-            chainSpec.Ethash.Eip100bTransition = 1000;
-
-            chainSpec.ByzantiumBlockNumber = 1960;
-            chainSpec.ConstantinopleBlockNumber = 6490;
-
-            chainSpec.Parameters = new ChainParameters();
-            chainSpec.Parameters.MaxCodeSizeTransition = maxCodeTransition;
-            chainSpec.Parameters.MaxCodeSize = maxCodeSize;
-            chainSpec.Parameters.Registrar = Address.Zero;
-            chainSpec.Parameters.MinGasLimit = 11;
-            chainSpec.Parameters.GasLimitBoundDivisor = 13;
-            chainSpec.Parameters.MaximumExtraDataSize = 17;
-
-            chainSpec.Parameters.Eip140Transition = 1400L;
-            chainSpec.Parameters.Eip145Transition = 1450L;
-            chainSpec.Parameters.Eip150Transition = 1500L;
-            chainSpec.Parameters.Eip152Transition = 1520L;
-            chainSpec.Parameters.Eip155Transition = 1550L;
-            chainSpec.Parameters.Eip160Transition = 1600L;
-            chainSpec.Parameters.Eip161abcTransition = 1580L;
-            chainSpec.Parameters.Eip161dTransition = 1580L;
-            chainSpec.Parameters.Eip211Transition = 2110L;
-            chainSpec.Parameters.Eip214Transition = 2140L;
-            chainSpec.Parameters.Eip658Transition = 6580L;
-            chainSpec.Parameters.Eip1014Transition = 10140L;
-            chainSpec.Parameters.Eip1052Transition = 10520L;
-            chainSpec.Parameters.Eip1108Transition = 11080L;
-            chainSpec.Parameters.Eip1283Transition = 12830L;
-            chainSpec.Parameters.Eip1283DisableTransition = 12831L;
-            chainSpec.Parameters.Eip1344Transition = 13440L;
-            chainSpec.Parameters.Eip1884Transition = 18840L;
-            chainSpec.Parameters.Eip2028Transition = 20280L;
-            chainSpec.Parameters.Eip2200Transition = 22000L;
+            ChainSpec chainSpec = new ChainSpec
+            {
+                Ethash = new EthashParameters {HomesteadTransition = 70, Eip100bTransition = 1000},
+                ByzantiumBlockNumber = 1960,
+                ConstantinopleBlockNumber = 6490,
+                Parameters = new ChainParameters
+                {
+                    MaxCodeSizeTransition = maxCodeTransition,
+                    MaxCodeSize = maxCodeSize,
+                    Registrar = Address.Zero,
+                    MinGasLimit = 11,
+                    GasLimitBoundDivisor = 13,
+                    MaximumExtraDataSize = 17,
+                    Eip140Transition = 1400L,
+                    Eip145Transition = 1450L,
+                    Eip150Transition = 1500L,
+                    Eip152Transition = 1520L,
+                    Eip155Transition = 1550L,
+                    Eip160Transition = 1600L,
+                    Eip161abcTransition = 1580L,
+                    Eip161dTransition = 1580L,
+                    Eip211Transition = 2110L,
+                    Eip214Transition = 2140L,
+                    Eip658Transition = 6580L,
+                    Eip1014Transition = 10140L,
+                    Eip1052Transition = 10520L,
+                    Eip1108Transition = 11080L,
+                    Eip1283Transition = 12830L,
+                    Eip1283DisableTransition = 12831L,
+                    Eip1344Transition = 13440L,
+                    Eip1884Transition = 18840L,
+                    Eip2028Transition = 20280L,
+                    Eip2200Transition = 22000L,
+                    Eip1283ReenableTransition = 23000L
+                }
+            };
 
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             Assert.AreEqual(long.MaxValue, provider.GetSpec(maxCodeTransition - 1).MaxCodeSize, "one before");
@@ -954,6 +996,36 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(true, underTest.IsEip1108Enabled);
             Assert.AreEqual(true, underTest.IsEip1234Enabled);
             Assert.AreEqual(false, underTest.IsEip1283Enabled);
+            Assert.AreEqual(true, underTest.IsEip1344Enabled);
+            Assert.AreEqual(true, underTest.IsEip1884Enabled);
+            Assert.AreEqual(true, underTest.IsEip2028Enabled);
+            Assert.AreEqual(true, underTest.IsEip2200Enabled);
+            
+            underTest = provider.GetSpec(23000L);
+            Assert.AreEqual(underTest.MaxCodeSize, maxCodeSize);
+            Assert.AreEqual(true, underTest.IsEip2Enabled);
+            Assert.AreEqual(true, underTest.IsEip7Enabled);
+            Assert.AreEqual(true, underTest.IsEip100Enabled);
+            Assert.AreEqual(true, underTest.IsEip140Enabled);
+            Assert.AreEqual(true, underTest.IsEip145Enabled);
+            Assert.AreEqual(true, underTest.IsEip150Enabled);
+            Assert.AreEqual(true, underTest.IsEip152Enabled);
+            Assert.AreEqual(true, underTest.IsEip155Enabled);
+            Assert.AreEqual(true, underTest.IsEip158Enabled);
+            Assert.AreEqual(true, underTest.IsEip160Enabled);
+            Assert.AreEqual(true, underTest.IsEip170Enabled);
+            Assert.AreEqual(true, underTest.IsEip196Enabled);
+            Assert.AreEqual(true, underTest.IsEip197Enabled);
+            Assert.AreEqual(true, underTest.IsEip198Enabled);
+            Assert.AreEqual(true, underTest.IsEip211Enabled);
+            Assert.AreEqual(true, underTest.IsEip214Enabled);
+            Assert.AreEqual(true, underTest.IsEip649Enabled);
+            Assert.AreEqual(true, underTest.IsEip658Enabled);
+            Assert.AreEqual(true, underTest.IsEip1014Enabled);
+            Assert.AreEqual(true, underTest.IsEip1052Enabled);
+            Assert.AreEqual(true, underTest.IsEip1108Enabled);
+            Assert.AreEqual(true, underTest.IsEip1234Enabled);
+            Assert.AreEqual(true, underTest.IsEip1283Enabled);
             Assert.AreEqual(true, underTest.IsEip1344Enabled);
             Assert.AreEqual(true, underTest.IsEip1884Enabled);
             Assert.AreEqual(true, underTest.IsEip2028Enabled);

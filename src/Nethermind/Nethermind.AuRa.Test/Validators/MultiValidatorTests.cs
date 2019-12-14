@@ -44,6 +44,7 @@ namespace Nethermind.AuRa.Test.Validators
         private IDictionary<long, IAuRaValidatorProcessor> _innerValidators;
         private Block _block;
         private IBlockFinalizationManager _finalizationManager;
+        private IBlockTree _blockTree;
 
         [SetUp]
         public void SetUp()
@@ -53,6 +54,7 @@ namespace Nethermind.AuRa.Test.Validators
             _factory = Substitute.For<IAuRaAdditionalBlockProcessorFactory>();
             _logManager = Substitute.For<ILogManager>();
             _finalizationManager = Substitute.For<IBlockFinalizationManager>();
+            _blockTree = Substitute.For<IBlockTree>();
             _finalizationManager.LastFinalizedBlockLevel.Returns(0);
             
             _factory.CreateValidatorProcessor(default, default)
@@ -69,21 +71,21 @@ namespace Nethermind.AuRa.Test.Validators
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
-            Action act = () => new MultiValidator(null, _factory, _logManager);
+            Action act = () => new MultiValidator(null, _factory, _blockTree, _logManager);
             act.Should().Throw<ArgumentNullException>();
         }
         
         [Test]
         public void throws_ArgumentNullException_on_empty_validatorFactory()
         {
-            Action act = () => new MultiValidator(_validator, null, _logManager);
+            Action act = () => new MultiValidator(_validator, null, _blockTree, _logManager);
             act.Should().Throw<ArgumentNullException>();
         }
 
         [Test]
         public void throws_ArgumentNullException_on_empty_logManager()
         {
-            Action act = () => new MultiValidator(_validator,_factory, null);
+            Action act = () => new MultiValidator(_validator,_factory, _blockTree, null);
             act.Should().Throw<ArgumentNullException>();
         }
 
@@ -91,7 +93,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void throws_ArgumentException_on_wrong_validator_type()
         {
             _validator.ValidatorType = AuRaParameters.ValidatorType.Contract;
-            Action act = () => new MultiValidator(_validator, _factory, _logManager);
+            Action act = () => new MultiValidator(_validator, _factory, _blockTree, _logManager);
             act.Should().Throw<ArgumentException>();
         }
         
@@ -99,7 +101,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void throws_ArgumentException_on_empty_inner_validators()
         {
             _validator.Validators.Clear();
-            Action act = () => new MultiValidator(_validator, _factory, _logManager);            
+            Action act = () => new MultiValidator(_validator, _factory, _blockTree, _logManager);            
             act.Should().Throw<ArgumentException>();
         }
         
@@ -107,7 +109,7 @@ namespace Nethermind.AuRa.Test.Validators
         public void creates_inner_validators()
         {
             _validator = GetValidator(AuRaParameters.ValidatorType.Contract);
-            IAuRaValidator validator = new MultiValidator(_validator, _factory, _logManager);
+            IAuRaValidator validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
             validator.SetFinalizationManager(_finalizationManager);
 
             foreach (var blockNumber in _validator.Validators.Keys.Skip(1))
@@ -126,7 +128,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             // Arrange
             _validator = GetValidator(validatorType);
-            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _logManager);
+            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
             var innerValidatorsFirstBlockCalls = GetInnerValidatorsFirstBlockCalls(_validator);
             var maxCalls = innerValidatorsFirstBlockCalls.Values.Max() + 10;
             validator.SetFinalizationManager(_finalizationManager);
@@ -156,7 +158,7 @@ namespace Nethermind.AuRa.Test.Validators
         {
             // Arrange
             _validator.Validators.Remove(0);
-            var validator = new MultiValidator(_validator, _factory, _logManager);
+            var validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
             
             // Act
             ProcessBlocks(_validator.Validators.Keys.Min(), validator, 1);
@@ -165,15 +167,33 @@ namespace Nethermind.AuRa.Test.Validators
             EnsureInnerValidatorsCalled(i => (_innerValidators.ElementAt(i).Value, 0));
         }
         
-        [Test]
-        public void initializes_validator_when_producing_block()
+        [TestCase(16L, ExpectedResult = 11)]
+        [TestCase(21L, ExpectedResult = 21)]
+        public long initializes_validator_when_producing_block(long blockNumber)
         {
-            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _logManager);
-            var blockNumber = 15;
+            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
             _block.Number = blockNumber;
             validator.PreProcess(_block, ProcessingOptions.ProducingBlock);
             _innerValidators.Count.Should().Be(1);
-            _innerValidators.Keys.First().Should().Be(blockNumber + 1);
+            return _innerValidators.Keys.First();
+        }
+        
+        [TestCase(16L, AuRaParameters.ValidatorType.List, true, ExpectedResult = 11)]
+        [TestCase(21L, AuRaParameters.ValidatorType.List, false, ExpectedResult = 21)]
+        [TestCase(16L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 15)]
+        [TestCase(23L, AuRaParameters.ValidatorType.Contract, true, ExpectedResult = 22)]
+        [TestCase(16L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 1)]
+        [TestCase(21L, AuRaParameters.ValidatorType.Contract, false, ExpectedResult = 11)]
+        public long initializes_validator_when_on_nonconsecutive_block(long blockNumber, AuRaParameters.ValidatorType validatorType, bool finalizedLastValidatorBlockLevel)
+        {
+            _validator = GetValidator(validatorType);
+            IAuRaValidatorProcessor validator = new MultiValidator(_validator, _factory, _blockTree, _logManager);
+            validator.SetFinalizationManager(_finalizationManager);
+            var validatorBlockLevel = (blockNumber - 1)/10*10;
+            _finalizationManager.GetFinalizedLevel(validatorBlockLevel).Returns(finalizedLastValidatorBlockLevel ? blockNumber - 2 : (long?) null);
+            _block.Number = blockNumber;
+            validator.PreProcess(_block);
+            return _innerValidators.Keys.Last();
         }
         
         private void ProcessBlocks(long count, IAuRaValidatorProcessor validator, int blocksToFinalization)
