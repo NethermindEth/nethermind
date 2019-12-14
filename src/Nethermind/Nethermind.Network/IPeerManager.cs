@@ -26,8 +26,6 @@ namespace Nethermind.Network
         void Init();
         void Start();
         Task StopAsync();
-        void LogSessionStats(bool logEventDetails);
-
         IReadOnlyCollection<Peer> ActivePeers { get; }
     }
 }

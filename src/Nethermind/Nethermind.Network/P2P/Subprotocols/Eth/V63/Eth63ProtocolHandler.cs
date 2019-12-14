@@ -61,6 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             base.HandleMessage(message);
 
+            int size = message.Content.ReadableBytes;
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
@@ -73,7 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     Interlocked.Increment(ref Counter);
                     if(Logger.IsTrace) Logger.Trace($"{Counter:D5} Receipts from {Node:c}");
                     Metrics.Eth63ReceiptsReceived++;
-                    Handle(Deserialize<ReceiptsMessage>(message.Content));
+                    Handle(Deserialize<ReceiptsMessage>(message.Content), size);
                     break;
                 case Eth63MessageCode.GetNodeData:
                     Interlocked.Increment(ref Counter);
@@ -85,7 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     Interlocked.Increment(ref Counter);
                     if(Logger.IsTrace) Logger.Trace($"{Counter:D5} NodeData from {Node:c}");
                     Metrics.Eth63NodeDataReceived++;
-                    Handle(Deserialize<NodeDataMessage>(message.Content));
+                    Handle(Deserialize<NodeDataMessage>(message.Content), size);
                     break;
             }
         }
@@ -100,11 +101,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if(Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        private void Handle(ReceiptsMessage msg)
+        private void Handle(ReceiptsMessage msg, long size)
         {
             var request = _receiptsRequests.Take();
             if (IsRequestMatched(request, msg))
             {
+                request.ResponseSize = size;
                 request.CompletionSource.SetResult(msg.TxReceipts);
             }
         }
@@ -119,9 +121,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if(Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        private void Handle(NodeDataMessage msg)
+        private void Handle(NodeDataMessage msg, int size)
         {
             var request = _nodeDataRequests.Take();
+            request.ResponseSize = size;
             if (IsRequestMatched(request, msg))
             {
                 request.CompletionSource.SetResult(msg.Data);
@@ -147,8 +150,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<TxReceipt[]>();
             }
             
+            // Logger.Info($"Sending receipts request ({blockHashes.Count}) to {this}");
+            
             var msg = new GetReceiptsMessage(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
+            
+            // Logger.Info($"Sent receipts request ({blockHashes.Count}) to {this} - received {txReceipts.Length}");
             return txReceipts;
         }
 
@@ -162,9 +169,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             var request = new Request<GetNodeDataMessage, byte[][]>(message);
+            request.StartMeasuringTime();
             _nodeDataRequests.Add(request, token);
-
-            var perfCalcId = _perfService.StartPerfCalc();
 
             Send(request.Message);
             Task<byte[][]> task = request.CompletionSource.Task;
@@ -180,18 +186,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (firstTask == task)
             {
                 delayCancellation.Cancel();
-                var latency = _perfService.EndPerfCalc(perfCalcId);
-                if (latency.HasValue)
-                {
-                    // block headers here / ok
-                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
-                }
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
+                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
             }
             
-            StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, (long)Timeouts.Eth.TotalMilliseconds);
-            _perfService.EndPerfCalc(perfCalcId);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetNodeDataMessage)}");
         }
         
@@ -205,6 +208,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             var request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
+            request.StartMeasuringTime();
             _receiptsRequests.Add(request, token);
 
             Send(request.Message);
@@ -221,8 +225,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             if (firstTask == task)
             {
                 delayCancellation.Cancel();
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
+                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
+
                 return task.Result;
             }
+            
+            StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
 
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetReceiptsMessage)}");
         }

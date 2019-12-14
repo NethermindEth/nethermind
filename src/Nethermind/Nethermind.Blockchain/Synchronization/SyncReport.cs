@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Linq;
+using System.Text;
 using System.Timers;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -25,7 +27,10 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public class SyncReport : ISyncReport
     {
+        private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly ISyncConfig _syncConfig;
+        private readonly ISyncProgressResolver _syncProgressResolver;
+        private readonly ISyncModeSelector _syncModeSelector;
         private readonly ILogger _logger;
 
         private SyncPeersReport _syncPeersReport;
@@ -40,10 +45,13 @@ namespace Nethermind.Blockchain.Synchronization
             set => _timer.Interval = value;
         }
 
-        public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ILogManager logManager, double tickTime = 1000)
+        public SyncReport(IEthSyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, ISyncProgressResolver syncProgressResolver, ISyncModeSelector syncModeSelector, ILogManager logManager, double tickTime = 1000)
         {
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
+            _syncProgressResolver = syncProgressResolver ?? throw new ArgumentNullException(nameof(syncProgressResolver));
+            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             
             StartTime = DateTime.UtcNow;
@@ -51,8 +59,16 @@ namespace Nethermind.Blockchain.Synchronization
 
             TickTime = tickTime;
             _timer.Interval = TickTime;
+            _timer.AutoReset = false;
             _timer.Elapsed += TimerOnElapsed;
             _timer.Start();
+            
+            _syncModeSelector.Changed +=SyncModeSelectorOnChanged;
+        }
+
+        private void SyncModeSelectorOnChanged(object sender, SyncModeChangedEventArgs e)
+        {
+            _logger.Info($"Sync mode changed from {e.Previous} to {e.Current}");
         }
 
         private DateTime StartTime { get; }
@@ -74,6 +90,8 @@ namespace Nethermind.Blockchain.Synchronization
             }
 
             _reportId++;
+
+            _timer.Enabled = true;
         }
 
         private Timer _timer = new Timer();
@@ -117,10 +135,18 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            if(_logger.IsDebug) WriteSyncConfigReport();
+            
             if (!_reportedFastBlocksSummary && FastBlocksHeaders.HasEnded && FastBlocksBodies.HasEnded && FastBlocksReceipts.HasEnded)
             {
                 _reportedFastBlocksSummary = true;
                 WriteFastBlocksReport();
+            }
+
+            if (!_syncPeerPool.UsefulPeers.Any())
+            {
+                WriteFullSyncReport($"Waiting for useful peers in '{CurrentSyncMode}' sync mode");
+                return;
             }
             
             switch (CurrentSyncMode)
@@ -132,12 +158,72 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteFullSyncReport("Full Sync");
                     break;
                 case SyncMode.Headers:
-                    WriteFullSyncReport("Fast Blocks Recent");
+                    WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
                     break;
                 case SyncMode.FastBlocks:
                     WriteFastBlocksReport();
                     break;
+                case SyncMode.DbSync:
+                    WriteDbSyncReport();
+                    break;
+                case SyncMode.StateNodes:
+                    WriteStateNodesReport();
+                    break;
+                case SyncMode.WaitForProcessor:
+                    WriteWaitForProcessorReport();
+                    break;
+                default:
+                    _logger.Info($"Sync mode: {CurrentSyncMode}");
+                    break;
             }
+        }
+
+        private void WriteSyncConfigReport()
+        {
+            bool isFastSync = _syncConfig.FastSync;
+            bool isFastBlocks = _syncConfig.FastBlocks;
+            bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
+            bool receiptsInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
+
+            StringBuilder builder = new StringBuilder();
+            if (isFastSync && isFastBlocks)
+            {
+                builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
+                if (bodiesInFastBlocks)
+                {
+                    builder.Append(" + bodies");
+                }
+
+                if (receiptsInFastBlocks)
+                {
+                    builder.Append(" + receipts");
+                }
+            }
+            else if (isFastSync)
+            {
+                builder.Append($"Sync config - fast sync without fast blocks");
+            }
+            else
+            {
+                builder.Append($"Sync config - full archive sync");
+            }
+            
+            _logger.Debug(builder.ToString());
+        }
+
+        private void WriteWaitForProcessorReport()
+        {
+            _logger.Info($"Waiting for block processor to catch up before syncing further");
+        }
+
+        private void WriteStateNodesReport()
+        {
+            _logger.Info($"Syncing state nodes");
+        }
+
+        private void WriteDbSyncReport()
+        {
+            _logger.Info($"Syncing previously downloaded blocks from DB");
         }
 
         private void WriteNotStartedReport()
@@ -147,6 +233,12 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void WriteFullSyncReport(string prefix)
         {
+            if (FullSyncBlocksKnown == 0)
+            {
+                _logger.Info($"{prefix} | Waiting for peers to learn about the head number.");
+                return;
+            }
+            
             if (FullSyncBlocksKnown - FullSyncBlocksDownloaded.CurrentValue < 32)
             {
                 return;

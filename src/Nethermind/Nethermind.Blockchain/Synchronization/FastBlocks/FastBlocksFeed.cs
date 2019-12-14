@@ -24,6 +24,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,9 +38,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
-        private const int BodiesRequestSize = 512;
-        private const int HeadersRequestSize = 512;
-        private const int ReceiptsRequestStats = 256;
+        private int BodiesRequestSize = GethSyncLimits.MaxBodyFetch;
+        private int HeadersRequestSize = GethSyncLimits.MaxHeaderFetch;
+        private int ReceiptsRequestStats = GethSyncLimits.MaxReceiptFetch;
 
         private ILogger _logger;
         private readonly ISpecProvider _specProvider;
@@ -93,6 +94,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+
+            if (!_syncConfig.UseGethLimitsInFastBlocks)
+            {
+                BodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
+                HeadersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
+                ReceiptsRequestStats = NethermindSyncLimits.MaxReceiptFetch;
+            }
         }
 
         private bool _isMoreLikelyToBeHandlingDependenciesNow;
@@ -321,13 +329,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncReport.FastBlocksHeaders.Update(_pivotNumber);
             _syncReport.FastBlocksHeaders.MarkEnd();
 
-            if (!bodiesDownloaded  && _syncConfig.DownloadBodiesInFastSync)
+            if (!bodiesDownloaded && _syncConfig.DownloadBodiesInFastSync)
             {
                 return _lowestRequestedBodyHash == _blockTree.Genesis.Hash
                     ? FastBlocksBatchType.None
                     : FastBlocksBatchType.Bodies;
             }
-            
+
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
 
@@ -338,7 +346,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     ? FastBlocksBatchType.None
                     : FastBlocksBatchType.Receipts;
             }
-            
+
             _syncReport.FastBlocksReceipts.Update(_pivotNumber);
             _syncReport.FastBlocksReceipts.MarkEnd();
 
