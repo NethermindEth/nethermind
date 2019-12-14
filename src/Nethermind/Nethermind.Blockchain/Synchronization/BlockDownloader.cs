@@ -261,7 +261,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
-                for (int i = 0; i < context.FullBlocksCount; i++)
+                for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -269,21 +269,21 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {bestPeer}");
+                    if (_logger.IsTrace) _logger.Trace($"Received {blocks[blockIndex]} from {bestPeer}");
 
                     // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                    if (!_blockValidator.ValidateSuggestedBlock(blocks[blockIndex]))
                     {
-                        throw new EthSynchronizationException($"{bestPeer} sent an invalid block {blocks[i].ToString(Block.Format.Short)}.");
+                        throw new EthSynchronizationException($"{bestPeer} sent an invalid block {blocks[blockIndex].ToString(Block.Format.Short)}.");
                     }
 
-                    if (HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i], shouldProcess)))
+                    if (HandleAddResult(blocks[blockIndex].Header, blockIndex == 0, _blockTree.SuggestBlock(blocks[blockIndex], shouldProcess)))
                     {
                         if (downloadReceipts)
                         {
-                            for (int j = 0; j < context.ReceiptsForBlocks[i].Length; j++)
+                            for (int receiptIndex = 0; receiptIndex < (context.ReceiptsForBlocks[blockIndex]?.Length ?? 0); receiptIndex++)
                             {
-                                _receiptStorage.Add(context.ReceiptsForBlocks[i][j], true);
+                                _receiptStorage.Add(context.ReceiptsForBlocks[blockIndex][receiptIndex], true);
                             }
                         }
 
