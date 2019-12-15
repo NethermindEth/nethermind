@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core2.Types
@@ -27,6 +28,11 @@ namespace Nethermind.Core2.Types
 
         public ReadOnlySpan<byte> AsSpan()
         {
+            // Or if we always want little endian internally; need to change both this and constructor
+            // Span<byte> destination = new Span<byte>(new byte[SszLength]);
+            // BinaryPrimitives.WriteUInt32LittleEndian(destination, _number);
+            // NOTE: Using native (i.e. ignoring endianness) is probably better because AsSpan() is zero alloc
+            // (just read-only pointer to memory). The constructor is ByValue single alloc.
             return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
         }
 
@@ -38,6 +44,8 @@ namespace Nethermind.Core2.Types
                     $"{nameof(ForkVersion)} must have exactly {sizeof(uint)} bytes");
             }
 
+            // Or if we always want little endian internally; need to change both this and AsSpan()
+            // BinaryPrimitives.ReadUInt32LittleEndian(span);
             _number = MemoryMarshal.Cast<byte, uint>(span)[0];
         }
 

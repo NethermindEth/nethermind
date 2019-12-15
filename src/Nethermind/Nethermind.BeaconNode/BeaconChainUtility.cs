@@ -67,8 +67,8 @@ namespace Nethermind.BeaconNode
         public Domain ComputeDomain(DomainType domainType, ForkVersion forkVersion = new ForkVersion())
         {
             Span<byte> combined = new Span<byte>(new byte[Domain.Length]);
-            BinaryPrimitives.WriteUInt32LittleEndian(combined, (uint) domainType);
-            forkVersion.AsSpan().CopyTo(combined.Slice(sizeof(DomainType)));
+            domainType.AsSpan().CopyTo(combined);
+            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.SszLength));
             return new Domain(combined);
         }
 

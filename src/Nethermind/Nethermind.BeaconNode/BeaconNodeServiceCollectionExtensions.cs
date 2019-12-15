@@ -172,23 +172,23 @@ namespace Nethermind.BeaconNode
             {
                 configuration.Bind("BeaconChain:SignatureDomains", section =>
                 {
-                    x.BeaconProposer =  (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.BeaconProposer =  new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconProposer",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_PROPOSER",
                                 () => new byte[4])));
-                    x.BeaconAttester = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.BeaconAttester = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconAttester",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_ATTESTER",
                                 () => new byte[4])));
-                    x.Randao = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.Randao = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainRandao",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_RANDAO",
                                 () => new byte[4])));
-                    x.Deposit = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.Deposit = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainDeposit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_DEPOSIT",
                                 () => new byte[4])));
-                    x.VoluntaryExit = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.VoluntaryExit = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainVoluntaryExit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT",
                                 () => new byte[4])));

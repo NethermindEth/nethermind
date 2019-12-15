@@ -63,7 +63,7 @@ namespace Nethermind.BeaconNode.Tests
 
             // Act
             Hash32 eth1BlockHash = Hash32.Zero;
-            ulong eth1Timestamp = (ulong)106185600; // 1973-05-14
+            ulong eth1Timestamp = 106185600uL; // 1973-05-14
             Deposit[] deposits = Array.Empty<Deposit>();
             bool success = await chainStart.TryGenesisAsync(eth1BlockHash, eth1Timestamp, deposits);
 
