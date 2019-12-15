@@ -57,13 +57,17 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 Results = int.MaxValue
             });
 
-            return deposits.Items.Select(MapPendingTransaction);
+            return deposits.Items.SelectMany(MapPendingTransactions);
         }
 
-        private static PendingTransaction MapPendingTransaction(DepositDetails deposit)
-            => deposit.ClaimedRefundTransaction is null
-                ? new PendingTransaction(deposit.Id.ToString(), "deposit", deposit.Transaction)
-                : new PendingTransaction(deposit.Id.ToString(), "refund", deposit.ClaimedRefundTransaction);
+        private static IEnumerable<PendingTransaction> MapPendingTransactions(DepositDetails deposit)
+        {
+            var depositId = deposit.Id.ToString();
+
+            return deposit.ClaimedRefundTransaction is null
+                ? deposit.Transactions.Select(t => new PendingTransaction(depositId, "deposit", t))
+                : deposit.ClaimedRefundTransactions.Select(t => new PendingTransaction(depositId, "refund", t));
+        }
 
         public async Task<UpdatedTransactionInfo> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice)
         {
