@@ -229,6 +229,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         Keccak hash = _lowestRequestedReceiptsHash;
                         Block predecessorBlock = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         Block block = predecessorBlock;
+                        
+                        _logger.Warn($"Building receipt batch - lowest requested receipt block was {predecessorBlock.ToString(Block.Format.Short)}");
                         if (block == null)
                         {
                             throw new InvalidDataException($"Last block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -242,6 +244,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
 
                             block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                            _logger.Warn($"Building receipt batch - requesting from {block.ToString(Block.Format.Short)}");
                             if (block == null)
                             {
                                 throw new InvalidDataException($"Parent block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
@@ -294,6 +297,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
                             batch.Receipts.IsFinal = true;
                         }
+                        
+                        _logger.Warn($"Built receipt batch - {batch}");
 
                         break;
                     }
@@ -733,6 +738,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _headerDependencies.Clear();
             _bodiesDependencies.Clear();
             _receiptDependencies.Clear();
+            
+            _logger.Warn("Starting new round:");
+            _logger.Warn($"  lowest inserted header {lowestInserted?.ToString(BlockHeader.Format.Short)}");
+            _logger.Warn($"  lowest inserted body {lowestInsertedBody?.ToString(Block.Format.Short)}");
+            _logger.Warn($"  start number {_startNumber}");
+            _logger.Warn($"  start header hash {_startHeaderHash}");
+            _logger.Warn($"  start body hash {_startBodyHash}");
+            _logger.Warn($"  start receipts hash {_startReceiptsHash}");
+            _logger.Warn($"  start total diff {_startTotalDifficulty}");
+            _logger.Warn($"  next header hash {_nextHeaderHash}");
+            _logger.Warn($"  next header diff {_nextHeaderDiff}");
         }
 
         private int InsertHeaders(FastBlocksBatch batch)
