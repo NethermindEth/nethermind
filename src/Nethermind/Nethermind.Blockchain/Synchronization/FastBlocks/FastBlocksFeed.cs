@@ -393,7 +393,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
             if (_logger.IsTrace)
             {
                 lock (_handlerLock)
@@ -596,7 +596,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     _syncReport.FastBlocksReceipts.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber) + 1);
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
+                if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
 
                 _syncReport.ReceiptsInQueue.Update(_receiptDependencies.Sum(d => d.Value.Count));
                 return added;
@@ -672,7 +672,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     fillerBatch.Bodies.Headers[i - validResponsesCount] = bodiesSyncBatch.Headers[i];
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {fillerBatch}");
+                if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {fillerBatch}");
                 _pendingBatches.Push(fillerBatch);
             }
 
@@ -696,7 +696,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 }
             }
 
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
             _syncReport.BodiesInQueue.Update(_bodiesDependencies.Sum(d => d.Value.Count));
             return validResponsesCount;
@@ -788,14 +788,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
@@ -822,7 +822,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                         FastBlocksBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
                         _headerDependencies[header.Number] = dependentBatch;
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
+                        if (_logger.IsWarn) _logger.Warn($"{batch} -> DEPENDENCY {dependentBatch}");
 
                         // but we cannot do anything with it yet
                         break;
@@ -882,21 +882,21 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         FastBlocksBatch leftFiller = BuildLeftFiller(batch, leftFillerSize);
                         _pendingBatches.Push(leftFiller);
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {leftFiller}");
+                        if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {leftFiller}");
                     }
 
                     if (rightFillerSize > 0)
                     {
                         FastBlocksBatch rightFiller = BuildRightFiller(batch, rightFillerSize);
                         _pendingBatches.Push(rightFiller);
-                        if (_logger.IsDebug) _logger.Debug($"{batch} -> FILLER {rightFiller}");
+                        if (_logger.IsWarn) _logger.Warn($"{batch} -> FILLER {rightFiller}");
                     }
                 }
             }
 
             if (added == 0)
             {
-                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
+                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
                 if (batch.Allocation != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
@@ -913,7 +913,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 _syncReport.FastBlocksHeaders.Update(_pivotNumber - _blockTree.LowestInsertedHeader.Number + 1);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
+            if (_logger.IsWarn) _logger.Warn($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
             _syncReport.HeadersInQueue.Update(_headerDependencies.Sum(hd => hd.Value.Headers.Response.Length));
             return added;
