@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             (long BestRemote, long BestLocalHeader, long BestLocalFullBlock, long BestLocalState, SyncMode ExpectedState, string Description)[] states =
             {
-                (0, 0, 0, 0, SyncMode.Full, "start"),
+                (0, 0, 0, 0, SyncMode.NotStarted, "start"),
                 (1032, 0, 0, 0, SyncMode.Headers, "learn about remote"),
                 (1032, 512, 0, 0, SyncMode.Headers, "start downloading headers"),
                 (1032, 1000, 0, 0, SyncMode.StateNodes, "finish downloading headers"),
@@ -101,7 +101,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
         [TestCase(false, 1032, 1000, 0, 0, SyncMode.Full)]
         [TestCase(true, 1032, 1000, 0, 0, SyncMode.StateNodes)]
         [TestCase(true, 1032, 1000, 0, 1000, SyncMode.Full)]
-        [TestCase(true, 0, 1032, 0, 1032, SyncMode.Full)]
+        [TestCase(true, 0, 1032, 0, 1032, SyncMode.NotStarted)]
+        [TestCase(true, 1, 1032, 0, 1032, SyncMode.Full)]
         [TestCase(false, 0, 1032, 0, 1032, SyncMode.Full)]
         [TestCase(true, 4506571, 4506571, 4506571, 4506452, SyncMode.Full)]
         public void Selects_correctly(bool useFastSync, long bestRemote, long bestHeader, long bestBlock, long bestLocalState, SyncMode expected)

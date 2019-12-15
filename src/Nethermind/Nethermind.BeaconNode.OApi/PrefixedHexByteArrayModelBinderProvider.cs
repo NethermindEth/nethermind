@@ -1,7 +1,7 @@
 ﻿using System;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
-namespace Nethermind.BeaconNode.Api
+namespace Nethermind.BeaconNode.OApi
 {
     public class PrefixedHexByteArrayModelBinderProvider : IModelBinderProvider
     {
@@ -11,7 +11,7 @@ namespace Nethermind.BeaconNode.Api
             {
                 throw new ArgumentNullException(nameof(context));
             }
-            var modelType = context.Metadata.UnderlyingOrModelType;
+            Type modelType = context.Metadata.UnderlyingOrModelType;
             if (modelType == typeof(byte[]))
             {
                 return new PrefixedHexByteArrayModelBinder();

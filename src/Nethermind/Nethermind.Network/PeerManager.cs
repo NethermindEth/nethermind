@@ -193,14 +193,7 @@ namespace Nethermind.Network
 
             await Task.WhenAll(closingTasks);
 
-            if (_logger.IsTrace) LogSessionStats(true);
-
             if (_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
-        }
-
-        public void LogSessionStats(bool logEventDetails)
-        {
-            _stats.DumpStats(logEventDetails);
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
@@ -808,8 +801,7 @@ namespace Nethermind.Network
                 }
 
                 DeactivatePeerIfDisconnected(activePeer, "session disconnected");
-
-                if (_logger.IsTrace) _stats.DumpNodeStats(activePeer.Node);
+                
                 _peerUpdateRequested.Set();
             }
         }

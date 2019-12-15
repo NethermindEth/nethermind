@@ -26,8 +26,6 @@ namespace Nethermind.Stats
         INodeStats GetOrAdd(Node node);
         void ReportHandshakeEvent(Node node, ConnectionDirection direction);
         void ReportEvent(Node node, NodeStatsEventType eventType);
-        void DumpStats(bool logEventDetails);
-        void DumpNodeStats(Node node);
         (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(Node node);
         CompatibilityValidationType? FindCompatibilityValidationResult(Node node);
         long GetCurrentReputation(Node node);
@@ -39,6 +37,6 @@ namespace Nethermind.Stats
         long GetCurrentPersistedReputation(Node node);
         void ReportSyncEvent(Node node, NodeStatsEventType nodeStatsEvent);
         bool HasFailedValidation(Node node);
-        void ReportLatencyCaptureEvent(Node node, NodeLatencyStatType latencyType, long value);
+        void ReportTransferSpeedEvent(Node node, long value);
     }
 }

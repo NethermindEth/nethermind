@@ -24,14 +24,46 @@ using Nethermind.Dirichlet.Numerics;
 [assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Blockchain.Synchronization
 {
+    public enum PeerClientType
+    {
+        BeSu,
+        Geth,
+        Nethermind,
+        Parity,
+        Unknown
+    }
+    
     public class PeerInfo
     {
         public PeerInfo(ISyncPeer syncPeer)
         {
             SyncPeer = syncPeer;
             TotalDifficulty = syncPeer.TotalDifficultyOnSessionStart;
+
+            if (syncPeer.ClientId?.Contains("BeSu", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.BeSu;
+            }
+            else if (syncPeer.ClientId?.Contains("Geth", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.Geth;
+            }
+            else if (syncPeer.ClientId?.Contains("Nethermind", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.Nethermind;
+            }
+            else if (syncPeer.ClientId?.Contains("Parity", StringComparison.InvariantCultureIgnoreCase) ?? false)
+            {
+                PeerClientType = PeerClientType.Parity;
+            }
+            else
+            {
+                PeerClientType = PeerClientType.Unknown;
+            }
+            
         }
 
+        public PeerClientType PeerClientType { get; set; }
         public bool IsAllocated { get; set; }
         public bool IsInitialized { get; set; }
         public ISyncPeer SyncPeer { get; }

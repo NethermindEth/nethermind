@@ -30,6 +30,9 @@ namespace Nethermind.Blockchain.Synchronization
         public long FullSyncBlocksKnown { get; set; }
         public SyncMode CurrentSyncMode { get; set; }
         public long FastBlocksPivotNumber { get; set; }
+        public MeasuredProgress HeadersInQueue { get; } = new MeasuredProgress();
+        public MeasuredProgress BodiesInQueue { get; } = new MeasuredProgress();
+        public MeasuredProgress ReceiptsInQueue { get; } = new MeasuredProgress();
         public MeasuredProgress FastBlocksHeaders { get; } = new MeasuredProgress();
         public MeasuredProgress FastBlocksBodies { get; } = new MeasuredProgress();
         public MeasuredProgress FastBlocksReceipts { get; } = new MeasuredProgress();

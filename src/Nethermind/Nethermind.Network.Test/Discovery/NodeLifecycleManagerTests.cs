@@ -107,6 +107,7 @@ namespace Nethermind.Network.Test.Discovery
         }
 
         [Test]
+        [Retry(3)]
         public void UnreachableStateTest()
         {
             var node = new Node(_host, _port);

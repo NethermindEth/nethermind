@@ -37,6 +37,11 @@ namespace Nethermind.Core
 
         public Guid StartPerfCalc()
         {
+            if (_stopwatches.Count > 1000)
+            {
+                _logger.Warn($"Stopwatches count: {_stopwatches.Count}");
+            }
+
             var id = Guid.NewGuid();
             _stopwatches[id] = Stopwatch.StartNew();
             return id;

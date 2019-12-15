@@ -92,7 +92,7 @@ namespace Nethermind.AuRa
             }
 
             // Report malice if the validator produced other sibling blocks in the same step.
-            if (_receivedSteps.ContainsOrInsert(header.AuRaStep.Value, header.Beneficiary, _validator.CurrentSealersCount))
+            if (_receivedSteps.ContainsOrInsert(header, _validator.CurrentSealersCount))
             {
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 // report malicious
@@ -144,27 +144,82 @@ namespace Nethermind.AuRa
 
         private class ReceivedSteps
         {
-            private readonly List<(long Step, Address Author, ISet<Address> Authors)> _list = new List<(long Step, Address Author, ISet<Address> Authors)>();
+            private struct AuthorBlock : IEquatable<AuthorBlock>
+            {
+                public AuthorBlock(Address author, Keccak block)
+                {
+                    Author = author;
+                    Block = block;
+                }
+
+                public Address Author { get; }
+                public Keccak Block { get; }
+
+                public bool Equals(AuthorBlock other) => Equals(Author, other.Author) && Equals(Block, other.Block);
+                public override bool Equals(object obj) => obj is AuthorBlock other && Equals(other);
+                public override int GetHashCode() => HashCode.Combine(Author, Block);
+                public static bool operator==(AuthorBlock obj1, AuthorBlock obj2) => obj1.Equals(obj2);
+                public static bool operator!=(AuthorBlock obj1, AuthorBlock obj2) => !obj1.Equals(obj2);
+            }
+            
+            private class AuthorBlockForStep
+            {
+                public AuthorBlockForStep(in long step, AuthorBlock? authorBlock)
+                {
+                    Step = step;
+                    AuthorBlock = authorBlock;
+                }
+
+                public long Step { get; }
+                public AuthorBlock? AuthorBlock { get; set; }
+                public ISet<AuthorBlock> AuthorBlocks { get; set; }
+            }
+            
+            private class StepElementComparer : IComparer<AuthorBlockForStep>
+            {
+                public static readonly StepElementComparer Instance = new StepElementComparer();
+
+                public int Compare(AuthorBlockForStep x, AuthorBlockForStep y)
+                {
+                    return x.Step.CompareTo(y.Step);
+                }
+            }
+            
+            private readonly List<AuthorBlockForStep> _list 
+                = new List<AuthorBlockForStep>();
+            
             private const int CacheSizeFullRoundsMultiplier = 4;
 
-            public bool ContainsOrInsert(long step, Address author, int validatorCount)
+            public bool ContainsOrInsert(BlockHeader header, int validatorCount)
             {
+                long step = header.AuRaStep.Value;
+                Address author = header.Beneficiary;
+                var hash = header.Hash;
                 int index = BinarySearch(step);
                 bool contains = index > 0;
+                var item = new AuthorBlock(author, hash);
                 if (contains)
                 {
                     var stepElement = _list[index];
-                    contains = stepElement.Authors?.Contains(author) ?? stepElement.Author == author;
+                    contains = stepElement.AuthorBlocks?.Contains(item) ?? stepElement.AuthorBlock == item;
                     if (!contains)
                     {
-                        stepElement.Author = null;
-                        stepElement.Authors ??= new HashSet<Address>();
-                        stepElement.Authors.Add(author);
+                        if (stepElement.AuthorBlocks == null)
+                        {
+                            stepElement.AuthorBlocks = new HashSet<AuthorBlock>
+                            {
+                                stepElement.AuthorBlock.Value
+                            };
+                            
+                            stepElement.AuthorBlock = null;
+                        }
+
+                        stepElement.AuthorBlocks.Add(item);
                     }
                 }
                 else
                 {
-                    _list.Add((step, author, null));
+                    _list.Add(new AuthorBlockForStep(step, item));
                 }
                 
                 ClearOldCache(step, validatorCount);
@@ -172,7 +227,7 @@ namespace Nethermind.AuRa
                 return contains;
             }
 
-            private int BinarySearch(long step) => _list.BinarySearch((step, null, null), StepElementComparer.Instance);
+            private int BinarySearch(long step) => _list.BinarySearch(new AuthorBlockForStep(step, null), StepElementComparer.Instance);
 
             /// <summary>
             /// Remove hash records older than two full N of steps (picked as a reasonable trade-off between memory consumption and fault-tolerance).
@@ -190,12 +245,6 @@ namespace Nethermind.AuRa
                     _list.RemoveRange(0, positiveIndex);
                 }
             }
-        }
-        
-        private class StepElementComparer : IComparer<(long Step, Address Author, ISet<Address> Authors)>
-        {
-            public static readonly StepElementComparer Instance = new StepElementComparer();
-            public int Compare((long Step, Address Author, ISet<Address> Authors) x, (long Step, Address Author, ISet<Address> Authors) y) => x.Step.CompareTo(y.Step);
         }
     }
 }

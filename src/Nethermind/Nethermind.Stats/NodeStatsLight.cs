@@ -30,15 +30,15 @@ namespace Nethermind.Stats
     {
         private readonly IStatsConfig _statsConfig;
 
-        private long _pingPongLatencyEventCount;
-        private decimal? _pingPongAverageLatency;
-        private long _headersLatencyEventCount;
-        private decimal? _headersAverageLatency;
-        private long _bodiesLatencyEventCount;
-        private decimal? _bodiesAverageLatency;
+        private long _pingPongTransferSpeedEventCount;
+        private decimal? _pingPongAverageSpeed;
+        private long _headersTransferSpeedEventCount;
+        private decimal? _headersAverageSpeed;
+        private long _bodiesTransferSpeedEventCount;
+        private decimal? _bodiesAverageSpeed;
 
         private int[] _statCountersArray;
-        private object _latencyLock = new object();
+        private object _speedLock = new object();
 
         private DisconnectReason? _lastLocalDisconnect;
         private DisconnectReason? _lastRemoteDisconnect;
@@ -73,7 +73,7 @@ namespace Nethermind.Stats
         public Node Node { get; }
 
         public IEnumerable<NodeStatsEvent> EventHistory => Enumerable.Empty<NodeStatsEvent>();
-        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => Enumerable.Empty<NodeLatencyStatsEvent>();
+        public IEnumerable<NodeTransferSpeedStatsEvent> SpeedHistory => Enumerable.Empty<NodeTransferSpeedStatsEvent>();
 
         private void Increment(NodeStatsEventType nodeStatsEventType)
         {
@@ -138,40 +138,17 @@ namespace Nethermind.Stats
             }
         }
 
-        public void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long milliseconds)
+        public void AddTransferSpeedCaptureEvent(long bytesPerMillisecond)
         {
-            lock (_latencyLock)
+            lock (_speedLock)
             {
-                switch (latencyType)
-                {
-                    case NodeLatencyStatType.P2PPingPong:
-                        _pingPongAverageLatency = ((_pingPongLatencyEventCount * (_pingPongAverageLatency ?? 0)) + milliseconds) / (++_pingPongLatencyEventCount);
-                        break;
-                    case NodeLatencyStatType.BlockHeaders:
-                        _headersAverageLatency = ((_headersLatencyEventCount * (_headersAverageLatency ?? 0)) + milliseconds) / (++_headersLatencyEventCount);
-                        break;
-                    case NodeLatencyStatType.BlockBodies:
-                        _bodiesAverageLatency = ((_bodiesLatencyEventCount * (_bodiesAverageLatency ?? 0)) + milliseconds) / (++_bodiesLatencyEventCount);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
-                }
+                _headersAverageSpeed = ((_headersTransferSpeedEventCount * (_headersAverageSpeed ?? 0)) + bytesPerMillisecond) / (++_headersTransferSpeedEventCount);
             }
         }
 
-        public long? GetAverageLatency(NodeLatencyStatType latencyType)
+        public long? GetAverageTransferSpeed()
         {
-            switch (latencyType)
-            {
-                case NodeLatencyStatType.P2PPingPong:
-                    return (long?)_pingPongAverageLatency;
-                case NodeLatencyStatType.BlockHeaders:
-                    return (long?)_headersAverageLatency;
-                case NodeLatencyStatType.BlockBodies:
-                    return (long?)_bodiesAverageLatency;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
-            }
+            return (long?)_headersAverageSpeed;
         }
 
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()

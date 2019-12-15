@@ -36,7 +36,11 @@ namespace Nethermind.Core2.Types
             return Number == other.Number;
         }
         
-         public static CommitteeIndex None => new CommitteeIndex(ulong.MaxValue);
+        public static CommitteeIndex None => new CommitteeIndex(ulong.MaxValue);
+
+        public static CommitteeIndex One => new CommitteeIndex(1);
+
+        public static CommitteeIndex Zero => new CommitteeIndex(0);
 
         public static explicit operator CommitteeIndex(ulong value) => new CommitteeIndex(value);
 

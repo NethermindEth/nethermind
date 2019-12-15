@@ -123,7 +123,7 @@ jobs:
         else 
           dotnet test -c Release src/Nethermind/Nethermind.Logging.NLog.Test;
         fi
-      name: "Nethermind.JsonRpc.Test"
+      name: "Nethermind.Logging.NLog.Test"
     #- script: dotnet test -c Release src/Nethermind/Nethermind.KeyStore.Test
     #  name: "Nethermind.KeyStore.Test"
     - script:

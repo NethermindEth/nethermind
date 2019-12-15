@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
@@ -22,5 +23,7 @@ namespace Nethermind.Blockchain
     {
         long LastFinalizedBlockLevel { get; }
         event EventHandler<FinalizeEventArgs> BlocksFinalized;
+        long GetLastLevelFinalizedBy(Keccak headHash);
+        long? GetFinalizedLevel(long blockLevel);
     }
 }

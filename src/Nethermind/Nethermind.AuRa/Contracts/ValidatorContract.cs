@@ -65,7 +65,7 @@ namespace Nethermind.AuRa.Contracts
             /// event InitiateChange(bytes32 indexed _parent_hash, address[] _new_set);
             /// </summary>
             private const string initiateChangeEventSignature = "InitiateChange(bytes32,address[])";
-            public static Keccak initiateChangeEventHash = Keccak.Compute(initiateChangeEventSignature);
+            public static readonly Keccak initiateChangeEventHash = Keccak.Compute(initiateChangeEventSignature);
 
             /// <summary>
             /// Get current validator set (last enacted or initial if no changes ever made)

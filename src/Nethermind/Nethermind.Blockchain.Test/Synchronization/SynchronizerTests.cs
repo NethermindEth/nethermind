@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 Disconnected?.Invoke(this, EventArgs.Empty);
             }
 
-            public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
+            public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
             {
                 if (_causeTimeoutOnBlocks)
                 {
@@ -285,9 +285,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 syncConfig.FastSync = synchronizerType == SynchronizerType.Fast;
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
-                var blockInfoDb = new MemDb();
+                MemDb blockInfoDb = new MemDb();
                 BlockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), new SingleReleaseSpecProvider(Constantinople.Instance, 1), NullTxPool.Instance, _logManager);
-                var stats = new NodeStatsManager(new StatsConfig(), _logManager);
+                NodeStatsManager stats = new NodeStatsManager(new StatsConfig(), _logManager);
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, syncConfig, 25, _logManager);
 
                 NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
@@ -301,7 +301,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     SyncPeerPool,
                     syncConfig,
                     nodeDataDownloader,
-                    NullSyncReport.Instance,
+                    stats,
                     _logManager);
 
                 SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, syncConfig, _logManager);
@@ -455,7 +455,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public SyncingContext Stop()
             {
                 Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
-                var task = new Task(async () =>
+                Task task = new Task(async () =>
                 {
                     await Synchronizer.StopAsync();
                     await SyncPeerPool.StopAsync();
@@ -738,6 +738,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         }
 
         [Test]
+        [Retry(3)]
         public void Can_reorg_on_add_peer()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");

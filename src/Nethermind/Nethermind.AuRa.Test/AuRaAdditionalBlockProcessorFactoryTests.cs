@@ -22,6 +22,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Evm;
@@ -49,6 +50,7 @@ namespace Nethermind.AuRa.Test
                 Substitute.For<IAbiEncoder>(), 
                 Substitute.For<ITransactionProcessor>(),
                 Substitute.For<IBlockTree>(),
+                Substitute.For<IReceiptStorage>(),
                 Substitute.For<ILogManager>());
 
             var validator = new AuRaParameters.Validator()

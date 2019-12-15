@@ -208,11 +208,11 @@ namespace Nethermind.BeaconNode.MockedStart
             return s_hashAlgorithm.ComputeHash(combined.ToArray());
         }
 
-        private byte[] GeneratePrivateKey(ulong index)
+        public byte[] GeneratePrivateKey(ulong index)
         {
             var input = new Span<byte>(new byte[32]);
             BigInteger bigIndex = new BigInteger(index);
-            bool indexWriteSuccess = bigIndex.TryWriteBytes(input, out int indexBytesWritten);
+            bool indexWriteSuccess = bigIndex.TryWriteBytes(input, out int indexBytesWritten, isUnsigned: true, isBigEndian: false);
             if (!indexWriteSuccess || indexBytesWritten == 0)
             {
                 throw new Exception("Error getting input for quick start private key generation.");
@@ -225,13 +225,17 @@ namespace Nethermind.BeaconNode.MockedStart
             BigInteger privateKey = value % s_curveOrder;
 
             // Note that the private key is an *unsigned*, *big endian* number
+            // However, we want to pad the big endian on the left to get 32 bytes.
+            // So, write as little endian (will pad to right), then reverse.
+            // NOTE: Alternative, write to Span 64, and then slice based on bytesWritten to get the padding.
             var privateKeySpan = new Span<byte>(new byte[32]);
-            bool keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out int keyBytesWritten, isUnsigned: true, isBigEndian: true);
-            if (!keyWriteSuccess || keyBytesWritten != 32)
+            bool keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out int keyBytesWritten, isUnsigned: true, isBigEndian: false);
+            if (!keyWriteSuccess)
             {
                 throw new Exception("Error generating quick start private key.");
             }
-
+            privateKeySpan.Reverse();
+            
             return privateKeySpan.ToArray();
         }
     }

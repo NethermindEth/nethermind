@@ -36,10 +36,11 @@ namespace Nethermind.Core
 
             Assembly assembly = typeof(ClientVersion).Assembly;
             AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
-            string version = versionAttribute?.InformationalVersion;
-
-            Description = $"Nethermind/{version}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Version = versionAttribute?.InformationalVersion;
+            Description = $"Nethermind/{Version}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
+        
+        public static string Version { get; }
         
         public static string Description { get; }
     }

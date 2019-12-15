@@ -24,6 +24,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,9 +38,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
-        private const int BodiesRequestSize = 512;
-        private const int HeadersRequestSize = 512;
-        private const int ReceiptsRequestStats = 256;
+        private int BodiesRequestSize = GethSyncLimits.MaxBodyFetch;
+        private int HeadersRequestSize = GethSyncLimits.MaxHeaderFetch;
+        private int ReceiptsRequestStats = GethSyncLimits.MaxReceiptFetch;
 
         private ILogger _logger;
         private readonly ISpecProvider _specProvider;
@@ -93,6 +94,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
+
+            if (!_syncConfig.UseGethLimitsInFastBlocks)
+            {
+                BodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
+                HeadersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
+                ReceiptsRequestStats = NethermindSyncLimits.MaxReceiptFetch;
+            }
         }
 
         private bool _isMoreLikelyToBeHandlingDependenciesNow;
@@ -321,13 +329,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _syncReport.FastBlocksHeaders.Update(_pivotNumber);
             _syncReport.FastBlocksHeaders.MarkEnd();
 
-            if (!bodiesDownloaded  && _syncConfig.DownloadBodiesInFastSync)
+            if (!bodiesDownloaded && _syncConfig.DownloadBodiesInFastSync)
             {
                 return _lowestRequestedBodyHash == _blockTree.Genesis.Hash
                     ? FastBlocksBatchType.None
                     : FastBlocksBatchType.Bodies;
             }
-            
+
             _syncReport.FastBlocksBodies.Update(_pivotNumber);
             _syncReport.FastBlocksBodies.MarkEnd();
 
@@ -338,7 +346,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     ? FastBlocksBatchType.None
                     : FastBlocksBatchType.Receipts;
             }
-            
+
             _syncReport.FastBlocksReceipts.Update(_pivotNumber);
             _syncReport.FastBlocksReceipts.MarkEnd();
 
@@ -590,6 +598,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
 
+                _syncReport.ReceiptsInQueue.Update(_receiptDependencies.Sum(d => d.Value.Count));
                 return added;
             }
         }
@@ -689,6 +698,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
+            _syncReport.BodiesInQueue.Update(_bodiesDependencies.Sum(d => d.Value.Count));
             return validResponsesCount;
         }
 
@@ -778,14 +788,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
@@ -886,7 +896,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (added == 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
+                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
                 if (batch.Allocation != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
@@ -905,6 +915,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
+            _syncReport.HeadersInQueue.Update(_headerDependencies.Sum(hd => hd.Value.Headers.Response.Length));
             return added;
         }
 
@@ -984,7 +995,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     InsertHeaders(batch);
                 }
             }
-
+            
             return addBlockResult;
         }
     }

@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Stats.Model
 {
-    public enum NodeLatencyStatType
+    public class NodeTransferSpeedStatsEvent
     {
-        P2PPingPong,
-        BlockHeaders,
-        BlockBodies
+        public DateTime CaptureTime { get; set; }
+        public long Latency { get; set; }
     }
 }

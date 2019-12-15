@@ -27,28 +27,16 @@ namespace Nethermind.JsonRpc.Modules.Net
     {
         private readonly IEnode _localNode;
         private readonly ISyncServer _syncServer;
-        private readonly IPeerManager _peerManager;
-        
+
         public NetBridge(IEnode localNode, ISyncServer syncServer, IPeerManager peerManager)
         {
             _localNode = localNode ?? throw new ArgumentNullException(nameof(localNode));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _peerManager = peerManager ?? throw new ArgumentNullException(nameof(syncServer));
         }
 
         public Address LocalAddress => _localNode.Address;
         public string LocalEnode => _localNode.Info;
         public int NetworkId => _syncServer.ChainId;
         public int PeerCount => _syncServer.GetPeerCount();
-        
-        public bool LogPeerConnectionDetails()
-        {
-            if (_peerManager == null)
-            {
-                return false;
-            }
-            _peerManager.LogSessionStats(true);
-            return true;
-        }
     }
 }

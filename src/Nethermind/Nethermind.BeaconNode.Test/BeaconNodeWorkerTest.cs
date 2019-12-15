@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,8 +10,6 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Tests.Helpers;
 using NSubstitute;
-using NSubstitute.Extensions;
-using NSubstitute.ReceivedExtensions;
 using Shouldly;
 
 namespace Nethermind.BeaconNode.Tests
@@ -22,11 +21,11 @@ namespace Nethermind.BeaconNode.Tests
         public async Task CanRunFastClockForWorkerTest()
         {
             // Arrange
-            var testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
 
             testServiceCollection.AddHostedService<BeaconNodeWorker>();
             
-            var testTimes = new[]
+            DateTimeOffset[] testTimes = new[]
             {
                 // start time
                 new DateTimeOffset(2020, 01, 02, 23, 55, 00, 0, TimeSpan.Zero),
@@ -48,28 +47,28 @@ namespace Nethermind.BeaconNode.Tests
                 // when last it dequeued, the wait handle will be triggered
                 new DateTimeOffset(2020, 01, 02, 23, 55, 03, 500, TimeSpan.Zero),
             };
-            var fastTestClock = new FastTestClock(testTimes);
+            FastTestClock fastTestClock = new FastTestClock(testTimes);
             testServiceCollection.AddSingleton<IClock>(fastTestClock);
             
-            var mockStoreProvider = Substitute.For<IStoreProvider>();
+            IStoreProvider mockStoreProvider = Substitute.For<IStoreProvider>();
             testServiceCollection.AddSingleton<IStoreProvider>(mockStoreProvider);
 
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
 
-            var testServiceProvider = testServiceCollection.BuildServiceProvider();
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
-            var hostedServices = testServiceProvider.GetServices<IHostedService>();
-            var worker = hostedServices.OfType<BeaconNodeWorker>().First();
+            IEnumerable<IHostedService> hostedServices = testServiceProvider.GetServices<IHostedService>();
+            BeaconNodeWorker worker = hostedServices.OfType<BeaconNodeWorker>().First();
             await worker.StartAsync(new CancellationToken());
 
-            var signal = fastTestClock.CompleteWaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+            bool signal = fastTestClock.CompleteWaitHandle.WaitOne(TimeSpan.FromSeconds(10));
 
             await worker.StopAsync(new CancellationToken());
 
             // Assert
             signal.ShouldBeTrue();
-            mockStoreProvider.Received(4).TryGetStore(out var store);
+            mockStoreProvider.Received(4).TryGetStore(out IStore? store);
         }
 
     }
