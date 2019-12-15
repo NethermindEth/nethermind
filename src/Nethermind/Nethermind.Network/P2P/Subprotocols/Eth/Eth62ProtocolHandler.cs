@@ -52,13 +52,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITxPool _txPool;
         private readonly ITimestamper _timestamper;
 
-        public Eth62ProtocolHandler(
-            ISession session,
+        public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ILogManager logManager,
-            IPerfService perfService,
             ITxPool txPool)
             : base(session, statsManager, serializer, logManager)
         {

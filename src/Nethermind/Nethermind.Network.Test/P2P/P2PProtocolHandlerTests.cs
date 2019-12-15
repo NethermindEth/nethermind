@@ -56,7 +56,6 @@ namespace Nethermind.Network.Test.P2P
                 TestItem.PublicKeyA,
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance), 
                 _serializer,
-                new PerfService(NullLogManager.Instance),
                 NullLogManager.Instance);
         }
 

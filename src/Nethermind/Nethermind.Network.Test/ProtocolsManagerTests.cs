@@ -60,7 +60,6 @@ namespace Nethermind.Network.Test
             private ProtocolsManager _manager;
             private INodeStatsManager _nodeStatsManager;
             private INetworkStorage _peerStorage;
-            private IPerfService _perfService;
             private IProtocolValidator _protocolValidator;
             private IMessageSerializationService _serializer;
             private ISyncServer _syncServer;
@@ -97,7 +96,6 @@ namespace Nethermind.Network.Test
                 _blockTree.Genesis.Returns(Build.A.Block.Genesis.TestObject.Header);
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
-                _perfService = new PerfService(LimboLogs.Instance);
                 _syncPeerPool = Substitute.For<IEthSyncPeerPool>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
@@ -109,7 +107,6 @@ namespace Nethermind.Network.Test
                     _nodeStatsManager,
                     _protocolValidator,
                     _peerStorage,
-                    _perfService,
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

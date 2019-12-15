@@ -41,13 +41,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private readonly BlockingCollection<Request<GetReceiptsMessage, TxReceipt[][]>> _receiptsRequests
             = new BlockingCollection<Request<GetReceiptsMessage, TxReceipt[][]>>();
 
-        public Eth63ProtocolHandler(
-            ISession session,
+        public Eth63ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
-            ILogManager logManager, IPerfService perfService,
-            ITxPool txPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, perfService, txPool)
+            ILogManager logManager,
+            ITxPool txPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, txPool)
         {
         }
 
