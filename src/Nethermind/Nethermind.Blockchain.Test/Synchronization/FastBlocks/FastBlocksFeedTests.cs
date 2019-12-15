@@ -22,6 +22,7 @@ using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastBlocks;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -44,6 +45,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         private ISpecProvider _specProvider = MainNetSpecProvider.Instance;
         private InMemoryReceiptStorage _remoteReceiptStorage;
         private BlockTree _validTree2048;
+        private BlockTree _validTree2048NoTransactions;
         private BlockTree _validTree1024;
         private BlockTree _validTree8;
         private BlockTree _badTreeAfter1024;
@@ -76,6 +78,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         {
             // make trees lazy
             _remoteReceiptStorage = new InMemoryReceiptStorage();
+            _validTree2048NoTransactions = Build.A.BlockTree().OfChainLength(2048).TestObject;
             _validTree2048 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(2048).TestObject;
             _validTree1024 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(1024).TestObject;
             _validTree8 = Build.A.BlockTree().WithTransactions(_remoteReceiptStorage, _specProvider).OfChainLength(8).TestObject;
@@ -145,6 +148,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             _syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
             _syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
             _syncConfig.UseGethLimitsInFastBlocks = false;
+            _syncConfig.FastBlocks = true;
 
             SetupLocalTree();
             SetupFeed();
@@ -566,6 +570,50 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
 
         [Test]
+        public void Throws_when_launched_and_disabled_in_config()
+        {
+            _syncConfig.FastBlocks = false;
+            SetupFeed();
+            
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
+            SetupSyncPeers(syncPeer1);
+            
+            Assert.Throws<InvalidOperationException>(() => RunFeed(1000));
+        }
+        
+        [Test]
+        public void Receipts_finish_properly_when_the_last_batch_has_no_receipts()
+        {
+            _syncConfig = new SyncConfig();
+            _syncConfig.PivotHash = _validTree2048NoTransactions.Head.Hash.ToString();
+            _syncConfig.PivotNumber = _validTree2048NoTransactions.Head.Number.ToString();
+            _syncConfig.PivotTotalDifficulty = _validTree2048NoTransactions.Head.TotalDifficulty.ToString();
+            _syncConfig.UseGethLimitsInFastBlocks = false;
+            _syncConfig.DownloadBodiesInFastSync = true;
+            _syncConfig.DownloadReceiptsInFastSync = true;
+            _syncConfig.FastBlocks = true;
+            
+            _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage, _syncPeerPool, _syncConfig, NullSyncReport.Instance, LimboLogs.Instance);
+            
+            LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048NoTransactions);
+
+            SetupSyncPeers(syncPeer1);
+
+            RunFeed(10000);
+
+            SyncProgressResolver resolver = new SyncProgressResolver(
+                _localBlockTree,
+                _localReceiptStorage, 
+                Substitute.For<INodeDataDownloader>(),
+                _syncConfig,
+                LimboLogs.Instance);
+            
+            Assert.True(resolver.IsFastBlocksFinished(), "is fast blocks finished");
+            
+            AssertTreeSynced(_validTree2048NoTransactions, true, true);
+        }
+
+        [Test]
         public void One_valid_one_malicious_with_receipts_and_one_restart()
         {
             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048, 300);
@@ -704,7 +752,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                 nextHash = header.ParentHash;
             }
 
-            Assert.True(_feed.IsFinished);
+            Assert.True(_feed.IsFinished, "is feed finished");
         }
 
         private void RunFeed(int timeLimit = 5000, int restartEvery = 100000)

@@ -294,6 +294,15 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
                             batch.Receipts.IsFinal = true;
                         }
+                        
+                        if (collectedRequests == 0 && (block?.IsGenesis ?? true))
+                        {
+                            // special finishing call
+                            // leaving this the bad way as it may be tricky to confirm that it is not called somewhere else
+                            // at least I will add a test for it now...
+                            _receiptStorage.Insert(1, null);
+                            return null;
+                        }
 
                         break;
                     }
@@ -709,6 +718,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public void StartNewRound()
         {
+            if (!_syncConfig.FastBlocks)
+            {
+                throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
+            }
+            
             _pivotNumber = LongConverter.FromString(_syncConfig.PivotNumber ?? "0x0");
             _pivotHash = _syncConfig.PivotHash == null ? null : new Keccak(_syncConfig.PivotHash);
             _pivotDifficulty = UInt256.Parse(_syncConfig.PivotTotalDifficulty ?? "0x0");
