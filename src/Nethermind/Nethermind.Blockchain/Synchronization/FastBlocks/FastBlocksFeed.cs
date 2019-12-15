@@ -598,6 +598,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                 if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
 
+                _syncReport.ReceiptsInQueue.Update(_receiptDependencies.Sum(d => d.Value.Count));
                 return added;
             }
         }
@@ -697,6 +698,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedBody?.Number} | HANDLED {batch}");
 
+            _syncReport.BodiesInQueue.Update(_bodiesDependencies.Sum(d => d.Value.Count));
             return validResponsesCount;
         }
 
@@ -786,7 +788,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
@@ -913,6 +915,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number} | HANDLED {batch}");
 
+            _syncReport.HeadersInQueue.Update(_headerDependencies.Sum(hd => hd.Value.Headers.Response.Length));
             return added;
         }
 
@@ -992,7 +995,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     InsertHeaders(batch);
                 }
             }
-
+            
             return addBlockResult;
         }
     }
