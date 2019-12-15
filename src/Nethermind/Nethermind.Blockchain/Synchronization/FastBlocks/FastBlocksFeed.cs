@@ -788,14 +788,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     {
                         if (header.Number == (_blockTree.LowestInsertedHeader?.Number ?? _pivotNumber + 1) - 1)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch - number {header.Number} was {header.Hash} while expected {_nextHeaderHash}");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
 
                         if (header.Number == _blockTree.LowestInsertedHeader?.Number)
                         {
-                            if (_logger.IsWarn) _logger.Warn($"{batch} - ended up IGNORED - different branch");
+                            if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
                             _syncPeerPool.ReportInvalid(batch.Allocation?.Current ?? batch.OriginalDataSource);
                             break;
                         }
