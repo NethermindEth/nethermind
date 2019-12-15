@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 
 namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
@@ -98,21 +99,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public override string ToString()
         {
-            string startBlock = Headers?.StartNumber.ToString();
-            string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
             string details = string.Empty;
             switch (BatchType)
             {
                 case FastBlocksBatchType.None:
                     break;
                 case FastBlocksBatchType.Headers:
+                    string startBlock = Headers?.StartNumber.ToString();
+                    string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
                     details = $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})";
                     break;
                 case FastBlocksBatchType.Bodies:
                     details = $"({Bodies.Request.Length})";
                     break;
                 case FastBlocksBatchType.Receipts:
-                    details = $"[{Receipts.Blocks[^1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})";
+                    details = Receipts.Blocks.Length > 0
+                        ? $"[{Receipts.Blocks[^1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})"
+                        : "[0,0](0)"; // need to investigate further
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();
