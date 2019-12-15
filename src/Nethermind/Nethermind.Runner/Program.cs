@@ -22,16 +22,15 @@ using Nethermind.Logging.NLog;
 
 namespace Nethermind.Runner
 {
-    public class Program
+    public static class Program
     {
         private const string FailureString = "Failure";
 
         public static void Main(string[] args)
         {
-            ILogger logger = new NLogLogger("logs.txt");
-
             AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
             {
+                ILogger logger = new NLogLogger("logs.txt");
                 if (eventArgs.ExceptionObject is Exception e)
                     logger.Error(FailureString, e);
                 else
@@ -40,16 +39,18 @@ namespace Nethermind.Runner
 
             try
             {
-                IRunnerApp runner = new RunnerApp(logger);
+                IRunnerApp runner = new RunnerApp();
                 runner.Run(args);
                 return;
             }
             catch (AggregateException e)
             {
+                ILogger logger = new NLogLogger("logs.txt");
                 logger.Error(FailureString, e.InnerException);
             }
             catch (Exception e)
             {
+                ILogger logger = new NLogLogger("logs.txt");
                 logger.Error(FailureString, e);
             }
 
