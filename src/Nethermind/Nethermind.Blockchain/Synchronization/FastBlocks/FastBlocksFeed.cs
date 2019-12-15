@@ -244,11 +244,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
 
                             block = _blockTree.FindParent(predecessorBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            _logger.Warn($"Building receipt batch - requesting from {block.ToString(Block.Format.Short)}");
                             if (block == null)
                             {
                                 throw new InvalidDataException($"Parent block is null for {hash} at lowest inserted body: {_blockTree.LowestInsertedBody?.Number}");
                             }
+                            
+                            _logger.Warn($"Building receipt batch - requesting from {block.ToString(Block.Format.Short)}");
                         }
                         else
                         {
@@ -296,6 +297,12 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             Array.Copy(currentBlocks, 0, batch.Receipts.Blocks, 0, collectedRequests);
                             Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
                             batch.Receipts.IsFinal = true;
+                        }
+
+                        if (collectedRequests == 0 && (block?.IsGenesis ?? true))
+                        {
+                            /* finish this sync round possibly continue in the next sync round */
+                            return null;
                         }
                         
                         _logger.Warn($"Built receipt batch - {batch}");
