@@ -291,7 +291,7 @@ JsonRpcConfig
    default value: all
 
  Host
-   Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.
+   Host for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC. If it does not work with 117.0.0.1 try something like 10.0.0.4 or 192.168.0.1
    default value: "127.0.0.1"
 
  Port
@@ -303,7 +303,7 @@ JsonRpcConfig
    default value: "logs/rpc.log_1.txt"
 
  RpcRecorderEnabled
-   Defines whether the JSON RPC diagnostic recording is enabled on node startup
+   Defines whether the JSON RPC diagnostic recording is enabled on node startup. Do not enable unless you are a DEV diagnosing issues with JSON RPC.
    default value: false
 
 KeyStoreConfig
@@ -427,11 +427,11 @@ SyncConfig
    default value: true
 
  DownloadReceiptsInFastSync
-   If set to 'true' then the receipts will be downloaded in the Fast Sync mode.
+   If set to 'true' then the receipts will be downloaded in the Fast Sync mode. This will slow down the process by a few hours but will allow you to interact with dApps that execute extensive historical logs searches (like Maker CDPs).
    default value: true
 
  FastBlocks
-   If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards.
+   If set to 'true' then in the Fast Sync mode blocks will be first downloaded from the provided PivotNumber downwards. This allows for paralleliztion of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to enter the pivot block number, hash and total difficulty from a trusted source (you can use etherscan and confirm with other sources if you wan to change it).
    default value: false
 
  FastSync
@@ -447,7 +447,7 @@ SyncConfig
    default value: null
 
  PivotTotalDifficulty
-   Total Difficulty of the pivot block for the Fast Blocks sync.
+   Total Difficulty of the pivot block for the Fast Blocks sync (not - this is total difficulty and not difficulty).
    default value: null
 
  UseGethLimitsInFastBlocks
