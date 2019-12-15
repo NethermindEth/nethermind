@@ -223,8 +223,6 @@ InitConfig
    If 'false' then the node does not try to find nodes beyond the bootnodes configured.
    default value: true
 
- EnableRc7Fix
-
  EnableUnsecuredDevWallet
    If 'true' then it enables the wallet / key store in the application.
    default value: false
@@ -273,6 +271,10 @@ InitConfig
    If 'false' then the node does not download/process new blocks..
    default value: true
 
+ UseMemDb
+   Diagnostics mode which uses an in-memory DB
+   default value: false
+
  WebSocketsEnabled
    Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'
    default value: false
@@ -281,7 +283,7 @@ JsonRpcConfig
 ^^^^^^^^^^^^^
 
  Enabled
-   Defines whether the JSON RPC service is enabled on node startuo. Configure host nad port if default values do not work for you.
+   Defines whether the JSON RPC service is enabled on node startup. Configure host nad port if default values do not work for you.
    default value: false
 
  EnabledModules
@@ -295,6 +297,14 @@ JsonRpcConfig
  Port
    Port number for JSON RPC calls. Ensure the firewall is configured when enabling JSON RPC.
    default value: 8545
+
+ RpcRecorderBaseFilePath
+   Base file path for diagnostic JSON RPC recorder.
+   default value: "logs/rpc.log_1.txt"
+
+ RpcRecorderEnabled
+   Defines whether the JSON RPC diagnostic recording is enabled on node startup
+   default value: false
 
 KeyStoreConfig
 ^^^^^^^^^^^^^^
@@ -440,6 +450,10 @@ SyncConfig
    Total Difficulty of the pivot block for the Fast Blocks sync.
    default value: null
 
+ UseGethLimitsInFastBlocks
+   If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4
+   default value: true
+
 TxPoolConfig
 ^^^^^^^^^^^^
 
@@ -559,7 +573,6 @@ Sample configuration (mainnet)
               "ChainSpecFormat" : "chainspec",
               "ChainSpecPath" : null,
               "DiscoveryEnabled" : true,
-              "EnableRc7Fix" : [MISSING_DOCS],
               "EnableUnsecuredDevWallet" : false,
               "GenesisHash" : null,
               "IsMining" : false,
@@ -572,13 +585,16 @@ Sample configuration (mainnet)
               "StoreReceipts" : true,
               "StoreTraces" : false,
               "SynchronizationEnabled" : true,
+              "UseMemDb" : false,
               "WebSocketsEnabled" : false
         },
         "JsonRpc": {
               "Enabled" : false,
               "EnabledModules" : all,
               "Host" : "127.0.0.1",
-              "Port" : 8545
+              "Port" : 8545,
+              "RpcRecorderBaseFilePath" : "logs/rpc.log_1.txt",
+              "RpcRecorderEnabled" : false
         },
         "KeyStore": {
               "Cipher" : [MISSING_DOCS],
@@ -625,7 +641,8 @@ Sample configuration (mainnet)
               "FastSync" : false,
               "PivotHash" : null,
               "PivotNumber" : null,
-              "PivotTotalDifficulty" : null
+              "PivotTotalDifficulty" : null,
+              "UseGethLimitsInFastBlocks" : true
         },
         "TxPool": {
               "ObsoletePendingTransactionInterval" : 15,
