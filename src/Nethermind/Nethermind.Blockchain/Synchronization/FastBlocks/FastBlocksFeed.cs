@@ -284,6 +284,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                             if (block == null || block.IsGenesis)
                             {
+                                _receiptStorage.Insert(1, null);
                                 break;
                             }
                         }
