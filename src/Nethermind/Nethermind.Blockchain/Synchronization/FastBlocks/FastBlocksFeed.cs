@@ -896,7 +896,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (added == 0)
             {
-                if (_logger.IsWarn) _logger.Warn($"{batch} - reporting no progress");
+                if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
                 if (batch.Allocation != null)
                 {
                     _syncPeerPool.ReportNoSyncProgress(batch.Allocation);
