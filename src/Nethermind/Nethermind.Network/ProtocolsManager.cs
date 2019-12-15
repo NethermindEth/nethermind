@@ -47,7 +47,6 @@ namespace Nethermind.Network
         private readonly IRlpxPeer _localPeer;
         private readonly INodeStatsManager _stats;
         private readonly IProtocolValidator _protocolValidator;
-        private readonly IPerfService _perfService;
         private readonly INetworkStorage _peerStorage;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
@@ -55,8 +54,7 @@ namespace Nethermind.Network
         private readonly IList<Capability> _capabilities = new List<Capability>();
         public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
 
-        public ProtocolsManager(
-            IEthSyncPeerPool ethSyncPeerPool,
+        public ProtocolsManager(IEthSyncPeerPool ethSyncPeerPool,
             ISyncServer syncServer,
             ITxPool txPool,
             IDiscoveryApp discoveryApp,
@@ -65,7 +63,6 @@ namespace Nethermind.Network
             INodeStatsManager nodeStatsManager,
             IProtocolValidator protocolValidator,
             INetworkStorage peerStorage,
-            IPerfService perfService,
             ILogManager logManager)
         {
             _syncPool = ethSyncPeerPool ?? throw new ArgumentNullException(nameof(ethSyncPeerPool));
@@ -76,7 +73,6 @@ namespace Nethermind.Network
             _localPeer = localPeer ?? throw new ArgumentNullException(nameof(localPeer));
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
@@ -165,8 +161,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    var handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer,
-                        _perfService, _logManager);
+                    var handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -180,9 +175,9 @@ namespace Nethermind.Network
                     }
 
                     var handler = version == 62
-                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService,
+                        ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager,
                             _txPool)
-                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager, _perfService,
+                        : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager,
                             _txPool);
                     InitEthProtocol(session, handler);
 

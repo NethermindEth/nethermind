@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     details = $"({Bodies.Request.Length})";
                     break;
                 case FastBlocksBatchType.Receipts:
-                    details = $"[{Receipts.Blocks[Receipts.Blocks.Length - 1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})";
+                    details = $"[{Receipts.Blocks[^1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})";
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();

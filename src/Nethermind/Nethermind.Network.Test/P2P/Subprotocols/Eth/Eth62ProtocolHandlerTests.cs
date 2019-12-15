@@ -55,7 +55,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
                 LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance),
                 transactionPool);
             handler.Init();
             
@@ -98,7 +97,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
                 LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance),
                 transactionPool);
             handler.Init();
             
@@ -144,7 +142,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
                 syncManager,
                 LimboLogs.Instance,
-                new PerfService(LimboLogs.Instance),
                 transactionPool);
             handler.Init();
             
