@@ -240,7 +240,7 @@ namespace Nethermind.Network.P2P
             
             // TODO: this used to be latency - now, not so cool
             // maybe should request some standard headers to compare speed?
-            _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, 100000 / latency);
+            _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, 100000 / (latency == 0 ? 1 : latency));
             return true;
         }
 
