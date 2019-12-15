@@ -75,15 +75,15 @@ namespace Nethermind.Runner.Test
         [TestCase("sokol.cfg", false)]
         [TestCase("poacore.cfg", false)]
         [TestCase("poacore_archive.cfg", true)]
-        [TestCase("xdai.cfg", true)]
-        [TestCase("xdai_archive.cfg", false)]
+        [TestCase("xdai.cfg", false)]
+        [TestCase("xdai_archive.cfg", true)]
         [TestCase("spaceneth.cfg", true)]
         [TestCase("volta.cfg", false)]
         public void Geth_limits_configs_are_correct(string configFile, bool useGethLimitsInFastSync)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual(config.FastSync, useGethLimitsInFastSync);
+            Assert.AreEqual( useGethLimitsInFastSync, config.UseGethLimitsInFastBlocks);
         }
         
         [TestCase("ropsten_archive.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
