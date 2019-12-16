@@ -389,7 +389,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             // we want to keep more or less to the same side (left or right - we chose left) so we punish
             // the high child indices
             // we want to go deep first so we add bonus for the depth
-            float priority = 1.5f - (float) level / _maxStateLevel + (float) rightness / _maxRightness - (float) _syncProgress.LastProgress / 2;
+            float priority = 1.5f - (float) level / Math.Max(_maxStateLevel, (byte)1) + (float) rightness / Math.Max(_maxRightness, 1) - (float) _syncProgress.LastProgress / 2;
             return priority;
         }
 
@@ -513,11 +513,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (_logger.IsTrace) _logger.Trace($"After handling response (non-empty responses {nonEmptyResponses}) of {batch.RequestedNodes.Length} from ({StreamsDescription}) nodes");
 
                     /* magic formula is ratio of our desired batch size - 1024 to Geth max batch size 384 times some missing nodes ratio */
-                    bool isEmptish = (decimal) nonEmptyResponses / requestLength < 384m / 1024m * 0.75m;
+                    bool isEmptish = (decimal) nonEmptyResponses / Math.Max(requestLength, 1) < 384m / 1024m * 0.75m;
                     if (isEmptish) Interlocked.Increment(ref _emptishCount);
 
                     /* here we are very forgiving for Geth nodes that send bad data fast */
-                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / requestLength > 0.50m;
+                    bool isBadQuality = nonEmptyResponses > 64 && (decimal) invalidNodes / Math.Max(requestLength, 1) > 0.50m;
                     if (isBadQuality) Interlocked.Increment(ref _badQualityCount);
 
                     bool isEmpty = nonEmptyResponses == 0 && !isBadQuality;
