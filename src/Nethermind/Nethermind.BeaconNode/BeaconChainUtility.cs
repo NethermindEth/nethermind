@@ -66,7 +66,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Domain ComputeDomain(DomainType domainType, ForkVersion forkVersion = new ForkVersion())
         {
-            Span<byte> combined = new Span<byte>(new byte[Domain.Length]);
+            Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
             forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.SszLength));
             return new Domain(combined);
@@ -92,20 +92,15 @@ namespace Nethermind.BeaconNode
 
             ulong indexCount = (ulong) indices.Count;
             ValidatorIndex index = 0UL;
+            Span<byte> randomInputBytes = stackalloc byte[40];
+            seed.AsSpan().CopyTo(randomInputBytes);
             while (true)
             {
                 ValidatorIndex initialValidatorIndex = (ValidatorIndex)(index % indexCount);
                 ValidatorIndex shuffledIndex = ComputeShuffledIndex(initialValidatorIndex, indexCount, seed);
                 ValidatorIndex candidateIndex = indices[(int) shuffledIndex];
 
-                Span<byte> randomInputBytes = new Span<byte>(new byte[40]);
-                seed.AsSpan().CopyTo(randomInputBytes);
-                BitConverter.TryWriteBytes(randomInputBytes.Slice(32), index / 32);
-                if (!BitConverter.IsLittleEndian)
-                {
-                    randomInputBytes.Slice(32).Reverse();
-                }
-
+                BinaryPrimitives.WriteUInt64LittleEndian(randomInputBytes.Slice(32), index / 32);
                 Hash32 randomHash = _cryptographyService.Hash(randomInputBytes);
                 byte random = randomHash.AsSpan()[(int) (index % 32)];
 
@@ -133,38 +128,27 @@ namespace Nethermind.BeaconNode
             // Swap or not (https://link.springer.com/content/pdf/10.1007%2F978-3-642-32009-5_1.pdf)
             // See the 'generalized domain' algorithm on page 3
 
-            Span<byte> pivotHashInput = new Span<byte>(new byte[33]);
+            Span<byte> pivotHashInput = stackalloc byte[33];
             seed.AsSpan().CopyTo(pivotHashInput);
-            Span<byte> sourceHashInput = new Span<byte>(new byte[37]);
+            Span<byte> sourceHashInput = stackalloc byte[37];
             seed.AsSpan().CopyTo(sourceHashInput);
             for (int currentRound = 0; currentRound < _miscellaneousParameterOptions.CurrentValue.ShuffleRoundCount; currentRound++)
             {
                 byte roundByte = (byte) (currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
                 Hash32 pivotHash = _cryptographyService.Hash(pivotHashInput);
-                byte[] pivotBytes = pivotHash.AsSpan().Slice(0, 8).ToArray();
-                if (!BitConverter.IsLittleEndian)
-                {
-                    pivotBytes = pivotBytes.Reverse().ToArray();
-                }
-
-                ValidatorIndex pivot = BitConverter.ToUInt64(pivotBytes.ToArray()) % indexCount;
+                Span<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
+                ValidatorIndex pivot = BinaryPrimitives.ReadUInt64LittleEndian(pivotBytes) % indexCount;
 
                 ValidatorIndex flip = (pivot + indexCount - index) % indexCount;
 
                 ValidatorIndex position = ValidatorIndex.Max(index, flip);
 
                 sourceHashInput[32] = roundByte;
-                byte[] positionBytes = BitConverter.GetBytes((uint) position / 256);
-                if (!BitConverter.IsLittleEndian)
-                {
-                    positionBytes = positionBytes.Reverse().ToArray();
-                }
-
-                positionBytes.CopyTo(sourceHashInput.Slice(33));
+                BinaryPrimitives.WriteUInt32LittleEndian(sourceHashInput.Slice(33), (uint)position / 256);
                 Hash32 source = _cryptographyService.Hash(sourceHashInput.ToArray());
 
-                byte flipByte = source.AsSpan((int) ((uint) position % 256 / 8), 1)[0];
+                byte flipByte = source.AsSpan()[(int)((position % 256) / 8)];
 
                 int flipBit = (flipByte >> (int) (position % 8)) % 2;
 
