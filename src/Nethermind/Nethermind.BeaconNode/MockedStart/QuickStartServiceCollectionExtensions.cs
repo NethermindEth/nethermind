@@ -15,6 +15,7 @@ namespace Nethermind.BeaconNode.MockedStart
         public static void AddQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<INodeStart, QuickStart>();
+            services.AddSingleton<IEth1DataProvider, MockedEth1DataProvider>();
             services.Configure<QuickStartParameters>(x =>
             {
                 configuration.Bind("QuickStart", section =>

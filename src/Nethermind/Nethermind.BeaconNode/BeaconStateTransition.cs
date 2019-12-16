@@ -515,7 +515,7 @@ namespace Nethermind.BeaconNode
             Epoch nextEpoch = currentEpoch + new Epoch(1);
 
             // Reset eth1 data votes
-            Slot nextSlot = state.Slot + new Slot(1);
+            Slot nextSlot = state.Slot + Slot.One;
             if (nextSlot % timeParameters.SlotsPerEth1VotingPeriod == Slot.Zero)
             {
                 state.ClearEth1DataVotes();
