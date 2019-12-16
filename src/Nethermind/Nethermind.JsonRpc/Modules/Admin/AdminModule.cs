@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Admin
 
             return removed
                 ? ResultWrapper<string>.Success(enode)
-                : ResultWrapper<string>.Fail("Static node was not found.");
+                : ResultWrapper<string>.Fail("Node was not found.");
         }
 
         public ResultWrapper<PeerInfo[]> admin_peers()
