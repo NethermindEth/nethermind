@@ -352,14 +352,14 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             float priority = CalculatePriority(level, rightness);
             if (nodeDataType == NodeDataType.Storage)
             {
-                if (level > _maxStateLevel)
+                if (level > _maxStorageLevel)
                 {
-                    _maxStateLevel = level;
+                    _maxStorageLevel = level;
                 }
             
-                if (rightness > _maxRightness)
+                if (rightness > _maxStorageRightness)
                 {
-                    _maxRightness = rightness;
+                    _maxStorageRightness = rightness;
                 }
                 
                 return (1, priority);
@@ -657,6 +657,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 case NodeType.Leaf:
                     if (nodeDataType == NodeDataType.State)
                     {
+                        _maxStateLevel = 64;
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
                         Account account = _accountDecoder.Decode(new RlpStream(trieNode.Value));
                         if (account.CodeHash != Keccak.OfAnEmptyString)
@@ -691,6 +692,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     }
                     else
                     {
+                        _maxStorageLevel = 64;
                         SaveNode(currentStateSyncItem, currentResponseItem);
                     }
 
@@ -790,7 +792,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             reviewMessage += $"  after {StreamsDescription}" + Environment.NewLine;
             
             stopwatch.Stop();
-            reviewMessage += $"  time spent in review ({LevelsDescription}): {stopwatch.ElapsedMilliseconds}ms";
+            reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
             if(_logger.IsInfo) _logger.Info(reviewMessage);
         }
         
@@ -802,6 +804,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             }
 
             StateSyncBatch batch = new StateSyncBatch();
+            
+            // the limitation is to prevent an early explosion of request sizes with low level nodes
+            // the moment we find the first leaf we will know something more about the tree structure and hence
+            // prevent lot of Stream2 entries to stay in memory for a long time 
             int length = Math.Max(1, (int)(MaxRequestSize * ((decimal)_maxStateLevel / 64) * ((decimal)_maxStateLevel / 64)));
             if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({StreamsDescription}) nodes");
 
