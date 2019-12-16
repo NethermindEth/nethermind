@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
         
         private int _lastUsefulPeerCount;
+        private bool _noAllocPunishment;
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
@@ -66,6 +67,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                             }
                         }
                     );
+                }
+                else
+                {
+                    _logger.Info("No alloc punishment enabled.");
+                    _noAllocPunishment = true;
                 }
 
                 (NodeDataHandlerResult Result, int NodesConsumed) result = (NodeDataHandlerResult.InvalidFormat, 0);
@@ -100,7 +106,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task UpdateParallelism()
         {
-            int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
+            int newUsefulPeerCount = Math.Max(0, _syncPeerPool.UsefulPeerCount - (_noAllocPunishment ? 1 : 0));
             int difference = newUsefulPeerCount - _lastUsefulPeerCount;
             if (difference == 0)
             {
@@ -145,6 +151,12 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 await UpdateParallelism();
                 if (!await _semaphore.WaitAsync(1000, token))
                 {
+                    if (_noAllocPunishment)
+                    {
+                        _noAllocPunishment = false;
+                        _logger.Info("No alloc punishment disabled.");
+                    }
+
                     continue;
                 }
                 
