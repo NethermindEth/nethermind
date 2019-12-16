@@ -593,7 +593,7 @@ namespace Nethermind.Clique.Test
             await goerli.StopNode(TestItem.PrivateKeyC);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Can_vote_a_validator_out()
         {
             var goerli = On.FastGoerli;
