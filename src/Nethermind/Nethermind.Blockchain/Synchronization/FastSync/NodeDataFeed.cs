@@ -40,7 +40,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private Keccak _fastSyncProgressKey = Keccak.Zero;
         private (DateTime small, DateTime full) _lastReportTime = (DateTime.MinValue, DateTime.MinValue);
+        private long _lastRequestedNodesCount;
         private long _lastSavedNodesCount;
+        private long _lastHandledNodesCount;
         private long _consumedNodesCount;
         private long _savedStorageCount;
         private long _savedStateCount;
@@ -48,6 +50,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private long _savedAccounts;
         private long _savedCode;
         private long _requestedNodesCount;
+        private long _handledNodesCount;
         private long _secondsInSync;
         private long _dbChecks;
         private long _checkWasCached;
@@ -536,11 +539,16 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                             ? NodeDataHandlerResult.BadQuality
                             : NodeDataHandlerResult.OK;
 
-                    if (DateTime.UtcNow - _lastReportTime.small > TimeSpan.FromSeconds(1))
+                    TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
+                    if (sinceLastReport > TimeSpan.FromSeconds(1))
                     {
-                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) (DateTime.UtcNow - _lastReportTime.small).TotalMilliseconds;
+                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal)sinceLastReport.TotalMilliseconds;
+                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal)sinceLastReport.TotalMilliseconds;
+                        decimal handledNodesPerSecond = 1000m * (_handledNodesCount - _lastHandledNodesCount) / (decimal)sinceLastReport.TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
-                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | SNPS: {savedNodesPerSecond,6:F0} | P: {_pendingRequests.Count} | accounts {_savedAccounts} | enqueued nodes {StreamsDescription} | AVTIH {_averageTimeInHandler:f2}");
+                        _lastRequestedNodesCount = _requestedNodesCount;
+                        _lastHandledNodesCount = _handledNodesCount;
+                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | P: {_pendingRequests.Count} | SNPS: {savedNodesPerSecond,6:F0} | HNPS: {handledNodesPerSecond,6:F0} | RNPS: {requestedNodesPerSecond,6:F0} | accounts {_savedAccounts} | enqueued nodes {StreamsDescription} | AVTIH {_averageTimeInHandler:f2}");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
@@ -567,6 +575,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
                     _lastDbReads = _dbChecks;
                     _averageTimeInHandler = (_averageTimeInHandler * (ProcessedRequestsCount - 1) + _handleWatch.ElapsedMilliseconds) / ProcessedRequestsCount;
+                    Interlocked.Add(ref _handledNodesCount, nonEmptyResponses);
                     return (result, nonEmptyResponses);
                 }
             }
@@ -855,6 +864,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
             _lastReportTime = (DateTime.UtcNow, DateTime.UtcNow);
             _lastSavedNodesCount = _savedNodesCount;
+            _lastRequestedNodesCount = _requestedNodesCount;
             if (_rootNode != stateRoot)
             {
                 _syncProgress = new NodeSyncProgress(number, _logger);
