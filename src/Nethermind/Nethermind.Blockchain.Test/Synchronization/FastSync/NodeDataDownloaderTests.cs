@@ -577,7 +577,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             return downloader;
         }
 
-        private int _timeoutLength = 10000000;
+        private int _timeoutLength = 10000;
 
         [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
