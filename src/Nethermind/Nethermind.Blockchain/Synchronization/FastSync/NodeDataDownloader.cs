@@ -29,7 +29,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataFeed _nodeDataFeed;
-        private const int MaxRequestSize = 384;
         private int _pendingRequests;
         private int _consumedNodesCount;
         private ILogger _logger;
@@ -44,6 +43,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
         
         private int _lastUsefulPeerCount;
+        private int _noAllocInARow;
+        private bool _noAllocPunishment;
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
@@ -65,6 +66,17 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                             }
                         }
                     );
+                }
+                else
+                {
+                    // _logger.Info("No alloc punishment enabled.");
+                    _noAllocInARow++;
+                    if (_noAllocInARow > 10)
+                    {
+                        _noAllocPunishment = true;
+                        if(_logger.IsInfo) _logger.Info("Adjusting useful peers");
+                        _noAllocInARow = 0;
+                    }
                 }
 
                 (NodeDataHandlerResult Result, int NodesConsumed) result = (NodeDataHandlerResult.InvalidFormat, 0);
@@ -91,7 +103,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (nodeSyncAllocation != null)
                 {
-//                    _logger.Warn($"Free {nodeSyncAllocation?.Current}");
                     _syncPeerPool.Free(nodeSyncAllocation);
                 }
             }
@@ -99,7 +110,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task UpdateParallelism()
         {
-            int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
+            int newUsefulPeerCount = Math.Max(0, _syncPeerPool.UsefulPeerCount - (_noAllocPunishment ? 1 : 0));
             int difference = newUsefulPeerCount - _lastUsefulPeerCount;
             if (difference == 0)
             {
@@ -144,6 +155,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 await UpdateParallelism();
                 if (!await _semaphore.WaitAsync(1000, token))
                 {
+                    if (_noAllocPunishment)
+                    {
+                        _noAllocPunishment = false;
+                    }
+
                     continue;
                 }
                 
@@ -174,7 +190,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private StateSyncBatch PrepareRequest()
         {
-            StateSyncBatch request = _nodeDataFeed.PrepareRequest(MaxRequestSize);
+            StateSyncBatch request = _nodeDataFeed.PrepareRequest();
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return request;
         }

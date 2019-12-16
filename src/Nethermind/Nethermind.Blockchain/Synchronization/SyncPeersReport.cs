@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization
             
             foreach (PeerInfo peerInfo in peers.Where(pi => pi != null).OrderBy(p => p.SyncPeer?.Node?.Host))
             {
-                string prefix = peerInfo.IsAllocated ? " * " : "   ";
+                string prefix = peerInfo.IsAllocated ? " * " : peerInfo.IsAsleep ? " _ " : peerInfo.IsInitialized ? "   " : " ? ";
                 if (_logger.IsInfo) _logger.Info($"{prefix}{peerInfo}[{_stats.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed() ?? 0}]");
             }
         }

@@ -42,9 +42,7 @@ namespace Nethermind.Db
             {
                 ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
             }
-            
-            TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
-            
+
             if (useTraceDb)
             {
                 TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);

@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 {
     public interface INodeDataFeed
     {
-        StateSyncBatch PrepareRequest(int length);
+        StateSyncBatch PrepareRequest();
         
         void SetNewStateRoot(long number, Keccak stateRoot);
         
