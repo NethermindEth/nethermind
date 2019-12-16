@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain.Synchronization
         private SyncPeersReport _syncPeersReport;
         private int _reportId = 0;
         private int _syncReportFrequency = 1;
+        private int _noProgressStateSyncReportFrequency = 120;
         private int _syncShortPeersReportFrequency = 60;
         private int _syncFullPeersReportFrequency = 120;
 
@@ -173,7 +174,10 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteDbSyncReport();
                     break;
                 case SyncMode.StateNodes:
-                    WriteStateNodesReport();
+                    if (_reportId % _noProgressStateSyncReportFrequency == 0)
+                    {
+                        WriteStateNodesReport();
+                    }
                     break;
                 case SyncMode.WaitForProcessor:
                     WriteWaitForProcessorReport();
