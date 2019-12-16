@@ -4,9 +4,7 @@ name: Publish Nethermind Image to Docker Registry
 #  push:
 #    tags:
 #    - '*'
-on:
-  repository_dispatch:
-    types: docker_main     
+on: push  
 
 jobs:
   publish-to-docker:
