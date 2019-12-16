@@ -347,6 +347,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 return (0, 0f);
             }
             
+            float priority = CalculatePriority(level, rightness);
             if (nodeDataType == NodeDataType.Storage)
             {
                 if (level > _maxStateLevel)
@@ -358,10 +359,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     _maxStorageRightness = rightness;
                 }
-
-                float priority = 1.5f - (float) level / _maxStateLevel + (float) rightness / _maxRightness - (float)_syncProgress.LastProgress / 2;
                 
-                return (1, priority);      
+                return (1, priority);
             }
             else
             {
@@ -374,11 +373,19 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     _maxRightness = rightness;
                 }
-
-                float priority = 1.5f - (float) level / _maxStateLevel + (float) rightness / _maxRightness - (float)_syncProgress.LastProgress / 2;
                 
                 return (2, priority);   
             }
+        }
+
+        private float CalculatePriority(byte level, uint rightness)
+        {
+            // the more synced we are the more to the right we want to go - hence the sync progress modifier at the end
+            // we want to keep more or less to the same side (left or right - we chose left) so we punish
+            // the high child indices
+            // we want to go deep first so we add bonus for the depth
+            float priority = 1.5f - (float) level / _maxStateLevel + (float) rightness / _maxRightness - (float) _syncProgress.LastProgress / 2;
+            return priority;
         }
 
         private HashSet<Keccak> _codesSameAsNodes = new HashSet<Keccak>();
@@ -604,7 +611,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
                         if (childHash != null)
                         {
-                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * (uint)childIndex) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
+                            AddNodeResult addChildResult = AddNode(new StateSyncItem(childHash, nodeDataType, currentStateSyncItem.Level + 1, CalculateRightness(trieNode.NodeType, currentStateSyncItem, childIndex)) {BranchChildIndex = (short) childIndex, ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentBranch, "branch child");
                             if (addChildResult != AddNodeResult.AlreadySaved)
                             {
                                 dependentBranch.Counter++;
@@ -631,7 +638,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (next != null)
                     {
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 1);
-                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length, currentStateSyncItem.Rightness) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
+                        AddNodeResult addResult = AddNode(new StateSyncItem(next, nodeDataType, currentStateSyncItem.Level + trieNode.Path.Length, CalculateRightness(trieNode.NodeType, currentStateSyncItem, 0)) {ParentBranchChildIndex = currentStateSyncItem.BranchChildIndex}, dependentItem, "extension child");
                         if (addResult == AddNodeResult.AlreadySaved)
                         {
                             SaveNode(currentStateSyncItem, currentResponseItem);
@@ -693,6 +700,21 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             }
         }
 
+        private static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
+        {
+            if (nodeType == NodeType.Branch)
+            {
+                return currentStateSyncItem.Rightness + (uint) Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * (uint) childIndex;
+            }
+
+            if (nodeType == NodeType.Extension)
+            {
+                return currentStateSyncItem.Rightness + (uint) Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * 16 - 1;   
+            }
+            
+            throw new InvalidOperationException($"Not designed for {nodeType}");
+        }
+
         private long _lastDbReads;
         private decimal _averageTimeInHandler;
 
@@ -752,7 +774,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 temp.Add(poppedSyncItem);
             }
             
-            List<StateSyncItem> tempStorage = new List<StateSyncItem>();
             while (StorageStream2.TryPop(out StateSyncItem poppedSyncItem))
             {
                 temp.Add(poppedSyncItem);
