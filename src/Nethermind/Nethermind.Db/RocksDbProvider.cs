@@ -16,6 +16,7 @@
 
 using Nethermind.Db.Config;
 using Nethermind.Db.Databases;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 

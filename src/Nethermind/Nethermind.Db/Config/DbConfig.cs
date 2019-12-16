@@ -82,14 +82,14 @@ namespace Nethermind.Db.Config
         public ulong ConsumerDepositApprovalsDbBlockCacheSize { get; set; } = 64.MB();
         public bool ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; } = true;
 
-        public ulong ConfigsDbWriteBufferSize { get; set; } = 16.MB();
+        public ulong ConfigsDbWriteBufferSize { get; set; } = 2.MB();
         public uint ConfigsDbWriteBufferNumber { get; set; } = 4;
-        public ulong ConfigsDbBlockCacheSize { get; set; } = 64.MB();
+        public ulong ConfigsDbBlockCacheSize { get; set; } = 8.MB();
         public bool ConfigsDbCacheIndexAndFilterBlocks { get; set; } = true;
 
-        public ulong EthRequestsDbWriteBufferSize { get; set; } = 16.MB();
+        public ulong EthRequestsDbWriteBufferSize { get; set; } = 2.MB();
         public uint EthRequestsDbWriteBufferNumber { get; set; } = 4;
-        public ulong EthRequestsDbBlockCacheSize { get; set; } = 64.MB();
+        public ulong EthRequestsDbBlockCacheSize { get; set; } = 8.MB();
         public bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; } = true;
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;
