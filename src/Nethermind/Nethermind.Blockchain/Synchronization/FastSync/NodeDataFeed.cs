@@ -548,7 +548,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         _lastSavedNodesCount = _savedNodesCount;
                         _lastRequestedNodesCount = _requestedNodesCount;
                         _lastHandledNodesCount = _handledNodesCount;
-                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | P: {_pendingRequests.Count} | SNPS: {savedNodesPerSecond,6:F0} | HNPS: {handledNodesPerSecond,6:F0} | RNPS: {requestedNodesPerSecond,6:F0} | accounts {_savedAccounts} | enqueued nodes {StreamsDescription} | AVTIH {_averageTimeInHandler:f2}");
+                        if (_logger.IsInfo) _logger.Info($"Time {TimeSpan.FromSeconds(_secondsInSync):dd\\.hh\\:mm\\:ss} | State {(decimal) _dataSize / 1000 / 1000,6:F2}MB | P: {_pendingRequests.Count} | SNPS: {savedNodesPerSecond,6:F0} | HNPS: {handledNodesPerSecond,6:F0} | RNPS: {requestedNodesPerSecond,6:F0} | accounts {_savedAccounts} | queues {StreamsDescription} | AVTIH {_averageTimeInHandler:f2}");
                         if (DateTime.UtcNow - _lastReportTime.full > TimeSpan.FromSeconds(10))
                         {
                             long allChecks = _checkWasInDependencies + _checkWasCached + _stateWasThere + _stateWasNotThere;
@@ -771,7 +771,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             return false;
         }
 
-        private string StreamsDescription => $"{CodeStream?.Count ?? 0:D6} | {StorageStream0?.Count ?? 0:D6} {StorageStream1?.Count ?? 0:D6} {StorageStream2?.Count ?? 0:D6} | {Stream0?.Count ?? 0:D6} {Stream1?.Count ?? 0:D6} {Stream2?.Count ?? 0:D6}";
+        private string StreamsDescription => $"{CodeStream?.Count ?? 0:D4} + {StorageStream0?.Count ?? 0:D6} {StorageStream1?.Count ?? 0:D6} {StorageStream2?.Count ?? 0:D6} + {Stream0?.Count ?? 0:D6} {Stream1?.Count ?? 0:D6} {Stream2?.Count ?? 0:D6}";
         private string LevelsDescription => $"{_maxStorageLevel:D2} {_maxStorageRightness:D8} | {_maxStateLevel:D2} {_maxRightness:D8}";
 
         private void RunReview()
