@@ -57,8 +57,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<PublicKey, Peer> _staticNodes = new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _candidatePeers = new ConcurrentDictionary<PublicKey, Peer>();
-        private readonly ConcurrentDictionary<PublicKey, Peer> _ignoredPeers = new ConcurrentDictionary<PublicKey, Peer>();
-
+        
         public PeerManager(
             IRlpxPeer rlpxPeer,
             IDiscoveryApp discoveryApp,
