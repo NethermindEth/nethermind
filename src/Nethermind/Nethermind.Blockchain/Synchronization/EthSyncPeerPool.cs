@@ -51,7 +51,6 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
-        private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
         private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
@@ -67,7 +66,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             
             if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
-            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
+            peerInfo.SleepingSince = DateTime.UtcNow;
         }
 
         public void ReportInvalid(SyncPeerAllocation allocation)
@@ -412,7 +411,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (_sleepingPeers.ContainsKey(peerInfo))
+                    if (peerInfo.IsAsleep)
                     {
                         continue;
                     }
@@ -531,14 +530,14 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (_sleepingPeers.TryGetValue(info, out DateTime sleepingSince))
+                if (info.IsAsleep)
                 {
-                    if (DateTime.UtcNow - sleepingSince < _timeBeforeWakingPeerUp)
+                    if (DateTime.UtcNow - info.SleepingSince < _timeBeforeWakingPeerUp)
                     {
                         continue;
                     }
 
-                    _sleepingPeers.TryRemove(info, out _);
+                    info.SleepingSince = null;
                 }
 
                 if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))

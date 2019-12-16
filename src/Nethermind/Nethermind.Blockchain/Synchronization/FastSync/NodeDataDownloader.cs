@@ -76,6 +76,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (_noAllocInARow > 10)
                     {
                         _noAllocPunishment = true;
+                        _logger.Info("Adjusting useful peers");
                         _noAllocInARow = 0;
                     }
                 }
