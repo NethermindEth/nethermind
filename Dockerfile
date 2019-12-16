@@ -16,4 +16,4 @@ ENV NETHERMIND_DETACHED_MODE true
 ARG GIT_COMMIT=unspecified
 LABEL git_commit=$GIT_COMMIT
 
-ENTRYPOINT dotnet Nethermind.Runner.dll
+ENTRYPOINT ["dotnet", "Nethermind.Runner.dll"]
