@@ -49,22 +49,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
-        protected IPerfService _perfService;
         private readonly ITxPool _txPool;
         private readonly ITimestamper _timestamper;
 
-        public Eth62ProtocolHandler(
-            ISession session,
+        public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             ILogManager logManager,
-            IPerfService perfService,
             ITxPool txPool)
             : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer;
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _txPool = txPool;
             _timestamper = new Timestamper();
 
@@ -74,6 +70,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         private readonly TimeSpan _txFloodCheckInterval = TimeSpan.FromSeconds(60);
+
+        public override string ToString() => $"[Peer|{Node:s}|{ClientId}]";
 
         private void CheckTxFlooding(object sender, ElapsedEventArgs e)
         {
@@ -170,6 +168,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Session.Node:c}.");
             }
 
+            int size = message.Content.ReadableBytes;
             switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
@@ -201,7 +200,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Interlocked.Increment(ref Counter);
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockHeaders from {Node:c}");
                     Metrics.Eth62BlockHeadersReceived++;
-                    Handle(Deserialize<BlockHeadersMessage>(message.Content));
+                    Handle(Deserialize<BlockHeadersMessage>(message.Content), size);
                     break;
                 case Eth62MessageCode.GetBlockBodies:
                     Interlocked.Increment(ref Counter);
@@ -213,7 +212,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Interlocked.Increment(ref Counter);
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockBodies from {Node:c}");
                     Metrics.Eth62BlockBodiesReceived++;
-                    Handle(Deserialize<BlockBodiesMessage>(message.Content));
+                    Handle(Deserialize<BlockBodiesMessage>(message.Content), size);
                     break;
                 case Eth62MessageCode.NewBlock:
                     Interlocked.Increment(ref Counter);
@@ -436,34 +435,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (emptyBlocksAtTheEnd != 0)
             {
-                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(0,headers.Length - emptyBlocksAtTheEnd).ToArray();
+                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(0, headers.Length - emptyBlocksAtTheEnd).ToArray();
                 headers = gethFriendlyHeaders;
             }
 
             return headers;
         }
 
-        private void Handle(BlockBodiesMessage message)
+        private void Handle(BlockBodiesMessage message, long size)
         {
-            BlockBody[] bodies = new BlockBody[message.Bodies.Length];
-            for (int i = 0; i < message.Bodies.Length; i++)
-            {
-                BlockBody block = new BlockBody(message.Bodies[i].Transactions, message.Bodies[i].Ommers);
-                bodies[i] = block;
-            }
-
-            var request = _bodiesRequests.Take();
+            Request<GetBlockBodiesMessage, BlockBody[]> request = _bodiesRequests.Take();
             if (message.PacketType == Eth62MessageCode.BlockBodies)
             {
-                request.CompletionSource.SetResult(bodies);
+                request.ResponseSize = size;
+                request.CompletionSource.SetResult(message.Bodies);
             }
         }
 
-        private void Handle(BlockHeadersMessage message)
+        private void Handle(BlockHeadersMessage message, long size)
         {
             var request = _headersRequests.Take();
             if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
+                request.ResponseSize = size;
                 request.CompletionSource.SetResult(message.BlockHeaders);
             }
         }
@@ -490,6 +484,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Message = message;
             }
 
+            public void StartMeasuringTime()
+            {
+                Stopwatch = Stopwatch.StartNew();
+            }
+
+            public long FinishMeasuringTime()
+            {
+                Stopwatch.Stop();
+                return Stopwatch.ElapsedMilliseconds;
+            }
+
+            private Stopwatch Stopwatch { get; set; }
+
+            public long ResponseSize { get; set; }
             public TMsg Message { get; }
             public TaskCompletionSource<TResult> CompletionSource { get; }
         }
@@ -514,8 +522,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request, token);
-
-            var perfCalcId = _perfService.StartPerfCalc();
+            request.StartMeasuringTime();
 
             Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
@@ -530,16 +537,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (firstTask == task)
             {
                 delayCancellation.Cancel();
-                var latency = _perfService.EndPerfCalc(perfCalcId);
-                if (latency.HasValue)
-                {
-                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockHeaders, latency.Value);
-                }
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
+                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
 
+                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
                 return task.Result;
             }
 
-            _perfService.EndPerfCalc(perfCalcId);
+            StatsManager.ReportTransferSpeedEvent(Session.Node, 0);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockHeadersMessage)} with {message.MaxHeaders} max headers");
         }
 
@@ -559,7 +565,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
             _bodiesRequests.Add(request, token);
-            var perfCalcId = _perfService.StartPerfCalc();
+            request.StartMeasuringTime();
 
             Send(request.Message);
 
@@ -575,20 +581,25 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (firstTask == task)
             {
                 delayCancellation.Cancel();
-                var latency = _perfService.EndPerfCalc(perfCalcId);
-                if (latency.HasValue)
-                {
-                    StatsManager.ReportLatencyCaptureEvent(Session.Node, NodeLatencyStatType.BlockBodies, latency.Value);
-                }
+                long elapsed = request.FinishMeasuringTime();
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
+                if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
+                StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
                 return task.Result;
             }
 
+            StatsManager.ReportTransferSpeedEvent(Session.Node, 0L);
             throw new TimeoutException($"{Session} Request timeout in {nameof(GetBlockBodiesMessage)} with {message.BlockHashes.Count} block hashes");
         }
 
         async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
+            if (maxBlocks == 0)
+            {
+                return new BlockHeader[0];
+            }
+
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
@@ -612,7 +623,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Skip = skip;
             msg.StartingBlockNumber = number;
 
+            // Logger.Info($"Sending headers request ({number}, {maxBlocks}, {skip}) to {this}");
+
             BlockHeader[] headers = await SendRequest(msg, token);
+            // int nonNullCount = 0;
+            // for (int i = 0; i < headers.Length; i++)
+            // {
+            //     if (headers[i] != null)
+            //     {
+            //         nonNullCount++;
+            //     }
+            // }
+
+            // Logger.Info($"Sent headers request ({number}, {maxBlocks}, {skip}) to {this} - received {headers.Length}, out of which {nonNullCount} non null");
             return headers;
         }
 
@@ -622,8 +645,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Session.InitiateDisconnect(reason, details);
         }
 
-        async Task<BlockBody[]> ISyncPeer.GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
+        async Task<BlockBody[]> ISyncPeer.GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
         {
+            // Logger.Info($"Sending bodies request ({blockHashes.Count}) to {this}");
             if (blockHashes.Count == 0)
             {
                 return new BlockBody[0];
@@ -632,6 +656,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
+
+            // int nonNullCount = 0;
+            // for (int i = 0; i < blocks.Length; i++)
+            // {
+            //     if (blocks[i] != null)
+            //     {
+            //         nonNullCount++;
+            //     }
+            // }
+
+            // Logger.Info($"Sent bodies request ({blockHashes.Count}) to {this} - received {blocks.Length}, out of which {nonNullCount} non null");
             return blocks;
         }
 

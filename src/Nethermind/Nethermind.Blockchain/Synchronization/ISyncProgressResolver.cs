@@ -21,7 +21,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal interface ISyncProgressResolver
+    public interface ISyncProgressResolver
     {
         long FindBestFullState();
         

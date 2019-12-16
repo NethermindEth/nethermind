@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             throw new NotImplementedException();
         }
 
-        public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
+        public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
         {
             throw new NotImplementedException();
         }

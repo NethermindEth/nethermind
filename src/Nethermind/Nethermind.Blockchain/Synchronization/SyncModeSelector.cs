@@ -25,7 +25,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    internal class SyncModeSelector
+    public class SyncModeSelector : ISyncModeSelector
     {
         public const int FullSyncThreshold = 32;
 
@@ -59,8 +59,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (Current == SyncMode.NotStarted)
                 {
-                    Current = SyncMode.Full;
-                    Changed?.Invoke(this, EventArgs.Empty);
+                    ChangeSyncMode(SyncMode.Full);
                 }
             }
             else
@@ -84,14 +83,29 @@ namespace Nethermind.Blockchain.Synchronization
                     maxBlockNumberAmongPeers = Math.Max(maxBlockNumberAmongPeers, peerInfo.HeadNumber);
                 }
 
+                if (maxBlockNumberAmongPeers == 0)
+                {
+                    return;
+                }
+                // if (maxBlockNumberAmongPeers <= FullSyncThreshold)
+                // {
+                //     return;
+                // }
+
                 SyncMode newSyncMode;
+                long bestFull = Math.Max(bestFullState, bestFullBlock);
                 if (!_syncProgressResolver.IsFastBlocksFinished())
                 {
                     newSyncMode = SyncMode.FastBlocks;
                 }
-                else if (maxBlockNumberAmongPeers - Math.Max(bestFullState, bestFullBlock) <= FullSyncThreshold)
+                else if (maxBlockNumberAmongPeers - bestFull  <= FullSyncThreshold)
                 {
-                    newSyncMode = Math.Max(bestFullState, bestFullBlock) >= bestHeader ? SyncMode.Full : SyncMode.StateNodes;
+                    if (maxBlockNumberAmongPeers < bestFull)
+                    {
+                        return;
+                    }
+                    
+                    newSyncMode = bestFull >= bestHeader ? SyncMode.Full : SyncMode.StateNodes;
                 }
                 else if (maxBlockNumberAmongPeers - bestHeader <= FullSyncThreshold)
                 {
@@ -106,8 +120,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (newSyncMode != Current)
                 {
                     if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
-                    Current = newSyncMode;
-                    Changed?.Invoke(this, EventArgs.Empty);
+                    ChangeSyncMode(newSyncMode);
                 }
                 else
                 {
@@ -116,11 +129,18 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
+        private void ChangeSyncMode(SyncMode newSyncMode)
+        {
+            SyncMode previous = Current;
+            Current = newSyncMode;
+            Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, Current));
+        }
+
         private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long bestAmongPeers)
         {
             return $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{bestAmongPeers}";
         }
         
-        public event EventHandler Changed;
+        public event EventHandler<SyncModeChangedEventArgs> Changed;
     }
 }

@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain
     public class SyncConfig : ISyncConfig
     {
         public bool FastBlocks { get; set; } = false;
+        public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool FastSync { get; set; }
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;

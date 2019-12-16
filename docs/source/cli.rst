@@ -1,9 +1,16 @@
 CLI
 ***
 
+CLI access is not currently included in the Nethermind launcher but will be added very soon.
 
-Refer to the documentation at https://github.com/ethereum/wiki/wiki/JSON-RPC
+admin
+^^^^^
 
+ - admin.addPeer(enode) - 
+
+ - admin.peers - 
+
+ - admin.removePeer(enode) - 
 
 clique
 ^^^^^^
@@ -35,7 +42,7 @@ debug
 
  - debug.config(category, name) - 
 
- - debug.traceBlock(hash, options) - 
+ - debug.traceBlock(rlp, options) - 
 
  - debug.traceBlockByHash(hash, options) - 
 
@@ -47,6 +54,10 @@ debug
 
  - debug.traceTransactionByBlockhashAndIndex(hash, options) - 
 
+ - debug.traceTransactionInBlockByHash(rlp, hash, options) - 
+
+ - debug.traceTransactionInBlockByIndex(rlp, index, options) - 
+
 diag
 ^^^^
 
@@ -56,6 +67,10 @@ eth
 ^^^
 
  - eth.blockNumber - 
+
+ - eth.call(tx, blockParameter) - 
+
+ - eth.chainId - 
 
  - eth.getBalance(address, blockParameter) - 
 
@@ -146,6 +161,8 @@ trace
  - trace.replayTransaction(txHash, traceTypes) - Replays a transaction, returning the traces.
 
  - trace.block(blockNumber) - Returns traces created at given block.
+
+ - trace.rawTransaction(txData, traceTypes) - Traces a call to eth_sendRawTransaction without making the call, returning the traces
 
  - trace.transaction(txHash) - Returns all traces of given transaction
 

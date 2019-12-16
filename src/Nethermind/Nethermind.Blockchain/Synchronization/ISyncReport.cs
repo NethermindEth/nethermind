@@ -30,6 +30,12 @@ namespace Nethermind.Blockchain.Synchronization
         
         long FastBlocksPivotNumber { get; set; }
         
+        MeasuredProgress HeadersInQueue { get; }
+        
+        MeasuredProgress BodiesInQueue { get; }
+        
+        MeasuredProgress ReceiptsInQueue { get; }
+        
         MeasuredProgress FastBlocksHeaders { get; }
         
         MeasuredProgress FastBlocksBodies { get; }

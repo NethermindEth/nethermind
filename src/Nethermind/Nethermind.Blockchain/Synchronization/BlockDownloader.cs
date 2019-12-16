@@ -22,14 +22,17 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
 using System.Numerics;
+using System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.HashLib;
 using Nethermind.Logging;
 using Nethermind.Mining;
 
@@ -43,7 +46,7 @@ namespace Nethermind.Blockchain.Synchronization
             DownloadAndProcess,
             DownloadWithReceipts
         }
-        
+
         public const int MaxReorganizationLength = 2 * SyncBatchSize.Max;
 
         private readonly IBlockTree _blockTree;
@@ -100,14 +103,14 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
-                int headersToRequest = (int) BigInteger.Min(blocksLeft + 1, _syncBatchSize.Current);
+                int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
                 {
                     break;
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
-                var headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startingPoint == null)
@@ -120,6 +123,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout >= 2)
                 {
+                    // if peers are not timing out then we can try to be slightly more eager
                     _syncBatchSize.Expand();
                 }
 
@@ -161,16 +165,89 @@ namespace Nethermind.Blockchain.Synchronization
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
                     _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
+                else
+                {
+                    break;
+                }
             }
 
             return headersSynced;
         }
 
+        private ValueTask DownloadFailHandler<T>(Task<T> downloadTask, string entities)
+        {
+            if (downloadTask.IsFaulted)
+            {
+                _sinceLastTimeout = 0;
+                if (downloadTask.Exception?.InnerException is TimeoutException
+                    || (downloadTask.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
+                    || (downloadTask.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
+                {
+                    if (_logger.IsTrace) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", downloadTask.Exception);
+                    _syncBatchSize.Shrink();
+                }
+                else
+                {
+                    Exception exception = downloadTask.Exception;
+                    AggregateException aggregateException = exception as AggregateException;
+                    if (aggregateException != null)
+                    {
+                        exception = aggregateException.InnerExceptions[0];
+                    }
+
+                    if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
+                }
+                
+                throw new EthSynchronizationException($"{entities} task faulted", downloadTask.Exception);
+            }
+
+            return default;
+        }
+
+        private int MaxHeadersForPeer(PeerInfo peer)
+        {
+            return peer.PeerClientType switch
+            {
+                PeerClientType.BeSu => BeSuSyncLimits.MaxHeaderFetch,
+                PeerClientType.Geth => GethSyncLimits.MaxHeaderFetch,
+                PeerClientType.Nethermind => NethermindSyncLimits.MaxHeaderFetch,
+                PeerClientType.Parity => ParitySyncLimits.MaxHeaderFetch,
+                PeerClientType.Unknown => 192,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
+        private int MaxBodiesForPeer(PeerInfo peer)
+        {
+            return peer.PeerClientType switch
+            {
+                PeerClientType.BeSu => BeSuSyncLimits.MaxBodyFetch,
+                PeerClientType.Geth => GethSyncLimits.MaxBodyFetch,
+                PeerClientType.Nethermind => NethermindSyncLimits.MaxBodyFetch,
+                PeerClientType.Parity => ParitySyncLimits.MaxBodyFetch,
+                PeerClientType.Unknown => 32,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
+        private int MaxReceiptsForPeer(PeerInfo peer)
+        {
+            return peer.PeerClientType switch
+            {
+                PeerClientType.BeSu => BeSuSyncLimits.MaxReceiptFetch,
+                PeerClientType.Geth => GethSyncLimits.MaxReceiptFetch,
+                PeerClientType.Nethermind => NethermindSyncLimits.MaxReceiptFetch,
+                PeerClientType.Parity => ParitySyncLimits.MaxReceiptFetch,
+                PeerClientType.Unknown => 128,
+                _ => throw new ArgumentOutOfRangeException()
+            };
+        }
+        
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, DownloadOptions options = DownloadOptions.DownloadAndProcess)
         {
-            var downloadReceipts = options == DownloadOptions.DownloadWithReceipts;
-            var shouldProcess = options == DownloadOptions.DownloadAndProcess;
-            
+            bool downloadReceipts = options == DownloadOptions.DownloadWithReceipts;
+            bool shouldProcess = options == DownloadOptions.DownloadAndProcess;
+
             if (bestPeer == null)
             {
                 string message = $"Not expecting best peer to be null inside the {nameof(BlockDownloader)}";
@@ -192,114 +269,27 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
-                int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _syncBatchSize.Current);
-                if (blocksToRequest <= 1)
+                int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
+                if (headersToRequest <= 1)
                 {
                     break;
                 }
 
-                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{blocksToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {blocksToRequest} more.");
-                var headers = await RequestHeaders(bestPeer, cancellation, currentNumber, blocksToRequest);
-                Block[] blocks = new Block[headers.Length - 1];
+                headersToRequest = Math.Min(headersToRequest, MaxHeadersForPeer(bestPeer));
 
-                List<Keccak> blockHashes = new List<Keccak>();
-                Dictionary<int, int> indexMapping = new Dictionary<int, int>();
-                int currentBodyIndex = 0;
-                for (int i = 1; i < headers.Length; i++)
-                {
-                    if (headers[i] == null)
-                    {
-                        break;
-                    }
+                if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
-                    if (headers[i].HasBody)
-                    {
-                        blocks[i - 1] = new Block(headers[i], (BlockBody) null);
-                        indexMapping.Add(currentBodyIndex, i - 1);
-                        currentBodyIndex++;
-                        blockHashes.Add(headers[i].Hash);
-                    }
-                    else
-                    {
-                        blocks[i - 1] = new Block(headers[i], BlockBody.Empty);
-                    }
-                }
+                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                BlockDownloadContext context = new BlockDownloadContext(_specProvider, bestPeer, headers, downloadReceipts);
 
-                Task<BlockBody[]> bodiesTask = blockHashes.Count == 0
-                    ? Task.FromResult(Array.Empty<BlockBody>())
-                    : bestPeer.SyncPeer.GetBlocks(blockHashes, cancellation);
-                
-                Task<TxReceipt[][]> receiptsTasks = !downloadReceipts || blockHashes.Count == 0
-                    ? Task.FromResult(Array.Empty<TxReceipt[]>())
-                    : bestPeer.SyncPeer.GetReceipts(blockHashes, cancellation);
+                if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                await RequestBodies(bestPeer, cancellation, context);
 
-                ValueTask DownloadFailHandler<T>(Task<T> t, string entities)
-                {
-                    if (t.IsFaulted)
-                    {
-                        _sinceLastTimeout = 0;
-                        if (t.Exception?.InnerException is TimeoutException
-                            || (t.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
-                            || (t.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
-                        {
-                            if (_logger.IsTrace) _logger.Error($"Failed to retrieve {entities} when synchronizing (Timeout)", bodiesTask.Exception);
-                            _syncBatchSize.Shrink();
-                        }
-                        else
-                        {
-                            if (_logger.IsError) _logger.Error($"Failed to retrieve {entities} when synchronizing.", bodiesTask.Exception);
-                        }
-
-                        throw new EthSynchronizationException($"{entities} task faulted", t.Exception);
-                    }
-
-                    return default;
-                }
-
-                await Task.WhenAll(
-                    bodiesTask.ContinueWith(t => DownloadFailHandler<BlockBody[]>(t, "bodies"), cancellation),
-                    receiptsTasks.ContinueWith(t => DownloadFailHandler<TxReceipt[][]>(t, "receipts"), cancellation));
-                
-
-                if (bodiesTask.IsCanceled || receiptsTasks.IsCanceled)
-                {
-                    return blocksSynced;
-                }
-
-                TxReceipt[][] receipts = null;
-                IDictionary<Keccak, IList<TxReceipt>> correctReceiptsBlocks = null;
                 if (downloadReceipts)
                 {
-                    receipts = receiptsTasks.Result;
-                    correctReceiptsBlocks = new Dictionary<Keccak, IList<TxReceipt>>();
-                }
-                
-                BlockBody[] bodies = bodiesTask.Result;
-                for (int i = 0; i < bodies.Length; i++)
-                {
-                    var body = bodies[i];
-                    var block = blocks[indexMapping[i]];
-                    
-                    if (body == null)
-                    {
-                        // TODO: this is how it used to be... I do not want to touch it without extensive testing 
-                        throw new EthSynchronizationException($"{bestPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
-                    }
-                    
-                    TxReceipt[] blockReceipts = Array.Empty<TxReceipt>();
-                    if (downloadReceipts)
-                    {
-                        if (receipts.Length > i)
-                        {
-                            blockReceipts = receipts[i] ?? Array.Empty<TxReceipt>();
-                        }
-                        else
-                        {
-                            throw new InvalidOperationException($"Failed to download receipts for block {block.ToString(Block.Format.Short)}.");
-                        }
-                    }
-                    
-                    ProcessDownloadedBody(body, block, downloadReceipts, blockReceipts, correctReceiptsBlocks);
+                    if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+                    await RequestReceipts(bestPeer, cancellation, context);
                 }
 
                 _sinceLastTimeout++;
@@ -308,33 +298,8 @@ namespace Nethermind.Blockchain.Synchronization
                     _syncBatchSize.Expand();
                 }
 
-                int fullDataBlocksCount = 0;
-                for (int i = 0; i < blocks.Length; i++)
-                {
-                    var block = blocks[i];
-                    if (block?.Body != null)
-                    {
-                        IList<TxReceipt> receiptsForBlock = null;
-                        if (!downloadReceipts || block.Body.Transactions.Length == 0 || correctReceiptsBlocks?.TryGetValue(block.Hash, out receiptsForBlock) == true)
-                        {
-                            if (receiptsForBlock != null)
-                            {
-                                for (int j = 0; j < receiptsForBlock.Count; j++)
-                                {
-                                    _receiptStorage.Add(receiptsForBlock[j], true);
-                                }
-                            }
-                            
-                            fullDataBlocksCount++;
-                        }
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-
-                if (fullDataBlocksCount > 0)
+                Block[] blocks = context.Blocks;
+                if (context.FullBlocksCount > 0)
                 {
                     bool parentIsKnown = _blockTree.IsKnownBlock(blocks[0].Number - 1, blocks[0].ParentHash);
                     if (!parentIsKnown)
@@ -345,7 +310,7 @@ namespace Nethermind.Blockchain.Synchronization
                     }
                 }
 
-                for (int i = 0; i < fullDataBlocksCount; i++)
+                for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -353,16 +318,24 @@ namespace Nethermind.Blockchain.Synchronization
                         break;
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {bestPeer}");
+                    if (_logger.IsTrace) _logger.Trace($"Received {blocks[blockIndex]} from {bestPeer}");
 
                     // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                    if (!_blockValidator.ValidateSuggestedBlock(blocks[blockIndex]))
                     {
-                        throw new EthSynchronizationException($"{bestPeer} sent an invalid block {blocks[i].ToString(Block.Format.Short)}.");
+                        throw new EthSynchronizationException($"{bestPeer} sent an invalid block {blocks[blockIndex].ToString(Block.Format.Short)}.");
                     }
 
-                    if (HandleAddResult(blocks[i].Header, i == 0, _blockTree.SuggestBlock(blocks[i], shouldProcess)))
+                    if (HandleAddResult(blocks[blockIndex].Header, blockIndex == 0, _blockTree.SuggestBlock(blocks[blockIndex], shouldProcess)))
                     {
+                        if (downloadReceipts)
+                        {
+                            for (int receiptIndex = 0; receiptIndex < (context.ReceiptsForBlocks[blockIndex]?.Length ?? 0); receiptIndex++)
+                            {
+                                _receiptStorage.Add(context.ReceiptsForBlocks[blockIndex][receiptIndex], true);
+                            }
+                        }
+
                         blocksSynced++;
                     }
 
@@ -374,115 +347,69 @@ namespace Nethermind.Blockchain.Synchronization
                     _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
                     _syncReport.FullSyncBlocksKnown = bestPeer.HeadNumber;
                 }
+                else
+                {
+                    break;
+                }
             }
 
             return blocksSynced;
         }
 
-        private void ProcessDownloadedBody(
-            BlockBody body,
-            Block block, 
-            bool downloadReceipts,
-            TxReceipt[] blockReceipts,
-            IDictionary<Keccak, IList<TxReceipt>> correctReceiptsBlocks)
+        private async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
-            if (blockReceipts == null) throw new ArgumentNullException(nameof(blockReceipts));
-            if (block == null || block.Body != null)
-            {
-                throw new InvalidOperationException("Invalid state of blocks placeholders during sync");
-            }
-
-            block.Body = body;
-            
-            if (downloadReceipts)
-            {
-                if (body.Transactions.Length == blockReceipts.Length)
-                {
-                    List<TxReceipt> receiptsForBlock = new List<TxReceipt>();
-                    correctReceiptsBlocks[block.Hash] = receiptsForBlock;
-                    long gasUsedBefore = 0;
-
-                    for (int j = 0; j < body.Transactions.Length; j++)
-                    {
-                        Transaction transaction = body.Transactions[j];
-                        if (blockReceipts.Length > j)
-                        {
-                            TxReceipt receipt = blockReceipts[j];
-                            RecoverReceiptData(receipt, block, transaction, j, gasUsedBefore);
-                            receiptsForBlock.Add(receipt);
-                            gasUsedBefore = receipt.GasUsedTotal;
-                        }
-                    }
-
-                    ValidateReceipts(block, blockReceipts);
-                }
-                else
-                {
-                    throw new EthSynchronizationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
-                }
-            }
-        }
-
-        private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
-        {
-            Keccak receiptsRoot = block.CalculateReceiptRoot(_specProvider, blockReceipts);
-            if (receiptsRoot != block.ReceiptsRoot)
-            {
-                throw new EthSynchronizationException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");
-            }            
-        }
-
-        private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
-        {
-            receipt.BlockHash = block.Hash;
-            receipt.BlockNumber = block.Number;
-            receipt.TxHash = transaction.Hash;
-            receipt.Index = transactionIndex;
-            receipt.Sender = transaction.SenderAddress;
-            receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
-            receipt.ContractAddress = transaction.IsContractCreation ? transaction.To : null;
-            receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
-            if (receipt.StatusCode != StatusCode.Success)
-            {
-                receipt.StatusCode = receipt.Logs.Length == 0 ? StatusCode.Failure : StatusCode.Success;
-            }
-        }
-
-        private async Task<BlockHeader[]> RequestHeaders(PeerInfo bestPeer, CancellationToken cancellation, long currentNumber, int headersToRequest)
-        {
-            var headersRequest = bestPeer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
-            await headersRequest.ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _sinceLastTimeout = 0;
-                    if (t.Exception?.InnerException is TimeoutException
-                        || (t.Exception?.InnerExceptions.Any(x => x is TimeoutException) ?? false)
-                        || (t.Exception?.InnerExceptions.Any(x => x.InnerException is TimeoutException) ?? false))
-                    {
-                        _syncBatchSize.Shrink();
-                        if (_logger.IsTrace) _logger.Error("Failed to retrieve headers when synchronizing (Timeout)", t.Exception);
-                    }
-                    else
-                    {
-                        if (_logger.IsError) _logger.Error("Failed to retrieve headers when synchronizing", t.Exception);
-                    }
-
-                    throw new EthSynchronizationException("Headers task faulted.", t.Exception);
-                }
-            }, cancellation);
+            Task<BlockHeader[]> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
+            await headersRequest.ContinueWith(t => DownloadFailHandler(t, "headers"), cancellation);
 
             cancellation.ThrowIfCancellationRequested();
 
-            var headers = headersRequest.Result;
+            BlockHeader[] headers = headersRequest.Result;
             ValidateSeals(cancellation, headers);
-            ValidateBatchConsistency(bestPeer, headers);
+            ValidateBatchConsistency(peer, headers);
             return headers;
+        }
+
+        private async Task RequestBodies(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
+        {
+            int offset = 0;
+            while (offset != context.NonEmptyBlockHashes.Count)
+            {
+                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, MaxBodiesForPeer(peer));
+                Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
+                await getBodiesRequest.ContinueWith(t => DownloadFailHandler(getBodiesRequest, "bodies"));
+                BlockBody[] result = getBodiesRequest.Result;
+                for (int i = 0; i < result.Length; i++)
+                {
+                    context.SetBody(i + offset, result[i]);
+                }
+
+                offset += result.Length;
+            }
+        }
+
+        private async Task RequestReceipts(PeerInfo peer, CancellationToken cancellation, BlockDownloadContext context)
+        {
+            int offset = 0;
+            while (offset != context.NonEmptyBlockHashes.Count)
+            {
+                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, MaxReceiptsForPeer(peer));
+                Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
+                await request.ContinueWith(t => DownloadFailHandler(request, "bodies"));
+
+                TxReceipt[][] result = request.Result;
+                for (int i = 0; i < result.Length; i++)
+                {
+                    context.SetReceipts(i + offset, result[i]);
+                }
+
+                offset += result.Length;
+            }
         }
 
         private void ValidateBatchConsistency(PeerInfo bestPeer, BlockHeader[] headers)
         {
-            // Parity 1.11 non canonical blocks when testing on 27/06
+            // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
+            // so we need to confirm that the blocks form a valid subchain
             for (int i = 0; i < headers.Length; i++)
             {
                 if (i != 0 && headers[i] != null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
@@ -496,7 +423,7 @@ namespace Nethermind.Blockchain.Synchronization
         private void ValidateSeals(CancellationToken cancellation, BlockHeader[] headers)
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
-            var exceptions = new ConcurrentQueue<Exception>();
+            ConcurrentQueue<Exception> exceptions = new ConcurrentQueue<Exception>();
             Parallel.For(0, headers.Length, (i, state) =>
             {
                 if (cancellation.IsCancellationRequested)
@@ -570,6 +497,148 @@ namespace Nethermind.Blockchain.Synchronization
                     return false;
                 default:
                     throw new NotImplementedException($"Unknown {nameof(AddBlockResult)} {addResult}");
+            }
+        }
+
+
+        private class BlockDownloadContext
+        {
+            private Dictionary<int, int> _indexMapping;
+            private ISpecProvider _specProvider;
+            private PeerInfo _syncPeer;
+            private bool _downloadReceipts;
+
+            public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader[] headers, bool downloadReceipts)
+            {
+                _indexMapping = new Dictionary<int, int>();
+                _downloadReceipts = downloadReceipts;
+                _specProvider = specProvider;
+                _syncPeer = syncPeer;
+
+                Blocks = new Block[headers.Length - 1];
+                NonEmptyBlockHashes = new List<Keccak>();
+
+                if (_downloadReceipts)
+                {
+                    ReceiptsForBlocks = new TxReceipt[Blocks.Length][]; // do that only if downloading receipts
+                }
+
+                int currentBodyIndex = 0;
+                for (int i = 1; i < headers.Length; i++)
+                {
+                    if (headers[i] == null)
+                    {
+                        break;
+                    }
+
+                    if (headers[i].HasBody)
+                    {
+                        Blocks[i - 1] = new Block(headers[i], (BlockBody) null);
+                        _indexMapping.Add(currentBodyIndex, i - 1);
+                        currentBodyIndex++;
+                        NonEmptyBlockHashes.Add(headers[i].Hash);
+                    }
+                    else
+                    {
+                        Blocks[i - 1] = new Block(headers[i], BlockBody.Empty);
+                    }
+                }
+            }
+
+            public int FullBlocksCount => Blocks.Length;
+
+            public Block[] Blocks { get; set; }
+
+            public TxReceipt[][] ReceiptsForBlocks { get; private set; }
+
+            public List<Keccak> NonEmptyBlockHashes { get; set; }
+
+            public IList<Keccak> GetHashesByOffset(int offset, int maxLength)
+            {
+                var hashesToRequest =
+                    offset == 0
+                        ? NonEmptyBlockHashes
+                        : NonEmptyBlockHashes.Skip(offset);
+
+                if (maxLength < NonEmptyBlockHashes.Count - offset)
+                {
+                    hashesToRequest = hashesToRequest.Take(maxLength);
+                }
+                
+                return hashesToRequest.ToList();
+            }
+
+            public void SetBody(int index, BlockBody body)
+            {
+                Block block = Blocks[_indexMapping[index]];
+                if (body == null)
+                {
+                    throw new EthSynchronizationException($"{_syncPeer} sent an empty body for {block.ToString(Block.Format.Short)}.");
+                }
+
+                block.Body = body;
+            }
+
+            public void SetReceipts(int index, TxReceipt[] receipts)
+            {
+                if (!_downloadReceipts)
+                {
+                    throw new InvalidOperationException($"Unexpected call to {nameof(SetReceipts)} when not downloading receipts");
+                }
+
+                int mappedIndex = _indexMapping[index];
+                Block block = Blocks[_indexMapping[index]];
+                if (receipts == null)
+                {
+                    receipts = Array.Empty<TxReceipt>();
+                }
+
+                if (block.Transactions.Length == receipts.Length)
+                {
+                    long gasUsedBefore = 0;
+                    for (int receiptIndex = 0; receiptIndex < block.Transactions.Length; receiptIndex++)
+                    {
+                        Transaction transaction = block.Transactions[receiptIndex];
+                        if (receipts.Length > receiptIndex)
+                        {
+                            TxReceipt receipt = receipts[receiptIndex];
+                            RecoverReceiptData(receipt, block, transaction, receiptIndex, gasUsedBefore);
+                            gasUsedBefore = receipt.GasUsedTotal;
+                        }
+                    }
+
+                    ValidateReceipts(block, receipts);
+                    ReceiptsForBlocks[mappedIndex] = receipts;
+                }
+                else
+                {
+                    throw new EthSynchronizationException($"Missing receipts for block {block.ToString(Block.Format.Short)}.");
+                }
+            }
+
+            private static void RecoverReceiptData(TxReceipt receipt, Block block, Transaction transaction, int transactionIndex, long gasUsedBefore)
+            {
+                receipt.BlockHash = block.Hash;
+                receipt.BlockNumber = block.Number;
+                receipt.TxHash = transaction.Hash;
+                receipt.Index = transactionIndex;
+                receipt.Sender = transaction.SenderAddress;
+                receipt.Recipient = transaction.IsContractCreation ? null : transaction.To;
+                receipt.ContractAddress = transaction.IsContractCreation ? transaction.To : null;
+                receipt.GasUsed = receipt.GasUsedTotal - gasUsedBefore;
+                if (receipt.StatusCode != StatusCode.Success)
+                {
+                    receipt.StatusCode = receipt.Logs.Length == 0 ? StatusCode.Failure : StatusCode.Success;
+                }
+            }
+
+            private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
+            {
+                Keccak receiptsRoot = block.CalculateReceiptRoot(_specProvider, blockReceipts);
+                if (receiptsRoot != block.ReceiptsRoot)
+                {
+                    throw new EthSynchronizationException($"Wrong receipts root for downloaded block {block.ToString(Block.Format.Short)}.");
+                }
             }
         }
     }

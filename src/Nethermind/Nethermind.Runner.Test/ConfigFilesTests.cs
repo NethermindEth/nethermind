@@ -64,6 +64,28 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(config.FastSync, fastSyncEnabled);
         }
         
+        [TestCase("ropsten_archive.cfg", true)]
+        [TestCase("ropsten.cfg", true)]
+        [TestCase("rinkeby_archive.cfg", true)]
+        [TestCase("rinkeby.cfg", true)]
+        [TestCase("goerli_archive.cfg", true)]
+        [TestCase("goerli.cfg", false)]
+        [TestCase("mainnet_archive.cfg", true)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("sokol.cfg", false)]
+        [TestCase("poacore.cfg", false)]
+        [TestCase("poacore_archive.cfg", true)]
+        [TestCase("xdai.cfg", false)]
+        [TestCase("xdai_archive.cfg", true)]
+        [TestCase("spaceneth.cfg", true)]
+        [TestCase("volta.cfg", false)]
+        public void Geth_limits_configs_are_correct(string configFile, bool useGethLimitsInFastSync)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+            Assert.AreEqual( useGethLimitsInFastSync, config.UseGethLimitsInFastBlocks);
+        }
+        
         [TestCase("ropsten_archive.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
         [TestCase("ropsten.cfg", "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")]
         [TestCase("rinkeby_archive.cfg", "0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177")]

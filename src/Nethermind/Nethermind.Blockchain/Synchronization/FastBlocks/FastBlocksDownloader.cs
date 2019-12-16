@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                         case FastBlocksBatchType.Bodies:
                         {
-                            Task<BlockBody[]> getBodiesTask = peer.GetBlocks(batch.Bodies.Request, token);
+                            Task<BlockBody[]> getBodiesTask = peer.GetBlockBodies(batch.Bodies.Request, token);
                             await getBodiesTask.ContinueWith(
                                 t =>
                                 {

@@ -143,12 +143,10 @@ namespace Nethermind.Runner.Runners
         private IDiscoveryApp _discoveryApp;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
-        private IPerfService _perfService;
         private ITxPool _txPool;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
-        private ISyncReport _syncReport;
         private ISynchronizer _synchronizer;
         private ISyncServer _syncServer;
         private IKeyStore _keyStore;
@@ -207,8 +205,7 @@ namespace Nethermind.Runner.Runners
             _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
-            _perfService = new PerfService(_logManager);
-            
+
             _networkConfig = _configProvider.GetConfig<INetworkConfig>();
             _ipResolver = new IpResolver(_networkConfig, _logManager);
             _networkConfig.ExternalIp = _ipResolver.ExternalIp.ToString();
@@ -779,8 +776,7 @@ namespace Nethermind.Runner.Runners
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
-            _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, _syncConfig, _logManager);
-            _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _syncReport, _logManager);
+            _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _nodeStatsManager, _logManager);
 
             _syncServer = new SyncServer(
                 _dbProvider.StateDb,
@@ -980,7 +976,7 @@ namespace Nethermind.Runner.Runners
             var peerStorage = new NetworkStorage(peersDb, _logManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
-            _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _perfService, _logManager);
+            _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _logManager);
 
             if (!(_ndmInitializer is null))
             {
@@ -1089,7 +1085,7 @@ namespace Nethermind.Runner.Runners
                 _networkConfig,
                 discoveryConfig,
                 _timestamper,
-                _logManager, _perfService);
+                _logManager);
 
             _discoveryApp.Initialize(_nodeKey.PublicKey);
         }

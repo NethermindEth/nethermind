@@ -30,15 +30,11 @@ namespace Nethermind.Stats
     {
         private readonly IStatsConfig _statsConfig;
 
-        private long _pingPongLatencyEventCount;
-        private decimal? _pingPongAverageLatency;
-        private long _headersLatencyEventCount;
-        private decimal? _headersAverageLatency;
-        private long _bodiesLatencyEventCount;
-        private decimal? _bodiesAverageLatency;
+        private long _transferSpeedEventCount;
+        private decimal? _averageTransferSpeed;
 
         private int[] _statCountersArray;
-        private object _latencyLock = new object();
+        private object _speedLock = new object();
 
         private DisconnectReason? _lastLocalDisconnect;
         private DisconnectReason? _lastRemoteDisconnect;
@@ -71,9 +67,6 @@ namespace Nethermind.Stats
         public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
         public Node Node { get; }
-
-        public IEnumerable<NodeStatsEvent> EventHistory => Enumerable.Empty<NodeStatsEvent>();
-        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => Enumerable.Empty<NodeLatencyStatsEvent>();
 
         private void Increment(NodeStatsEventType nodeStatsEventType)
         {
@@ -138,40 +131,17 @@ namespace Nethermind.Stats
             }
         }
 
-        public void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long milliseconds)
+        public void AddTransferSpeedCaptureEvent(long bytesPerMillisecond)
         {
-            lock (_latencyLock)
+            lock (_speedLock)
             {
-                switch (latencyType)
-                {
-                    case NodeLatencyStatType.P2PPingPong:
-                        _pingPongAverageLatency = ((_pingPongLatencyEventCount * (_pingPongAverageLatency ?? 0)) + milliseconds) / (++_pingPongLatencyEventCount);
-                        break;
-                    case NodeLatencyStatType.BlockHeaders:
-                        _headersAverageLatency = ((_headersLatencyEventCount * (_headersAverageLatency ?? 0)) + milliseconds) / (++_headersLatencyEventCount);
-                        break;
-                    case NodeLatencyStatType.BlockBodies:
-                        _bodiesAverageLatency = ((_bodiesLatencyEventCount * (_bodiesAverageLatency ?? 0)) + milliseconds) / (++_bodiesLatencyEventCount);
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
-                }
+                _averageTransferSpeed = ((_transferSpeedEventCount * (_averageTransferSpeed ?? 0)) + bytesPerMillisecond) / (++_transferSpeedEventCount);
             }
         }
 
-        public long? GetAverageLatency(NodeLatencyStatType latencyType)
+        public long? GetAverageTransferSpeed()
         {
-            switch (latencyType)
-            {
-                case NodeLatencyStatType.P2PPingPong:
-                    return (long?)_pingPongAverageLatency;
-                case NodeLatencyStatType.BlockHeaders:
-                    return (long?)_headersAverageLatency;
-                case NodeLatencyStatType.BlockBodies:
-                    return (long?)_bodiesAverageLatency;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(latencyType), latencyType, null);
-            }
+            return (long?)_averageTransferSpeed;
         }
 
         public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed()
@@ -196,20 +166,20 @@ namespace Nethermind.Stats
                 return false;
             }
 
-            var timePassed = DateTime.UtcNow.Subtract(_lastDisconnectTime.Value).TotalMilliseconds;
-            var disconnectDelay = GetDisconnectDelay();
+            double timePassed = DateTime.UtcNow.Subtract(_lastDisconnectTime.Value).TotalMilliseconds;
+            int disconnectDelay = GetDisconnectDelay();
             if (disconnectDelay <= 500)
             {
                 //randomize early disconnect delay - for private networks
                 lock (Random)
                 {
-                    var randomizedDelay = Random.Next(disconnectDelay);
+                    int randomizedDelay = Random.Next(disconnectDelay);
                     disconnectDelay = randomizedDelay < 10 ? randomizedDelay + 10 : randomizedDelay;
                 }
             }
             
             
-            var result = timePassed < disconnectDelay;
+            bool result = timePassed < disconnectDelay;
             return result;
         }
 
@@ -220,9 +190,9 @@ namespace Nethermind.Stats
                 return false;
             }
 
-            var timePassed = DateTime.UtcNow.Subtract(_lastFailedConnectionTime.Value).TotalMilliseconds;
-            var failedConnectionDelay = GetFailedConnectionDelay();
-            var result = timePassed < failedConnectionDelay;
+            double timePassed = DateTime.UtcNow.Subtract(_lastFailedConnectionTime.Value).TotalMilliseconds;
+            int failedConnectionDelay = GetFailedConnectionDelay();
+            bool result = timePassed < failedConnectionDelay;
 
             return result;
         }
@@ -359,7 +329,7 @@ namespace Nethermind.Stats
             {
                 if (_lastRemoteDisconnect == DisconnectReason.TooManyPeers || _lastRemoteDisconnect == DisconnectReason.AlreadyConnected)
                 {
-                    var timeFromLastDisconnect = DateTime.UtcNow.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
+                    double timeFromLastDisconnect = DateTime.UtcNow.Subtract(_lastDisconnectTime ?? DateTime.MinValue).TotalMilliseconds;
                     return timeFromLastDisconnect < _statsConfig.PenalizedReputationTooManyPeersTimeout;
                 }
 

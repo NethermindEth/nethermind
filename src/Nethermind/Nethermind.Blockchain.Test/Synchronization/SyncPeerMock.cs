@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
         }
 
-        public Task<BlockBody[]> GetBlocks(IList<Keccak> blockHashes, CancellationToken token)
+        public Task<BlockBody[]> GetBlockBodies(IList<Keccak> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)

@@ -18,13 +18,11 @@
 
 using System;
 
-namespace Nethermind.Core
+namespace Nethermind.Stats.Model
 {
-    public interface IPerfService
+    public class NodeTransferSpeedStatsEvent
     {
-        Guid StartPerfCalc();
-        void EndPerfCalc(Guid id, string logMsg);
-        long? EndPerfCalc(Guid id);
-        bool LogOnDebug { get; set; }
+        public DateTime CaptureTime { get; set; }
+        public long Latency { get; set; }
     }
 }

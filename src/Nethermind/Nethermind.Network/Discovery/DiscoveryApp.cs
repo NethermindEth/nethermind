@@ -52,7 +52,6 @@ namespace Nethermind.Network.Discovery
         private readonly ICryptoRandom _cryptoRandom;
         private readonly INetworkStorage _discoveryStorage;
         private readonly INetworkConfig _networkConfig;
-        private readonly IPerfService _perfService;
 
         private Timer _discoveryTimer;
         private Timer _discoveryPersistenceTimer;
@@ -62,8 +61,7 @@ namespace Nethermind.Network.Discovery
         private NettyDiscoveryHandler _discoveryHandler;
         private Task _storageCommitTask;
 
-        public DiscoveryApp(
-            INodesLocator nodesLocator,
+        public DiscoveryApp(INodesLocator nodesLocator,
             IDiscoveryManager discoveryManager,
             INodeTable nodeTable,
             IMessageSerializationService messageSerializationService,
@@ -72,12 +70,10 @@ namespace Nethermind.Network.Discovery
             INetworkConfig networkConfig,
             IDiscoveryConfig discoveryConfig,
             ITimestamper timestamper,
-            ILogManager logManager,
-            IPerfService perfService)
+            ILogManager logManager)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = _logManager.GetClassLogger();
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _discoveryConfig = discoveryConfig ?? throw new ArgumentNullException(nameof(discoveryConfig));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
@@ -114,7 +110,6 @@ namespace Nethermind.Network.Discovery
 
         public async Task StopAsync()
         {
-            var key = _perfService.StartPerfCalc();
             _appShutdownSource.Cancel();
             StopDiscoveryTimer();
             //StopRefreshTimer();
@@ -133,7 +128,6 @@ namespace Nethermind.Network.Discovery
 
             await StopUdpChannelAsync();
             if(_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
-            _perfService.EndPerfCalc(key, "Close: DiscoveryApp");
         }
 
         public void AddNodeToDiscovery(Node node)
