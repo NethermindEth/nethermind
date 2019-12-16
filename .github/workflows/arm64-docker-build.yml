@@ -1,9 +1,12 @@
 name: Publish Arm64 Image to Docker Registry
 
+#on:
+#  push:
+#    tags:
+#    - '*'
 on:
-  push:
-    tags:
-    - '*'
+  repository_dispatch:
+    types: docker_arm64
 
 jobs:
   arm64_building:
@@ -11,8 +14,6 @@ jobs:
     name: Build on ARM64
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow
     - uses: uraimo/run-on-arch-action@v1.0.5
       id: runcmd
       with:

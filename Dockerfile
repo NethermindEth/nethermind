@@ -1,12 +1,12 @@
-FROM mcr.microsoft.com/dotnet/core/sdk:3.0 AS build
-COPY . .
-RUN git submodule update --init src/Dirichlet src/rocksdb-sharp
-RUN dotnet publish src/Nethermind/Nethermind.Runner -c release -o out
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
+RUN git clone https://github.com/NethermindEth/nethermind.git nethermind/
+RUN cd nethermind/ && git submodule update --init src/Dirichlet src/rocksdb-sharp
+RUN cd nethermind/ && dotnet publish src/Nethermind/Nethermind.Runner -c release -o out
 
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.0
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 WORKDIR /nethermind
-COPY --from=build /out .
+COPY --from=build /nethermind/out .
 
 ENV ASPNETCORE_ENVIRONMENT docker
 ENV NETHERMIND_CONFIG mainnet

@@ -10,8 +10,8 @@ RUN strip librocksdb.so
 ##################################################
 FROM mcr.microsoft.com/dotnet/core/sdk:3.0.101-alpine3.10 AS build
 
-COPY . /source
 RUN apk upgrade && apk add git
+RUN git clone https://github.com/NethermindEth/nethermind.git source/
 RUN cd source/ && git submodule update --init src/Dirichlet src/rocksdb-sharp
 RUN dotnet publish /source/src/Nethermind/Nethermind.Runner --configuration Release --output /artifacts
 

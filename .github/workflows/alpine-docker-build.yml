@@ -1,17 +1,18 @@
 name: Publish Alpine Linux Image to Docker Registry
 
+#on:
+#  push:
+#    tags:
+#    - '*'
 on:
-  push:
-    tags:
-    - '*'
-      
+  repository_dispatch:
+    types: docker_alpine
+
 jobs:
   publish-to-docker:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow
     - name: Publish to Docker
       uses: elgohr/Publish-Docker-Github-Action@master
       env:
