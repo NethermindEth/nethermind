@@ -757,7 +757,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_reorg_based_on_total_difficulty()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
