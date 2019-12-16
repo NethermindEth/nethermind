@@ -80,6 +80,7 @@ namespace Nethermind.BeaconNode
 
             BeaconBlock parentBlock;
             BeaconState? retrievedParentState;
+            Hash32 parentRoot;
             if (headBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
@@ -93,6 +94,7 @@ namespace Nethermind.BeaconNode
                 {
                     throw new Exception($"Cannot find state for ancestor signing root {ancestorSigningRoot}");
                 }
+                parentRoot = ancestorSigningRoot;
             }
             else
             {
@@ -105,14 +107,14 @@ namespace Nethermind.BeaconNode
                 {
                     throw new Exception($"Cannot find state for head signing root {head}");
                 }
+                parentRoot = head;
             }
 
             // Clone state (will mutate) and process outstanding slots
             BeaconState state = BeaconState.Clone(retrievedParentState!);
             _beaconStateTransition.ProcessSlots(state, slot);
 
-            // TODO: Is this the same as head / ancestorSigningRoot above?
-            Hash32 parentRoot = parentBlock.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            //Hash32 parentRoot = parentBlock.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
             
             ulong previousEth1Distance = GetPreviousEth1Distance(store, state, parentRoot);
             Eth1Data eth1Vote = await GetEth1VoteAsync(state, previousEth1Distance);
