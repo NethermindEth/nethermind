@@ -32,6 +32,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -40,7 +41,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test
 {
     [TestFixture]
-    [Ignore("Repeatedly fails on Travis")]
+    [Explicit("Repeatedly fails on Travis")]
     public class PeerManagerTests
     {
         private RlpxMock _rlpxPeer;
@@ -481,6 +482,22 @@ namespace Nethermind.Network.Test
 
             Thread.Sleep(_travisDelay);
             _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount);
+        }
+        
+        [Test]
+        public void Will_disconnect_on_remove_node()
+        {
+            const int nodesCount = 5;
+            var firstSessionDisconnected = false;
+            var staticNodes = CreateNodes(nodesCount);
+            _staticNodesManager.Nodes.Returns(staticNodes);
+            _peerManager.Init();
+            _peerManager.Start();
+            Thread.Sleep(_travisDelay);
+            _sessions.First().Disconnected += (o, e) => firstSessionDisconnected = true; 
+            _staticNodesManager.NodeRemoved += Raise.EventWith(new RemoveNetworkNodeEventArgs(staticNodes.First()));
+            _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount - 1);
+            firstSessionDisconnected.Should().BeTrue();
         }
     }
 }
