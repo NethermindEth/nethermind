@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (_noAllocInARow > 10)
                     {
                         _noAllocPunishment = true;
-                        _logger.Info("Adjusting useful peers");
+                        if(_logger.IsInfo) _logger.Info("Adjusting useful peers");
                         _noAllocInARow = 0;
                     }
                 }
@@ -105,7 +105,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (nodeSyncAllocation != null)
                 {
-//                    _logger.Warn($"Free {nodeSyncAllocation?.Current}");
                     _syncPeerPool.Free(nodeSyncAllocation);
                 }
             }
@@ -161,7 +160,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     if (_noAllocPunishment)
                     {
                         _noAllocPunishment = false;
-                        // _logger.Info("No alloc punishment disabled.");
                     }
 
                     continue;
