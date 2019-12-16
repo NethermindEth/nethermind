@@ -862,7 +862,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 Stream0.TryPeek(out StateSyncItem node0);
                 Stream1.TryPeek(out StateSyncItem node1);
                 Stream2.TryPeek(out StateSyncItem node2);
-                if ((node0 ?? node1 ?? node2).Hash == stateRoot)
+                if ((node0 ?? node1 ?? node2)?.Hash == stateRoot)
                 {
                     hasOnlyRootNode = true;
                 }

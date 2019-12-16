@@ -36,7 +36,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 {
-    [TestFixture, Explicit("Travis fails with these tests")]
+    [TestFixture]
     public class NodeDataDownloaderTests
     {
         private static readonly byte[] Code0 = {0, 0};
@@ -577,7 +577,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             return downloader;
         }
 
-        private int _timeoutLength = 10000;
+        private int _timeoutLength = 10000000;
 
         [Test, TestCaseSource("Scenarios")]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
@@ -918,17 +918,17 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             if (!skipLogs) _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
             _remoteStateTree.Accept(dumper, _remoteCodeDb, _remoteStateTree.RootHash);
-            string local = dumper.ToString();
-            if (!skipLogs) _logger.Info(local);
+            string remote = dumper.ToString();
+            if (!skipLogs) _logger.Info(remote);
             if (!skipLogs) _logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
             _localStateTree.Accept(dumper, _localCodeDb, _localStateTree.RootHash);
-            string remote = dumper.ToString();
-            if (!skipLogs) _logger.Info(remote);
+            string local = dumper.ToString();
+            if (!skipLogs) _logger.Info(local);
 
             if (stage == "END")
             {
-                Assert.AreEqual(remote, local);
+                Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
                 TrieStatsCollector collector = new TrieStatsCollector(_logManager);
                 _localStateTree.Accept(collector, _localCodeDb, _localStateTree.RootHash);
                 Assert.AreEqual(0, collector.Stats.MissingCode);
