@@ -1,4 +1,5 @@
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
+
 RUN git clone https://github.com/NethermindEth/nethermind.git nethermind/
 RUN cd nethermind/ && git submodule update --init src/Dirichlet src/rocksdb-sharp
 RUN cd nethermind/ && dotnet publish src/Nethermind/Nethermind.Runner -c release -o out

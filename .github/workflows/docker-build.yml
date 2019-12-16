@@ -21,3 +21,4 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
         build-args: GIT_COMMIT
         dockerfile: Dockerfile
+        auto_tag: true
