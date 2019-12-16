@@ -579,7 +579,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
         private int _timeoutLength = 10000000;
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Can_download_in_multiple_connections((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -602,7 +602,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("END");
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Can_download_with_moving_target((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -643,7 +643,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareCodeDbs();
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Big_test((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             _remoteCodeDb[Keccak.Compute(Code0).Bytes] = Code0;
@@ -707,7 +707,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareCodeDbs();
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Can_download_when_executor_sends_shorter_responses((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -725,7 +725,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("END");
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Can_download_a_full_state((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -750,7 +750,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("END");
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Dependent_branch_counter_is_zero_and_leaf_is_short((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -790,7 +790,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("END");
         }
         
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Scenario_plus_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -823,7 +823,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("END");
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Scenario_plus_one_code((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
@@ -855,7 +855,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             CompareTrees("END");
         }
 
-        [Test, TestCaseSource("Scenarios")]
+        [Test, TestCaseSource("Scenarios"), Retry(3)]
         public async Task Scenario_plus_one_code_one_storage((string Name, Action<StateTree, StateDb, StateDb> SetupTree) testCase)
         {
             testCase.SetupTree(_remoteStateTree, _remoteStateDb, _remoteCodeDb);
