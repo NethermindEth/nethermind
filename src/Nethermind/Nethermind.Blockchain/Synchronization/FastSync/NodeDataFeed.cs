@@ -33,6 +33,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 {
     public class NodeDataFeed : INodeDataFeed
     {
+        private const int MaxRequestSize = 384;
+        
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         private StateSyncBatch _emptyBatch = new StateSyncBatch {RequestedNodes = new StateSyncItem[0]};
 
@@ -352,12 +354,12 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (level > _maxStateLevel)
                 {
-                    _maxStorageLevel = level;
+                    _maxStateLevel = level;
                 }
             
                 if (rightness > _maxRightness)
                 {
-                    _maxStorageRightness = rightness;
+                    _maxRightness = rightness;
                 }
                 
                 return (1, priority);
@@ -759,13 +761,14 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         }
 
         private string StreamsDescription => $"{CodeStream?.Count ?? 0:D6} | {StorageStream0?.Count ?? 0:D6} {StorageStream1?.Count ?? 0:D6} {StorageStream2?.Count ?? 0:D6} | {Stream0?.Count ?? 0:D6} {Stream1?.Count ?? 0:D6} {Stream2?.Count ?? 0:D6}";
+        private string LevelsDescription => $"{_maxStorageLevel:D2} {_maxStorageRightness:D8} | {_maxStateLevel:D2} {_maxRightness:D8}";
         
         private void RunReview()
         {
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
             
-            string reviewMessage = "Node sync queues review:" + Environment.NewLine;
+            string reviewMessage = $"Node sync queues review ({LevelsDescription}):" + Environment.NewLine;
             reviewMessage += $"  before {StreamsDescription}" + Environment.NewLine;
             
             List<StateSyncItem> temp = new List<StateSyncItem>();
@@ -787,11 +790,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             reviewMessage += $"  after {StreamsDescription}" + Environment.NewLine;
             
             stopwatch.Stop();
-            reviewMessage += $"  time spent in review: {stopwatch.ElapsedMilliseconds}ms";
+            reviewMessage += $"  time spent in review ({LevelsDescription}): {stopwatch.ElapsedMilliseconds}ms";
             if(_logger.IsInfo) _logger.Info(reviewMessage);
         }
         
-        public StateSyncBatch PrepareRequest(int length)
+        public StateSyncBatch PrepareRequest()
         {
             if (_rootNode == Keccak.EmptyTreeHash)
             {
@@ -799,6 +802,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             }
 
             StateSyncBatch batch = new StateSyncBatch();
+            int length = Math.Max(1, (int)(MaxRequestSize * ((decimal)_maxStateLevel / 64) * ((decimal)_maxStateLevel / 64)));
             if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({StreamsDescription}) nodes");
 
             List<StateSyncItem> requestHashes = new List<StateSyncItem>();

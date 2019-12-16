@@ -31,7 +31,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataFeed _nodeDataFeed;
-        private const int MaxRequestSize = 384;
         private int _pendingRequests;
         private int _consumedNodesCount;
         private ILogger _logger;
@@ -176,7 +175,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private StateSyncBatch PrepareRequest()
         {
-            StateSyncBatch request = _nodeDataFeed.PrepareRequest(MaxRequestSize);
+            StateSyncBatch request = _nodeDataFeed.PrepareRequest();
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return request;
         }
