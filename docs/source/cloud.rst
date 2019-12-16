@@ -48,14 +48,14 @@ Wait for the packages (input 'Y' when prompted)
 
 Download Nethermind Launcher::
 
-  wget https://github.com/NethermindEth/nethermind/releases/download/0.9.9/nethermind-lin-x64.zip
+  wget https://github.com/NethermindEth/nethermind/releases/download/1.3.2/nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip
 
 .. image:: clouds/do/9.png
 
 
 Unzip the package::
 
-  unzip nethermind-lin-x64.zip -d nethermind && cd nethermind
+  unzip nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip -d nethermind && cd nethermind
 
 .. image:: clouds/do/10.png
 .. image:: clouds/do/11.png
@@ -136,14 +136,14 @@ Wait for the packages (input 'Y' when prompted)
 
 Download Nethermind Launcher::
 
-  wget https://github.com/NethermindEth/nethermind/releases/download/0.9.9/nethermind-lin-x64.zip
+  wget https://github.com/NethermindEth/nethermind/releases/download/1.3.2/nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip
 
 .. image:: clouds/do/9.png
 
 
 Unzip the package::
 
-  unzip nethermind-lin-x64.zip -d nethermind && cd nethermind
+  unzip nethermind-linux-amd64-1.3.2-9d65c01-20191215.zip -d nethermind && cd nethermind
 
 .. image:: clouds/do/10.png
 .. image:: clouds/do/11.png
