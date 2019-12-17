@@ -7,9 +7,9 @@ jobs:
     name: Update Documentation
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@master
-    - name: Fetching all
-      run: git fetch --all
+    - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Running Nethermind.WriteTheDocs
