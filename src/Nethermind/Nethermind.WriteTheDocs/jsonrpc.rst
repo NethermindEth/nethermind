@@ -40,11 +40,6 @@ clique
 
  - clique_propose(signer, vote)
 
-data
-^^^^
-
- - data_streamBlocks(startBlockNumber, endBlockNumber)
-
 debug
 ^^^^^
 
@@ -80,20 +75,26 @@ debug
 
  - debug_traceTransactionByBlockhashAndIndex(blockHash, txIndex, options)
 
+ - debug_traceTransactionInBlockByHash(blockRlp, transactionHash, options)
+
+ - debug_traceTransactionInBlockByIndex(blockRlp, txIndex, options)
+
 eth
 ^^^
 
- - eth_accounts()
+ - [NOT IMPLEMENTED]eth_accounts()
 
  - eth_blockNumber()
 
  - eth_call(transactionCall, blockParameter)
 
- - eth_coinbase()
+ - eth_chainId()
+
+ - [NOT IMPLEMENTED]eth_coinbase()
 
  - eth_estimateGas(transactionCall)
 
- - eth_gasPrice()
+ - [NOT IMPLEMENTED]eth_gasPrice()
 
  - eth_getBalance(address, blockParameter)
 
@@ -112,6 +113,8 @@ eth
  - eth_getFilterLogs(filterId)
 
  - eth_getLogs(filter)
+
+ - eth_getProof(accountAddress, hashRate, blockParameter)
 
  - eth_getStorageAt(address, positionIndex, blockParameter)
 
@@ -135,9 +138,9 @@ eth
 
  - [NOT IMPLEMENTED]eth_getWork()
 
- - eth_hashrate()
+ - [NOT IMPLEMENTED]eth_hashrate()
 
- - eth_mining()
+ - [NOT IMPLEMENTED]eth_mining()
 
  - eth_newBlockFilter()
 
@@ -151,9 +154,9 @@ eth
 
  - eth_sendTransaction(transactionForRpc)
 
- - eth_sign(addressData, message)
+ - [NOT IMPLEMENTED]eth_sign(addressData, message)
 
- - eth_snapshot()
+ - [NOT IMPLEMENTED]eth_snapshot()
 
  - [NOT IMPLEMENTED]eth_submitHashrate(hashRate, id)
 
@@ -166,9 +169,9 @@ eth
 net
 ^^^
 
- - net_dumpPeerConnectionDetails()
-
  - net_listening()
+
+ - net_localAddress()
 
  - net_localEnode()
 
@@ -179,9 +182,9 @@ net
 parity
 ^^^^^^
 
- - parity_pendingTransactions()
- 
  - parity_getBlockReceipts(blockParameter)
+
+ - parity_pendingTransactions()
 
 personal
 ^^^^^^^^
@@ -215,11 +218,11 @@ trace
 
  - [NOT IMPLEMENTED]trace_get(txHash, positions)
 
- - [NOT IMPLEMENTED]trace_rawTransaction(data, traceTypes)
+ - trace_rawTransaction(data, traceTypes)
 
- - trace_replayBlockTransactions(numberOrTag, traceTypes)
+ - [NOT IMPLEMENTED]trace_replayBlockTransactions(numberOrTag, traceTypes)
 
- - trace_replayTransaction(txHash, traceTypes)
+ - [NOT IMPLEMENTED]trace_replayTransaction(txHash, traceTypes)
 
  - trace_transaction(txHash)
 
