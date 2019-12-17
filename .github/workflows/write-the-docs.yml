@@ -12,6 +12,7 @@ jobs:
     - name: Updating submodules
       run: |
         cd nethermind/
+        git checkout f153f3289c0908a5e73c711cc31099c0144d5df5
         git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Running Nethermind.WriteTheDocs
       run: |
