@@ -65,7 +65,7 @@ namespace Nethermind.AuRa
                 if (_logger.IsWarn) _logger.Warn($"Multiple blocks proposed for step {header.AuRaStep}. Block {header.Number}, hash {header.Hash} is duplicate.");
                 return false;
             }
-            else if (header.AuRaStep < parent.AuRaStep)
+            else if (header.AuRaStep < parent.AuRaStep && header.Number >= _parameters.ValidateStepTransition)
             {
                 if (_logger.IsError) _logger.Error($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is lesser than parents step {parent.AuRaStep}.");
                 return false;
