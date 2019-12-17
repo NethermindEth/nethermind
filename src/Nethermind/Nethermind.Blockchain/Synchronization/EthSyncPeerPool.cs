@@ -389,6 +389,9 @@ namespace Nethermind.Blockchain.Synchronization
                             }
                         }
                     }
+
+                    delaySource.Dispose();
+                    linkedSource.Dispose();
                 }, token);
         }
 
