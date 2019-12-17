@@ -172,8 +172,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Send(request.Message);
             Task<byte[][]> task = request.CompletionSource.Task;
             
-            CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
@@ -211,8 +211,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Send(request.Message);
 
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
-            CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
+            using CancellationTokenSource delayCancellation = new CancellationTokenSource();
+            using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {

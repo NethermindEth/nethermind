@@ -339,55 +339,63 @@ namespace Nethermind.Blockchain.Synchronization
             await firstToComplete.ContinueWith(
                 t =>
                 {
-                    if (firstToComplete.IsFaulted || firstToComplete == delayTask)
+                    try
                     {
-                        if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-                        _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-                        syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
-                    }
-                    else if (firstToComplete.IsCanceled)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-                        _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
-                        token.ThrowIfCancellationRequested();
-                    }
-                    else
-                    {
-                        delaySource.Cancel();
-                        BlockHeader header = getHeadHeaderTask.Result; 
-                        if (header == null)
+                        if (firstToComplete.IsFaulted || firstToComplete == delayTask)
                         {
                             if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
-                            
-                            _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed: NodeStatsEventType.SyncInitFailed);
+                            _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
                             syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
-                            return;
                         }
-
-                        if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {header.Number}");
-                        if (!peerInfo.IsInitialized)
+                        else if (firstToComplete.IsCanceled)
                         {
-                            _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
+                            if (_logger.IsTrace) _logger.Trace($"InitPeerInfo canceled for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+                            _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
+                            token.ThrowIfCancellationRequested();
                         }
-
-                        if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {header.Number}");
-                        peerInfo.HeadNumber = header.Number;
-                        peerInfo.HeadHash = header.Hash;
-
-                        BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None);
-                        if (parent != null)
+                        else
                         {
-                            peerInfo.TotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                        }
-
-                        peerInfo.IsInitialized = true;
-                        foreach ((SyncPeerAllocation allocation, object _) in _allocations)
-                        {
-                            if (allocation.Current == peerInfo)
+                            delaySource.Cancel();
+                            BlockHeader header = getHeadHeaderTask.Result;
+                            if (header == null)
                             {
-                                allocation.Refresh();
+                                if (_logger.IsDebug) _logger.Debug($"InitPeerInfo failed for node: {syncPeer.Node:c}{Environment.NewLine}{t.Exception}");
+
+                                _stats.ReportSyncEvent(syncPeer.Node, peerInfo.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
+                                syncPeer.Disconnect(DisconnectReason.DisconnectRequested, "refresh peer info fault");
+                                return;
+                            }
+
+                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node:c} with head block numer {header.Number}");
+                            if (!peerInfo.IsInitialized)
+                            {
+                                _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
+                            }
+
+                            if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {peerInfo} from {peerInfo.HeadNumber} to {header.Number}");
+                            peerInfo.HeadNumber = header.Number;
+                            peerInfo.HeadHash = header.Hash;
+
+                            BlockHeader parent = _blockTree.FindHeader(header.ParentHash, BlockTreeLookupOptions.None);
+                            if (parent != null)
+                            {
+                                peerInfo.TotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
+                            }
+
+                            peerInfo.IsInitialized = true;
+                            foreach ((SyncPeerAllocation allocation, object _) in _allocations)
+                            {
+                                if (allocation.Current == peerInfo)
+                                {
+                                    allocation.Refresh();
+                                }
                             }
                         }
+                    }
+                    finally
+                    {
+                        linkedSource.Dispose();
+                        delaySource.Dispose();
                     }
                 }, token);
         }
