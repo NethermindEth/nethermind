@@ -10,7 +10,7 @@ jobs:
     - uses: actions/checkout@v2
     - name: Running Nethermind.WriteTheDocs
       run: |
-        cd nethermind/src/Nethermind/Nethermind.WriteTheDocs
+        cd src/Nethermind/Nethermind.WriteTheDocs
         dotnet run Nethermind.WriteTheDocs
     - name: Creating PR
       id: cpr
