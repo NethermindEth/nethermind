@@ -66,7 +66,7 @@ Some of the methods listed below are not implemented by Nethermind (they are mar
                 {
                     JsonRpcMethodAttribute attribute = methodInfo.GetCustomAttribute<JsonRpcMethodAttribute>();
                     string notImplementedString = attribute == null || attribute.IsImplemented ? string.Empty : "[NOT IMPLEMENTED]";
-                    descriptionsBuilder.AppendLine($" - {notImplementedString}{methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))})").AppendLine();
+                    descriptionsBuilder.AppendLine($" - {notImplementedString}{methodInfo.Name}({string.Join(", ", methodInfo.GetParameters().Select(p => p.Name))}) - {attribute?.Description}").AppendLine();
                 }
             }
 
