@@ -38,14 +38,14 @@ namespace Nethermind.Blockchain.Synchronization
 {
     internal class BlockDownloader
     {
+        public const int MaxReorganizationLength = SyncBatchSize.Max * 2;
+        
         public enum DownloadOptions
         {
             Download,
             DownloadAndProcess,
             DownloadWithReceipts
         }
-
-        public const int MaxReorganizationLength = 2 * SyncBatchSize.Max;
 
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
@@ -77,6 +77,8 @@ namespace Nethermind.Blockchain.Synchronization
             _syncBatchSize = new SyncBatchSize(logManager);
         }
 
+        private int[] _ancestorJumps = new int[] {1, 2, 3, 8, 16, 32, 64, 128, 256, 384, 512, 640, 768, 896, 1024};
+
         public async Task<long> DownloadHeaders(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation)
         {
             if (bestPeer == null)
@@ -94,12 +96,6 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue headers sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
 
-                if (ancestorLookupLevel > MaxReorganizationLength)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                    throw new EthSynchronizationException("Peer with inconsistent chain in sync");
-                }
-
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
                 if (headersToRequest <= 1)
@@ -113,11 +109,19 @@ namespace Nethermind.Blockchain.Synchronization
                 BlockHeader startingPoint = headers[0] == null ? null : _blockTree.FindHeader(headers[0].Hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (startingPoint == null)
                 {
-                    ancestorLookupLevel += _syncBatchSize.Current;
-                    currentNumber = currentNumber >= _syncBatchSize.Current ? (currentNumber - _syncBatchSize.Current) : 0L;
+                    ancestorLookupLevel++;
+                    if (ancestorLookupLevel >= _ancestorJumps.Length)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
+                        throw new EthSynchronizationException("Peer with inconsistent chain in sync");
+                    }
+                    
+                    int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1]; 
+                    currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
                     continue;
                 }
 
+                ancestorLookupLevel = 0;
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout >= 2)
                 {
@@ -195,7 +199,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                     if (_logger.IsInfo) _logger.Error($"Failed to retrieve {entities} when synchronizing.", exception);
                 }
-                
+
                 throw new EthSynchronizationException($"{entities} task faulted", downloadTask.Exception);
             }
 
@@ -214,7 +218,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
-        
+
         private int MaxBodiesForPeer(PeerInfo peer)
         {
             return peer.PeerClientType switch
@@ -227,7 +231,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
-        
+
         private int MaxReceiptsForPeer(PeerInfo peer)
         {
             return peer.PeerClientType switch
@@ -240,7 +244,7 @@ namespace Nethermind.Blockchain.Synchronization
                 _ => throw new ArgumentOutOfRangeException()
             };
         }
-        
+
         public async Task<long> DownloadBlocks(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation, DownloadOptions options = DownloadOptions.DownloadAndProcess)
         {
             bool downloadReceipts = options == DownloadOptions.DownloadWithReceipts;
@@ -260,11 +264,6 @@ namespace Nethermind.Blockchain.Synchronization
             while (bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? 0) && currentNumber <= bestPeer.HeadNumber)
             {
                 if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
-                if (ancestorLookupLevel > MaxReorganizationLength)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
-                    throw new EthSynchronizationException("Peer with inconsistent chain in sync");
-                }
 
                 long blocksLeft = bestPeer.HeadNumber - currentNumber - newBlocksToSkip;
                 int headersToRequest = (int) Math.Min(blocksLeft + 1, _syncBatchSize.Current);
@@ -302,11 +301,20 @@ namespace Nethermind.Blockchain.Synchronization
                     bool parentIsKnown = _blockTree.IsKnownBlock(blocks[0].Number - 1, blocks[0].ParentHash);
                     if (!parentIsKnown)
                     {
-                        ancestorLookupLevel += _syncBatchSize.Current;
-                        currentNumber = currentNumber >= _syncBatchSize.Current ? (currentNumber - _syncBatchSize.Current) : 0L;
+                        ancestorLookupLevel++;
+                        if (ancestorLookupLevel >= _ancestorJumps.Length)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
+                            throw new EthSynchronizationException("Peer with inconsistent chain in sync");
+                        }
+                        
+                        int ancestorJump = _ancestorJumps[ancestorLookupLevel] - _ancestorJumps[ancestorLookupLevel - 1]; 
+                        currentNumber = currentNumber >= ancestorJump ? (currentNumber - ancestorJump) : 0L;
                         continue;
                     }
                 }
+
+                ancestorLookupLevel = 0;
 
                 for (int blockIndex = 0; blockIndex < context.FullBlocksCount; blockIndex++)
                 {
@@ -562,7 +570,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     hashesToRequest = hashesToRequest.Take(maxLength);
                 }
-                
+
                 return hashesToRequest.ToList();
             }
 

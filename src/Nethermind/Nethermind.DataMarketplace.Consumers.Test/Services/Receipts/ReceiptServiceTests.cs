@@ -150,7 +150,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Receipts
 
         }
         
-        [Test]
+        [Test, Retry(3)]
         public async Task send_should_fail_if_recover_public_key_fails()
         {
             var receipt = GetDataDeliveryReceiptRequest();
