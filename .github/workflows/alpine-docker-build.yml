@@ -1,10 +1,9 @@
 name: Publish Alpine Linux Image to Docker Registry
 
-#on:
-#  push:
-#    tags:
-#    - '*'
-on: push
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   publish-to-docker:

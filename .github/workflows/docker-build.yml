@@ -1,16 +1,17 @@
 name: Publish Nethermind Image to Docker Registry
 
-#on:
-#  push:
-#    tags:
-#    - '*'
-on: push  
-
+on:
+  push:
+    tags:
+    - '*'
+      
 jobs:
   publish-to-docker:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
     - name: Publish to Docker
       uses: elgohr/Publish-Docker-Github-Action@master
       env:
@@ -21,4 +22,3 @@ jobs:
         password: ${{ secrets.DOCKER_PASSWORD }}
         build-args: GIT_COMMIT
         dockerfile: Dockerfile
-        auto_tag: true
