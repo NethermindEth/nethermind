@@ -4,14 +4,12 @@ on:
   push:
     tags:
     - '*'
-      
+
 jobs:
   publish-to-docker:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow
     - name: Publish to Docker
       uses: elgohr/Publish-Docker-Github-Action@master
       env:
