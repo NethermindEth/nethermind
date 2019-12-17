@@ -1,6 +1,9 @@
 name: Update Documentation
 
-on: pull_request
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   neth-docs:
