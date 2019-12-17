@@ -8,14 +8,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --unshallow
+    - name: Fetching all
+      run: git fetch --all
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Running Nethermind.WriteTheDocs
       run: |
         cd src/Nethermind/Nethermind.WriteTheDocs
-        dotnet run --no-build Nethermind.WriteTheDocs
+        dotnet run Nethermind.WriteTheDocs
     - name: Creating PR
       id: cpr
       uses: peter-evans/create-pull-request@v1
