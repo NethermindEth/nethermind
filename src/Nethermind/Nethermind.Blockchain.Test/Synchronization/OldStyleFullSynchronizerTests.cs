@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(SyncBatchSize.Max - 1, (int) _blockTree.BestSuggestedHeader.Number);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_on_split_of_length_1()
         {
             BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
