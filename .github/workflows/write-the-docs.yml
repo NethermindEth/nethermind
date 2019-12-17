@@ -1,20 +1,22 @@
 name: Update Documentation
 
-on: push
+on:
+  push:
+    tags:
+    - '*'
 
 jobs:
   neth-docs:
     name: Update Documentation
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Unshallow fetching
-      run: git fetch --prune --unshallow
+    - name: Cloning repository
+      run: git clone https://github.com/NethermindEth/nethermind.git
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Running Nethermind.WriteTheDocs
       run: |
-        cd src/Nethermind/Nethermind.WriteTheDocs
+        cd nethermind/src/Nethermind/Nethermind.WriteTheDocs
         dotnet run Nethermind.WriteTheDocs
     - name: Creating PR
       id: cpr
