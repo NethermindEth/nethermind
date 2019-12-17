@@ -220,9 +220,9 @@ trace
 
  - trace_rawTransaction(data, traceTypes)
 
- - [NOT IMPLEMENTED]trace_replayBlockTransactions(numberOrTag, traceTypes)
+ - trace_replayBlockTransactions(numberOrTag, traceTypes)
 
- - [NOT IMPLEMENTED]trace_replayTransaction(txHash, traceTypes)
+ - trace_replayTransaction(txHash, traceTypes)
 
  - trace_transaction(txHash)
 

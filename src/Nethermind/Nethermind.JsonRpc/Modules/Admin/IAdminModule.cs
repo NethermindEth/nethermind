@@ -21,8 +21,13 @@ namespace Nethermind.JsonRpc.Modules.Admin
     [RpcModule(ModuleType.Admin)]
     public interface IAdminModule : IModule
     {
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
         Task<ResultWrapper<string>> admin_addPeer(string enode);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
         Task<ResultWrapper<string>> admin_removePeer(string enode);
+        
+        [JsonRpcMethod(Description = "", IsImplemented = true)]
         ResultWrapper<PeerInfo[]> admin_peers();
         
         [JsonRpcMethod(Description = "", IsImplemented = false)]
