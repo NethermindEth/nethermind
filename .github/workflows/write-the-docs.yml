@@ -7,19 +7,16 @@ jobs:
     name: Update Documentation
     runs-on: ubuntu-latest
     steps:
-    - name: Cloning repository
-      run: git clone https://github.com/NethermindEth/nethermind.git
+    - uses: actions/checkout@v1
+    - name: Unshallow fetching
+      run: git fetch --prune --unshallow
     - name: Updating submodules
-      run: |
-        cd nethermind/
-        git checkout f153f3289c0908a5e73c711cc31099c0144d5df5
-        git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Running Nethermind.WriteTheDocs
       run: |
-        cd nethermind/src/Nethermind/Nethermind.WriteTheDocs
+        cd src/Nethermind/Nethermind.WriteTheDocs
         dotnet run Nethermind.WriteTheDocs
     - name: Creating PR
-      run: cd nethermind/
       id: cpr
       uses: peter-evans/create-pull-request@v1
       with:
