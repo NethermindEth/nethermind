@@ -15,7 +15,7 @@ jobs:
     - name: Running Nethermind.WriteTheDocs
       run: |
         cd src/Nethermind/Nethermind.WriteTheDocs
-        dotnet run Nethermind.WriteTheDocs
+        dotnet run --no-build Nethermind.WriteTheDocs
     - name: Creating PR
       id: cpr
       uses: peter-evans/create-pull-request@v1
