@@ -9,4 +9,5 @@ Supported Platforms
  - Ubuntu 19.04
  - Alpine Linux
  - Raspberry PI (ARM64)
+ (versions 1.2.0 to 1.3.6 of Nethermind do not work properly with non-Ubuntu and non-Alpine Linux distros - fix is on the way)
  - other systems/versions may work
