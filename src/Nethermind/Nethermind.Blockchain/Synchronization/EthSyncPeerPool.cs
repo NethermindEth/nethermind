@@ -1,20 +1,18 @@
-/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Concurrent;
@@ -51,7 +49,6 @@ namespace Nethermind.Blockchain.Synchronization
         private Task _refreshLoopTask;
         private CancellationTokenSource _refreshLoopCancellation = new CancellationTokenSource();
         private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
-        private ConcurrentDictionary<PeerInfo, DateTime> _sleepingPeers = new ConcurrentDictionary<PeerInfo, DateTime>();
         private TimeSpan _timeBeforeWakingPeerUp = TimeSpan.FromSeconds(3);
 
         public void ReportNoSyncProgress(SyncPeerAllocation allocation)
@@ -67,7 +64,7 @@ namespace Nethermind.Blockchain.Synchronization
             }
             
             if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
-            _sleepingPeers.TryAdd(peerInfo, DateTime.UtcNow);
+            peerInfo.SleepingSince = DateTime.UtcNow;
         }
 
         public void ReportInvalid(SyncPeerAllocation allocation)
@@ -412,7 +409,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 foreach ((_, PeerInfo peerInfo) in _peers)
                 {
-                    if (_sleepingPeers.ContainsKey(peerInfo))
+                    if (peerInfo.IsAsleep)
                     {
                         continue;
                     }
@@ -531,14 +528,14 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (_sleepingPeers.TryGetValue(info, out DateTime sleepingSince))
+                if (info.IsAsleep)
                 {
-                    if (DateTime.UtcNow - sleepingSince < _timeBeforeWakingPeerUp)
+                    if (DateTime.UtcNow - info.SleepingSince < _timeBeforeWakingPeerUp)
                     {
                         continue;
                     }
 
-                    _sleepingPeers.TryRemove(info, out _);
+                    info.SleepingSince = null;
                 }
 
                 if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
