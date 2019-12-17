@@ -10,10 +10,12 @@ jobs:
     - name: Cloning repository
       run: git clone https://github.com/NethermindEth/nethermind.git
     - name: Updating submodules
-      run: git submodule update --init src/Dirichlet src/rocksdb-sharp
+      run: |
+        cd nethermind/
+        git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Running Nethermind.WriteTheDocs
       run: |
-        cd nethermind/src/Nethermind/Nethermind.WriteTheDocs
+        cd src/Nethermind/Nethermind.WriteTheDocs
         dotnet run Nethermind.WriteTheDocs
     - name: Creating PR
       id: cpr
