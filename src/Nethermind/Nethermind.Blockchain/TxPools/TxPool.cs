@@ -66,8 +66,8 @@ namespace Nethermind.Blockchain.TxPools
         /// <summary>
         /// All pending transactions.
         /// </summary>
-        private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTxs =
-            new ConcurrentDictionary<Keccak, Transaction>();
+        private readonly LruCache<Keccak, Transaction> _pendingTxs =
+            new LruCache<Keccak, Transaction>(1024);
 
         /// <summary>
         /// Transactions published locally (initiated by this node users).
