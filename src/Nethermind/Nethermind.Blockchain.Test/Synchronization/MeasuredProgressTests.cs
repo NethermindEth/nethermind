@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             measuredProgress.SetMeasuringPoint();
             Thread.Sleep(100);
             measuredProgress.Update(1L);
-            Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
+            Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 4M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 10M);
         }
 
