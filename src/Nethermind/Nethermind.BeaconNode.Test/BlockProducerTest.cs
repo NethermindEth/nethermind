@@ -30,7 +30,7 @@ namespace Nethermind.BeaconNode.Tests
         {
             // Arrange
             int numberOfValidators = 64;
-            int genesisTime = 0; //1578009600;
+            int genesisTime = 1578009600;
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string>
@@ -64,7 +64,7 @@ namespace Nethermind.BeaconNode.Tests
             newBlock.Slot.ShouldBe(targetSlot);
             newBlock.Body.RandaoReveal.ShouldBe(randaoReveal);
             
-            Hash32 expectedParentRoot = new Hash32(Bytes.FromHexString("0x5054595adf55d7d426542d56e488d1222f012d0e004629775d1a047a68872382"));
+            Hash32 expectedParentRoot = new Hash32(Bytes.FromHexString("0x3111350140726cc0501223143ae5c7baad7f5a06764fcc7d444a657016e7d616"));
             newBlock.ParentRoot.ShouldBe(expectedParentRoot);
             
             newBlock.Body.Eth1Data.DepositCount.ShouldBe((ulong)numberOfValidators);
@@ -72,7 +72,7 @@ namespace Nethermind.BeaconNode.Tests
             Hash32 expectedEth1DataDepositRoot = new Hash32(Bytes.FromHexString("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"));
             newBlock.Body.Eth1Data.DepositRoot.ShouldBe(expectedEth1DataDepositRoot);
             
-            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0xfdfdf128aac6c265391b02d77ad2da2b8bdfabe6c3da2a7113eda1923887704a"));
+            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0x9c7d3e5180f95175691511fd56f8a610299f0b5a682b6fe178230493d74f6d13"));
             newBlock.StateRoot.ShouldBe(expectedStateRoot);
             
             newBlock.Signature.ShouldBe(new BlsSignature(new byte[96])); // signature should be empty

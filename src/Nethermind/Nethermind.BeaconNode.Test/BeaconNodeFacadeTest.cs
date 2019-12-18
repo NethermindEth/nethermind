@@ -173,7 +173,7 @@ namespace Nethermind.BeaconNode.Tests
         {
             // Arrange
             int numberOfValidators = 64;
-            int genesisTime = 0; //1578009600;
+            int genesisTime = 1578009600;
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string>
