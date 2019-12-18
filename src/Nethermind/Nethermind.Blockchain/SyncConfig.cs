@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain
     {
         public bool FastBlocks { get; set; } = false;
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
+        public bool HmbSync { get; set; } = false;
         public bool FastSync { get; set; }
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;

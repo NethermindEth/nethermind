@@ -20,6 +20,9 @@ namespace Nethermind.Blockchain
 {
     public interface ISyncConfig : IConfig
     {
+        [ConfigItem(Description = "HMB Sync.", DefaultValue = "false")]
+        bool HmbSync { get; set; }
+        
         [ConfigItem(Description = "If set to 'true' then the Fast Sync (eth/63) synchronization algorithm will be used.", DefaultValue = "false")]
         bool FastSync { get; set; }
         
