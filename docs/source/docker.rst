@@ -25,7 +25,7 @@ or --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0::
 
     or
 
-    docker run -it --network host --JsonRpc.Enabled true --Network.DiscoveryPort 30312 --Network.P2PPort 30312 nethermind/nethermind
+    docker run -it --network host nethermind/nethermind --JsonRpc.Enabled true --Network.DiscoveryPort 30312 --Network.P2PPort 30312
 
 
 To switch the network, set NETHERMIND_CONFIG variable (default value is mainnet).
