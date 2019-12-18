@@ -17,11 +17,19 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.HmbStore
 {
     public class HmbStorageProvider : IStorageProvider, INodeDataConsumer
     {
+        private ILogger _logger;
+        
+        public HmbStorageProvider(ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger<HmbStorageProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
         public byte[] GetOriginal(StorageAddress storageAddress)
         {
             throw new NotImplementedException();
