@@ -46,6 +46,7 @@ namespace Nethermind.BeaconNode.Tests
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             testServiceCollection.AddSingleton<IEth1DataProvider>(Substitute.For<IEth1DataProvider>());
+            testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
@@ -71,6 +72,7 @@ namespace Nethermind.BeaconNode.Tests
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             testServiceCollection.AddSingleton<IEth1DataProvider>(Substitute.For<IEth1DataProvider>());
+            testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
@@ -124,6 +126,7 @@ namespace Nethermind.BeaconNode.Tests
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             testServiceCollection.AddSingleton<IEth1DataProvider>(Substitute.For<IEth1DataProvider>());
+            testServiceCollection.AddSingleton<IOperationPool>(Substitute.For<IOperationPool>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             BeaconState state = TestState.PrepareTestState(testServiceProvider);
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();

@@ -16,6 +16,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
@@ -50,9 +51,10 @@ namespace Nethermind.BeaconNode.MockedStart
             _storeProvider = storeProvider;
         }
         
-        public ulong GetDistance(Hash32 eth1BlockHash)
+        public Task<ulong> GetDistanceAsync(Hash32 eth1BlockHash)
         {
-            return 2 * _honestValidatorConstantOptions.CurrentValue.Eth1FollowDistance;
+            ulong distance = 2 * _honestValidatorConstantOptions.CurrentValue.Eth1FollowDistance;
+            return Task.FromResult(distance);
         }
 
         public async Task<Eth1Data> GetEth1DataAsync(ulong distance)
@@ -73,6 +75,12 @@ namespace Nethermind.BeaconNode.MockedStart
             Eth1Data eth1Data = GetEth1DataStub(state!, currentEpoch);
             
             return eth1Data;
+        }
+
+        public IAsyncEnumerable<Deposit> GetDepositsAsync(Hash32 eth1BlockHash, ulong startIndex, ulong maximum)
+        {
+            // Mocked data returns no extra deposits, but because count doesn't increase, then it won't actually be called. If it is called, there is a problem, so throw.
+            throw new NotImplementedException();
         }
 
         public Eth1Data GetEth1DataStub(BeaconState state, Epoch currentEpoch)

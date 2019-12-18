@@ -15,17 +15,18 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.Core2.Types;
+using Nethermind.Core2.Containers;
+using Attestation = Nethermind.BeaconNode.Containers.Attestation;
+using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
+using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode.Services
 {
-    public interface IEth1DataProvider
+    public interface IOperationPool
     {
-        // NOTE: Eth1Data.Deposit root is the deposit root of the contract
-        Task<ulong> GetDistanceAsync(Hash32 eth1BlockHash);
-        Task<Eth1Data> GetEth1DataAsync(ulong distance);
-        IAsyncEnumerable<Deposit> GetDepositsAsync(Hash32 eth1BlockHash, ulong startIndex, ulong maximum);
+        IAsyncEnumerable<Attestation> GetAttestationsAsync(ulong maximum);
+        IAsyncEnumerable<AttesterSlashing> GetAttesterSlashingsAsync(ulong maximum);
+        IAsyncEnumerable<ProposerSlashing> GetProposerSlashingsAsync(ulong maximum);
+        IAsyncEnumerable<VoluntaryExit> GetVoluntaryExits(ulong maximum);
     }
 }

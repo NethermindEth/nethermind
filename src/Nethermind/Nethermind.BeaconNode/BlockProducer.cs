@@ -46,32 +46,38 @@ namespace Nethermind.BeaconNode
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
         private readonly IEth1DataProvider _eth1DataProvider;
+        private readonly IOperationPool _operationPool;
 
         public BlockProducer(ILogger<BlockProducer> logger, 
             IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
+            IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<HonestValidatorConstants> honestValidatorConstantOptions,
             BeaconStateTransition beaconStateTransition,
             ForkChoice forkChoice, 
             IStoreProvider storeProvider,
-            IEth1DataProvider eth1DataProvider)
+            IEth1DataProvider eth1DataProvider,
+            IOperationPool operationPool)
         {
             _logger = logger;
             _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _timeParameterOptions = timeParameterOptions;
+            _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _honestValidatorConstantOptions = honestValidatorConstantOptions;
             _beaconStateTransition = beaconStateTransition;
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
             _eth1DataProvider = eth1DataProvider;
+            _operationPool = operationPool;
         }
         
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
@@ -130,45 +136,77 @@ namespace Nethermind.BeaconNode
             BeaconState state = BeaconState.Clone(retrievedParentState!);
             _beaconStateTransition.ProcessSlots(state, slot);
 
-            //Hash32 parentRoot = parentBlock.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            
-            ulong previousEth1Distance = GetPreviousEth1Distance(store, state, parentRoot);
+            MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
+
+            // Eth 1 Data
+            ulong previousEth1Distance = await GetPreviousEth1Distance(store, state, parentRoot);
             Eth1Data eth1Vote = await GetEth1VoteAsync(state, previousEth1Distance);
 
+            List<Deposit> deposits = new List<Deposit>();
+            if (eth1Vote.DepositCount > state.Eth1DepositIndex)
+            {
+                await foreach (Deposit deposit in _eth1DataProvider.GetDepositsAsync(eth1Vote.DepositRoot,
+                    state.Eth1DepositIndex, maxOperationsPerBlock.MaximumDeposits))
+                {
+                    deposits.Add(deposit);
+                }
+            }
+
+            // Operations
+            List<Attestation> attestations = new List<Attestation>();
+            await foreach (Attestation attestation in _operationPool.GetAttestationsAsync(
+                maxOperationsPerBlock.MaximumAttestations))
+            {
+                attestations.Add(attestation);
+            }
+
+            List<AttesterSlashing> attesterSlashings = new List<AttesterSlashing>();
+            await foreach (AttesterSlashing attesterSlashing in _operationPool.GetAttesterSlashingsAsync(
+                maxOperationsPerBlock.MaximumAttesterSlashings))
+            {
+                attesterSlashings.Add(attesterSlashing);
+            }
+            
+            List<ProposerSlashing> proposerSlashings = new List<ProposerSlashing>();
+            await foreach (ProposerSlashing proposerSlashing in _operationPool.GetProposerSlashingsAsync(
+                maxOperationsPerBlock.MaximumProposerSlashings))
+            {
+                proposerSlashings.Add(proposerSlashing);
+            }
+
+            List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
+            await foreach (VoluntaryExit voluntaryExit in _operationPool.GetVoluntaryExits(
+                maxOperationsPerBlock.MaximumVoluntaryExits))
+            {
+                voluntaryExits.Add(voluntaryExit);
+            }
+            
+            // Graffiti
             Bytes32 graffiti = new Bytes32();
 
-            IEnumerable<ProposerSlashing> proposerSlashings = Array.Empty<ProposerSlashing>();
-            IEnumerable<AttesterSlashing> attesterSlashings = Array.Empty<AttesterSlashing>();
-            IEnumerable<Attestation> attestations = Array.Empty<Attestation>();
-            IEnumerable<Deposit> deposits = Array.Empty<Deposit>();
-            IEnumerable<VoluntaryExit> voluntaryExits = Array.Empty<VoluntaryExit>();
-
+            // Build block
             BeaconBlockBody body = new BeaconBlockBody(randaoReveal, eth1Vote, graffiti, proposerSlashings,
                 attesterSlashings, attestations, deposits, voluntaryExits);
+            BeaconBlock block = new BeaconBlock(slot, parentRoot, Hash32.Zero, body, BlsSignature.Empty);
             
-            Hash32 stateRoot = Hash32.Zero;
+            // Apply block to state transition and calculate resulting state root
+            Hash32 stateRoot = ComputeNewStateRoot(state, block);
+            block.SetStateRoot(stateRoot);
 
-            BeaconBlock block = new BeaconBlock(slot, parentRoot, stateRoot, body, BlsSignature.Empty);
-
-            // new block = slot, parent root,
-            //  signature = null
-            //  body = assemble body
-
-            // assemble body:
-            //  from opPool get proposer slashings, attester slashings, attestations, voluntary exits
-            //  get eth1data
-            // generate deposits (based on new data)
-            //     -> if eth1data deposit count > state deposit index, then get from op pool, sort and calculate merkle tree
-            // deposit root = merkleRoot
-            // randaoReveal
-
-            // apply block to state transition
-            // block.stateRoot = new state hash
-
-            return await Task.Run(() => block);
+            // Unsigned block
+            return block;
         }
 
-        private ulong GetPreviousEth1Distance(IStore store, BeaconState state, Hash32 parentRoot)
+        private Hash32 ComputeNewStateRoot(BeaconState state, BeaconBlock block)
+        {
+            _beaconStateTransition.ProcessSlots(state, block.Slot);
+            _beaconStateTransition.ProcessBlock(state, block, validateStateRoot: false);
+            Hash32 stateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
+                _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            return stateRoot;
+        }
+        
+        private async Task<ulong> GetPreviousEth1Distance(IStore store, BeaconState state, Hash32 parentRoot)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot eth1VotingPeriodSlot = new Slot(state.Slot % timeParameters.SlotsPerEth1VotingPeriod);
@@ -181,7 +219,7 @@ namespace Nethermind.BeaconNode
             }
 
             Hash32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState!.Eth1Data.BlockHash;
-            ulong distance = _eth1DataProvider.GetDistance(startOfEth1VotingPeriodBlockHash);
+            ulong distance = await _eth1DataProvider.GetDistanceAsync(startOfEth1VotingPeriodBlockHash);
             return distance;
         }
 
