@@ -4,7 +4,7 @@ on:
   push:
     tags:
     - '*'
-      
+
 jobs:
   publish-to-docker:
     runs-on: ubuntu-latest

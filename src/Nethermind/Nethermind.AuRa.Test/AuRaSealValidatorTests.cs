@@ -107,7 +107,10 @@ namespace Nethermind.AuRa.Test
                     .Returns(false).SetName("Wrong difficulty.").SetCategory("ValidParams");
 
                 yield return GetTestCaseData(GetParentBlock(), GetBlock().WithDifficulty(1000), a => a.ValidateScoreTransition = 100)
-                    .Returns(true).SetName("Skip difficulty validation.").SetCategory("ValidParams");
+                    .Returns(true).SetName("Skip difficulty validation due to ValidateScoreTransition.").SetCategory("ValidParams");
+                
+                yield return GetTestCaseData(GetParentBlock(), GetBlock().WithAura(parentStep - 1, Bytes.Empty), a => a.ValidateScoreTransition = a.ValidateStepTransition = 100)
+                    .Returns(true).SetName("Skip step validation due to ValidateStepTransition.").SetCategory("ValidParams");
             }
         }
 
