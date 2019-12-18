@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -44,11 +45,11 @@ namespace Nethermind.Network.P2P
 
             HelloMessage helloMessage = new HelloMessage();
             helloMessage.P2PVersion = rlpStream.DecodeByte();
-            helloMessage.ClientId = rlpStream.DecodeString();
+            helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
             helloMessage.Capabilities = rlpStream.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
-                string protocolCode = ctx.DecodeString();
+                string protocolCode = string.Intern(ctx.DecodeString());
                 int version = ctx.DecodeByte();
                 return new Capability(protocolCode, version);
             }).ToList();
