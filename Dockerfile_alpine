@@ -3,17 +3,16 @@ FROM alpine:3.10 as rocksdb
 WORKDIR /source
 
 RUN apk upgrade && apk add git build-base linux-headers bash perl
-RUN git clone --branch v6.4.6 https://github.com/facebook/rocksdb.git .
-RUN make shared_lib
+RUN git clone --branch v6.4.6 https://github.com/facebook/rocksdb .
+RUN PORTABLE=1 make shared_lib
 RUN strip librocksdb.so
 
 ##################################################
-
 FROM mcr.microsoft.com/dotnet/core/sdk:3.0.101-alpine3.10 AS build
 
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.8/main' >> /etc/apk/repositories
 RUN apk upgrade && apk add git openssl-dev libssl1.0
-RUN git clone https://github.com/NethermindEth/nethermind.git source/
+RUN git clone https://github.com/NethermindEth/nethermind source/
 RUN cd source/ && git submodule update --init src/Dirichlet src/rocksdb-sharp
 RUN dotnet publish /source/src/Nethermind/Nethermind.Runner --configuration Release --output /artifacts
 
