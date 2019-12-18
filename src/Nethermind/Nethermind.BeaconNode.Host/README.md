@@ -20,7 +20,7 @@ dotnet test src/Nethermind/Nethermind.BeaconNode.Test
 To run with default Development settings (minimal config), with mocked quick start:
 
 ```
-dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime ([DateTimeOffset]::Now.ToUnixTimeSeconds()) --QuickStart:ValidatorCount 64
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
 ```
 
 ### Test it works

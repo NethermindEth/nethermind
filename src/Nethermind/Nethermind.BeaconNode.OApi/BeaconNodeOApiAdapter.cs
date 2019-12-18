@@ -21,6 +21,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using BeaconBlock = Nethermind.BeaconNode.OApi.BeaconBlock;
@@ -80,9 +81,51 @@ namespace Nethermind.BeaconNode.OApi
             OApi.BeaconBlock result = new OApi.BeaconBlock()
             {
                 Slot = (ulong)data.Slot,
+                Parent_root = data.ParentRoot.ToString(),
+                State_root = data.StateRoot.ToString(),
+                Signature = data.Signature.ToString(),
                 Body = new OApi.BeaconBlockBody()
                 {
-                    Randao_reveal = data.Body!.RandaoReveal.AsSpan().ToArray()
+                    Randao_reveal = data.Body!.RandaoReveal.AsSpan().ToArray(),
+                    Eth1_data = new Eth1_data()
+                    {
+                        Block_hash = data.Body.Eth1Data.BlockHash.Bytes,
+                        Deposit_count = (int)data.Body.Eth1Data.DepositCount,
+                        Deposit_root = data.Body.Eth1Data.DepositRoot.Bytes 
+                    },
+                    Graffiti = data.Body.Graffiti.AsSpan().ToArray(),
+                    Proposer_slashings = data.Body.ProposerSlashings.Select(x => new Proposer_slashings()
+                    {
+                        Header_1 = new BeaconBlockHeader()
+                        {
+                            Body_root = x.Header1.BodyRoot.ToString(),
+                            Parent_root = x.Header1.ParentRoot.ToString(),
+                            Slot = x.Header1.Slot,
+                            State_root = x.Header1.StateRoot.ToString(),
+                            Signature = x.Header1.Signature.ToString()
+                        },
+                        Header_2 = new BeaconBlockHeader()
+                        {
+                            Body_root = x.Header2.BodyRoot.ToString(),
+                            Parent_root = x.Header2.ParentRoot.ToString(),
+                            Slot = x.Header2.Slot,
+                            State_root = x.Header2.StateRoot.ToString(),
+                            Signature = x.Header2.Signature.ToString()
+                        },
+                        Proposer_index = (int)x.ProposerIndex
+                    }).ToList(),
+                    Attester_slashings = data.Body.AttesterSlashings.Select(x => new Attester_slashings()
+                    {
+                    }).ToList(),
+                    Attestations = data.Body.Attestations.Select(x => new Attestations()
+                    {
+                    }).ToList(),
+                    Voluntary_exits = data.Body.VoluntaryExits.Select(x => new Voluntary_exits()
+                    {
+                    }).ToList(),
+                    Deposits = data.Body.Deposits.Select(x => new Deposits()
+                    {
+                    }).ToList(),
                 }
             };
             return result;
