@@ -35,5 +35,9 @@ namespace Nethermind.Mining
         {
             return Data[i];
         }
+
+        public void Dispose()
+        {
+        }
     }
 }
