@@ -88,12 +88,12 @@ jobs:
 
         [1]: https://github.com/peter-evans/create-pull-request
         title: 'Update Secp256k1 library in Nethermind repository'
-        labels: documentation
+        labels: libraries
         author-name: github-actions[bot]
         author-email: 41898282+github-actions[bot]@users.noreply.github.com
         committer-name: GitHub
         committer-email: noreply@github.com
-        branch: docs-update
+        branch: libs-update
         branch-suffix: short-commit-hash
     - name: Checking Outputs
       run: |
