@@ -18,6 +18,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection.Metadata.Ecma335;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
@@ -58,16 +60,12 @@ namespace Nethermind.Blockchain.TxPools
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
         
+        private SortedPool<Keccak, Transaction> _transactions = new SortedPool<Keccak,Transaction>(1024, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice));
+        
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
-
-        /// <summary>
-        /// All pending transactions.
-        /// </summary>
-        private readonly ConcurrentDictionary<Keccak, Transaction> _pendingTxs =
-            new ConcurrentDictionary<Keccak, Transaction>();
 
         /// <summary>
         /// Transactions published locally (initiated by this node users).
@@ -167,7 +165,7 @@ namespace Nethermind.Blockchain.TxPools
             _txRemovalTimer.Start();
         }
 
-        public Transaction[] GetPendingTransactions() => _pendingTxs.Values.ToArray();
+        public Transaction[] GetPendingTransactions() => _transactions.GetSnapshot();
         
         public Transaction[] GetOwnPendingTransactions() => _ownTransactions.Values.ToArray();
 
@@ -220,7 +218,7 @@ namespace Nethermind.Blockchain.TxPools
                 return AddTxResult.InvalidChainId;
             }
 
-            if (!_pendingTxs.TryAdd(tx.Hash, tx))
+            if (!_transactions.TryInsert(tx.Hash, tx))
             {
                 // If transaction is fresh and already known then it may be stored in memory.
                 Metrics.PendingTransactionsKnown++;
@@ -248,7 +246,7 @@ namespace Nethermind.Blockchain.TxPools
             
             if (isOwn && !HandleOwnTransaction(tx))
             {
-                _pendingTxs.TryRemove(tx.Hash, out _);
+                _transactions.TryRemove(tx.Hash, out _);
                 return AddTxResult.OwnNonceAlreadyUsed;
             }
             
@@ -330,7 +328,7 @@ namespace Nethermind.Blockchain.TxPools
                 }
             }
             
-            if (_pendingTxs.TryRemove(hash, out var transaction))
+            if (_transactions.TryRemove(hash, out var transaction))
             {
                 RemovedPending?.Invoke(this, new TxEventArgs(transaction));
             }
@@ -351,7 +349,7 @@ namespace Nethermind.Blockchain.TxPools
 
         public bool TryGetSender(Keccak hash, out Address sender)
         {
-            bool found = _pendingTxs.TryGetValue(hash, out Transaction transaction);
+            bool found = _transactions.TryGetValue(hash, out Transaction transaction);
             sender = found ? transaction.SenderAddress : null;
             return found;
         }
@@ -460,14 +458,14 @@ namespace Nethermind.Blockchain.TxPools
         
         private void RemovalTimerElapsed(object sender, ElapsedEventArgs eventArgs)
         {
-            if (_pendingTxs.Count == 0)
+            if (_transactions.Count == 0)
             {
                 return;
             }
 
             List<Keccak> hashes = new List<Keccak>();
             UInt256 timestamp = new UInt256(_timestamper.EpochSeconds);
-            foreach (Transaction tx in _pendingTxs.Values)
+            foreach (Transaction tx in _transactions.GetSnapshot())
             {
                 if (_ownTransactions.ContainsKey(tx.Hash))
                 {
@@ -483,7 +481,7 @@ namespace Nethermind.Blockchain.TxPools
 
             for (int i = 0; i < hashes.Count; i++)
             {
-                if (_pendingTxs.TryRemove(hashes[i], out Transaction tx))
+                if (_transactions.TryRemove(hashes[i], out Transaction tx))
                 {
                     RemovedPending?.Invoke(this, new TxEventArgs(tx));
                 }
