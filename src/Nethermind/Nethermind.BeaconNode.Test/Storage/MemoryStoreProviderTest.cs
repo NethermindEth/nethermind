@@ -20,6 +20,14 @@ namespace Nethermind.BeaconNode.Tests.Storage
     [TestClass]
     public class MemoryStoreProviderTest
     {
+        private TestContext? _testContext;
+
+        public TestContext TestContext
+        {
+            get => _testContext!;
+            set => _testContext = value;
+        }
+
         [TestMethod]
         public async Task HistoricalBlocksShouldBeStored()
         {
@@ -55,9 +63,9 @@ namespace Nethermind.BeaconNode.Tests.Storage
                 }
             }
             
-            Console.WriteLine("");
-            Console.WriteLine("***** State advanced to slot {0}, time {1}, ready to start tests *****", state.Slot, store.Time);
-            Console.WriteLine("");
+            TestContext.WriteLine("");
+            TestContext.WriteLine("***** State advanced to slot {0}, time {1}, ready to start tests *****", state.Slot, store.Time);
+            TestContext.WriteLine("");
             
             // Act
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
@@ -80,60 +88,60 @@ namespace Nethermind.BeaconNode.Tests.Storage
             store.TryGetBlockState(block1Root, out BeaconState? block1State).ShouldBeTrue();
             store.TryGetBlockState(genesisRoot, out BeaconState? genesisState).ShouldBeTrue();
 
-            Console.WriteLine("Genesis lookup root: {0}", genesisRoot);
-            Console.WriteLine("Block 1 lookup root: {0}", block1Root);
-            Console.WriteLine("Block 2 lookup root: {0}", block2Root);
-            Console.WriteLine("");
+            TestContext.WriteLine("Genesis lookup root: {0}", genesisRoot);
+            TestContext.WriteLine("Block 1 lookup root: {0}", block1Root);
+            TestContext.WriteLine("Block 2 lookup root: {0}", block2Root);
+            TestContext.WriteLine("");
 
-            Console.WriteLine("Genesis sign root: {0}, hash root: {1}",
+            TestContext.WriteLine("Genesis sign root: {0}, hash root: {1}",
                 genesisBlock!.SigningRoot(miscellaneousParameters, maxOperationsPerBlock),
                 genesisBlock!.HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock));
-            Console.WriteLine("Block 1 sign root: {0}, hash root: {1}",
+            TestContext.WriteLine("Block 1 sign root: {0}, hash root: {1}",
                 block1!.SigningRoot(miscellaneousParameters, maxOperationsPerBlock),
                 block1!.HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock));
-            Console.WriteLine("Block2 sign root: {0}, hash root: {1}",
+            TestContext.WriteLine("Block2 sign root: {0}, hash root: {1}",
                 block2!.SigningRoot(miscellaneousParameters, maxOperationsPerBlock),
                 block2!.HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock));
-            Console.WriteLine("");
+            TestContext.WriteLine("");
 
-            Console.WriteLine("Genesis state root: {0}", genesisBlock!.StateRoot);
-            Console.WriteLine("Block state 1 root: {0}", block1!.StateRoot);
-            Console.WriteLine("Block state 2 root: {0}", block2!.StateRoot);
-            Console.WriteLine("");
+            TestContext.WriteLine("Genesis state root: {0}", genesisBlock!.StateRoot);
+            TestContext.WriteLine("Block state 1 root: {0}", block1!.StateRoot);
+            TestContext.WriteLine("Block state 2 root: {0}", block2!.StateRoot);
+            TestContext.WriteLine("");
 
-            Console.WriteLine("Genesis state hash root: {0}",
+            TestContext.WriteLine("Genesis state hash root: {0}",
                 genesisState!.HashTreeRoot(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock));
-            Console.WriteLine("State 1 hash root: {0}",
+            TestContext.WriteLine("State 1 hash root: {0}",
                 block1State!.HashTreeRoot(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock));
-            Console.WriteLine("State 2 hash root: {0}",
+            TestContext.WriteLine("State 2 hash root: {0}",
                 block2State!.HashTreeRoot(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock));
-            Console.WriteLine("");
+            TestContext.WriteLine("");
 
-            Console.WriteLine("Genesis state last block root: {0}, latest block header parent {1}, signing root {2}",
+            TestContext.WriteLine("Genesis state last block root: {0}, latest block header parent {1}, signing root {2}",
                 genesisState!.BlockRoots.Last(), genesisState!.LatestBlockHeader.ParentRoot, genesisState!.LatestBlockHeader.SigningRoot());
-            Console.WriteLine("State 1 last block root: {0}, latest block header parent {1}, signing root {2}",
+            TestContext.WriteLine("State 1 last block root: {0}, latest block header parent {1}, signing root {2}",
                 block1State!.BlockRoots.Last(), block1State!.LatestBlockHeader.ParentRoot, block1State!.LatestBlockHeader.SigningRoot());
-            Console.WriteLine("State 2 last block root: {0}, latest block header parent {1}, signing root {2}",
+            TestContext.WriteLine("State 2 last block root: {0}, latest block header parent {1}, signing root {2}",
                 block2State!.BlockRoots.Last(), block2State!.LatestBlockHeader.ParentRoot, block2State!.LatestBlockHeader.SigningRoot());
-            Console.WriteLine("");
+            TestContext.WriteLine("");
 
-            Console.WriteLine("Genesis state last state root: {0}, last historical root {1}",
+            TestContext.WriteLine("Genesis state last state root: {0}, last historical root {1}",
                 genesisState!.StateRoots.LastOrDefault(), genesisState!.HistoricalRoots.LastOrDefault());
-            Console.WriteLine("State 1 last state root: {0}, last historical root {1}",
+            TestContext.WriteLine("State 1 last state root: {0}, last historical root {1}",
                 block1State!.StateRoots.Last(), block1State!.HistoricalRoots.LastOrDefault());
-            Console.WriteLine("State 2 state last state root: {0}, last historical root {1}",
+            TestContext.WriteLine("State 2 state last state root: {0}, last historical root {1}",
                 block2State!.StateRoots.Last(), block2State!.HistoricalRoots.LastOrDefault());
-            Console.WriteLine("Head state last state root: {0}, last historical root {1}",
+            TestContext.WriteLine("Head state last state root: {0}, last historical root {1}",
                 headState!.StateRoots.Last(), headState!.HistoricalRoots.LastOrDefault());
-            Console.WriteLine("");
+            TestContext.WriteLine("");
 
             BeaconBlockHeader state1LatestHeader = block1State!.LatestBlockHeader;
-            Console.WriteLine(
+            TestContext.WriteLine(
                 "State 1 latest header, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, signing root {5}",
                 state1LatestHeader.Slot, state1LatestHeader.ParentRoot, state1LatestHeader.BodyRoot,
                 state1LatestHeader.StateRoot, state1LatestHeader.Signature,
                 state1LatestHeader.SigningRoot());
-            Console.WriteLine(
+            TestContext.WriteLine(
                 "-- compare to Block 1, slot: {0}, parent {1}, body root {2}, state root {3}, signature {4}, signing root {5}",
                 block1!.Slot, block1!.ParentRoot, block1.Body.HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock),
                 block1!.StateRoot, block1!.Signature,
