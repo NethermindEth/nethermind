@@ -23,9 +23,15 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
+        public VirtualMachineTests(bool useHmb)
+        {
+            UseHmb = useHmb;
+        }
+        
         [Test]
         public void Stop()
         {

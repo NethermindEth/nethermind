@@ -19,11 +19,19 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Logging;
 
 namespace Nethermind.Store.HmbStore
 {
     public class HmbStateProvider : IStateProvider, INodeDataConsumer
     {
+        private readonly ILogger _logger;
+
+        public HmbStateProvider(ILogManager logManager)
+        {
+            _logger = logManager?.GetClassLogger<HmbStateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+        
         public Keccak StateRoot { get; set; }
         public void DeleteAccount(Address address)
         {
