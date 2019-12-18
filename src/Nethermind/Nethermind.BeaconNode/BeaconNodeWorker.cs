@@ -86,7 +86,7 @@ namespace Nethermind.BeaconNode
             IStore? store = null;
             while (!stoppingToken.IsCancellationRequested && !_stopped)
             {
-                DateTimeOffset time = _clock.UtcNow();
+                DateTimeOffset clockTime = _clock.UtcNow();
                 if (store == null)
                 {
                     if (_storeProvider.TryGetStore(out store))
@@ -95,13 +95,16 @@ namespace Nethermind.BeaconNode
                             store!.GenesisTime, Thread.CurrentThread.ManagedThreadId);
                     }
                 }
+
+                ulong time = (ulong)clockTime.ToUnixTimeSeconds();
                 if (store != null)
                 {
-                    _forkChoice.OnTick(store, (ulong)time.ToUnixTimeSeconds());
+                    _forkChoice.OnTick(store, time);
                 }
                 // Wait for remaining time, if any
                 // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
-                TimeSpan remaining = time.AddSeconds(1) - _clock.UtcNow();
+                DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long)time + 1); 
+                TimeSpan remaining = nextClockTime - _clock.UtcNow();
                 if (remaining > TimeSpan.Zero)
                 {
                     await Task.Delay(remaining, stoppingToken);
