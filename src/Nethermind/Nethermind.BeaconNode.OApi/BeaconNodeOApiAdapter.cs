@@ -96,72 +96,21 @@ namespace Nethermind.BeaconNode.OApi
                     Graffiti = data.Body.Graffiti.AsSpan().ToArray(),
                     Proposer_slashings = data.Body.ProposerSlashings.Select(x => new Proposer_slashings()
                     {
-                        Header_1 = new BeaconBlockHeader()
-                        {
-                            Body_root = x.Header1.BodyRoot.ToString(),
-                            Parent_root = x.Header1.ParentRoot.ToString(),
-                            Slot = x.Header1.Slot,
-                            State_root = x.Header1.StateRoot.ToString(),
-                            Signature = x.Header1.Signature.ToString()
-                        },
-                        Header_2 = new BeaconBlockHeader()
-                        {
-                            Body_root = x.Header2.BodyRoot.ToString(),
-                            Parent_root = x.Header2.ParentRoot.ToString(),
-                            Slot = x.Header2.Slot,
-                            State_root = x.Header2.StateRoot.ToString(),
-                            Signature = x.Header2.Signature.ToString()
-                        },
+                        Header_1 = MapBeaconBlockHeader(x.Header1),
+                        Header_2 = MapBeaconBlockHeader(x.Header2),
                         Proposer_index = (int)x.ProposerIndex
                     }).ToList(),
                     Attester_slashings = data.Body.AttesterSlashings.Select(x => new Attester_slashings()
                     {
-                        Attestation_1 = new IndexedAttestation()
-                        {
-                            Signature = x.Attestation1.Signature.ToString(),
-                            Custody_bit_0_indices = x.Attestation1.CustodyBit0Indices.Select(y => (int)y).ToList(),
-                            Custody_bit_1_indices = x.Attestation1.CustodyBit1Indices.Select(y => (int)y).ToList(),
-                            Data = new AttestationData()
-                            {
-                                Beacon_block_root = x.Attestation1.Data.BeaconBlockRoot.Bytes,
-                                Crosslink = new Crosslink(),
-                                Source_epoch = x.Attestation1.Data.Source.Epoch,
-                                Source_root = x.Attestation1.Data.Source.Root.Bytes,
-                                Target_epoch =  x.Attestation1.Data.Target.Epoch,
-                                Target_root = x.Attestation1.Data.Target.Root.Bytes
-                            }
-                        },
-                        Attestation_2 = new IndexedAttestation()
-                        {
-                            Signature = x.Attestation2.Signature.ToString(),
-                            Custody_bit_0_indices = x.Attestation2.CustodyBit0Indices.Select(y => (int)y).ToList(),
-                            Custody_bit_1_indices = x.Attestation2.CustodyBit1Indices.Select(y => (int)y).ToList(),
-                            Data = new AttestationData()
-                            {
-                                Beacon_block_root = x.Attestation2.Data.BeaconBlockRoot.Bytes,
-                                // NOTE: This mapping isn't right, spec changes (sharding)
-                                Crosslink = new Crosslink(),
-                                Source_epoch = x.Attestation2.Data.Source.Epoch,
-                                Source_root = x.Attestation2.Data.Source.Root.Bytes,
-                                Target_epoch =  x.Attestation2.Data.Target.Epoch,
-                                Target_root = x.Attestation2.Data.Target.Root.Bytes
-                            }
-                        }
+                        Attestation_1 = MapIndexedAttestation(x.Attestation1),
+                        Attestation_2 = MapIndexedAttestation(x.Attestation2)
                     }).ToList(),
                     Attestations = data.Body.Attestations.Select(x => new Attestations()
                     {
                         Signature = x.Signature.Bytes,
                         Aggregation_bits = x.AggregationBits.Cast<byte>().ToArray(),
                         Custody_bits = x.CustodyBits.Cast<byte>().ToArray(),
-                        Data = new AttestationData()
-                        {
-                            Beacon_block_root = x.Data.BeaconBlockRoot.Bytes,
-                            Crosslink = new Crosslink(),
-                            Source_epoch = x.Data.Source.Epoch,
-                            Source_root = x.Data.Source.Root.Bytes,
-                            Target_epoch =  x.Data.Target.Epoch,
-                            Target_root = x.Data.Target.Root.Bytes
-                        }
+                        Data = MapAttestationData(x.Data)
                     }).ToList(),
                     Voluntary_exits = data.Body.VoluntaryExits.Select(x => new Voluntary_exits()
                     {
@@ -184,6 +133,43 @@ namespace Nethermind.BeaconNode.OApi
                 }
             };
             return result;
+        }
+
+        private static IndexedAttestation MapIndexedAttestation(Containers.IndexedAttestation indexedAttestation)
+        {
+            return new IndexedAttestation()
+            {
+                Signature = indexedAttestation.Signature.ToString(),
+                Custody_bit_0_indices = indexedAttestation.CustodyBit0Indices.Select(y => (int)y).ToList(),
+                Custody_bit_1_indices = indexedAttestation.CustodyBit1Indices.Select(y => (int)y).ToList(),
+                Data = MapAttestationData(indexedAttestation.Data)
+            };
+        }
+
+        private static AttestationData MapAttestationData(Containers.AttestationData attestationData)
+        {
+            // NOTE: This mapping isn't right, spec changes (sharding)
+            return new AttestationData()
+            {
+                Beacon_block_root = attestationData.BeaconBlockRoot.Bytes,
+                Crosslink = new Crosslink(),
+                Source_epoch = attestationData.Source.Epoch,
+                Source_root = attestationData.Source.Root.Bytes,
+                Target_epoch =  attestationData.Target.Epoch,
+                Target_root = attestationData.Target.Root.Bytes
+            };
+        }
+
+        private static BeaconBlockHeader MapBeaconBlockHeader(Containers.BeaconBlockHeader value)
+        {
+            return new BeaconBlockHeader()
+            {
+                Body_root = value.BodyRoot.ToString(),
+                Parent_root = value.ParentRoot.ToString(),
+                Slot = value.Slot,
+                State_root = value.StateRoot.ToString(),
+                Signature = value.Signature.ToString()
+            };
         }
 
         /// <summary>Get validator duties for the requested validators.</summary>
