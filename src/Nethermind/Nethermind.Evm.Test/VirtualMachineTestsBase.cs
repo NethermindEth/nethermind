@@ -55,11 +55,13 @@ namespace Nethermind.Evm.Test
         public virtual void Setup()
         {
             ILogManager logger = LimboLogs.Instance;
-            ;
-            IDb codeDb = new StateDb();
-            _stateDb = new StateDb();
-            TestState = UseHmb ? (IStateProvider) new HmbStateProvider(logger) : new StateProvider(_stateDb, codeDb, logger);
-            Storage = UseHmb ? (IStorageProvider) new HmbStorageProvider(logger) : new StorageProvider(_stateDb, TestState, logger);
+
+            ISnapshotableDb hmbDb = new StateDb(new HmbDb());
+            IDb hmbCodeDb = new HmbDb();
+            IDb codeDb = UseHmb ? hmbCodeDb : new StateDb();
+            _stateDb = UseHmb ? hmbDb : new StateDb();
+            TestState = new StateProvider(_stateDb, codeDb, logger);
+            Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             Machine = new VirtualMachine(TestState, Storage, blockhashProvider, SpecProvider, logger);
