@@ -94,14 +94,16 @@ namespace Nethermind.BeaconNode.Tests
             var validatorPublicKeys = publicKeys.Take(numberOfValidators);
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
-            var validatorDuties = await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch);
 
-            for (var index = 0; index < validatorDuties.Count; index++)
+            var validatorDutyIndex = 0;
+            var validatorDuties = new List<ValidatorDuty>();
+            await foreach (var validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch))
             {
-                ValidatorDuty validatorDuty = validatorDuties[index];
+                validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
-                    index, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                validatorDutyIndex++;
             }
             
             // Assert
@@ -143,14 +145,16 @@ namespace Nethermind.BeaconNode.Tests
             var validatorPublicKeys = publicKeys.Take(numberOfValidators);
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
-            var validatorDuties = await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch);
-
-            for (var index = 0; index < validatorDuties.Count; index++)
+            
+            var validatorDutyIndex = 0;
+            var validatorDuties = new List<ValidatorDuty>();
+            await foreach (var validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch))
             {
-                ValidatorDuty validatorDuty = validatorDuties[index];
+                validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
-                    index, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                validatorDutyIndex++;
             }
             
             // Assert
@@ -198,14 +202,16 @@ namespace Nethermind.BeaconNode.Tests
             var validatorPublicKeys = state!.Validators.Select(x => x.PublicKey);
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
-            var validatorDuties = await beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch);
-
-            for (var index = 0; index < validatorDuties.Count; index++)
+            
+            var validatorDutyIndex = 0;
+            var validatorDuties = new List<ValidatorDuty>();
+            await foreach (var validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch))
             {
-                ValidatorDuty validatorDuty = validatorDuties[index];
+                validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
-                    index, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
+                    validatorDutyIndex, targetEpoch, validatorDuty.ValidatorPublicKey, validatorDuty.AttestationSlot,
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
+                validatorDutyIndex++;
             }
             
             // Assert

@@ -179,17 +179,17 @@ namespace Nethermind.BeaconNode.OApi
         {
             IEnumerable<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x));
             Epoch targetEpoch = epoch.HasValue ? new Epoch((ulong)epoch) : Epoch.None;
-            IList<BeaconNode.ValidatorDuty> duties = await _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch);
-            List<ValidatorDuty> result = duties.Select(x =>
-                {
-                    ValidatorDuty validatorDuty = new ValidatorDuty();
-                    validatorDuty.Validator_pubkey = x.ValidatorPublicKey.Bytes;
-                    validatorDuty.Attestation_slot = (int)x.AttestationSlot;
-                    validatorDuty.Attestation_shard = (int)(ulong)x.AttestationShard;
-                    validatorDuty.Block_proposal_slot = x.BlockProposalSlot == Slot.None ? null : (int?)x.BlockProposalSlot;
-                    return validatorDuty;
-                })
-                .ToList();
+            var duties = _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch);
+            List<ValidatorDuty> result = new List<ValidatorDuty>();
+            await foreach(var duty in duties)
+            {
+                ValidatorDuty validatorDuty = new ValidatorDuty();
+                validatorDuty.Validator_pubkey = duty.ValidatorPublicKey.Bytes;
+                validatorDuty.Attestation_slot = (int)duty.AttestationSlot;
+                validatorDuty.Attestation_shard = (int)(ulong)duty.AttestationShard;
+                validatorDuty.Block_proposal_slot = duty.BlockProposalSlot == Slot.None ? null : (int?)duty.BlockProposalSlot;
+                result.Add(validatorDuty);
+            }
             return result;
         }
 

@@ -70,16 +70,14 @@ namespace Nethermind.BeaconNode
             return state.Fork;
         }
 
-        public async Task<IList<ValidatorDuty>> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch)
+        public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch)
         {
             // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
-            List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
             foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
             {
                 ValidatorDuty validatorDuty = await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch);
-                validatorDuties.Add(validatorDuty);
+                yield return validatorDuty;
             }
-            return validatorDuties;
         }
         
         public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
