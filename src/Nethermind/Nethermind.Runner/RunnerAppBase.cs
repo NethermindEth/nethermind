@@ -81,9 +81,10 @@ namespace Nethermind.Runner
         public void Run(string[] args)
         {
             var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
-            ManualResetEventSlim appClosed = new ManualResetEventSlim(false);
+            ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
             app.OnExecute(async () =>
             {
+                appClosed.Reset();
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
                 LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
