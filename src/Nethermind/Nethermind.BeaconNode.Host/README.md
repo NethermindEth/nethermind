@@ -87,6 +87,10 @@ Client code:
 dotnet nswag openapi2csclient /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeClient /namespace:Nethermind.BeaconNode.ApiClient /ContractsNamespace:Nethermind.BeaconNode.ApiClient.Contracts /output:../Nethermind.BeaconNode.ApiClient/BeaconNodeClient-generated.cs
 ```
 
+### Specifications
+
+The Eth 2.0 specifications are evolving. The current code is based on v0.9.1 (2019-11-09, 03fb097)
+
 ### Implemented
 
 Impelmented so far:
@@ -94,7 +98,8 @@ Impelmented so far:
 Phase 0:
 
 * The Beacon Chain
-* Fork Choice -- main spec implemented, alternate algorithms are not
+* Fork Choice -- main spec implemented; alternate algorithms are not
+* Interop Standards in Eth2 PM -- QuickStart and Eth1Data implemented; load from SSZ/YAML is not
 
 Supporting components:
 
@@ -107,9 +112,13 @@ Both these will be merged into the main Nethermind project / renamed / replaced 
 
 * Honest Validator
 * Eth2 APIs
-* Interop Standards in Eth2 PM -- partially implemented for basic mocked QuickStart
 
 ### To Do
+
+Specification updates:
+
+* v0.9.2 - Clarify Hash as either Root or just Bytes32, validator config, change min validators
+* v0.9.3 - Update with separate Signed Envelopes (replace signing root), allowing fork choice merkle filtering
 
 Phase 0:
 
@@ -120,6 +129,15 @@ Phase 1:
 * Custody Game
 * Shard Data Chains
 * Misc beacon chain updates
+
+Light client:
+
+* Sync Protocol
+* Merkle Proofs
+
+Networking:
+
+* P2P Interface
 
 Supporting:
 
@@ -133,10 +151,7 @@ Other:
 
 Project-specific:
 
-* Peer to peer
-* Installation, e.g.Windows Service (to be intergrated with Nethermind.Runner ?)
-
-https://docs.microsoft.com/en-us/aspnet/core/host-and-deploy/windows-service?view=aspnetcore-3.0&tabs=netcore-cli
+* Installation, e.g.Windows Service, etc (to be intergrated with Nethermind.Runner ?)
 
 
 ## License
