@@ -1,7 +1,7 @@
 Supported Platforms
 *******************
 
- - Windows 10
+ - Windows 10, 8, Vista, 7 (https://docs.microsoft.com/en-us/dotnet/core/install/dependencies?tabs=netcore31&pivots=os-windows)
  - macOS
  - Ubuntu 16.04 (read additional info in release notes)
  - Ubuntu 18.04
