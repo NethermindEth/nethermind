@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store.HmbStore
@@ -22,7 +23,7 @@ namespace Nethermind.Store.HmbStore
     public class HmbDb : IDb, INodeDataConsumer
     {
         private MemDb _memDb = new MemDb();
-        
+
         public void Dispose()
         {
         }
@@ -31,7 +32,18 @@ namespace Nethermind.Store.HmbStore
 
         public byte[] this[byte[] key]
         {
-            get => _memDb[key] == null ? throw new NotImplementedException() : _memDb[key];
+            get
+            {
+                var fromMem = _memDb[key];
+                if (fromMem == null)
+                {
+                    NeedMoreData?.Invoke(this, EventArgs.Empty);
+                    Thread.Sleep(100);
+                }
+                
+                return fromMem;
+            }
+
             set => _memDb[key] = value;
         }
 
@@ -59,7 +71,7 @@ namespace Nethermind.Store.HmbStore
         }
 
         public event EventHandler NeedMoreData;
-        
+
         public Keccak[] PrepareRequest()
         {
             throw new NotImplementedException();
