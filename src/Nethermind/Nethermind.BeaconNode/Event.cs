@@ -18,7 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Nethermind.BeaconNode
 {
-    public static class Event
+    internal static class Event
     {
         // 1bxx preliminary
         public static readonly EventId WorkerStarted = new EventId(1000, nameof(WorkerStarted));

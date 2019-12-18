@@ -65,13 +65,13 @@ namespace Nethermind.BeaconNode.Tests.BlockProcessing
 
             if (expectValid)
             {
-                beaconStateTransition.ProcessBlockHeader(state, block);
+                beaconStateTransition.ProcessBlockHeader(state, block, validateStateRoot: true);
             }
             else
             {
                 Should.Throw<Exception>(() =>
                 {
-                    beaconStateTransition.ProcessBlockHeader(state, block);
+                    beaconStateTransition.ProcessBlockHeader(state, block, validateStateRoot: true);
                 });
             }
         }

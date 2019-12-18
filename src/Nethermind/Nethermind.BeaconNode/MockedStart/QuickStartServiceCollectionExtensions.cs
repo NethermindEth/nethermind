@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -31,6 +32,8 @@ namespace Nethermind.BeaconNode.MockedStart
         public static void AddQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<INodeStart, QuickStart>();
+            services.AddSingleton<IEth1DataProvider, MockedEth1DataProvider>();
+            services.AddSingleton<IOperationPool, MockedOperationPool>();
             services.Configure<QuickStartParameters>(x =>
             {
                 configuration.Bind("QuickStart", section =>

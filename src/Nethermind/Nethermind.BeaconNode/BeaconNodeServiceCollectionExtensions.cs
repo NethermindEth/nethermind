@@ -216,6 +216,14 @@ namespace Nethermind.BeaconNode
                     configuration.GetValue<ulong>("ForkChoiceConfiguration:SafeSlotsToUpdateJustified",
                         () => configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED")));
             });
+            services.Configure<HonestValidatorConstants>(x =>
+            {
+                configuration.Bind("HonestValidatorConstants", section =>
+                {
+                    x.Eth1FollowDistance = section.GetValue(nameof(x.Eth1FollowDistance),
+                        () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
+                });
+            });
         }
     }
 }
