@@ -41,7 +41,16 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             _feed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
             _additionalConsumer = additionalConsumer ?? throw new ArgumentNullException(nameof(additionalConsumer));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            _additionalConsumer.NeedMoreData += AdditionalConsumerOnNeedMoreData;
         }
+
+        private void AdditionalConsumerOnNeedMoreData(object? sender, EventArgs e)
+        {
+            _moreDataNeeded.Release(1);
+        }
+
+        private Semaphore _moreDataNeeded = new Semaphore(0, 8);
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
@@ -95,7 +104,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     return;
                 }
-                
+
                 StateSyncBatch request = PrepareRequest();
                 if (request.RequestedNodes.Length != 0)
                 {
@@ -128,10 +137,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
                 StateSyncBatch priorityBatch = new StateSyncBatch();
                 priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
-                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {_pendingRequests}");    
+                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {_pendingRequests}");
                 return priorityBatch;
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return _feed.PrepareRequest();
         }
@@ -142,6 +151,16 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             _feed.SetNewStateRoot(number, rootNode);
             await KeepSyncing(token);
             return _consumedNodesCount;
+        }
+
+        public async Task<long> SyncNodeDataForever(CancellationToken token)
+        {
+            while (true)
+            {
+                await _moreDataNeeded.WaitOneAsync(token);
+                _additionalConsumer.PrepareRequest();
+                await KeepSyncing(token);
+            }
         }
 
         public bool IsFullySynced(BlockHeader header) => _feed.IsFullySynced(header.StateRoot);

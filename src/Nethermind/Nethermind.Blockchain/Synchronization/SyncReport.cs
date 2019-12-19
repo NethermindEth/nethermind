@@ -162,6 +162,9 @@ namespace Nethermind.Blockchain.Synchronization
                 case SyncMode.Full:
                     WriteFullSyncReport("Full Sync");
                     break;
+                case SyncMode.HmbSync:
+                    WriteFullSyncReport("HMB Sync");
+                    break;
                 case SyncMode.Headers:
                     WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
                     break;

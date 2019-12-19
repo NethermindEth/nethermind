@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store.HmbStore
 {
@@ -53,8 +54,15 @@ namespace Nethermind.Store.HmbStore
                     var fromMem = _memDb[key];
                     if (fromMem == null)
                     {
+                        // we store sync progress data at Keccak.Zero;
+                        if (Bytes.AreEqual(key, Keccak.Zero.Bytes))
+                        {
+                            return null;
+                        }
+                        
                         _requestedNodes.Enqueue(new Keccak(key));
                         NeedsData = true;
+                        NeedMoreData?.Invoke(this, EventArgs.Empty);
                         _autoReset.WaitOne();
                     }
                     else

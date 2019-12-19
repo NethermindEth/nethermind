@@ -780,6 +780,19 @@ namespace Nethermind.Runner.Runners
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, NullDataConsumer.Instance, _logManager);
+            if (_syncConfig.HmbSync)
+            {
+#pragma warning disable 4014
+                nodeDataDownloader.SyncNodeDataForever(CancellationToken.None).ContinueWith(t =>
+#pragma warning restore 4014
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error("HMB sync failure");
+                    }
+                });
+            }
+            
             _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _nodeStatsManager, _logManager);
 
             _syncServer = new SyncServer(
