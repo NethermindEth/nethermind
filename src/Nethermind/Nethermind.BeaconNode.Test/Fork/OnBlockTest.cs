@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -32,7 +33,7 @@ namespace Nethermind.BeaconNode.Tests.Fork
     public class OnBlockTest
     {
         [TestMethod]
-        public void BasicOnBlock()
+        public async Task BasicOnBlock()
         {
             // Arrange
             var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
@@ -44,17 +45,17 @@ namespace Nethermind.BeaconNode.Tests.Fork
             // Initialization
             var store = forkChoice.GetGenesisStore(state);
             var time = 100uL;
-            forkChoice.OnTick(store, time);
+            await forkChoice.OnTickAsync(store, time);
             store.Time.ShouldBe(time);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
             var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-            RunOnBlock(testServiceProvider, store, block, expectValid: true);
+            await RunOnBlock(testServiceProvider, store, block, expectValid: true);
 
             //  On receiving a block of next epoch
             var time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
-            store.SetTime(time2);
+            await store.SetTimeAsync(time2);
             var block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
             Slot slot2 = (Slot)(block.Slot + timeParameters.SlotsPerEpoch);
             block2.SetSlot(slot2);
@@ -65,13 +66,13 @@ namespace Nethermind.BeaconNode.Tests.Fork
             //options.AddCortexContainerConverters();
             //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
-            RunOnBlock(testServiceProvider, store, block2, expectValid: true);
+            await RunOnBlock(testServiceProvider, store, block2, expectValid: true);
 
             // Assert
             // TODO: add tests for justified_root and finalized_root
         }
 
-        private void RunOnBlock(IServiceProvider testServiceProvider, IStore store, BeaconBlock block, bool expectValid)
+        private async Task RunOnBlock(IServiceProvider testServiceProvider, IStore store, BeaconBlock block, bool expectValid)
         {
             var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
@@ -80,17 +81,17 @@ namespace Nethermind.BeaconNode.Tests.Fork
 
             if (!expectValid)
             {
-                Should.Throw<Exception>(() =>
+                Should.Throw<Exception>(async () =>
                 {
-                    forkChoice.OnBlock(store, block);
+                    await forkChoice.OnBlockAsync(store, block);
                 });
                 return;
             }
 
-            forkChoice.OnBlock(store, block);
+            await forkChoice.OnBlockAsync(store, block);
             var signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            var storeBlock = store.Blocks[signingRoot];
-            storeBlock.ShouldBe(block);
+            var storedBlock = await store.GetBlockAsync(signingRoot);
+            storedBlock.ShouldBe(block);
         }
     }
 }

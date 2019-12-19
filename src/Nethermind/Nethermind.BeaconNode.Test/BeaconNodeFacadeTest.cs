@@ -195,7 +195,7 @@ namespace Nethermind.BeaconNode.Tests
 
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
             storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state).ShouldBeTrue();
+            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
             
             // Act
             Epoch targetEpoch = new Epoch(0);

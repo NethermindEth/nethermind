@@ -94,12 +94,9 @@ namespace Nethermind.BeaconNode
 
             IStore store = retrievedStore!;
             Hash32 head = await _forkChoice.GetHeadAsync(store);
-            if (!store.TryGetBlockState(head, out BeaconState? state))
-            {
-                throw new Exception($"Beacon chain is currently syncing, head state {head} not found.");
-            }
+            BeaconState state = await store.GetBlockStateAsync(head);
 
-            return state!;
+            return state;
         }
 
     }

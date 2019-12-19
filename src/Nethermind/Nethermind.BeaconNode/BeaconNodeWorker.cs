@@ -99,7 +99,7 @@ namespace Nethermind.BeaconNode
                 ulong time = (ulong)clockTime.ToUnixTimeSeconds();
                 if (store != null)
                 {
-                    _forkChoice.OnTick(store, time);
+                    await _forkChoice.OnTickAsync(store, time);
                 }
                 // Wait for remaining time, if any
                 // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
