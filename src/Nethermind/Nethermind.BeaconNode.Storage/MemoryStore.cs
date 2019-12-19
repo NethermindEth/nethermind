@@ -152,7 +152,7 @@ namespace Nethermind.BeaconNode.Storage
         public async IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot)
         {
             await Task.CompletedTask;
-            var childKeys = _blocks
+            IEnumerable<Hash32> childKeys = _blocks
                 .Where(kvp =>
                     kvp.Value.ParentRoot.Equals(parent)
                     && kvp.Value.Slot > slot)

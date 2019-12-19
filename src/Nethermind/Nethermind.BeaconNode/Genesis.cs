@@ -78,7 +78,7 @@ namespace Nethermind.BeaconNode
             BeaconState state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
-            var depositDataList = new List<DepositData>();
+            List<DepositData> depositDataList = new List<DepositData>();
             foreach (Deposit deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
@@ -113,7 +113,7 @@ namespace Nethermind.BeaconNode
             {
                 return false;
             }
-            var activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
+            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
             if (activeValidatorIndices.Count < miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;

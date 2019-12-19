@@ -87,7 +87,7 @@ namespace Nethermind.BeaconNode.Tests
                 proposerIndexes.Add(validatorIndex);
             }
 
-            for (var slotIndex = 0; slotIndex < proposerIndexes.Count; slotIndex++)
+            for (int slotIndex = 0; slotIndex < proposerIndexes.Count; slotIndex++)
             {
                 ValidatorIndex proposerIndex = proposerIndexes[slotIndex];
                 Validator proposer = state.Validators[(int)(ulong)proposerIndex];

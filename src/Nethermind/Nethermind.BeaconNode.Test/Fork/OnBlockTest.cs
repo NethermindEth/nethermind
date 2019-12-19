@@ -36,27 +36,27 @@ namespace Nethermind.BeaconNode.Tests.Fork
         public async Task BasicOnBlock()
         {
             // Arrange
-            var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
-            var state = TestState.PrepareTestState(testServiceProvider);
+            IServiceProvider testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
+            BeaconState state = TestState.PrepareTestState(testServiceProvider);
 
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             // Initialization
-            var store = forkChoice.GetGenesisStore(state);
-            var time = 100uL;
+            IStore store = forkChoice.GetGenesisStore(state);
+            ulong time = 100uL;
             await forkChoice.OnTickAsync(store, time);
             store.Time.ShouldBe(time);
 
             // On receiving a block of `GENESIS_SLOT + 1` slot
-            var block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
             TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
             await RunOnBlock(testServiceProvider, store, block, expectValid: true);
 
             //  On receiving a block of next epoch
-            var time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
+            ulong time2 = time + timeParameters.SecondsPerSlot * (ulong)timeParameters.SlotsPerEpoch;
             await store.SetTimeAsync(time2);
-            var block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
+            BeaconBlock block2 = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
             Slot slot2 = (Slot)(block.Slot + timeParameters.SlotsPerEpoch);
             block2.SetSlot(slot2);
             TestBlock.SignBlock(testServiceProvider, state, block2, ValidatorIndex.None);
@@ -74,10 +74,10 @@ namespace Nethermind.BeaconNode.Tests.Fork
 
         private async Task RunOnBlock(IServiceProvider testServiceProvider, IStore store, BeaconBlock block, bool expectValid)
         {
-            var miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
-            var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
+            MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
-            var forkChoice = testServiceProvider.GetService<ForkChoice>();
+            ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             if (!expectValid)
             {
@@ -89,8 +89,8 @@ namespace Nethermind.BeaconNode.Tests.Fork
             }
 
             await forkChoice.OnBlockAsync(store, block);
-            var signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            var storedBlock = await store.GetBlockAsync(signingRoot);
+            Hash32 signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+            BeaconBlock storedBlock = await store.GetBlockAsync(signingRoot);
             storedBlock.ShouldBe(block);
         }
     }

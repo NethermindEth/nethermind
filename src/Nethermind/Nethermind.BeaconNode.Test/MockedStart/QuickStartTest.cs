@@ -220,7 +220,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
 
             // Act
             QuickStart quickStart = (testServiceProvider.GetService<INodeStart>() as QuickStart)!;
-            var privateKey = quickStart.GeneratePrivateKey(63);
+            byte[] privateKey = quickStart.GeneratePrivateKey(63);
 
             // Assert
             privateKey.Length.ShouldBe(32);

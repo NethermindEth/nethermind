@@ -44,10 +44,10 @@ namespace Nethermind.BeaconNode
             {
                 if (_logger.IsDebug()) _logger.LogDebug(Event.TryGenesis, "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.", eth1BlockHash, eth1Timestamp, deposits.Count);
 
-                var candidateState = _genesis.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
+                BeaconState candidateState = _genesis.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
                 if (_genesis.IsValidGenesisState(candidateState))
                 {
-                    var genesisState = candidateState;
+                    BeaconState genesisState = candidateState;
                     _ = _forkChoice.GetGenesisStore(genesisState);
                     return true;
                 }

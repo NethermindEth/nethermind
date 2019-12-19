@@ -83,8 +83,8 @@ namespace Nethermind.BeaconNode.Tests
             Console.WriteLine("Validator [{0}] {1} in slot {2} committee {3}", 
                 validatorIndex, state.Validators[(int)validatorIndex].PublicKey, committeeAssignment.Slot, committeeAssignment.CommitteeIndex);
             
-            var expectedSlot = new Slot(slot);
-            var expectedCommitteeIndex = new CommitteeIndex(committeeIndex);
+            Slot expectedSlot = new Slot(slot);
+            CommitteeIndex expectedCommitteeIndex = new CommitteeIndex(committeeIndex);
             committeeAssignment.Slot.ShouldBe(expectedSlot);
             committeeAssignment.CommitteeIndex.ShouldBe(expectedCommitteeIndex);
         }

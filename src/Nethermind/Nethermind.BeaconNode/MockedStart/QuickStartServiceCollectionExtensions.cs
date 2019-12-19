@@ -48,8 +48,8 @@ namespace Nethermind.BeaconNode.MockedStart
 
             if (!configuration.GetValue<bool>("QuickStart:UseSystemClock"))
             {
-                var genesisTime = configuration.GetValue<ulong>("QuickStart:GenesisTime");
-                var quickStartClock = new QuickStartClock(genesisTime);
+                ulong genesisTime = configuration.GetValue<ulong>("QuickStart:GenesisTime");
+                QuickStartClock quickStartClock = new QuickStartClock(genesisTime);
                 services.AddSingleton<IClock>(quickStartClock);
             }
         }

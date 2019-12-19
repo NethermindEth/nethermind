@@ -266,7 +266,6 @@ namespace Nethermind.BeaconNode
 
             // Attestations can only affect the fork choice of subsequent slots.
             // Delay consideration in the fork choice until their slot is in the past.
-            //var attestationDataSlotTime = ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
             ulong attestationDataSlotTime = targetState!.GenesisTime + ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
             if (store.Time < attestationDataSlotTime)
             {
