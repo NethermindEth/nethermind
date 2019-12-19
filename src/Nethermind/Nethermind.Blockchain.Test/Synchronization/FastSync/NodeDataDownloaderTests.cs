@@ -29,6 +29,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
+using Nethermind.Store.HmbStore;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -570,7 +571,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
             _pool.When(s => s.ReportNoSyncProgress(allocation)).Do(ci => _isPeerAsleep = true);
 
             NodeDataFeed feed = new NodeDataFeed(_localCodeDb, _localStateDb, _logManager);
-            NodeDataDownloader downloader = new NodeDataDownloader(_pool, feed, _logManager);
+            NodeDataDownloader downloader = new NodeDataDownloader(_pool, feed, NullDataConsumer.Instance, _logManager);
 
             return downloader;
         }

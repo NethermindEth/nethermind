@@ -14,19 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Store
+namespace Nethermind.Blockchain.Synchronization
 {
-    public interface INodeDataConsumer
+    public enum BlockDownloaderOptions
     {
-        event EventHandler NeedMoreData;
-
-        Keccak[] PrepareRequest();
-        
-        void HandleResponse(Keccak[] hashes, byte[][] data);
-        
-        bool NeedsData { get; }
+        Download,
+        DownloadAndProcess,
+        DownloadWithReceipts
     }
 }
