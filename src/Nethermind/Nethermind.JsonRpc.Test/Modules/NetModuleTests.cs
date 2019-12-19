@@ -14,8 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Net;
+using Microsoft.VisualStudio.TestPlatform.ObjectModel;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.Logging;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -33,10 +38,23 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
+        public void NetPeerCountSuccessTest()
+        {
+            Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
+            NetModule module = new NetModule(NullLogManager.Instance, netBridge);
+            string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_peerCount");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0x0\"}", response);
+        }
+        
+        [Test]
         public void NetVersionSuccessTest()
         {
-            var result = _netModule.net_version();
-            Assert.AreEqual(result.Data, "0");
+            Enode enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+            NetBridge netBridge = new NetBridge(enode, Substitute.For<ISyncServer>(), Substitute.For<IPeerManager>());
+            NetModule module = new NetModule(NullLogManager.Instance, netBridge);
+            string response = RpcTest.TestSerializedRequest<INetModule>(module, "net_version");
+            Assert.AreEqual("{\"id\":67,\"jsonrpc\":\"2.0\",\"result\":\"0\"}", response);
         }
     }
 }

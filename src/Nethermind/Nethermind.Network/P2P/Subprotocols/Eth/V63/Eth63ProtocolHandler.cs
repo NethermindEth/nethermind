@@ -184,7 +184,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
                 if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 
@@ -223,7 +223,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             {
                 delayCancellation.Cancel();
                 long elapsed = request.FinishMeasuringTime();
-                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / elapsed);
+                long bytesPerMillisecond = (long) ((decimal) request.ResponseSize / Math.Max(1, elapsed));
                 if(Logger.IsTrace) Logger.Trace($"{this} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
                 StatsManager.ReportTransferSpeedEvent(Session.Node, bytesPerMillisecond);
 

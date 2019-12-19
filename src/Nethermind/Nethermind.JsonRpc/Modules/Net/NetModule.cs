@@ -52,9 +52,9 @@ namespace Nethermind.JsonRpc.Modules.Net
             return ResultWrapper<bool>.Success(false);
         }
 
-        public ResultWrapper<int> net_peerCount()
+        public ResultWrapper<long> net_peerCount()
         {
-            return ResultWrapper<int>.Success(_netBridge.PeerCount);
+            return ResultWrapper<long>.Success(_netBridge.PeerCount);
         }
     }
 }
