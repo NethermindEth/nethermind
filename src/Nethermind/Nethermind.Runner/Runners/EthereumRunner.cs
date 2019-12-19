@@ -48,6 +48,7 @@ using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Core.Specs.GenesisFileStyle;
 using Nethermind.DataMarketplace.Channels;
+using Nethermind.DataMarketplace.Consumers.DataStreams;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Initializers;
@@ -140,7 +141,7 @@ namespace Nethermind.Runner.Runners
         private IDiscoveryApp _discoveryApp;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
-        private ITxPool _txPool;
+        private ITxPool _txPool = NullTxPool.Instance;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
@@ -163,6 +164,7 @@ namespace Nethermind.Runner.Runners
         private ISnapshotManager _snapshotManager;
         private IRlpxPeer _rlpxPeer;
         private IDbProvider _dbProvider;
+        private INodeDataConsumer _nodeDataConsumer = NullDataConsumer.Instance;
         private readonly ITimestamper _timestamper = new Timestamper();
         private IStorageProvider _storageProvider;
         private IWallet _wallet;
@@ -424,7 +426,9 @@ namespace Nethermind.Runner.Runners
 
             if (_syncConfig.HmbSync)
             {
-                _dbProvider = new HmbDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
+                HmbDbProvider hmbDbProvider = new HmbDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
+                _dbProvider = hmbDbProvider;
+                _nodeDataConsumer = hmbDbProvider.NodeDataConsumer;
             }
             else
             {
@@ -779,7 +783,7 @@ namespace Nethermind.Runner.Runners
             var maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, NullDataConsumer.Instance, _logManager);
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _nodeDataConsumer, _logManager);
             if (_syncConfig.HmbSync)
             {
 #pragma warning disable 4014
@@ -788,7 +792,7 @@ namespace Nethermind.Runner.Runners
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Error("HMB sync failure");
+                        _logger.Error("HMB sync failure", t.Exception);
                     }
                 });
             }

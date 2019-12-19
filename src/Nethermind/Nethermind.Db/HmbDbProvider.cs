@@ -20,18 +20,25 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Store.HmbStore;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Nethermind.Db
 {
     public class HmbDbProvider : IDbProvider
     {
+        public INodeDataConsumer NodeDataConsumer { get; set; }
+        
         public HmbDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
         {
+            HmbDb codeDb = new HmbDb(logManager);
+            HmbDb stateDb = new HmbDb(logManager);
+            NodeDataConsumer = new CompositeDataConsumer(codeDb, stateDb);
+            
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
             HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
             BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, logManager);
-            StateDb = new StateDb(new HmbDb());
-            CodeDb = new StateDb(new HmbDb());
+            StateDb = new StateDb(stateDb);
+            CodeDb = new StateDb(codeDb);
             PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, logManager);
             ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, logManager);
             EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, logManager);

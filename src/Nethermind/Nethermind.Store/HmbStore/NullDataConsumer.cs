@@ -20,7 +20,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store.HmbStore
 {
-    public class NullDataConsumer : INodeDataConsumer
+    public sealed class NullDataConsumer : INodeDataConsumer
     {
         private static NullDataConsumer _instance;
 

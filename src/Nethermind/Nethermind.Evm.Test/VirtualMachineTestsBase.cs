@@ -56,8 +56,8 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logger = LimboLogs.Instance;
 
-            ISnapshotableDb hmbDb = new StateDb(new HmbDb());
-            IDb hmbCodeDb = new HmbDb();
+            ISnapshotableDb hmbDb = new StateDb(new HmbDb(logger));
+            IDb hmbCodeDb = new HmbDb(logger);
             IDb codeDb = UseHmb ? hmbCodeDb : new StateDb();
             _stateDb = UseHmb ? hmbDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
