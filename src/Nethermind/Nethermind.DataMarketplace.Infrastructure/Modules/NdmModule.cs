@@ -21,6 +21,7 @@ using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Infrastructure.Rlp;
 using Nethermind.Facade;
+using Nethermind.Facade.Config;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Modules
@@ -58,7 +59,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Modules
                 services.FilterManager,
                 wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                services.Ecdsa);
+                services.Ecdsa,
+                services.ConfigProvider.GetConfig<IRpcConfig>());
             var dataAssetRlpDecoder = new DataAssetDecoder();
             var encoder = new AbiEncoder();
 
