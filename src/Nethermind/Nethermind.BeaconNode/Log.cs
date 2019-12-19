@@ -18,6 +18,7 @@ using System;
 using Microsoft.Extensions.Logging;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.BeaconNode.Containers;
 
 namespace Nethermind.BeaconNode
 {
@@ -26,11 +27,38 @@ namespace Nethermind.BeaconNode
         // 1bxx preliminary
 
         // 2bxx completion
+        public static readonly Action<ILogger, bool, BeaconBlock, BeaconState, Exception?> ProcessBlock =
+            LoggerMessage.Define<bool, BeaconBlock, BeaconState>(LogLevel.Information,
+                new EventId(2005, nameof(ProcessBlock)),
+                "Process (validate {Validate}) block {BeaconBlock} for state {BeaconState}");
+        public static readonly Action<ILogger, BeaconBlock,  Exception?> ProcessBlockHeader =
+            LoggerMessage.Define<BeaconBlock>(LogLevel.Information,
+                new EventId(2006, nameof(ProcessBlockHeader)),
+                "Process block header for block {BeaconBlock}");
+        public static readonly Action<ILogger, AttesterSlashing, Exception?> ProcessAttesterSlashing =
+            LoggerMessage.Define<AttesterSlashing>(LogLevel.Information,
+                new EventId(2011, nameof(ProcessAttesterSlashing)),
+                "Process block operation attester slashing {AttesterSlashing}");
+        public static readonly Action<ILogger, Attestation, BeaconState, Exception?> ProcessAttestation =
+            LoggerMessage.Define<Attestation, BeaconState>(LogLevel.Information,
+                new EventId(2012, nameof(ProcessAttestation)),
+                "Process block operation attestation {Attestation} for state {BeaconState}.");
 
-        // 3bzzz debug
-        internal static readonly Action<ILogger, Slot, BlsSignature, Slot, Exception?> NewBlockSkippedSlots =
+        // 3bxx debug
+        public static readonly Action<ILogger, ValidatorIndex, string, Gwei, Exception?> RewardForValidator =
+            LoggerMessage.Define<ValidatorIndex, string, Gwei>(LogLevel.Debug,
+                new EventId(3001, nameof(RewardForValidator)),
+                "Reward for validator {ValidatorIndex}: {RewardName} +{Reward}.");
+
+        public static readonly Action<ILogger, ValidatorIndex, string, Gwei, Exception?> PenaltyForValidator =
+            LoggerMessage.Define<ValidatorIndex, string, Gwei>(LogLevel.Debug,
+                new EventId(3002, nameof(PenaltyForValidator)),
+                "Penalty for validator {ValidatorIndex}: {PenaltyName} -{Penalty}.");
+
+
+        public static readonly Action<ILogger, Slot, BlsSignature, Slot, Exception?> NewBlockSkippedSlots =
             LoggerMessage.Define<Slot, BlsSignature, Slot>(LogLevel.Debug,
-                new EventId(32000, nameof(NewBlockSkippedSlots)),
+                new EventId(3200, nameof(NewBlockSkippedSlots)),
                 "Request for new block for slot {Slot} for randao {RandaoReveal} is skipping from parent slot {ParentSlot}.");
 
         // 4bxx warning
