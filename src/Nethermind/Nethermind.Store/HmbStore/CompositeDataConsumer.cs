@@ -53,12 +53,15 @@ namespace Nethermind.Store.HmbStore
             throw new InvalidOperationException("No data needed");
         }
 
-        public void HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(Keccak[] hashes, byte[][] data)
         {
+            int consumed = 0;
             foreach (INodeDataConsumer nodeDataConsumer in _consumers)
             {
-                nodeDataConsumer.HandleResponse(hashes, data);
+                consumed += nodeDataConsumer.HandleResponse(hashes, data);
             }
+
+            return consumed;
         }
 
         public bool NeedsData => _consumers.Any(c => c.NeedsData);

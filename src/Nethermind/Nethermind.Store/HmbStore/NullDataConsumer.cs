@@ -37,7 +37,7 @@ namespace Nethermind.Store.HmbStore
             return Array.Empty<Keccak>();
         }
 
-        public void HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(Keccak[] hashes, byte[][] data)
         {
             throw new InvalidOperationException("Should never receive response here");
         }

@@ -69,7 +69,7 @@ namespace Nethermind.Store.HmbStore
                         }
 
                         _requestedNodes.Add(new Keccak(key));
-                        _logger.Error($"Requested {key.ToHexString()}");
+                        // _logger.Error($"Requested {key.ToHexString()}");
 
                         NeedsData = true;
                         NeedMoreData?.Invoke(this, EventArgs.Empty);
@@ -78,7 +78,7 @@ namespace Nethermind.Store.HmbStore
                     else
                     {
                         _requestedNodes.Clear();
-                        _logger.Error($"Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
+                        _logger.Info($"BEAM SYNC Resolved {key.ToHexString()} - db size {_memDb.Keys.Count}");
                         return fromMem;
                     }
                 }
@@ -118,17 +118,21 @@ namespace Nethermind.Store.HmbStore
             return _requestedNodes.ToArray();
         }
 
-        public void HandleResponse(Keccak[] hashes, byte[][] data)
+        public int HandleResponse(Keccak[] hashes, byte[][] data)
         {
+            int consumed = 0;
             if (data != null)
             {
                 for (int i = 0; i < hashes.Length; i++)
                 {
                     _memDb[hashes[i].Bytes] = data[i];
+                    consumed++;
                 }
+                
             }
 
             _autoReset.Set();
+            return consumed;
         }
 
         private AutoResetEvent _autoReset = new AutoResetEvent(false);

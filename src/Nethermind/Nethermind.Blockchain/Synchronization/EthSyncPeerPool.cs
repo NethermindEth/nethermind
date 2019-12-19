@@ -463,7 +463,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void AddPeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
+            if (_logger.IsWarn) _logger.Warn($"Adding sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
@@ -486,7 +486,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void RemovePeer(ISyncPeer syncPeer)
         {
-            if (_logger.IsDebug) _logger.Debug($"Removing sync peer {syncPeer.Node:c}");
+            if (_logger.IsWarn) _logger.Warn($"Removing sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - removing {syncPeer.Node:c} is blocked.");
@@ -517,7 +517,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private PeerInfo SelectBestPeerForAllocation(SyncPeerAllocation allocation, string reason, bool isLowPriority)
         {
-            if (_logger.IsTrace) _logger.Trace($"[{reason}] Selecting best peer for {allocation}");
+            // if (_logger.IsWarn) _logger.Warn($"[{reason}] Selecting best peer for {allocation}");
             (PeerInfo Info, long TransferSpeed) bestPeer = (null, isLowPriority ? long.MaxValue : -1);
             foreach ((_, PeerInfo info) in _peers)
             {
@@ -526,13 +526,15 @@ namespace Nethermind.Blockchain.Synchronization
                     continue;
                 }
 
-                if (!info.IsInitialized || info.TotalDifficulty <= (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
+                if (!info.IsInitialized || info.TotalDifficulty < (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero))
                 {
+                    // if (_logger.IsWarn) _logger.Warn($"[{reason}] not initialized {info.IsInitialized} {info.TotalDifficulty} < {_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero}");
                     continue;
                 }
 
                 if (info.IsAllocated && info != allocation.Current)
                 {
+                    // if (_logger.IsWarn) _logger.Warn($"[{reason}] is allocated");
                     continue;
                 }
 
@@ -540,14 +542,16 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     if (DateTime.UtcNow - info.SleepingSince < _timeBeforeWakingPeerUp)
                     {
+                        if (_logger.IsWarn) _logger.Warn($"[{reason}] asleep");
                         continue;
                     }
 
                     info.SleepingSince = null;
                 }
 
-                if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))
+                if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.PeerClientType == PeerClientType.Parity)
                 {
+                    // if (_logger.IsWarn) _logger.Warn($"[{reason}] parity diff");
                     // Parity advertises a better block but never sends it back and then it disconnects after a few conversations like this
                     // Geth responds all fine here
                     // note this is only 2 difficulty difference which means that is just for the POA / Clique chains
@@ -562,9 +566,14 @@ namespace Nethermind.Blockchain.Synchronization
                 }
             }
 
+            if (_peers.Count == 0)
+            {
+                if (_logger.IsWarn) _logger.Warn($"[{reason}] count 0");
+            }
+            
             if (bestPeer.Info == null)
             {
-                if (_logger.IsTrace) _logger.Trace($"[{reason}] No peer found for ETH sync");
+                if (_logger.IsWarn) _logger.Warn($"[{reason}] No peer found for ETH sync");
             }
             else
             {

@@ -47,10 +47,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private void AdditionalConsumerOnNeedMoreData(object? sender, EventArgs e)
         {
-            _moreDataNeeded.Release(1);
+            _moreDataNeeded.Set();
         }
 
-        private Semaphore _moreDataNeeded = new Semaphore(0, 8);
+        private AutoResetEvent _moreDataNeeded = new AutoResetEvent(false);
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
@@ -75,12 +75,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (batch.IsAdditionalDataConsumer)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"!!! Handler priority batch {batch.Responses?.Length ?? 0}");
-                    _additionalConsumer.HandleResponse(batch.RequestedNodes.Select(r => r.Hash).ToArray(), batch.Responses);
+                    result = (NodeDataHandlerResult.OK, _additionalConsumer.HandleResponse(batch.RequestedNodes.Select(r => r.Hash).ToArray(), batch.Responses));
                 }
                 else
                 {
-                    if (_logger.IsWarn) _logger.Warn($"!!! Handler standard batch {batch.Responses?.Length ?? 0}");
                     result = _feed.HandleResponse(batch);    
                 }
                 
@@ -126,7 +124,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
 
                     Interlocked.Increment(ref _pendingRequests);
-                    if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
+                    // if (_logger.IsWarn) _logger.Warn($"Creating new request with {request.RequestedNodes.Length} nodes");
                     Task task = ExecuteRequest(token, request);
 #pragma warning disable 4014
                     task.ContinueWith(t =>
@@ -147,7 +145,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
             } while (_pendingRequests != 0);
 
-            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
+            // if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
         }
 
         private StateSyncBatch PrepareRequest()
@@ -157,14 +155,14 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
                 StateSyncBatch priorityBatch = new StateSyncBatch();
                 priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
-                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {priorityBatch.RequestedNodes.Length}");
+                // if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {priorityBatch.RequestedNodes.Length}");
                 priorityBatch.IsAdditionalDataConsumer = true;
                 return priorityBatch;
             }
 
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             StateSyncBatch standardBatch = _feed.PrepareRequest();
-            if (_logger.IsWarn) _logger.Warn($"!!! Standard batch {standardBatch.RequestedNodes.Length}");
+            // if (_logger.IsWarn) _logger.Warn($"!!! Standard batch {standardBatch.RequestedNodes.Length}");
             return standardBatch;
         }
 
@@ -181,9 +179,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             await _moreDataNeeded.WaitOneAsync(token);
             while (true)
             {
-                _logger.Warn("Starting HMB request loop");
+                // _logger.Warn("Starting HMB request loop");
                 await KeepSyncing(token);
-                _logger.Warn("Finished HMB request loop");
+                // _logger.Warn("Finished HMB request loop");
             }
         }
 

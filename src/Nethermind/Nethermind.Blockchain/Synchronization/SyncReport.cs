@@ -163,7 +163,7 @@ namespace Nethermind.Blockchain.Synchronization
                     WriteFullSyncReport("Full Sync");
                     break;
                 case SyncMode.HmbSync:
-                    WriteFullSyncReport("HMB Sync");
+                    WriteFullSyncReport("Beam Sync");
                     break;
                 case SyncMode.Headers:
                     WriteFullSyncReport($"Fast Sync From Block {(_syncConfig.FastBlocks ? _syncConfig.PivotNumber : "0")}");
