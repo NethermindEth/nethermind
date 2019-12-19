@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
     public class NodeDataDownloader : INodeDataDownloader
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
-        private readonly INodeDataFeed _nodeDataFeed;
+        private readonly INodeDataFeed _feed;
         private int _pendingRequests;
         private int _consumedNodesCount;
         private ILogger _logger;
@@ -36,111 +36,52 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         public NodeDataDownloader(IEthSyncPeerPool syncPeerPool, INodeDataFeed nodeDataFeed, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
-            _nodeDataFeed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
+            _feed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
-        
-        private int _lastUsefulPeerCount;
-        private int _noAllocInARow;
-        private bool _noAllocPunishment;
-
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-            SyncPeerAllocation nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace, "node sync");
+            var peer = batch.AssignedPeer.Current.SyncPeer;
+            if (peer != null)
+            {
+                var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
+                Task<byte[][]> getNodeDataTask = peer.GetNodeData(hashes, token);
+                await getNodeDataTask.ContinueWith(
+                    t =>
+                    {
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            batch.Responses = getNodeDataTask.Result;
+                        }
+                    }
+                );
+            }
+
+            (NodeDataHandlerResult Result, int NodesConsumed) result = (NodeDataHandlerResult.InvalidFormat, 0);
             try
             {
-                ISyncPeer peer = nodeSyncAllocation?.Current?.SyncPeer;
-                batch.AssignedPeer = nodeSyncAllocation;
-                if (peer != null)
+                result = _feed.HandleResponse(batch);
+                if (result.Result == NodeDataHandlerResult.BadQuality)
                 {
-                    var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
-                    Task<byte[][]> getNodeDataTask = peer.GetNodeData(hashes, token);
-                    await getNodeDataTask.ContinueWith(
-                        t =>
-                        {
-                            if (t.IsCompletedSuccessfully)
-                            {
-                                batch.Responses = getNodeDataTask.Result;
-                            }
-                        }
-                    );
-                }
-                else
-                {
-                    // _logger.Info("No alloc punishment enabled.");
-                    _noAllocInARow++;
-                    if (_noAllocInARow > 10)
-                    {
-                        _noAllocPunishment = true;
-                        if(_logger.IsInfo) _logger.Info("Adjusting useful peers");
-                        _noAllocInARow = 0;
-                    }
-                }
-
-                (NodeDataHandlerResult Result, int NodesConsumed) result = (NodeDataHandlerResult.InvalidFormat, 0);
-                try
-                {
-                    result = _nodeDataFeed.HandleResponse(batch);
-                    if (result.Result == NodeDataHandlerResult.BadQuality)
-                    {
-                        _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
-                    }
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"Error when handling response", e);
-                }
-
-                Interlocked.Add(ref _consumedNodesCount, result.NodesConsumed);
-                if (result.NodesConsumed == 0 && peer != null)
-                {
-                    _syncPeerPool.ReportNoSyncProgress(nodeSyncAllocation);
+                    _syncPeerPool.ReportBadPeer(batch.AssignedPeer);
                 }
             }
-            finally
+            catch (Exception e)
             {
-                if (nodeSyncAllocation != null)
-                {
-                    _syncPeerPool.Free(nodeSyncAllocation);
-                }
+                if (_logger.IsError) _logger.Error($"Error when handling response", e);
             }
-        }
 
-        private async Task UpdateParallelism()
-        {
-            int newUsefulPeerCount = Math.Max(0, _syncPeerPool.UsefulPeerCount - (_noAllocPunishment ? 1 : 0));
-            int difference = newUsefulPeerCount - _lastUsefulPeerCount;
-            if (difference == 0)
+            Interlocked.Add(ref _consumedNodesCount, result.NodesConsumed);
+            if (result.NodesConsumed == 0 && peer != null)
             {
-                return;
+                _syncPeerPool.ReportNoSyncProgress(batch.AssignedPeer);
             }
 
-            if (_logger.IsInfo) _logger.Info($"Node sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
-
-            if (difference > 0)
+            if (batch.AssignedPeer != null)
             {
-                _semaphore.Release(difference);
+                _syncPeerPool.Free(batch.AssignedPeer);
             }
-            else
-            {
-                HashSet<Task<bool>> allSemaphoreTasks = new HashSet<Task<bool>>();
-                for (int i = 0; i < -difference; i++)
-                {
-                    allSemaphoreTasks.Add(_semaphore.WaitAsync(5000));
-                }
-
-                foreach (Task<bool> semaphoreTask in allSemaphoreTasks)
-                {
-                    if (! await semaphoreTask)
-                    {
-                        newUsefulPeerCount++;
-                    }
-                }
-            }
-
-            _lastUsefulPeerCount = newUsefulPeerCount;
         }
 
         private async Task KeepSyncing(CancellationToken token)
@@ -152,20 +93,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     return;
                 }
 
-                await UpdateParallelism();
-                if (!await _semaphore.WaitAsync(1000, token))
-                {
-                    if (_noAllocPunishment)
-                    {
-                        _noAllocPunishment = false;
-                    }
-
-                    continue;
-                }
-                
                 StateSyncBatch request = PrepareRequest();
                 if (request.RequestedNodes.Length != 0)
-                {   
+                {
+                    request.AssignedPeer = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace, "node sync", null, 1000);
+
                     Interlocked.Increment(ref _pendingRequests);
                     if (_logger.IsTrace) _logger.Trace($"Creating new request with {request.RequestedNodes.Length} nodes");
                     Task task = ExecuteRequest(token, request);
@@ -174,38 +106,32 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 #pragma warning restore 4014
                     {
                         Interlocked.Decrement(ref _pendingRequests);
-                        _semaphore.Release();
-                    });   
+                    });
                 }
                 else
                 {
                     await Task.Delay(50);
-                    _semaphore.Release();
-                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_nodeDataFeed.TotalNodesPending} pending nodes");
+                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
                 }
             } while (_pendingRequests != 0);
 
-            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_lastUsefulPeerCount} useful peers.");
+            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeers} useful peers.");
         }
 
         private StateSyncBatch PrepareRequest()
         {
-            StateSyncBatch request = _nodeDataFeed.PrepareRequest();
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
-            return request;
+            return _feed.PrepareRequest();
         }
 
         public async Task<long> SyncNodeData(CancellationToken token, long number, Keccak rootNode)
         {
             _consumedNodesCount = 0;
-            _nodeDataFeed.SetNewStateRoot(number, rootNode);
+            _feed.SetNewStateRoot(number, rootNode);
             await KeepSyncing(token);
             return _consumedNodesCount;
         }
 
-        public bool IsFullySynced(BlockHeader header)
-        {
-            return _nodeDataFeed.IsFullySynced(header.StateRoot);
-        }
+        public bool IsFullySynced(BlockHeader header) => _feed.IsFullySynced(header.StateRoot);
     }
 }
