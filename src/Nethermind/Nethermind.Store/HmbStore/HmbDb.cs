@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
@@ -30,18 +32,36 @@ namespace Nethermind.Store.HmbStore
 
         public string Name => "Hmb";
 
+        private ConcurrentQueue<Keccak> _requestedNodes =new ConcurrentQueue<Keccak>(); 
+        
         public byte[] this[byte[] key]
         {
             get
             {
-                var fromMem = _memDb[key];
-                if (fromMem == null)
-                {
-                    NeedMoreData?.Invoke(this, EventArgs.Empty);
-                    Thread.Sleep(100);
-                }
+                // it is not possible for the item to be requested from the DB and missing in the DB unless the DB is corrupted
+                // if it is missing in the MemDb then it must exist somewhere on the web (unless the block is corrupted / invalid)
                 
-                return fromMem;
+                // we grab the node from the web through requests
+                
+                // if the block is invalid then we will be timing out for a long time
+                // in such case it would be good to have some gossip about corrupted blocks
+                // but such gossip would be cheap
+                // if we keep timing out then we would finally reject the block (but only shelve it instead of marking invalid)
+
+                while (true)
+                {
+                    var fromMem = _memDb[key];
+                    if (fromMem == null)
+                    {
+                        _requestedNodes.Enqueue(new Keccak(key));
+                        NeedsData = true;
+                        _autoReset.WaitOne();
+                    }
+                    else
+                    {
+                        return fromMem;
+                    }
+                }
             }
 
             set => _memDb[key] = value;
@@ -74,7 +94,22 @@ namespace Nethermind.Store.HmbStore
 
         public Keccak[] PrepareRequest()
         {
-            throw new NotImplementedException();
+            List<Keccak> request = new List<Keccak>();
+            while (_requestedNodes.TryDequeue(out Keccak requestedNode))
+            {
+                request.Add(requestedNode);
+            }
+
+            return request.ToArray();
         }
+
+        public void HandleResponse(Keccak[] hashes, byte[][] data)
+        {
+            _autoReset.Set();
+        }
+
+        private AutoResetEvent _autoReset = new AutoResetEvent(true);
+        
+        public bool NeedsData { get; private set; }
     }
 }

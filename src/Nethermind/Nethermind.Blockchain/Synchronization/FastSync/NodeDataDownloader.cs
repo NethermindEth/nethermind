@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync
 {
@@ -29,14 +30,16 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
     {
         private readonly IEthSyncPeerPool _syncPeerPool;
         private readonly INodeDataFeed _feed;
+        private readonly INodeDataConsumer _additionalConsumer;
         private int _pendingRequests;
         private int _consumedNodesCount;
         private ILogger _logger;
 
-        public NodeDataDownloader(IEthSyncPeerPool syncPeerPool, INodeDataFeed nodeDataFeed, ILogManager logManager)
+        public NodeDataDownloader(IEthSyncPeerPool syncPeerPool, INodeDataFeed nodeDataFeed, INodeDataConsumer additionalConsumer, ILogManager logManager)
         {
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _feed = nodeDataFeed ?? throw new ArgumentNullException(nameof(nodeDataFeed));
+            _additionalConsumer = additionalConsumer ?? throw new ArgumentNullException(nameof(additionalConsumer));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
@@ -92,7 +95,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 {
                     return;
                 }
-
+                
                 StateSyncBatch request = PrepareRequest();
                 if (request.RequestedNodes.Length != 0)
                 {
@@ -120,6 +123,15 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private StateSyncBatch PrepareRequest()
         {
+            if (_additionalConsumer.NeedsData)
+            {
+                Keccak[] hashes = _additionalConsumer.PrepareRequest();
+                StateSyncBatch priorityBatch = new StateSyncBatch();
+                priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
+                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {_pendingRequests}");    
+                return priorityBatch;
+            }
+            
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return _feed.PrepareRequest();
         }
