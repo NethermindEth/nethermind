@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.Test.Find
         public void filter_all_logs_should_return_empty_array_when_to_block_is_null()
         {
             var blockFinder = Substitute.For<IBlockFinder>();
-            _logFinder = new LogFinder(blockFinder,_receiptStorage);
+            _logFinder = new LogFinder(blockFinder, _receiptStorage);
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter);
             logs.Should().BeEmpty();
@@ -175,6 +175,17 @@ namespace Nethermind.Blockchain.Test.Find
 
             logs.Length.Should().Be(expectedCount);
         }
+        
+        [Test]
+        public void filter_by_blocks_with_limit()
+        {
+            _logFinder = new LogFinder(new BlockFinder(_blockTree),  _receiptStorage, 2);
+            var filter = FilterBuilder.New().FromLatestBlock().ToLatestBlock().Build();
+            var logs = _logFinder.FindLogs(filter);
+
+            logs.Length.Should().Be(3);
+        }
+
         
         public static IEnumerable ComplexFilterTestsData
         {

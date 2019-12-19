@@ -29,6 +29,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Facade.Config;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -98,7 +99,11 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullTxPool.Instance,
                 NullReceiptStorage.Instance,
                 NullFilterStore.Instance,
-                NullFilterManager.Instance, new DevWallet(new WalletConfig(), LimboLogs.Instance), transactionProcessor, new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance));
+                NullFilterManager.Instance, 
+                new DevWallet(new WalletConfig(), LimboLogs.Instance), 
+                transactionProcessor, 
+                new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance),
+                new RpcConfig());
             
             _ethModule = new EthModule(LimboLogs.Instance, bridge);
         }

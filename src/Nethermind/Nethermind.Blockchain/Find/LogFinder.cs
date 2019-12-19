@@ -21,43 +21,48 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 
 namespace Nethermind.Blockchain.Find
 {
     public class LogFinder : ILogFinder
     {
         private readonly IReceiptStorage _receiptStorage;
+        private readonly int _maxBlockDepth;
         private readonly IBlockFinder _blockFinder;
-        private const long PendingBlockNumber = long.MaxValue;
-
-        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage)
+        
+        public LogFinder(IBlockFinder blockFinder, IReceiptStorage receiptStorage, int maxBlockDepth = 1000)
         {
-            _receiptStorage = receiptStorage;
-            _blockFinder = blockFinder;
+            _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
+            _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _maxBlockDepth = maxBlockDepth;
         }
 
         public FilterLog[] FindLogs(LogFilter filter)
         {
-            var toBlock = _blockFinder.GetBlock(filter.ToBlock);
-            if (toBlock is null)
+            int count = 0;
+            var block = _blockFinder.GetHeader(filter.ToBlock);
+            if (block is null)
             {
                 return Array.Empty<FilterLog>();
             }
             
-            var fromBlock = _blockFinder.GetBlock(filter.FromBlock);
+            var fromBlock = _blockFinder.GetHeader(filter.FromBlock);
             List<FilterLog> results = new List<FilterLog>();
 
-            while (toBlock.Number >= (fromBlock?.Number ?? long.MaxValue))
+            while (count < _maxBlockDepth && block.Number >= (fromBlock?.Number ?? long.MaxValue))
             {
-                if (filter.Matches(toBlock.Bloom))
+                if (filter.Matches(block.Bloom))
                 {
-                    FindLogsInBlock(filter, toBlock, results);
+                    FindLogsInBlock(filter, _blockFinder.FindBlock(block.Hash), results);
                 }
 
-                if (!TryGetParentBlock(toBlock, out toBlock))
+                if (!TryGetParentBlock(block, out block))
                 {
                     break;
                 }
+
+                count++;
             }
 
             return results.ToArray();
@@ -94,7 +99,7 @@ namespace Nethermind.Blockchain.Find
             }
         }
 
-        private bool TryGetParentBlock(Block currentBlock, out Block parentBlock)
+        private bool TryGetParentBlock(BlockHeader currentBlock, out BlockHeader parentBlock)
         {
             if (currentBlock.IsGenesis)
             {
@@ -103,7 +108,7 @@ namespace Nethermind.Blockchain.Find
             }
             else
             {
-                parentBlock = _blockFinder.FindBlock(currentBlock.ParentHash);
+                parentBlock = _blockFinder.FindHeader(currentBlock.ParentHash);
                 return true;
             }
         }
