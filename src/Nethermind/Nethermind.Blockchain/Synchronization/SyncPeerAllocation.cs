@@ -27,6 +27,8 @@ namespace Nethermind.Blockchain.Synchronization
         public string Description { get; }
         public PeerInfo Current { get; private set; }
 
+        public bool HasPeer => Current != null;
+
         public SyncPeerAllocation(PeerInfo initialPeer, string description)
         {
             lock (_allocationLock)

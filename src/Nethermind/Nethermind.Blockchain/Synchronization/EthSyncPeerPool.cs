@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         private const decimal _minDiffPercentageForSpeedSwitch = 0.10m;
         private const int _minDiffForSpeedSwitch = 10;
-        
+
         private readonly ILogger _logger;
         private readonly IBlockTree _blockTree;
         private readonly INodeStatsManager _stats;
@@ -55,14 +55,14 @@ namespace Nethermind.Blockchain.Synchronization
         {
             ReportNoSyncProgress(allocation?.Current);
         }
-        
+
         public void ReportNoSyncProgress(PeerInfo peerInfo)
         {
             if (peerInfo == null)
             {
                 return;
             }
-            
+
             if (_logger.IsDebug) _logger.Debug($"No sync progress reported with {peerInfo}");
             peerInfo.SleepingSince = DateTime.UtcNow;
         }
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Synchronization
         {
             ReportInvalid(allocation?.Current);
         }
-        
+
         public void ReportInvalid(PeerInfo peerInfo)
         {
             if (peerInfo != null)
@@ -233,7 +233,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if(_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefulness");
+            if (_logger.IsTrace) _logger.Trace($"Reviewing {PeerCount} peer usefulness");
 
             int peersDropped = 0;
             _lastUselessDrop = DateTime.UtcNow;
@@ -247,7 +247,7 @@ namespace Nethermind.Blockchain.Synchronization
                     // as long as we are behind we can use the stuck peers
                     continue;
                 }
-                
+
                 if (peerInfo.HeadNumber == 0
                     && ourNumber != 0
                     && !peerInfo.SyncPeer.ClientId.Contains("Nethermind"))
@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain.Synchronization
                 worstPeer?.SyncPeer.Disconnect(DisconnectReason.TooManyPeers, "PEER REVIEW / LATENCY");
             }
 
-            if(_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
+            if (_logger.IsDebug) _logger.Debug($"Dropped {peersDropped} useless peers");
         }
 
         public async Task StopAsync()
@@ -639,9 +639,58 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public SyncPeerAllocation Borrow(string description)
+        public async Task<SyncPeerAllocation> BorrowAsync(BorrowOptions borrowOptions, string description, long? minNumber = null, int timeoutMilliseconds = 0)
         {
-            return Borrow(BorrowOptions.None, description);
+            int tryCount = 1;
+            ulong startTime = Timestamper.Default.EpochMilliseconds;
+            SyncPeerAllocation allocation = new SyncPeerAllocation(description);
+            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number;
+
+            if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
+            {
+                allocation.CanBeReplaced = false;
+            }
+
+            while (true)
+            {
+                PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW", (borrowOptions & BorrowOptions.LowPriority) == BorrowOptions.LowPriority);
+                if (bestPeer != null)
+                {
+                    allocation.ReplaceCurrent(bestPeer);
+                    return allocation;
+                }
+                else
+                {
+                    if (timeoutMilliseconds == 0)
+                    {
+                        return allocation;
+                    }
+
+                    ulong now = Timestamper.Default.EpochMilliseconds;
+                    if (now - startTime > (ulong) timeoutMilliseconds)
+                    {
+                        return allocation;
+                    }
+
+                    if (tryCount++ == 1)
+                    {
+                        await Task.Yield();
+                    }
+                    else
+                    {
+                        // this can be much better
+                        // we can add allocation to List alongside with a ManualResetEventSlim
+                        // whenever a new peer arrived we go through the queue and if we allocate
+                        // we signal on the event
+                        await Task.Delay(10 * tryCount);
+                    }
+                }
+            }
+        }
+
+        public SyncPeerAllocation Borrow(string description = "")
+        {
+            return Borrow(BorrowOptions.None, description, null);
         }
 
         public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description, long? minNumber = null)

@@ -552,5 +552,36 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             _blockTree.NewHeadBlock += Raise.EventWith(new object(), new BlockEventArgs(Build.A.Block.WithTotalDifficulty(1).TestObject));
         }
+        
+        [Test]
+        public async Task Can_borrow_async_many()
+        {
+            var peer = new SimpleSyncPeerMock(TestItem.PublicKeyA);
+            var peer2 = new SimpleSyncPeerMock(TestItem.PublicKeyB);
+
+            _pool.Start();
+            _pool.AddPeer(peer);
+            _pool.AddPeer(peer2);
+            await Task.Delay(200);
+
+            var allocation1 = _pool.BorrowAsync(BorrowOptions.None, string.Empty, null, 1000);
+            var allocation2 = _pool.BorrowAsync(BorrowOptions.None, string.Empty, null, 1000);
+            var allocation3 = _pool.BorrowAsync(BorrowOptions.None, string.Empty, null, 1000);
+            
+            await Task.WhenAll(allocation1, allocation2, allocation3);
+
+            int allocatedCount = allocation1.Result.Current != null ? 1 : 0;
+            allocatedCount += allocation2.Result.Current != null ? 1 : 0;
+            allocatedCount += allocation3.Result.Current != null ? 1 : 0;
+            
+            Assert.AreEqual(2, allocatedCount);
+            
+            if(allocation1.Result.Current != null) _pool.Free(allocation1.Result);
+            if(allocation2.Result.Current != null) _pool.Free(allocation2.Result);
+            if(allocation3.Result.Current != null) _pool.Free(allocation3.Result);
+            Assert.Null(allocation1.Result.Current, "null A");
+            Assert.Null(allocation2.Result.Current, "null B");
+            Assert.Null(allocation3.Result.Current, "null B");
+        }
     }
 }
