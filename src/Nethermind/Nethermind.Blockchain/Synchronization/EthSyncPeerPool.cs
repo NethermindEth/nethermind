@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -329,14 +329,14 @@ namespace Nethermind.Blockchain.Synchronization
             info.SleepingSince = null;
             _signals.Set();
         }
-        
+
         public void WakeUpAll()
         {
             foreach (var peer in _peers)
             {
                 WakeUpPeer(peer.Value);
             }
-            
+
             _signals.Set();
         }
 
@@ -406,7 +406,7 @@ namespace Nethermind.Blockchain.Synchronization
                                     allocation.Refresh();
                                 }
                             }
-                            
+
                             _signals.Set();
                         }
                     }
@@ -689,23 +689,12 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         return allocation;
                     }
-
-                    if (tryCount++ == 1)
-                    {
-                        await Task.Yield();
-                    }
-                    else
-                    {
-                        // this can be much better
-                        // we can add allocation to List alongside with a ManualResetEventSlim
-                        // whenever a new peer arrived we go through the queue and if we allocate
-                        // we signal on the event
-                        await _signals.WaitOneAsync(1 * tryCount, CancellationToken.None);
-                    }
+                    
+                    await _signals.WaitOneAsync(10 * tryCount, CancellationToken.None);
                 }
             }
         }
-        
+
         private ManualResetEvent _signals = new ManualResetEvent(true);
 
         public SyncPeerAllocation Borrow(string description = "")

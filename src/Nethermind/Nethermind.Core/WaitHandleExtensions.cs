@@ -25,7 +25,7 @@ namespace Nethermind.Core
         public static async Task<bool> WaitOneAsync(this WaitHandle handle, int millisecondsTimeout, CancellationToken cancellationToken)
         {
             RegisteredWaitHandle registeredHandle = null;
-            CancellationTokenRegistration tokenRegistration = default(CancellationTokenRegistration);
+            CancellationTokenRegistration tokenRegistration = default;
             try
             {
                 var tcs = new TaskCompletionSource<bool>();
@@ -42,8 +42,7 @@ namespace Nethermind.Core
             }
             finally
             {
-                if (registeredHandle != null)
-                    registeredHandle.Unregister(null);
+                registeredHandle?.Unregister(null);
                 tokenRegistration.Dispose();
             }
         }
