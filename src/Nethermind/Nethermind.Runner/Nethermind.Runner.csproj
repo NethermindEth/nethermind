@@ -11,10 +11,6 @@
     <WarningsAsErrors />
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="GitVersionTask" Version="5.1.2">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
     <PackageReference Include="NLog.Targets.Seq" Version="1.1.0" />
     <PackageReference Include="NLog" Version="4.6.8" />
@@ -69,6 +65,9 @@
     <Content Include="configs\*.cfg">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="git-hash*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
   </ItemGroup>
@@ -89,4 +88,7 @@
     <None Remove="out\**" />
     <None Remove="keystore\**" />
   </ItemGroup>
+  <Target Name="StoreGitHash" BeforeTargets="Build">
+    <Exec Command="git describe --tags &gt; git-hash" />
+  </Target>
  </Project>
