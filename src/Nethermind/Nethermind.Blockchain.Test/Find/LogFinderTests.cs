@@ -104,8 +104,8 @@ namespace Nethermind.Blockchain.Test.Find
             var logFilter = AllBlockFilter().Build();
             var logs = _logFinder.FindLogs(logFilter);
             logs.Should().BeEmpty();
-            blockFinder.Received().GetBlock(logFilter.ToBlock);
-            blockFinder.DidNotReceive().GetBlock(logFilter.FromBlock);
+            blockFinder.Received().GetHeader(logFilter.ToBlock);
+            blockFinder.DidNotReceive().GetHeader(logFilter.FromBlock);
         }
         
         public static IEnumerable FilterByAddressTestsData
