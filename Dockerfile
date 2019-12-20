@@ -2,6 +2,7 @@ FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
 
 RUN git clone https://github.com/NethermindEth/nethermind.git nethermind/
 RUN cd nethermind/ && git submodule update --init src/Dirichlet src/rocksdb-sharp
+RUN cd nethermind/src/Nethermind/Nethermind.Runner && git describe --tags $(git rev-list --tags --max-count=1) > git-hash
 RUN cd nethermind/ && dotnet publish src/Nethermind/Nethermind.Runner -c release -o out
 
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.1
