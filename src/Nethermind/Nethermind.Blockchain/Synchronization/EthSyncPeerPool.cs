@@ -324,6 +324,19 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
+        private static void WakeUpPeer(PeerInfo info)
+        {
+            info.SleepingSince = null;
+        }
+        
+        public void WakeUpAll()
+        {
+            foreach (var peer in _peers)
+            {
+                WakeUpPeer(peer.Value);
+            }
+        }
+
         private static int InitTimeout = 10000;
 
         private async Task RefreshPeerInfo(PeerInfo peerInfo, CancellationToken token)
@@ -543,7 +556,7 @@ namespace Nethermind.Blockchain.Synchronization
                         continue;
                     }
 
-                    info.SleepingSince = null;
+                    WakeUpPeer(info);
                 }
 
                 if (info.TotalDifficulty - (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero) <= 2 && info.SyncPeer.ClientId.Contains("Parity"))

@@ -89,6 +89,8 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task KeepSyncing(CancellationToken token)
         {
+            bool oneMoreTry = false;
+            
             do
             {
                 if (token.IsCancellationRequested)
@@ -96,6 +98,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     return;
                 }
                 
+                oneMoreTry = false;
                 StateSyncBatch request = PrepareRequest();
                 if (request.RequestedNodes.Length != 0)
                 {
@@ -109,6 +112,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 #pragma warning restore 4014
                     {
                         Interlocked.Decrement(ref _pendingRequests);
+                        if (request.RequestedNodes.Length != 0)
+                        {
+                            oneMoreTry = true;
+                        }
                     });
                 }
                 else
@@ -116,7 +123,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     await Task.Delay(50);
                     if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests, {_feed.TotalNodesPending} pending nodes");
                 }
-            } while (_pendingRequests != 0);
+            } while (_pendingRequests != 0 || oneMoreTry);
 
             if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeers} useful peers.");
         }
