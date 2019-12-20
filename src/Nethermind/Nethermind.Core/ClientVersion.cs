@@ -15,9 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Linq;
-using System.Reflection;
+using System.IO;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 
 namespace Nethermind.Core
 {
@@ -31,11 +31,10 @@ namespace Nethermind.Core
                 int indexOfHash = osDescription.IndexOf('#');
                 osDescription = osDescription.Substring(0, Math.Max(0, indexOfHash - 1));
             }
+            string date = DateTime.Now.ToString("yyyyMMdd");
+            string gitTag = File.Exists("git-hash") ? File.ReadAllText("git-hash").Remove(5,2).Trim() : string.Empty;
 
-            Assembly assembly = typeof(ClientVersion).Assembly;
-            AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
-            Version = versionAttribute?.InformationalVersion;
-            Description = $"Nethermind/v{Version}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+            Description = $"Nethermind/v{gitTag}-{date}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
         
         public static string Version { get; }
