@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Synchronization
                     break;
                 }
 
-                headersToRequest = Math.Min(headersToRequest, BlockDownloaderLimits.MaxHeadersForPeer(bestPeer));
+                headersToRequest = Math.Min(headersToRequest, bestPeer.MaxHeadersPerRequest());
 
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
@@ -332,7 +332,7 @@ namespace Nethermind.Blockchain.Synchronization
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, BlockDownloaderLimits.MaxBodiesForPeer(peer));
+                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxBodiesPerRequest());
                 Task<BlockBody[]> getBodiesRequest = peer.SyncPeer.GetBlockBodies(hashesToRequest, cancellation);
                 await getBodiesRequest.ContinueWith(t => DownloadFailHandler(getBodiesRequest, "bodies"));
                 BlockBody[] result = getBodiesRequest.Result;
@@ -350,7 +350,7 @@ namespace Nethermind.Blockchain.Synchronization
             int offset = 0;
             while (offset != context.NonEmptyBlockHashes.Count)
             {
-                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, BlockDownloaderLimits.MaxReceiptsForPeer(peer));
+                IList<Keccak> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
                 Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(t => DownloadFailHandler(request, "bodies"));
 

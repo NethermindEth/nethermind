@@ -19,9 +19,9 @@ using Nethermind.Blockchain.Synchronization.SyncLimits;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public static class BlockDownloaderLimits
+    public static class PeerInfoExtensions
     {
-        public static int MaxBodiesForPeer(PeerInfo peer)
+        public static int MaxBodiesPerRequest(this PeerInfo peer)
         {
             return peer.PeerClientType switch
             {
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.Synchronization
             };
         }
 
-        public static int MaxReceiptsForPeer(PeerInfo peer)
+        public static int MaxReceiptsPerRequest(this PeerInfo peer)
         {
             return peer.PeerClientType switch
             {
@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Synchronization
             };
         }
         
-        public static int MaxHeadersForPeer(PeerInfo peer)
+        public static int MaxHeadersPerRequest(this PeerInfo peer)
         {
             return peer.PeerClientType switch
             {
