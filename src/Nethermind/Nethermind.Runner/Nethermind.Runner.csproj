@@ -89,6 +89,6 @@
     <None Remove="keystore\**" />
   </ItemGroup>
   <Target Name="StoreGitHash" BeforeTargets="Build">
-    <Exec Command="git describe --tags $(git rev-list --tags --max-count=1) &gt; git-hash" />
+    <Exec Command="git describe --tags &gt; git-hash" />
   </Target>
  </Project>
