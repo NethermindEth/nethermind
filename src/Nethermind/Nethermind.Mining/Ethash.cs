@@ -249,7 +249,7 @@ namespace Nethermind.Mining
                 HashSet<DataSetWithAccessTime> removed = null;
                 foreach (DataSetWithAccessTime dataSetWithAccessTime in _cacheMonitor)
                 {
-                    if (now - dataSetWithAccessTime.AccessTime > 15)
+                    if (now - dataSetWithAccessTime.AccessTime > 180)
                     {
                         _cacheCache.Delete(dataSetWithAccessTime.Epoch);
                         if (removed == null)
