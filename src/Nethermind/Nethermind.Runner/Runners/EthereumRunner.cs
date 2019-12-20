@@ -62,6 +62,7 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Facade.Config;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
@@ -284,6 +285,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
             var ndmConfig = _configProvider.GetConfig<INdmConfig>();
+            var rpcConfig = _configProvider.GetConfig<IRpcConfig>();
             if (ndmConfig.Enabled && !(_ndmInitializer is null) && ndmConfig.ProxyEnabled)
             {
                 var proxyFactory = new EthModuleProxyFactory(_ethJsonRpcClientProxy, _wallet);
@@ -293,14 +295,14 @@ namespace Nethermind.Runner.Runners
             else
             {
                 EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree,
-                    _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, _logManager);
+                    _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, rpcConfig, _logManager);
                 _rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_dbProvider, _blockTree, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, _configProvider, _specProvider, _logManager);
             _rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
             
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, _logManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, rpcConfig, _logManager);
             _rpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
             if (_sealValidator is CliqueSealValidator)
