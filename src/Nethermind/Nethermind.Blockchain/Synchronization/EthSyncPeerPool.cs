@@ -324,9 +324,10 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private static void WakeUpPeer(PeerInfo info)
+        private void WakeUpPeer(PeerInfo info)
         {
             info.SleepingSince = null;
+            _signals.Set();
         }
         
         public void WakeUpAll()
@@ -335,6 +336,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 WakeUpPeer(peer.Value);
             }
+            
+            _signals.Set();
         }
 
         private static int InitTimeout = 10000;
@@ -403,6 +406,8 @@ namespace Nethermind.Blockchain.Synchronization
                                     allocation.Refresh();
                                 }
                             }
+                            
+                            _signals.Set();
                         }
                     }
                     finally
@@ -695,11 +700,13 @@ namespace Nethermind.Blockchain.Synchronization
                         // we can add allocation to List alongside with a ManualResetEventSlim
                         // whenever a new peer arrived we go through the queue and if we allocate
                         // we signal on the event
-                        await Task.Delay(10 * tryCount);
+                        await _signals.WaitOneAsync(1 * tryCount, CancellationToken.None);
                     }
                 }
             }
         }
+        
+        private ManualResetEvent _signals = new ManualResetEvent(true);
 
         public SyncPeerAllocation Borrow(string description = "")
         {
@@ -743,6 +750,8 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 _logger.Warn($"Peer allocations leakage - {_allocations.Count}");
             }
+
+            _signals.Set();
         }
     }
 }
