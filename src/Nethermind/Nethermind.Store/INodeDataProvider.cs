@@ -14,21 +14,19 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Config;
+using System;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Store
 {
-    [ConfigCategory(Description = "Configuration of the synchronization modes.")]
-    public class SyncConfig : ISyncConfig
+    public interface INodeDataConsumer
     {
-        public bool FastBlocks { get; set; } = false;
-        public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool BeamSyncEnabled { get; set; } = false;
-        public bool FastSync { get; set; }
-        public bool DownloadBodiesInFastSync { get; set; } = true;
-        public bool DownloadReceiptsInFastSync { get; set; } = true;
-        public string PivotTotalDifficulty { get; set; }
-        public string PivotNumber { get; set;}
-        public string PivotHash { get; set;}
+        event EventHandler NeedMoreData;
+
+        Keccak[] PrepareRequest();
+        
+        void HandleResponse(Keccak[] hashes, byte[][] data);
+        
+        bool NeedsData { get; }
     }
 }

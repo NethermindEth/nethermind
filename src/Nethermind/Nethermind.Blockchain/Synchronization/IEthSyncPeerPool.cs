@@ -28,6 +28,8 @@ namespace Nethermind.Blockchain.Synchronization
         
         SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description = "", long? minNumber = null);
         
+        Task<SyncPeerAllocation> BorrowAsync(BorrowOptions borrowOptions, string description = "", long? minNumber = null, int timeoutMilliseconds = 0);
+        
         SyncPeerAllocation Borrow(string description = "");
         
         void Free(SyncPeerAllocation syncPeerAllocation);
@@ -65,5 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
         void EnsureBest();
         
         void ReportBadPeer(SyncPeerAllocation batchAssignedPeer);
+        
+        void WakeUpAll();
     }
 }

@@ -24,17 +24,22 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture]
+    [TestFixture(true)]
+    [TestFixture(false)]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
         private long _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
 
         protected override long BlockNumber => _blockNumber;
 
+        public VmCodeDepositTests(bool useBeamSync)
+        {
+            UseBeamSync = useBeamSync;
+        }
+        
         [SetUp]
         public override void Setup()
         {
-            base.Setup();
             _blockNumber = MainNetSpecProvider.ByzantiumBlockNumber;
         }
         

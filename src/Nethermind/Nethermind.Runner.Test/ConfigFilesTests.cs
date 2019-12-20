@@ -59,7 +59,8 @@ namespace Nethermind.Runner.Test
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual(config.FastSync, fastSyncEnabled);
+            Assert.AreEqual(fastSyncEnabled, config.FastSync);
+            Assert.AreEqual(false, config.BeamSyncEnabled);
         }
         
         [TestCase("ropsten_archive.cfg", true)]
