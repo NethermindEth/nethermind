@@ -20,9 +20,9 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Store.HmbStore
+namespace Nethermind.Store.BeamSyncStore
 {
-    public class HmbDb : IDb, INodeDataConsumer
+    public class BeamSyncDb : IDb, INodeDataConsumer
     {
         private MemDb _memDb = new MemDb();
 
@@ -30,7 +30,7 @@ namespace Nethermind.Store.HmbStore
         {
         }
 
-        public string Name => "Hmb";
+        public string Name => "BeamSyncDb";
 
         private ConcurrentQueue<Keccak> _requestedNodes =new ConcurrentQueue<Keccak>(); 
         

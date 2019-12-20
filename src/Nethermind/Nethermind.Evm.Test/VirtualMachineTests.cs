@@ -27,9 +27,9 @@ namespace Nethermind.Evm.Test
     [TestFixture(false)]
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
-        public VirtualMachineTests(bool useHmb)
+        public VirtualMachineTests(bool useBeamSync)
         {
-            UseHmb = useHmb;
+            UseBeamSync = useBeamSync;
         }
         
         [Test]

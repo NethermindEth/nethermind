@@ -26,7 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.HmbStore;
+using Nethermind.Store.BeamSyncStore;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ITransactionProcessor _processor;
         private ISnapshotableDb _stateDb;
-        protected bool UseHmb { get; set; }
+        protected bool UseBeamSync { get; set; }
 
         protected IVirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
@@ -56,10 +56,10 @@ namespace Nethermind.Evm.Test
         {
             ILogManager logger = LimboLogs.Instance;
 
-            ISnapshotableDb hmbDb = new StateDb(new HmbDb());
-            IDb hmbCodeDb = new HmbDb();
-            IDb codeDb = UseHmb ? hmbCodeDb : new StateDb();
-            _stateDb = UseHmb ? hmbDb : new StateDb();
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb());
+            IDb beamSyncCodeDb = new BeamSyncDb();
+            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
+            _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);

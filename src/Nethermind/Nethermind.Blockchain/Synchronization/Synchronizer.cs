@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Synchronization
                         case SyncMode.Full:
                             syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
                             break;
-                        case SyncMode.HmbSync:
+                        case SyncMode.Beam:
                             syncProgressTask = _blockDownloader.DownloadBlocks(bestPeer, 0, linkedCancellation.Token);
                             break;
                         case SyncMode.NotStarted:

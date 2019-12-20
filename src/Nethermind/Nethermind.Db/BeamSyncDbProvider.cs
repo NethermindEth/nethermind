@@ -16,22 +16,21 @@
 
 using Nethermind.Db.Config;
 using Nethermind.Db.Databases;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
-using Nethermind.Store.HmbStore;
+using Nethermind.Store.BeamSyncStore;
 
 namespace Nethermind.Db
 {
-    public class HmbDbProvider : IDbProvider
+    public class BeamSyncDbProvider : IDbProvider
     {
-        public HmbDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
+        public BeamSyncDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
         {
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
             HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
             BlockInfosDb = new BlockInfosRocksDb(basePath, dbConfig, logManager);
-            StateDb = new StateDb(new HmbDb());
-            CodeDb = new StateDb(new HmbDb());
+            StateDb = new StateDb(new BeamSyncDb());
+            CodeDb = new StateDb(new BeamSyncDb());
             PendingTxsDb = new PendingTxsRocksDb(basePath, dbConfig, logManager);
             ConfigsDb = new ConfigsRocksDb(basePath, dbConfig, logManager);
             EthRequestsDb = new EthRequestsRocksDb(basePath, dbConfig, logManager);

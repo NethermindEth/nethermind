@@ -29,7 +29,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
-using Nethermind.Store.HmbStore;
+using Nethermind.Store.BeamSyncStore;
 using NSubstitute;
 using NUnit.Framework;
 

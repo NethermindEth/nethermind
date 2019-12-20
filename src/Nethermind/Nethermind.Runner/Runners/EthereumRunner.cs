@@ -101,7 +101,7 @@ using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
-using Nethermind.Store.HmbStore;
+using Nethermind.Store.BeamSyncStore;
 using Nethermind.Store.Repositories;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
@@ -424,9 +424,9 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            if (_syncConfig.HmbSync)
+            if (_syncConfig.BeamSyncEnabled)
             {
-                _dbProvider = new HmbDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
+                _dbProvider = new BeamSyncDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
             }
             else
             {

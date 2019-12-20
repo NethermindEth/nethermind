@@ -39,7 +39,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Store;
-using Nethermind.Store.HmbStore;
+using Nethermind.Store.BeamSyncStore;
 using Nethermind.Store.Repositories;
 using NUnit.Framework;
 

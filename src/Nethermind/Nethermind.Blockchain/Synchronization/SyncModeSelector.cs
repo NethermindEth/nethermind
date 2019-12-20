@@ -53,11 +53,11 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (_syncConfig.HmbSync)
+            if (_syncConfig.BeamSyncEnabled)
             {
-                if (Current != SyncMode.HmbSync)
+                if (Current != SyncMode.Beam)
                 {
-                    ChangeSyncMode(SyncMode.HmbSync);
+                    ChangeSyncMode(SyncMode.Beam);
                 }
 
                 return;

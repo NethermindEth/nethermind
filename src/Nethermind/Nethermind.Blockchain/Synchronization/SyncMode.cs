@@ -24,7 +24,7 @@ namespace Nethermind.Blockchain.Synchronization
         Headers,
         StateNodes,
         Full,
-        HmbSync,
+        Beam,
         WaitForProcessor
     }
 }

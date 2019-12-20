@@ -32,9 +32,9 @@ namespace Nethermind.Evm.Test
 
         protected override long BlockNumber => _blockNumber;
 
-        public VmCodeDepositTests(bool useHmb)
+        public VmCodeDepositTests(bool useBeamSync)
         {
-            UseHmb = useHmb;
+            UseBeamSync = useBeamSync;
         }
         
         [SetUp]

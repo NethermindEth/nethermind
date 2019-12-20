@@ -18,7 +18,7 @@ using System;
 using System.Threading;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Store.HmbStore
+namespace Nethermind.Store.BeamSyncStore
 {
     public class NullDataConsumer : INodeDataConsumer
     {
