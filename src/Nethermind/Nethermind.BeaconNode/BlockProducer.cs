@@ -113,7 +113,7 @@ namespace Nethermind.BeaconNode
                 parentBlock = headBlock!;
                 if (parentBlock.Slot < previousSlot)
                 {
-                    if (_logger.IsDebug()) Log.NewBlockSkippedSlots(_logger, slot, randaoReveal, parentBlock.Slot, null);
+                    if (_logger.IsDebug()) LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, parentBlock.Slot, null);
                 }
                 parentState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
                 parentRoot = head;

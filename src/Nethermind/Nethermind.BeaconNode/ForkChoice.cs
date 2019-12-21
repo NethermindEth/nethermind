@@ -26,6 +26,7 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -212,6 +213,8 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public async Task OnAttestationAsync(IStore store, Attestation attestation)
         {
+            if (_logger.IsInfo()) Log.OnAttestation(_logger, attestation, null);
+            
             InitialValues initialValues = _initialValueOptions.CurrentValue;
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
 
@@ -269,7 +272,7 @@ namespace Nethermind.BeaconNode
             ulong attestationDataSlotTime = targetState!.GenesisTime + ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
             if (store.Time < attestationDataSlotTime)
             {
-                throw new Exception($"Ättestation data time {attestationDataSlotTime} should not be larger than the store time {store.Time}).");
+                throw new Exception($"Attestation data time {attestationDataSlotTime} should not be larger than the store time {store.Time}).");
             }
 
             // Get state at the `target` to validate attestation and calculate the committees
@@ -296,6 +299,10 @@ namespace Nethermind.BeaconNode
 
         public async Task OnBlockAsync(IStore store, BeaconBlock block)
         {
+            Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            
+            if (_logger.IsInfo()) Log.OnBlock(_logger, signingRoot, block, null);
+            
             // Make a copy of the state to avoid mutability issues
             BeaconState parentState = await store.GetBlockStateAsync(block.ParentRoot).ConfigureAwait(false);
             BeaconState preState = BeaconState.Clone(parentState);
@@ -308,7 +315,6 @@ namespace Nethermind.BeaconNode
             }
 
             // Add new block to the store
-            Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
             await store.SetBlockAsync(signingRoot, block).ConfigureAwait(false);
 
             // Check block is a descendant of the finalized block
@@ -374,7 +380,9 @@ namespace Nethermind.BeaconNode
                 return;
             }
             Epoch currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            _logger.LogDebug("New epoch {Epoch} at time {Time:n0}", currentEpoch, store.Time);
+
+            if (_logger.IsInfo()) Log.OnTickNewEpoch(_logger, currentEpoch, currentSlot, store.Time, null);
+
             // Update store.justified_checkpoint if a better checkpoint is known
             if (store.BestJustifiedCheckpoint.Epoch > store.JustifiedCheckpoint.Epoch)
             {
