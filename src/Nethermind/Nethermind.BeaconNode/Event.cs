@@ -21,9 +21,9 @@ namespace Nethermind.BeaconNode
     internal static class Event
     {
         // 1bxx preliminary
-        public static readonly EventId WorkerStarted = new EventId(1000, nameof(WorkerStarted));
-        public static readonly EventId TryGenesis = new EventId(1100, nameof(TryGenesis));
-        public static readonly EventId InitializeBeaconState = new EventId(1101, nameof(InitializeBeaconState));
+//        public static readonly EventId WorkerStarted = new EventId(1000, nameof(WorkerStarted));
+//        public static readonly EventId TryGenesis = new EventId(1100, nameof(TryGenesis));
+//        public static readonly EventId InitializeBeaconState = new EventId(1101, nameof(InitializeBeaconState));
 
         // 2bxx completion
         //public static readonly EventId ProcessDeposit = new EventId(2000, nameof(ProcessDeposit));

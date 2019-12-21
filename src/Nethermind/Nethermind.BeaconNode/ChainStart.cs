@@ -42,7 +42,7 @@ namespace Nethermind.BeaconNode
         {
             return await Task.Run(() =>
             {
-                if (_logger.IsDebug()) _logger.LogDebug(Event.TryGenesis, "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.", eth1BlockHash, eth1Timestamp, deposits.Count);
+                if (_logger.IsDebug()) LogDebug.TryGenesis(_logger, eth1BlockHash, eth1Timestamp, deposits.Count, null);
 
                 BeaconState candidateState = _genesis.InitializeBeaconStateFromEth1(eth1BlockHash, eth1Timestamp, deposits);
                 if (_genesis.IsValidGenesisState(candidateState))

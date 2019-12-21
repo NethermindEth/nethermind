@@ -22,6 +22,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -75,11 +76,9 @@ namespace Nethermind.BeaconNode
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            string version = _clientVersion.Description;
-            string environmentName = _environment.EnvironmentName;
-            string configName = _configuration[ConfigKey];
-            _logger.LogInformation(Event.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
-                version, environmentName, configName, Thread.CurrentThread.ManagedThreadId);
+            if (_logger.IsInfo())
+                Log.WorkerStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
+                    _configuration[ConfigKey], Thread.CurrentThread.ManagedThreadId, null);
 
             await _nodeStart.InitializeNodeAsync();
 

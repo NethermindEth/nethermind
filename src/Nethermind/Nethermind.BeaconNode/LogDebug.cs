@@ -139,7 +139,13 @@ namespace Nethermind.BeaconNode
                 new EventId(3052, nameof(PenaltyForValidator)),
                 "Penalty for validator {ValidatorIndex}: {PenaltyName} -{Penalty}.");
 
-        
+        // 31xx
+
+        public static readonly Action<ILogger, Hash32, ulong, int, Exception?> TryGenesis =
+            LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Debug,
+                new EventId(3100, nameof(TryGenesis)),
+                "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
+
         // 32xx debug - block producer
 
         public static readonly Action<ILogger, Slot, BlsSignature, Slot, Exception?> NewBlockSkippedSlots =
