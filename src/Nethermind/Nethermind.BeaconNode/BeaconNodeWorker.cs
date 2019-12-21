@@ -80,35 +80,51 @@ namespace Nethermind.BeaconNode
                 Log.WorkerExecuteStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
                     _configuration[ConfigKey], Thread.CurrentThread.ManagedThreadId, null);
 
-            await _nodeStart.InitializeNodeAsync();
-
-            IStore? store = null;
-            while (!stoppingToken.IsCancellationRequested && !_stopped)
+            try
             {
-                DateTimeOffset clockTime = _clock.UtcNow();
-                if (store == null)
+                await _nodeStart.InitializeNodeAsync();
+
+                IStore? store = null;
+                while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
-                    if (_storeProvider.TryGetStore(out store))
+                    try
                     {
-                        if (_logger.IsInfo())
-                            Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime,
-                                Thread.CurrentThread.ManagedThreadId, null);
+                        DateTimeOffset clockTime = _clock.UtcNow();
+                        if (store == null)
+                        {
+                            if (_storeProvider.TryGetStore(out store))
+                            {
+                                if (_logger.IsInfo())
+                                    Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime,
+                                        Thread.CurrentThread.ManagedThreadId, null);
+                            }
+                        }
+
+                        ulong time = (ulong) clockTime.ToUnixTimeSeconds();
+                        if (store != null)
+                        {
+                            await _forkChoice.OnTickAsync(store, time);
+                        }
+
+                        // Wait for remaining time, if any
+                        // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
+                        DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long) time + 1);
+                        TimeSpan remaining = nextClockTime - _clock.UtcNow();
+                        if (remaining > TimeSpan.Zero)
+                        {
+                            await Task.Delay(remaining, stoppingToken);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError()) Log.BeaconNodeWorkerLoopError(_logger, ex);
                     }
                 }
-
-                ulong time = (ulong)clockTime.ToUnixTimeSeconds();
-                if (store != null)
-                {
-                    await _forkChoice.OnTickAsync(store, time);
-                }
-                // Wait for remaining time, if any
-                // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
-                DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long)time + 1); 
-                TimeSpan remaining = nextClockTime - _clock.UtcNow();
-                if (remaining > TimeSpan.Zero)
-                {
-                    await Task.Delay(remaining, stoppingToken);
-                }
+            }
+            catch (Exception ex)
+            {
+                Log.BeaconNodeWorkerCriticalError(_logger, ex);
+                throw;
             }
 
             if (_logger.IsDebug()) LogDebug.WorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);

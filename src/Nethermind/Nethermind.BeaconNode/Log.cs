@@ -118,18 +118,46 @@ namespace Nethermind.BeaconNode
                     new EventId(4104, nameof(InvalidIndexedAttestationSignature)),
                 "Invalid indexed attestation from committee {CommitteeIndex} for slot {Slot}, because the aggregate signature does not match.");
 
+        public static readonly Action<ILogger, Exception?> ApiErrorGetVersion =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4400, nameof(ApiErrorGetVersion)),
+                "Exception result from API get version.");
+        public static readonly Action<ILogger, Exception?> ApiErrorGetGenesisTime =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4401, nameof(ApiErrorGetGenesisTime)),
+                "Exception result from API get genesis time.");
+        public static readonly Action<ILogger, Exception?> ApiErrorGetFork =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4402, nameof(ApiErrorGetFork)),
+                "Exception result from API get fork.");
+        public static readonly Action<ILogger, Exception?> ApiErrorValidatorDuties =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4403, nameof(ApiErrorValidatorDuties)),
+                "Exception result from API validator duties.");
+        public static readonly Action<ILogger, Exception?> ApiErrorNewBlock =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4404, nameof(ApiErrorNewBlock)),
+                "Exception result from API Block (get).");
+
         public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
             LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
                 new EventId(4900, nameof(MockedQuickStart)),
                 "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.");
         
         // 5bxx error
+        
+        public static readonly Action<ILogger, Exception?> BeaconNodeWorkerLoopError =
+            LoggerMessage.Define(LogLevel.Error,
+                new EventId(5000, nameof(BeaconNodeWorkerLoopError)),
+                "Unexpected error caught in beacon node worker, loop continuing.");
 
         // 8bxx finalization
 
         // 9bxx critical
 
-
-
+        public static readonly Action<ILogger, Exception?> BeaconNodeWorkerCriticalError =
+            LoggerMessage.Define(LogLevel.Critical,
+                new EventId(9000, nameof(BeaconNodeWorkerCriticalError)),
+                "Critical unhandled error in beacon node worker. Worker cannot continue.");
     }
 }
