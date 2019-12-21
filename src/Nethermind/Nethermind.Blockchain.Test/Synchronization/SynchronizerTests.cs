@@ -35,6 +35,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Store;
+using Nethermind.Store.BeamSyncStore;
 using Nethermind.Store.Repositories;
 using NUnit.Framework;
 
@@ -289,7 +290,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, syncConfig, 25, _logManager);
 
                 NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
-                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, _logManager);
+                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, NullDataConsumer.Instance,  _logManager);
                 Synchronizer = new Synchronizer(
                     MainNetSpecProvider.Instance,
                     BlockTree,

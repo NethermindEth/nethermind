@@ -14,21 +14,34 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Config;
+using System;
+using System.Threading;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Store.BeamSyncStore
 {
-    [ConfigCategory(Description = "Configuration of the synchronization modes.")]
-    public class SyncConfig : ISyncConfig
+    public class NullDataConsumer : INodeDataConsumer
     {
-        public bool FastBlocks { get; set; } = false;
-        public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool BeamSyncEnabled { get; set; } = false;
-        public bool FastSync { get; set; }
-        public bool DownloadBodiesInFastSync { get; set; } = true;
-        public bool DownloadReceiptsInFastSync { get; set; } = true;
-        public string PivotTotalDifficulty { get; set; }
-        public string PivotNumber { get; set;}
-        public string PivotHash { get; set;}
+        private static NullDataConsumer _instance;
+
+        public static NullDataConsumer Instance => LazyInitializer.EnsureInitialized(ref _instance);
+
+        public event EventHandler NeedMoreData
+        {
+            add { }
+            remove { }
+        }
+
+        public Keccak[] PrepareRequest()
+        {
+            return Array.Empty<Keccak>();
+        }
+
+        public void HandleResponse(Keccak[] hashes, byte[][] data)
+        {
+            throw new InvalidOperationException("Should never receive response here");
+        }
+
+        public bool NeedsData => false;
     }
 }

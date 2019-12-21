@@ -25,6 +25,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
+using Nethermind.Facade.Config;
 using Nethermind.Logging;
 using Nethermind.Store;
 using Nethermind.Wallet;
@@ -41,13 +42,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IRewardCalculator _rewardCalculator;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
+        private readonly IRpcConfig _rpcConfig;
         private readonly ILogManager _logManager;
         private readonly ITxPool _txPool;
         private readonly IBlockDataRecoveryStep _recoveryStep;
         private ILogger _logger;
 
-        public TraceModuleFactory(
-            IDbProvider dbProvider,
+        public TraceModuleFactory(IDbProvider dbProvider,
             ITxPool txPool,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
+            IRpcConfig rpcConfig,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -67,6 +69,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
         }
@@ -88,7 +91,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 NullFilterManager.Instance,
                 NullWallet.Instance,
                 txEnv.TransactionProcessor,
-                _ethereumEcdsa);
+                _ethereumEcdsa,
+                _rpcConfig
+                );
             
             ReadOnlyChainProcessingEnv chainEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             ITracer tracer = new Tracer(chainEnv.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), _dbProvider.TraceDb);

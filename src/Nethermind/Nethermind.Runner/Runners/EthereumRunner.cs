@@ -62,11 +62,11 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade;
+using Nethermind.Facade.Config;
 using Nethermind.Facade.Proxy;
 using Nethermind.Grpc;
 using Nethermind.Grpc.Producers;
 using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
@@ -101,8 +101,8 @@ using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.BeamSyncStore;
 using Nethermind.Store.Repositories;
-using Nethermind.Store.Rpc;
 using Nethermind.Wallet;
 using Nethermind.WebSockets;
 using Block = Nethermind.Core.Block;
@@ -284,6 +284,7 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
             var ndmConfig = _configProvider.GetConfig<INdmConfig>();
+            var rpcConfig = _configProvider.GetConfig<IRpcConfig>();
             if (ndmConfig.Enabled && !(_ndmInitializer is null) && ndmConfig.ProxyEnabled)
             {
                 var proxyFactory = new EthModuleProxyFactory(_ethJsonRpcClientProxy, _wallet);
@@ -293,14 +294,14 @@ namespace Nethermind.Runner.Runners
             else
             {
                 EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree,
-                    _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, _logManager);
+                    _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, rpcConfig, _logManager);
                 _rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
             DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_dbProvider, _blockTree, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, _configProvider, _specProvider, _logManager);
             _rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
             
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, _logManager);
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, rpcConfig, _logManager);
             _rpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
             if (_sealValidator is CliqueSealValidator)
@@ -423,10 +424,17 @@ namespace Nethermind.Runner.Runners
                 if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            _dbProvider = (HiveEnabled || _initConfig.UseMemDb)
-                ? (IDbProvider) new MemDbProvider()
-                : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
-            
+            if (_syncConfig.BeamSyncEnabled)
+            {
+                _dbProvider = new BeamSyncDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
+            }
+            else
+            {
+                _dbProvider = (HiveEnabled || _initConfig.UseMemDb)
+                    ? (IDbProvider) new MemDbProvider()
+                    : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);    
+            }
+
             // IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_initConfig.BaseDbPath, "debug"), dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts);
             // _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _jsonSerializer, _logManager), _logManager, debugRecorder);
 
@@ -448,12 +456,12 @@ namespace Nethermind.Runner.Runners
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
-            
+
             _blockTree = new BlockTree(
                 _dbProvider.BlocksDb,
                 _dbProvider.HeadersDb,
                 _dbProvider.BlockInfosDb,
-                _chainLevelInfoRepository, 
+                _chainLevelInfoRepository,
                 _specProvider,
                 _txPool,
                 _syncConfig,
@@ -773,7 +781,7 @@ namespace Nethermind.Runner.Runners
             var maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, _logManager);
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, NullDataConsumer.Instance, _logManager);
             _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _nodeStatsManager, _logManager);
 
             _syncServer = new SyncServer(

@@ -23,6 +23,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Facade;
+using Nethermind.Facade.Config;
 using Nethermind.JsonRpc.Eip1186;
 using Nethermind.Logging;
 using Nethermind.Store;
@@ -39,13 +40,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISpecProvider _specProvider;
         private readonly ILogManager _logManager;
+        private readonly IRpcConfig _config;
         private readonly ITxPool _txPool;
         private readonly IWallet _wallet;
         private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
 
-        public EthModuleFactory(
-            IDbProvider dbProvider,
+        public EthModuleFactory(IDbProvider dbProvider,
             ITxPool txPool,
             IWallet wallet,
             IBlockTree blockTree,
@@ -53,6 +54,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             IBlockProcessor blockProcessor,
             IReceiptStorage receiptStorage,
             ISpecProvider specProvider,
+            IRpcConfig config,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -62,6 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             _ethereumEcdsa = ethereumEcdsa ?? throw new ArgumentNullException(nameof(ethereumEcdsa));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             
             _filterStore = new FilterStore();
@@ -85,7 +88,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _filterManager,
                 _wallet,
                 readOnlyTxProcessingEnv.TransactionProcessor,
-                _ethereumEcdsa);
+                _ethereumEcdsa,
+                _config);
             
             return new EthModule(_logManager, blockchainBridge);
         }

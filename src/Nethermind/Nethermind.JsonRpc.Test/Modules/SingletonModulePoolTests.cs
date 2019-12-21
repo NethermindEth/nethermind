@@ -21,6 +21,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Config;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
@@ -45,7 +46,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             MemDbProvider dbProvider = new MemDbProvider();
 
             BlockTree blockTree = new BlockTree(dbProvider.BlocksDb, dbProvider.HeadersDb, dbProvider.BlockInfosDb, new ChainLevelInfoRepository(dbProvider.BlockInfosDb), specProvider, txPool, new SyncConfig(), LimboLogs.Instance);
-            _factory = new EthModuleFactory(dbProvider, txPool, NullWallet.Instance, blockTree, new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullBlockProcessor.Instance, new InMemoryReceiptStorage(), specProvider, LimboLogs.Instance);
+            _factory = new EthModuleFactory(dbProvider, txPool, NullWallet.Instance, blockTree, new EthereumEcdsa(MainNetSpecProvider.Instance, LimboLogs.Instance), NullBlockProcessor.Instance, new InMemoryReceiptStorage(), specProvider, new RpcConfig(), LimboLogs.Instance);
         }
 
         [Test]
