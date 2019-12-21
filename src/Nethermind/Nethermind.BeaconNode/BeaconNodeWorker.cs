@@ -90,8 +90,9 @@ namespace Nethermind.BeaconNode
                 {
                     if (_storeProvider.TryGetStore(out store))
                     {
-                        _logger.LogInformation(Event.WorkerStoreAvailableTickStarted, "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
-                            store!.GenesisTime, Thread.CurrentThread.ManagedThreadId);
+                        if (_logger.IsInfo())
+                            Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime,
+                                Thread.CurrentThread.ManagedThreadId, null);
                     }
                 }
 

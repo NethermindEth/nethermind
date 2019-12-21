@@ -139,12 +139,12 @@ namespace Nethermind.BeaconNode
                 new EventId(3052, nameof(PenaltyForValidator)),
                 "Penalty for validator {ValidatorIndex}: {PenaltyName} -{Penalty}.");
 
-        // 31xx
+        // 31xx debug - fork choice
 
-        public static readonly Action<ILogger, Hash32, ulong, int, Exception?> TryGenesis =
-            LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Debug,
-                new EventId(3100, nameof(TryGenesis)),
-                "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
+        public static readonly Action<ILogger, BeaconBlock, BeaconState, Hash32, Exception?> AddedBlockToStore =
+            LoggerMessage.Define<BeaconBlock, BeaconState, Hash32>(LogLevel.Debug,
+                new EventId(3100, nameof(AddedBlockToStore)),
+                "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}");
 
         // 32xx debug - block producer
 
@@ -152,5 +152,14 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Slot, BlsSignature, Slot>(LogLevel.Debug,
                 new EventId(3200, nameof(NewBlockSkippedSlots)),
                 "Request for new block for slot {Slot} for randao {RandaoReveal} is skipping from parent slot {ParentSlot}.");
+
+        // 33xx - chain start
+
+        public static readonly Action<ILogger, Hash32, ulong, int, Exception?> TryGenesis =
+            LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Debug,
+                new EventId(3300, nameof(TryGenesis)),
+                "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
+
+
     }
 }

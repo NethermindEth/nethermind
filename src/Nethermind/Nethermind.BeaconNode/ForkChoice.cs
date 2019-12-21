@@ -118,8 +118,8 @@ namespace Nethermind.BeaconNode
             Checkpoint justifiedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
             Checkpoint finalizedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
 
-            _logger.LogInformation(Event.CreateGenesisStore, "Creating genesis store with block {BeaconBlock} for state {BeaconState}, with checkpoint {JustifiedCheckpoint}, with signing root {SigningRoot}",
-                genesisBlock, genesisState, justifiedCheckpoint, root);
+            if (_logger.IsInfo())
+                Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, root, null);
 
             Dictionary<Hash32, BeaconBlock> blocks = new Dictionary<Hash32, BeaconBlock>
             {
@@ -338,8 +338,7 @@ namespace Nethermind.BeaconNode
             // Add new state for this block to the store
             await store.SetBlockStateAsync(signingRoot, state).ConfigureAwait(false);
 
-            _logger.LogInformation(Event.CreateGenesisStore, "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}",
-                block, state, signingRoot);
+            if (_logger.IsDebug()) LogDebug.AddedBlockToStore(_logger, block, state, signingRoot, null);
 
             // Update justified checkpoint
             if (state.CurrentJustifiedCheckpoint.Epoch > store.JustifiedCheckpoint.Epoch)
