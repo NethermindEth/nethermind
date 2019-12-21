@@ -62,22 +62,22 @@ namespace Nethermind.BeaconNode
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            _logger.LogDebug("Worker stopping.");
+            if (_logger.IsDebug()) LogDebug.WorkerStopping(_logger, null);
             _stopped = true;
             await base.StopAsync(cancellationToken);
         }
 
         public override async Task StartAsync(CancellationToken cancellationToken)
         {
-            _logger.LogDebug("Worker starting.");
+            if (_logger.IsDebug()) LogDebug.WorkerStarting(_logger, null);
             await base.StartAsync(cancellationToken);
-            _logger.LogDebug("Worker started.");
+            if (_logger.IsDebug()) LogDebug.WorkerStarted(_logger, null);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsInfo())
-                Log.WorkerStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
+                Log.WorkerExecuteStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
                     _configuration[ConfigKey], Thread.CurrentThread.ManagedThreadId, null);
 
             await _nodeStart.InitializeNodeAsync();
@@ -111,7 +111,7 @@ namespace Nethermind.BeaconNode
                 }
             }
 
-            _logger.LogDebug("Worker execute thread exiting [{ThreadId}].", Thread.CurrentThread.ManagedThreadId);
+            if (_logger.IsDebug()) LogDebug.WorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
         }
     }
 }

@@ -31,135 +31,175 @@ namespace Nethermind.BeaconNode
 {
     internal static class LogDebug
     { 
-        // 3bxx debug
+        // 6bxx debug
+
+        // 60xx debug - worker
+        public static readonly Action<ILogger, Exception?> WorkerStarting =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6000, nameof(WorkerStarting)),
+                "Worker starting.");
+        public static readonly Action<ILogger, Exception?> WorkerStarted =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6001, nameof(WorkerStarted)),
+                "Worker started.");
+        public static readonly Action<ILogger, Exception?> WorkerStopping =
+            LoggerMessage.Define(LogLevel.Debug,
+                new EventId(6002, nameof(WorkerStopping)),
+                "Worker stopping.");
+        public static readonly Action<ILogger, int, Exception?> WorkerExecuteExiting =
+            LoggerMessage.Define<int>(LogLevel.Debug,
+                new EventId(6003, nameof(WorkerExecuteExiting)),
+                "Worker execute thread exiting [{ThreadId}].");
         
-        // 31xx debug - state transition
+        // 61xx debug - state transition
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =
             LoggerMessage.Define<Deposit, BeaconState>(LogLevel.Debug,
-                new EventId(3000, nameof(ProcessDeposit)),
+                new EventId(6100, nameof(ProcessDeposit)),
                 "Process block operation deposit {Deposit} for state {BeaconState}.");
 
         public static readonly Action<ILogger, Slot, BeaconState, Exception?> ProcessSlots =
             LoggerMessage.Define<Slot, BeaconState>(LogLevel.Debug,
-                new EventId(3001, nameof(ProcessSlots)),
+                new EventId(6101, nameof(ProcessSlots)),
                 "Process slots to {Slot} for state {BeaconState}");
         
         public static readonly Action<ILogger, Slot, BeaconState, Exception?> ProcessSlot =
             LoggerMessage.Define<Slot, BeaconState>(LogLevel.Debug,
-                new EventId(3002, nameof(ProcessSlot)),
+                new EventId(6102, nameof(ProcessSlot)),
                 "Process current slot {Slot} for state {BeaconState}");
         
         public static readonly Action<ILogger, BeaconState, Exception?> ProcessJustificationAndFinalization =
             LoggerMessage.Define<BeaconState>(LogLevel.Debug,
-                new EventId(3003, nameof(ProcessJustificationAndFinalization)),
+                new EventId(6103, nameof(ProcessJustificationAndFinalization)),
                 "Process epoch justification and finalization state {BeaconState}");
 
         public static readonly Action<ILogger,  BeaconState, Exception?> ProcessEpoch =
             LoggerMessage.Define<BeaconState>(LogLevel.Debug,
-                new EventId(3004, nameof(ProcessEpoch)),
+                new EventId(6104, nameof(ProcessEpoch)),
                 "Process end of epoch for state {BeaconState}");
 
         public static readonly Action<ILogger, bool, BeaconBlock, BeaconState, Exception?> ProcessBlock =
             LoggerMessage.Define<bool, BeaconBlock, BeaconState>(LogLevel.Debug,
-                new EventId(3005, nameof(ProcessBlock)),
+                new EventId(6105, nameof(ProcessBlock)),
                 "Process (validate {Validate}) block {BeaconBlock} for state {BeaconState}");
         
         public static readonly Action<ILogger, BeaconBlock,  Exception?> ProcessBlockHeader =
             LoggerMessage.Define<BeaconBlock>(LogLevel.Debug,
-                new EventId(3006, nameof(ProcessBlockHeader)),
+                new EventId(6106, nameof(ProcessBlockHeader)),
                 "Process block header for block {BeaconBlock}");
 
         public static readonly Action<ILogger,  BeaconBlockBody, Exception?> ProcessRandao =
             LoggerMessage.Define<BeaconBlockBody>(LogLevel.Debug,
-                new EventId(3007, nameof(ProcessRandao)),
+                new EventId(6107, nameof(ProcessRandao)),
                 "Process block randao for block body {BeaconBlockBody}");
 
         public static readonly Action<ILogger,  BeaconBlockBody, Exception?> ProcessEth1Data =
             LoggerMessage.Define<BeaconBlockBody>(LogLevel.Debug,
-                new EventId(3008, nameof(ProcessEth1Data)),
+                new EventId(6108, nameof(ProcessEth1Data)),
                 "Process block ETH1 data for block body {BeaconBlockBody}");
 
         public static readonly Action<ILogger,  BeaconBlockBody, Exception?> ProcessOperations =
             LoggerMessage.Define<BeaconBlockBody>(LogLevel.Debug,
-                new EventId(3009, nameof(ProcessOperations)),
+                new EventId(6109, nameof(ProcessOperations)),
                 "Process block operations for block body {BeaconBlockBody}");
         
         public static readonly Action<ILogger, ProposerSlashing, Exception?> ProcessProposerSlashing =
             LoggerMessage.Define<ProposerSlashing>(LogLevel.Debug,
-                new EventId(3010, nameof(ProcessProposerSlashing)),
+                new EventId(6110, nameof(ProcessProposerSlashing)),
                 "Process block operation proposer slashing {ProposerSlashing}");
         
         public static readonly Action<ILogger, AttesterSlashing, Exception?> ProcessAttesterSlashing =
             LoggerMessage.Define<AttesterSlashing>(LogLevel.Debug,
-                new EventId(3011, nameof(ProcessAttesterSlashing)),
+                new EventId(6111, nameof(ProcessAttesterSlashing)),
                 "Process block operation attester slashing {AttesterSlashing}");
         
         public static readonly Action<ILogger, Attestation, BeaconState, Exception?> ProcessAttestation =
             LoggerMessage.Define<Attestation, BeaconState>(LogLevel.Debug,
-                new EventId(3012, nameof(ProcessAttestation)),
+                new EventId(6112, nameof(ProcessAttestation)),
                 "Process block operation attestation {Attestation} for state {BeaconState}.");
         
         public static readonly Action<ILogger, VoluntaryExit, BeaconState, Exception?> ProcessVoluntaryExit =
             LoggerMessage.Define<VoluntaryExit, BeaconState>(LogLevel.Debug,
-                new EventId(3013, nameof(ProcessVoluntaryExit)),
+                new EventId(6113, nameof(ProcessVoluntaryExit)),
                 "Process block operation voluntary exit {VoluntaryExit} for state {BeaconState}.");
         
         public static readonly Action<ILogger,  BeaconState, Exception?> ProcessRewardsAndPenalties =
             LoggerMessage.Define<BeaconState>(LogLevel.Debug,
-                new EventId(3014, nameof(ProcessRewardsAndPenalties)),
+                new EventId(6114, nameof(ProcessRewardsAndPenalties)),
                 "Process epoch rewards and penalties state {BeaconState}");
 
         public static readonly Action<ILogger,  BeaconState, Exception?> ProcessFinalUpdates =
             LoggerMessage.Define<BeaconState>(LogLevel.Debug,
-                new EventId(3015, nameof(ProcessFinalUpdates)),
+                new EventId(6115, nameof(ProcessFinalUpdates)),
                 "Process epoch final updates state {BeaconState}");
 
         public static readonly Action<ILogger,  BeaconState, Exception?> ProcessRegistryUpdates =
             LoggerMessage.Define<BeaconState>(LogLevel.Debug,
-                new EventId(3016, nameof(ProcessRegistryUpdates)),
+                new EventId(6116, nameof(ProcessRegistryUpdates)),
                 "Process epoch registry updates state {BeaconState}");
 
         public static readonly Action<ILogger,  BeaconState, Exception?> ProcessSlashings =
             LoggerMessage.Define<BeaconState>(LogLevel.Debug,
-                new EventId(3017, nameof(ProcessSlashings)),
+                new EventId(6117, nameof(ProcessSlashings)),
                 "Process epoch slashings state {BeaconState}");
 
         public static readonly Action<ILogger, bool, BeaconState, BeaconBlock, Exception?> StateTransition =
             LoggerMessage.Define<bool, BeaconState, BeaconBlock>(LogLevel.Debug,
-                new EventId(3018, nameof(StateTransition)),
+                new EventId(6118, nameof(StateTransition)),
                 "State transition (validate {Validate}) for state {BeaconState} with block {BeaconBlock}");
 
         public static readonly Action<ILogger, ValidatorIndex, string, Gwei, Exception?> RewardForValidator =
             LoggerMessage.Define<ValidatorIndex, string, Gwei>(LogLevel.Debug,
-                new EventId(3051, nameof(RewardForValidator)),
+                new EventId(6119, nameof(RewardForValidator)),
                 "Reward for validator {ValidatorIndex}: {RewardName} +{Reward}.");
 
         public static readonly Action<ILogger, ValidatorIndex, string, Gwei, Exception?> PenaltyForValidator =
             LoggerMessage.Define<ValidatorIndex, string, Gwei>(LogLevel.Debug,
-                new EventId(3052, nameof(PenaltyForValidator)),
+                new EventId(6120, nameof(PenaltyForValidator)),
                 "Penalty for validator {ValidatorIndex}: {PenaltyName} -{Penalty}.");
 
-        // 31xx debug - fork choice
+        // 62xx debug - fork choice
 
         public static readonly Action<ILogger, BeaconBlock, BeaconState, Hash32, Exception?> AddedBlockToStore =
             LoggerMessage.Define<BeaconBlock, BeaconState, Hash32>(LogLevel.Debug,
-                new EventId(3100, nameof(AddedBlockToStore)),
+                new EventId(6200, nameof(AddedBlockToStore)),
                 "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}");
+        public static readonly Action<ILogger, BeaconNode.Containers.Checkpoint, Exception?> UpdateJustifiedCheckpoint =
+            LoggerMessage.Define<BeaconNode.Containers.Checkpoint>(LogLevel.Debug,
+                new EventId(6201, nameof(UpdateJustifiedCheckpoint)),
+                "Updated justified checkpoint {JustifiedCheckpoint}");
+        public static readonly Action<ILogger, BeaconNode.Containers.Checkpoint, Exception?> UpdateBestJustifiedCheckpoint =
+            LoggerMessage.Define<BeaconNode.Containers.Checkpoint>(LogLevel.Debug,
+                new EventId(6202, nameof(UpdateBestJustifiedCheckpoint)),
+                "Updated best justified checkpoint {JustifiedCheckpoint}");
+        public static readonly Action<ILogger, BeaconNode.Containers.Checkpoint, Exception?> UpdateFinalizedCheckpoint =
+            LoggerMessage.Define<BeaconNode.Containers.Checkpoint>(LogLevel.Debug,
+                new EventId(6203, nameof(UpdateFinalizedCheckpoint)),
+                "Updated finalized checkpoint {FinalizedCheckpoint}");
 
-        // 32xx debug - block producer
-
-        public static readonly Action<ILogger, Slot, BlsSignature, Slot, Exception?> NewBlockSkippedSlots =
-            LoggerMessage.Define<Slot, BlsSignature, Slot>(LogLevel.Debug,
-                new EventId(3200, nameof(NewBlockSkippedSlots)),
-                "Request for new block for slot {Slot} for randao {RandaoReveal} is skipping from parent slot {ParentSlot}.");
-
-        // 33xx - chain start
+        // 63xx - chain start
 
         public static readonly Action<ILogger, Hash32, ulong, int, Exception?> TryGenesis =
             LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Debug,
-                new EventId(3300, nameof(TryGenesis)),
+                new EventId(6300, nameof(TryGenesis)),
                 "Try genesis with ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.");
 
+        // 64xx debug - block producer
+
+        public static readonly Action<ILogger, Slot, BlsSignature, Slot, Exception?> NewBlockSkippedSlots =
+            LoggerMessage.Define<Slot, BlsSignature, Slot>(LogLevel.Debug,
+                new EventId(6400, nameof(NewBlockSkippedSlots)),
+                "Request for new block for slot {Slot} for randao {RandaoReveal} is skipping from parent slot {ParentSlot}.");
+        
+        // 7bxx - mock
+
+        public static readonly Action<ILogger, ulong, Exception?> QuickStartStoreCreated =
+            LoggerMessage.Define<ulong>(LogLevel.Debug,
+                new EventId(7100, nameof(QuickStartStoreCreated)),
+                "Quick start genesis store created with genesis time {GenesisTime:n0}.");
+        public static readonly Action<ILogger, ValidatorIndex, string, Exception?> QuickStartAddValidator =
+            LoggerMessage.Define<ValidatorIndex, string>(LogLevel.Debug,
+                new EventId(7300, nameof(QuickStartAddValidator)),
+                "Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.");
 
     }
 }

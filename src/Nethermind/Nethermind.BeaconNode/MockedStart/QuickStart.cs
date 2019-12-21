@@ -30,6 +30,7 @@ using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 using Hash32 = Nethermind.Core2.Types.Hash32;
 
 namespace Nethermind.BeaconNode.MockedStart
@@ -94,8 +95,7 @@ namespace Nethermind.BeaconNode.MockedStart
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
-            _logger.LogWarning(0, "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.",
-                quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount);
+            if (_logger.IsWarn()) Log.MockedQuickStart(_logger, quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             InitialValues initialValues = _initialValueOptions.CurrentValue;
@@ -166,8 +166,9 @@ namespace Nethermind.BeaconNode.MockedStart
                 _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
                 Deposit deposit = new Deposit(proof, depositData);
 
-                if(_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug("Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.",
-                    validatorIndex, publicKey.ToString().Substring(0, 12));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
+                        null);
 
                 deposits.Add(deposit);
             }
@@ -177,7 +178,7 @@ namespace Nethermind.BeaconNode.MockedStart
             genesisState.SetGenesisTime(quickStartParameters.GenesisTime);
             IStore store = _forkChoice.GetGenesisStore(genesisState);
 
-            _logger.LogDebug("Quick start genesis store created with genesis time {GenesisTime:n0}.", store.GenesisTime);
+            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, store.GenesisTime, null);
         }
 
         private static IList<IList<Hash32>> CalculateMerkleTreeFromLeaves(IEnumerable<Hash32> values, int layerCount = 32)

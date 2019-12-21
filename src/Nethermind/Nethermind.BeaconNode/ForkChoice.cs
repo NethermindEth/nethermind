@@ -348,11 +348,11 @@ namespace Nethermind.BeaconNode
                 if (shouldUpdateJustifiedCheckpoint)
                 {
                     await store.SetJustifiedCheckpointAsync(state.CurrentJustifiedCheckpoint).ConfigureAwait(false);
-                    _logger.LogDebug("Updated justified checkpoint {JustifiedCheckpoint}", state.CurrentJustifiedCheckpoint);
+                    if (_logger.IsDebug()) LogDebug.UpdateJustifiedCheckpoint(_logger, state.CurrentJustifiedCheckpoint, null);
                 }
                 else
                 {
-                    _logger.LogDebug("Updated best justified checkpoint {JustifiedCheckpoint}", state.CurrentJustifiedCheckpoint);
+                    if (_logger.IsDebug()) LogDebug.UpdateBestJustifiedCheckpoint(_logger, state.CurrentJustifiedCheckpoint, null);
                 }
             }
 
@@ -360,7 +360,7 @@ namespace Nethermind.BeaconNode
             if (state.FinalizedCheckpoint.Epoch > store.FinalizedCheckpoint.Epoch)
             {
                 await store.SetFinalizedCheckpointAsync(state.FinalizedCheckpoint).ConfigureAwait(false);
-                _logger.LogDebug("Updated finalized checkpoint {FinalizedCheckpoint}", state.FinalizedCheckpoint);
+                if (_logger.IsDebug()) LogDebug.UpdateFinalizedCheckpoint(_logger, state.FinalizedCheckpoint, null);
             }
         }
 
