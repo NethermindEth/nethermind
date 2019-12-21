@@ -138,7 +138,7 @@ namespace Nethermind.BeaconNode.Tests
             // Assert
             signal.ShouldBeTrue();
             TimeSpan expectedTime = TimeSpan.FromMilliseconds(250);
-            TimeSpan tolerance = TimeSpan.FromMilliseconds(25);
+            TimeSpan tolerance = TimeSpan.FromMilliseconds(40);
             stopwatch.Elapsed.ShouldBeInRange(expectedTime - tolerance, expectedTime + tolerance);
         }
     }
