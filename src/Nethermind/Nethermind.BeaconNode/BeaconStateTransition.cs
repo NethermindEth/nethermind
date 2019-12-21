@@ -436,7 +436,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessDeposit(BeaconState state, Deposit deposit)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessDeposit, "Process block operation deposit {Deposit} for state {BeaconState}.", deposit, state);
+            if(_logger.IsInfo()) Log.ProcessDeposit(_logger, deposit, state, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
@@ -492,7 +492,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessEpoch(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessEpoch, "Process end of epoch for state {BeaconState}", state);
+            if (_logger.IsInfo()) Log.ProcessEpoch(_logger, state, null);
             ProcessJustificationAndFinalization(state);
 
             // Was removed from phase 0 spec
@@ -515,7 +515,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessEth1Data(BeaconState state, BeaconBlockBody body)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessEth1Data, "Process block ETH1 data for block body {BeaconBlockBody}", body);
+            if (_logger.IsInfo()) Log.ProcessEth1Data(_logger, body, null);
 
             state.AddEth1DataVote(body.Eth1Data);
             int eth1DataVoteCount = state.Eth1DataVotes.Count(x => x.Equals(body.Eth1Data));
@@ -527,7 +527,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessFinalUpdates(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessFinalUpdates, "Process epoch final updates state {BeaconState}", state);
+            if (_logger.IsInfo()) Log.ProcessFinalUpdates(_logger, state, null);
 
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
@@ -582,7 +582,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessJustificationAndFinalization(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch justification and finalization state {BeaconState}", state);
+            if (_logger.IsInfo()) Log.ProcessJustificationAndFinalization(_logger, state, null);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch <= _initialValueOptions.CurrentValue.GenesisEpoch + new Epoch(1))
             {
@@ -652,7 +652,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessOperations(BeaconState state, BeaconBlockBody body)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessOperations, "Process block operations for block body {BeaconBlockBody}", body);
+            if (_logger.IsInfo()) Log.ProcessOperations(_logger, body, null);
             // Verify that outstanding deposits are processed up to the maximum number of deposits
             ulong outstandingDeposits = state.Eth1Data.DepositCount - state.Eth1DepositIndex;
             ulong expectedDeposits = Math.Min(_maxOperationsPerBlockOptions.CurrentValue.MaximumDeposits, outstandingDeposits);
@@ -686,7 +686,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessProposerSlashing(BeaconState state, ProposerSlashing proposerSlashing)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessProposerSlashing, "Process block operation proposer slashing {ProposerSlashing}", proposerSlashing);
+            if (_logger.IsInfo()) Log.ProcessProposerSlashing(_logger, proposerSlashing, null);
             Validator proposer = state.Validators[(int)proposerSlashing.ProposerIndex];
             // Verify slots match
             if (proposerSlashing.Header1.Slot != proposerSlashing.Header2.Slot)
@@ -730,7 +730,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRandao(BeaconState state, BeaconBlockBody body)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessRandao, "Process block randao for block body {BeaconBlockBody}", body);
+            if (_logger.IsInfo()) Log.ProcessRandao(_logger, body, null);
             Epoch epoch = _beaconStateAccessor.GetCurrentEpoch(state);
             // Verify RANDAO reveal
             ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
@@ -752,7 +752,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRegistryUpdates(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessRegistryUpdates, "Process epoch registry updates state {BeaconState}", state);
+            if (_logger.IsInfo()) Log.ProcessRegistryUpdates(_logger, state, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
 
@@ -799,7 +799,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessRewardsAndPenalties(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessJustificationAndFinalization, "Process epoch rewards and penalties state {BeaconState}", state);
+            if (_logger.IsInfo()) Log.ProcessRewardsAndPenalties(_logger, state, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
@@ -818,7 +818,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlashings(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlashings, "Process epoch slashings state {BeaconState}", state);
+            if (_logger.IsInfo()) Log.ProcessSlashings(_logger, state, null);
 
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             Gwei totalBalance = _beaconStateAccessor.GetTotalActiveBalance(state);
@@ -844,7 +844,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlot(BeaconState state)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlot, "Process current slot {Slot} for state {BeaconState}", state.Slot, state);
+            if(_logger.IsInfo()) Log.ProcessSlot(_logger, state.Slot, state, null);
             // Cache state root
             Hash32 previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
                 _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
@@ -862,7 +862,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessSlots(BeaconState state, Slot slot)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlots, "Process slots to {Slot} for state {BeaconState}", slot, state);
+            if(_logger.IsInfo()) Log.ProcessSlots(_logger, slot, state, null);
             if (state.Slot > slot)
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot to process should be greater than current state slot {state.Slot}");
@@ -882,7 +882,7 @@ namespace Nethermind.BeaconNode
 
         public void ProcessVoluntaryExit(BeaconState state, VoluntaryExit exit)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessVoluntaryExit, "Process block operation voluntary exit {VoluntaryExit} for state {BeaconState}.", exit, state);
+            if (_logger.IsInfo()) Log.ProcessVoluntaryExit(_logger, exit, state, null);
 
             Validator validator = state.Validators[(int)exit.ValidatorIndex];
 
@@ -932,8 +932,7 @@ namespace Nethermind.BeaconNode
 
         public BeaconState StateTransition(BeaconState state, BeaconBlock block, bool validateStateRoot)
         {
-            if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessSlots, "State transition for state {BeaconState} with block {BeaconBlock}; validating {ValidateStateRoot}.",
-                state, block, validateStateRoot);
+            if (_logger.IsInfo()) Log.StateTransition(_logger, validateStateRoot, state, block, null);
 
             // Process slots (including those with no blocks) since block
             ProcessSlots(state, block.Slot);
