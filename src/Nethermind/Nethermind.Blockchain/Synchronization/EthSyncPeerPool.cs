@@ -107,6 +107,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
                 CancellationTokenSource initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
                 CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
+
 #pragma warning disable 4014
                 RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
 #pragma warning restore 4014
@@ -502,6 +503,7 @@ namespace Nethermind.Blockchain.Synchronization
             Metrics.SyncPeers = _peers.Count;
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
+            NetworkDiagTracer.ReportInterestingEvent(peerInfo.SyncPeer.SessionId, "adding node to refresh queue");
             _peerRefreshQueue.Add(peerInfo);
         }
 
@@ -682,7 +684,7 @@ namespace Nethermind.Blockchain.Synchronization
                     allocation.ReplaceCurrent(bestPeer);
                     return allocation;
                 }
-
+                
                 bool timeoutReached = timeoutMilliseconds == 0
                                       || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
                 if (timeoutReached)

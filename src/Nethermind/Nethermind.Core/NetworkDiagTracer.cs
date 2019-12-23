@@ -16,13 +16,12 @@
 
 using System;
 using System.IO;
-using Nethermind.Stats.Model;
 
-namespace Nethermind.Network
+namespace Nethermind.Core
 {
     public static class NetworkDiagTracer
     {
-        public static bool IsEnabled => true;
+        public static bool IsEnabled => false;
 
         static NetworkDiagTracer()
         {
@@ -39,22 +38,32 @@ namespace Nethermind.Network
         
         public static void ReportOutgoingMessage(Guid sessionId, string protocol, string messageCode)
         {
+            if(!IsEnabled) return;
             LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
         }
         
         public static void ReportIncomingMessage(Guid sessionId, string protocol, string messageCode)
         {
+            if(!IsEnabled) return;
             LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {messageCode}");
         }
         
         public static void ReportConnect(Guid sessionId, string clientId)
         {
+            if(!IsEnabled) return;
             LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
         }
         
-        public static void ReportDisconnect(Guid sessionId, DisconnectType disconnectType, DisconnectReason reason, string details)
+        public static void ReportDisconnect(Guid sessionId, string details)
         {
-            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {disconnectType} {reason} {details}");
+            if(!IsEnabled) return;
+            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
+        }
+        
+        public static void ReportInterestingEvent(Guid sessionId, string details)
+        {
+            if(!IsEnabled) return;
+            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");
         }
     }
 }

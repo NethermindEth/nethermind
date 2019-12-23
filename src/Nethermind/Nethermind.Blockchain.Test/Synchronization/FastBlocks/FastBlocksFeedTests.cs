@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     mock.IsReported = true;
                 });
 
-            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<SyncPeerAllocation>()))
+            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<SyncPeerAllocation>(), "test"))
                 .Do(ci =>
                 {
                     LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<SyncPeerAllocation>().Current.SyncPeer);
@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
                     mock.IsReported = true;
                 });
 
-            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<PeerInfo>()))
+            _syncPeerPool.WhenForAnyArgs(p => p.ReportInvalid(Arg.Any<PeerInfo>(), "test"))
                 .Do(ci =>
                 {
                     LatencySyncPeerMock mock = ((LatencySyncPeerMock) ci.Arg<PeerInfo>().SyncPeer);

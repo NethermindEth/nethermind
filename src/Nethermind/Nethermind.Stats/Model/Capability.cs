@@ -66,5 +66,10 @@ namespace Nethermind.Stats.Model
                 return ((ProtocolCode != null ? ProtocolCode.GetHashCode() : 0) * 397) ^ Version;
             }
         }
+
+        public override string ToString()
+        {
+            return string.Concat(ProtocolCode, Version);
+        }
     }
 }
