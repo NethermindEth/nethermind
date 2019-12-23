@@ -21,6 +21,7 @@ using System.Text;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Json;
+using Nethermind.JsonRpc;
 using Newtonsoft.Json;
 
 namespace Nethermind.Overseer.Test.JsonRpc
@@ -68,7 +69,7 @@ namespace Nethermind.Overseer.Test.JsonRpc
             if (!(response?.IsSuccessStatusCode ?? false))
             {
                 var result = new JsonRpcResponse<T>();
-                result.Error = new JsonRpcResponse<T>.ErrorResponse{Message = errorMessage};
+                result.Error = new JsonRpcResponse<T>.ErrorResponse(ErrorCodes.InternalError, errorMessage);
                 return result;
             }
 

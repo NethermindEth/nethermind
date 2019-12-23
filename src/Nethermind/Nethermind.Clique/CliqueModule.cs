@@ -78,7 +78,7 @@ namespace Nethermind.Clique
             }
             catch (Exception ex)
             {
-                return ResultWrapper<bool>.Fail($"Unable to cast vote: {ex}", ErrorType.InternalError);
+                return ResultWrapper<bool>.Fail($"Unable to cast vote: {ex}", ErrorCodes.InternalError);
             }
 
             return ResultWrapper<bool>.Success(true);
@@ -92,7 +92,7 @@ namespace Nethermind.Clique
             }
             catch (Exception)
             {
-                return ResultWrapper<bool>.Fail("Unable to uncast vote", ErrorType.InternalError);
+                return ResultWrapper<bool>.Fail("Unable to uncast vote", ErrorCodes.InternalError);
             }
 
             return ResultWrapper<bool>.Success(true);

@@ -138,7 +138,7 @@ namespace Nethermind.JsonRpc
             {
                 Metrics.JsonRpcRequestDeserializationFailures++;
                 if (_logger.IsError) _logger.Error($"Error during parsing/validation, request: {request}", ex);
-                JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorType.ParseError, "Incorrect message");
+                JsonRpcResponse response = _jsonRpcService.GetErrorResponse(ErrorCodes.ParseError, "Incorrect message");
                 TraceResult(response);
                 return JsonRpcResult.Single(response);
             }
@@ -204,7 +204,7 @@ namespace Nethermind.JsonRpc
             }
 
             Metrics.JsonRpcInvalidRequests++;
-            JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Invalid request");
+            JsonRpcErrorResponse errorResponse = _jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Invalid request");
             TraceResult(errorResponse);
             stopwatch.Stop();
             if (_logger.IsDebug) _logger.Debug($"  Failed request handled in {stopwatch.Elapsed.TotalMilliseconds}ms");

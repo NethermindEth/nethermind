@@ -262,7 +262,7 @@ namespace Nethermind.Network.P2P
                 _packetSender = packetSender;
                 State = SessionState.Initialized;
             }
-
+            
             Initialized?.Invoke(this, EventArgs.Empty);
         }
 
@@ -356,8 +356,6 @@ namespace Nethermind.Network.P2P
 
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnect call {disconnectReason} {disconnectType}");
-
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)
@@ -370,6 +368,8 @@ namespace Nethermind.Network.P2P
             }
 
             UpdateMetric(disconnectType, disconnectReason);
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnect call {disconnectReason} {disconnectType}");
+            NetworkDiagTracer.ReportDisconnect(SessionId, disconnectType, disconnectReason, details);
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} invoking 'Disconnecting' event {disconnectReason} {disconnectType}");
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));

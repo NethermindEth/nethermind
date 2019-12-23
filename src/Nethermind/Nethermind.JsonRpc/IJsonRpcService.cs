@@ -22,7 +22,7 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcService
     {
         Task<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request);
-        JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message);
+        JsonRpcErrorResponse GetErrorResponse(int errorCode, string message);
         JsonConverter[] Converters { get; }
     }
 }

@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Modules
                 {
                     if (blockParameter.BlockNumber == null)
                     {
-                        throw new JsonRpcException(ErrorType.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
+                        throw new JsonRpcException(ErrorCodes.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
                     block = blockchainBridge.GetBlock(blockParameter.ToFilterBlock());
@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Modules
 
             if (block == null && !allowNulls)
             {
-                throw new JsonRpcException(ErrorType.NotFound, $"Cannot find block {blockParameter}");
+                throw new JsonRpcException(ErrorCodes.NotFound, $"Cannot find block {blockParameter}");
             }
 
 //            if (block != null && recoverTxSenders)
@@ -74,7 +74,7 @@ namespace Nethermind.JsonRpc.Modules
                 {
                     if (blockParameter.BlockNumber == null)
                     {
-                        throw new JsonRpcException(ErrorType.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
+                        throw new JsonRpcException(ErrorCodes.InvalidParams, $"Block number is required for {BlockParameterType.BlockNumber}");
                     }
 
                     header = blockchainBridge.GetHeader(blockParameter.ToFilterBlock());
@@ -95,7 +95,7 @@ namespace Nethermind.JsonRpc.Modules
 
             if (header == null && !allowNulls)
             {
-                throw new JsonRpcException(ErrorType.NotFound, $"Cannot find block {blockParameter}");
+                throw new JsonRpcException(ErrorCodes.NotFound, $"Cannot find block {blockParameter}");
             }
             
             return header;

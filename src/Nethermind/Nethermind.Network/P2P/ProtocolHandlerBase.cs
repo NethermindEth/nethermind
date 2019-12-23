@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P
 {
     public abstract class ProtocolHandlerBase
     {
+        public abstract string Name { get; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
         protected ISession Session { get; }
@@ -59,7 +60,8 @@ namespace Nethermind.Network.P2P
         protected void Send<T>(T message) where T : P2PMessage
         {
             if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");
-            Session.DeliverMessage(message);   
+            NetworkDiagTracer.ReportOutgoingMessage(Session.SessionId, Name, typeof(T).Name);
+            Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()

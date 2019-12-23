@@ -66,6 +66,7 @@ namespace Nethermind.DataMarketplace.Subprotocols
         protected Address ConfiguredConsumerAddress;
         protected readonly bool VerifySignature;
         protected bool HiReceived;
+        public override string Name => "ndm";
         protected override TimeSpan InitTimeout => Timeouts.NdmHi;
         public byte ProtocolVersion { get; } = 1;
         public string ProtocolCode { get; } = Protocol.Ndm;

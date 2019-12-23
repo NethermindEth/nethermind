@@ -26,6 +26,12 @@ namespace Nethermind.Overseer.Test.JsonRpc
 
         public class ErrorResponse
         {
+            public ErrorResponse(int code, string message, object data = null)
+            {
+                Code = code;
+                Message = message;
+            }
+            
             public int Code { get; set; }
             public string Message { get; set; }
             public object Data { get; set; }

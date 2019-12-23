@@ -36,17 +36,6 @@ namespace Nethermind.JsonRpc
     [Todo(Improve.Refactor, "Use JsonConverters and JSON serialization everywhere")]
     public class JsonRpcService : IJsonRpcService
     {
-        public static IDictionary<ErrorType, int> ErrorCodes => new Dictionary<ErrorType, int>
-        {
-            {ErrorType.ParseError, -32700},
-            {ErrorType.InvalidRequest, -32600},
-            {ErrorType.MethodNotFound, -32601},
-            {ErrorType.InvalidParams, -32602},
-            {ErrorType.InternalError, -32603},
-            {ErrorType.ExecutionError, -32015},
-            {ErrorType.NotFound, -32601}, // ??
-        };
-
         public const string JsonRpcVersion = "2.0";
 
         private readonly ILogger _logger;
@@ -85,10 +74,10 @@ namespace Nethermind.JsonRpc
         {
             try
             {
-                (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
-                if (errorType.HasValue)
+                (int? errorCode, string errorMessage) = Validate(rpcRequest);
+                if (errorCode.HasValue)
                 {
-                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(errorCode.Value, errorMessage, rpcRequest.Id, rpcRequest.Method);
                 }
 
                 try
@@ -98,18 +87,18 @@ namespace Nethermind.JsonRpc
                 catch (TargetInvocationException ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException?.ToString(), rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(ErrorCodes.InternalError, ex.InnerException?.ToString(), rpcRequest.Id, rpcRequest.Method);
                 }
                 catch (Exception ex)
                 {
                     if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.InternalError, ex.InnerException?.ToString(), rpcRequest.Id, rpcRequest.Method);
+                    return GetErrorResponse(ErrorCodes.InternalError, ex.InnerException?.ToString(), rpcRequest.Id, rpcRequest.Method);
                 }
             }
             catch (Exception ex)
             {
                 if (_logger.IsError) _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-                return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
+                return GetErrorResponse(ErrorCodes.ParseError, "Incorrect message", 0, null);
             }
         }
 
@@ -123,7 +112,7 @@ namespace Nethermind.JsonRpc
                 return await ExecuteAsync(rpcRequest, methodName, result);
             }
 
-            return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
+            return GetErrorResponse(ErrorCodes.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
         private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, (MethodInfo Info, bool ReadOnly) method)
@@ -152,7 +141,7 @@ namespace Nethermind.JsonRpc
 
                 if (incorrectParametersCount)
                 {
-                    return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id, methodName);
+                    return GetErrorResponse(ErrorCodes.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}, actual: {expectedParameters.Length - missingParamsCount}", request.Id, methodName);
                 }
             }
 
@@ -164,7 +153,7 @@ namespace Nethermind.JsonRpc
                 if (parameters == null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName}: {string.Join(", ", providedParameters ?? new string[0])}");
-                    return GetErrorResponse(ErrorType.InvalidParams, "Incorrect parameters", request.Id, methodName);
+                    return GetErrorResponse(ErrorCodes.InvalidParams, "Incorrect parameters", request.Id, methodName);
                 }
             }
 
@@ -193,7 +182,7 @@ namespace Nethermind.JsonRpc
             {
                 string errorMessage = $"Method {methodName} execution result does not implement IResultWrapper";
                 if (_logger.IsError) _logger.Error(errorMessage);
-                return GetErrorResponse(ErrorType.InternalError, errorMessage, request.Id, methodName);
+                return GetErrorResponse(JsonRpc.ErrorCodes.InternalError, errorMessage, request.Id, methodName);
             }
 
             Result result = resultWrapper.GetResult();
@@ -204,7 +193,7 @@ namespace Nethermind.JsonRpc
 
             if (result.ResultType == ResultType.Failure)
             {
-                return GetErrorResponse(resultWrapper.GetErrorType(), resultWrapper.GetResult().Error, request.Id, methodName, resultWrapper.GetData());
+                return GetErrorResponse(resultWrapper.GetErrorCode(), resultWrapper.GetResult().Error, request.Id, methodName, resultWrapper.GetData());
             }
 
             return GetSuccessResponse(resultWrapper.GetData(), request.Id);
@@ -286,23 +275,23 @@ namespace Nethermind.JsonRpc
             return response;
         }
 
-        public JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message)
+        public JsonRpcErrorResponse GetErrorResponse(int errorCode, string message)
         {
-            return GetErrorResponse(errorType, message, 0, null);
+            return GetErrorResponse(errorCode, message, 0, null);
         }
 
         public JsonConverter[] Converters { get; }
 
-        private JsonRpcErrorResponse GetErrorResponse(ErrorType errorType, string message, object id, string methodName, object result = null)
+        private JsonRpcErrorResponse GetErrorResponse(int errorCode, string message, object id, string methodName, object result = null)
         {
-            if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
+            if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorCode}, message: {message}");
             var response = new JsonRpcErrorResponse
             {
                 JsonRpc = JsonRpcVersion,
                 Id = id,
                 Error = new Error
                 {
-                    Code = ErrorCodes[errorType],
+                    Code = errorCode,
                     Message = message
                 },
                 Result = result
@@ -311,17 +300,17 @@ namespace Nethermind.JsonRpc
             return response;
         }
 
-        private (ErrorType? ErrorType, string ErrorMessage) Validate(JsonRpcRequest rpcRequest)
+        private (int? ErrorType, string ErrorMessage) Validate(JsonRpcRequest rpcRequest)
         {
             if (rpcRequest == null)
             {
-                return (ErrorType.InvalidRequest, "Invalid request");
+                return (ErrorCodes.InvalidRequest, "Invalid request");
             }
 
             var methodName = rpcRequest.Method;
             if (string.IsNullOrWhiteSpace(methodName))
             {
-                return (ErrorType.InvalidRequest, "Method is required");
+                return (ErrorCodes.InvalidRequest, "Method is required");
             }
 
             methodName = methodName.Trim().ToLower();
@@ -329,12 +318,12 @@ namespace Nethermind.JsonRpc
             var result = _rpcModuleProvider.Check(methodName);
             if (result == ModuleResolution.Unknown)
             {
-                return (ErrorType.MethodNotFound, $"Method {methodName} is not supported");
+                return (ErrorCodes.MethodNotFound, $"Method {methodName} is not supported");
             }
 
             if (result == ModuleResolution.Disabled)
             {
-                return (ErrorType.InvalidRequest, $"{methodName} found but the containing module is disabled");
+                return (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled");
             }
 
             return (null, null);
