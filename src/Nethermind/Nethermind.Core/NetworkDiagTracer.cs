@@ -16,12 +16,13 @@
 
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Core
 {
     public static class NetworkDiagTracer
     {
-        public static bool IsEnabled => false;
+        public static bool IsEnabled => true;
 
         static NetworkDiagTracer()
         {
@@ -31,6 +32,7 @@ namespace Nethermind.Core
             }
         }
         
+        [MethodImpl(MethodImplOptions.Synchronized)]
         private static void LogLine(Guid sessionGuid, string line)
         {
             File.AppendAllText(Path.Combine("network", sessionGuid.ToString()), string.Concat(line, Environment.NewLine));
@@ -48,11 +50,11 @@ namespace Nethermind.Core
             LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {messageCode}");
         }
         
-        public static void ReportConnect(Guid sessionId, string clientId)
-        {
-            if(!IsEnabled) return;
-            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
-        }
+        // public static void ReportConnect(Guid sessionId, string clientId)
+        // {
+        //     if(!IsEnabled) return;
+        //     LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
+        // }
         
         public static void ReportDisconnect(Guid sessionId, string details)
         {
