@@ -103,8 +103,8 @@ namespace Nethermind.BeaconNode.Tests
                 // check wait time against previous + 1 second.. will trigger immediately
                 new DateTimeOffset(2020, 01, 02, 23, 55, 01, 0, TimeSpan.Zero),
 
-                // start time of second loop, 400 ms in
-                new DateTimeOffset(2020, 01, 02, 23, 55, 01, 400, TimeSpan.Zero),
+                // start time of second loop, 600 ms in
+                new DateTimeOffset(2020, 01, 02, 23, 55, 01, 600, TimeSpan.Zero),
                 // start waiting at 750 ms, so should wait 250 ms
                 new DateTimeOffset(2020, 01, 02, 23, 55, 01, 750, TimeSpan.Zero),
 
@@ -137,9 +137,9 @@ namespace Nethermind.BeaconNode.Tests
 
             // Assert
             signal.ShouldBeTrue();
-            TimeSpan expectedTime = TimeSpan.FromMilliseconds(250);
-            TimeSpan tolerance = TimeSpan.FromMilliseconds(40);
-            stopwatch.Elapsed.ShouldBeInRange(expectedTime - tolerance, expectedTime + tolerance);
+            TimeSpan minTime = TimeSpan.FromMilliseconds(250);
+            TimeSpan maxTime = TimeSpan.FromMilliseconds(350);
+            stopwatch.Elapsed.ShouldBeInRange(minTime, maxTime);
         }
     }
 }
