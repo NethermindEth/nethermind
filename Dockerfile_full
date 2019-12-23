@@ -4,12 +4,12 @@ RUN apt-get update -y && apt-get install -y git && \
     git clone https://github.com/NethermindEth/nethermind && \
     cd nethermind && git -c submodule."src/tests".update=none submodule update --init
     
-FROM mcr.microsoft.com/dotnet/core/sdk:3.0 AS build
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
 COPY --from=clone /src .
 RUN cd nethermind/src/Nethermind/Nethermind.Runner && \
     dotnet publish -c release -o out
 
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.0
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1
 RUN apt-get update -y && apt-get install -y libsnappy-dev libc6-dev libc6 unzip
 
 COPY --from=build /nethermind/src/Nethermind/Nethermind.Runner/out .

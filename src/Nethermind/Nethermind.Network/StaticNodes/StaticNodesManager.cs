@@ -1,20 +1,18 @@
-/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Concurrent;
@@ -31,9 +29,8 @@ namespace Nethermind.Network.StaticNodes
 {
     public class StaticNodesManager : IStaticNodesManager
     {
-        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
-            new ConcurrentDictionary<PublicKey, NetworkNode>();
-
+        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =  new ConcurrentDictionary<PublicKey, NetworkNode>();
+        
         private readonly string _staticNodesPath;
         private readonly ILogger _logger;
 
@@ -45,7 +42,7 @@ namespace Nethermind.Network.StaticNodes
 
         public IEnumerable<NetworkNode> Nodes => _nodes.Values;
         public event EventHandler<NetworkNodeEventArgs> NodeAdded;
-        public event EventHandler<NetworkNodeEventArgs> NodeRemoved;
+        public event EventHandler<RemoveNetworkNodeEventArgs> NodeRemoved;
 
         public async Task InitAsync()
         {
@@ -72,6 +69,7 @@ namespace Nethermind.Network.StaticNodes
         public async Task<bool> AddAsync(string enode, bool updateFile = true)
         {
             var node = new NetworkNode(enode);
+
             if (!_nodes.TryAdd(node.NodeId, node))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
@@ -91,20 +89,23 @@ namespace Nethermind.Network.StaticNodes
         public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
         {
             var node = new NetworkNode(enode);
-            if (!_nodes.TryRemove(node.NodeId, out _))
+            var removed = _nodes.TryRemove(node.NodeId, out _);
+            if (!removed && _logger.IsDebug)
             {
-                if (_logger.IsInfo) _logger.Info($"Static node already was not found: {enode}");
-                return false;
+                _logger.Debug($"Static node already was not found: {enode}");
+            }
+            else
+            {
+                if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
+                if (updateFile)
+                {
+                    await SaveFileAsync();
+                }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
-            NodeRemoved?.Invoke(this, new NetworkNodeEventArgs(node));
-            if (updateFile)
-            {
-                await SaveFileAsync();
-            }
-
-            return true;
+            var args = new RemoveNetworkNodeEventArgs(node, removed);
+            NodeRemoved?.Invoke(this, args);
+            return args.Removed;
         }
 
         private Task SaveFileAsync()

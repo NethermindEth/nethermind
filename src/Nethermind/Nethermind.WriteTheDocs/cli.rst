@@ -3,6 +3,15 @@ CLI
 
 CLI access is not currently included in the Nethermind launcher but will be added very soon.
 
+admin
+^^^^^
+
+ - admin.addPeer(enode) - 
+
+ - admin.peers - 
+
+ - admin.removePeer(enode) - 
+
 clique
 ^^^^^^
 
@@ -33,7 +42,7 @@ debug
 
  - debug.config(category, name) - 
 
- - debug.traceBlock(hash, options) - 
+ - debug.traceBlock(rlp, options) - 
 
  - debug.traceBlockByHash(hash, options) - 
 
@@ -45,6 +54,10 @@ debug
 
  - debug.traceTransactionByBlockhashAndIndex(hash, options) - 
 
+ - debug.traceTransactionInBlockByHash(rlp, hash, options) - 
+
+ - debug.traceTransactionInBlockByIndex(rlp, index, options) - 
+
 diag
 ^^^^
 
@@ -54,6 +67,10 @@ eth
 ^^^
 
  - eth.blockNumber - 
+
+ - eth.call(tx, blockParameter) - 
+
+ - eth.chainId - 
 
  - eth.getBalance(address, blockParameter) - 
 
@@ -67,9 +84,13 @@ eth
 
  - eth.getCode(address, blockParameter) - 
 
+ - eth.getLogs(json) - 
+
  - eth.getStorageAt(address, positionIndex, blockParameter) - 
 
  - eth.getTransactionByBlockNumberAndIndex(blockParameter, index) - 
+
+ - eth.getTransactionCount(address, blockParameter) - 
 
  - eth.getTransactionReceipt(txHash) - 
 
@@ -80,6 +101,8 @@ eth
  - eth.sendEth(from, to, amountInEth) - 
 
  - eth.sendWei(from, to, amountInWei) - 
+
+ - eth.sendRawTransaction(txRlp) - 
 
 net
 ^^^
@@ -107,6 +130,8 @@ node
 
 parity
 ^^^^^^
+
+ - parity.getBlockReceipts(blockParameter) - Returns receipts from all transactions from particular block
 
  - parity.pendingTransactions() - Returns the pending transactions using Parity format
 
@@ -136,6 +161,8 @@ trace
  - trace.replayTransaction(txHash, traceTypes) - Replays a transaction, returning the traces.
 
  - trace.block(blockNumber) - Returns traces created at given block.
+
+ - trace.rawTransaction(txData, traceTypes) - Traces a call to eth_sendRawTransaction without making the call, returning the traces
 
  - trace.transaction(txHash) - Returns all traces of given transaction
 

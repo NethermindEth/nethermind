@@ -33,7 +33,7 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Fork_there_and_back()
         {
-            Fork container = new Fork(new ForkVersion(1), new ForkVersion(2), new Epoch(3));
+            Fork container = new Fork(new ForkVersion(new byte[] { 0x01, 0x00, 0x00, 0x00 }), new ForkVersion(new byte[] { 0x02, 0x00, 0x00, 0x00 }), new Epoch(3));
             Span<byte> encoded = new byte[Fork.SszLength];
             Ssz.Encode(encoded, container);
             Fork decoded = Ssz.DecodeFork(encoded);
@@ -488,7 +488,7 @@ namespace Nethermind.Ssz.Test
 
             BeaconState container = new BeaconState();
             container.Balances = new Gwei[3];
-            container.Fork = new Fork(new ForkVersion(5), new ForkVersion(7), new Epoch(3));
+            container.Fork = new Fork(new ForkVersion( new byte[] { 0x05, 0x00, 0x00, 0x00 }), new ForkVersion(new byte[] { 0x07, 0x00, 0x00, 0x00 }), new Epoch(3));
             container.Slashings = new Gwei[Time.EpochsPerSlashingsVector];
             container.Slot = new Slot(1);
             container.Validators = new Validator[7];

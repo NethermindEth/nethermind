@@ -1,24 +1,23 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -44,7 +43,9 @@ namespace Nethermind.Mining
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private readonly LruCache<uint, Task<IEthashDataSet>> _cacheCache = new LruCache<uint, Task<IEthashDataSet>>(10);
+        private const int CacheCapacity = 10;
+        private readonly LruCache<uint, DataSetWithAccessTime> _cacheCache = new LruCache<uint, DataSetWithAccessTime>(CacheCapacity);
+        private readonly HashSet<DataSetWithAccessTime> _cacheMonitor = new HashSet<DataSetWithAccessTime>();
 
         public const int WordBytes = 4; // bytes in word
         public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
@@ -179,9 +180,9 @@ namespace Nethermind.Mining
 
         internal const uint FnvPrime = 0x01000193;
 
-        internal static void Fnv(uint[] b1, uint[] b2)
+        internal static void Fnv(Span<uint> b1, Span<uint> b2)
         {
-            for (uint i = 0; i < b1.Length; i++)
+            for (int i = 0; i < b1.Length; i++)
             {
                 b1[i] = Fnv(b1[i], b2[i]);
             }
@@ -211,20 +212,67 @@ namespace Nethermind.Mining
 
         private readonly Stopwatch _cacheStopwatch = new Stopwatch();
 
+        private class DataSetWithAccessTime
+        {
+            public DataSetWithAccessTime(uint epoch, Task<IEthashDataSet> dataSet, ulong accessTime)
+            {
+                Epoch = epoch;
+                DataSet = dataSet;
+                AccessTime = accessTime;
+            }
+
+            public uint Epoch { get; }
+            public Task<IEthashDataSet> DataSet { get; }
+
+            public ulong AccessTime { get; set; }
+        }
+
         private IEthashDataSet GetOrAddCache(uint epoch)
         {
+            DataSetWithAccessTime theOne;
             lock (_cacheCache)
             {
                 for (uint i = Math.Max(epoch, 2) - 2; i < epoch + 3; i++)
                 {
-                    if (_cacheCache.Get(i) == null)
+                    if (_cacheCache.Get(i) == default)
                     {
-                        _cacheCache.Set(i, BuildCache(i));
+                        DataSetWithAccessTime someone = new DataSetWithAccessTime(i, BuildCache(i), Timestamper.Default.EpochSeconds);
+                        _cacheCache.Set(i, someone);
+                        _cacheMonitor.Add(someone);
                     }
                 }
 
-                return _cacheCache.Get(epoch).Result;
+                var now = Timestamper.Default.EpochSeconds;
+                theOne = _cacheCache.Get(epoch);
+                theOne.AccessTime = now;
+
+                HashSet<DataSetWithAccessTime> removed = null;
+                foreach (DataSetWithAccessTime dataSetWithAccessTime in _cacheMonitor)
+                {
+                    if (now - dataSetWithAccessTime.AccessTime > 180)
+                    {
+                        _cacheCache.Delete(dataSetWithAccessTime.Epoch);
+                        if (removed == null)
+                        {
+                            removed = new HashSet<DataSetWithAccessTime>();
+                        }
+
+                        removed.Add(dataSetWithAccessTime);
+                    }
+                }
+
+                if (removed != null)
+                {
+                    foreach (DataSetWithAccessTime dataSetWithAccessTime in removed)
+                    {
+                        _cacheMonitor.Remove(dataSetWithAccessTime);
+                        dataSetWithAccessTime.DataSet.Result.Dispose();
+                    }
+                }
             }
+
+            IEthashDataSet dataSet = theOne.DataSet.Result;
+            return dataSet;
         }
 
         private Task<IEthashDataSet> BuildCache(uint epoch)
@@ -251,7 +299,7 @@ namespace Nethermind.Mining
             return headerHashed;
         }
 
- public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
@@ -259,7 +307,7 @@ namespace Nethermind.Mining
 
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, nonce);
-            
+
             byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 

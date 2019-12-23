@@ -298,7 +298,7 @@ namespace Nethermind.BeaconNode.Tests
                     (ulong) validatorDuty.AttestationShard, validatorDuty.BlockProposalSlot);
 
                 // Assert
-                validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey);
+                validatorDuty.ValidatorPublicKey.ShouldBe(validatorPublicKey, $"Test {dataIndex}, public key {validatorPublicKey}, epoch {targetEpoch}");
 
                 Slot expectedBlockProposalSlot =
                     blockProposalSlot.HasValue ? new Slot(blockProposalSlot.Value) : Slot.None;

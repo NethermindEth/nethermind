@@ -20,17 +20,11 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core2.Types
 {
-    [DebuggerDisplay("{Number}")]
-    public struct ForkVersion : IEquatable<ForkVersion>, IComparable<ForkVersion>
+    public struct ForkVersion : IEquatable<ForkVersion>
     {
         public const int SszLength = sizeof(uint);
 
-        public ForkVersion(uint number)
-        {
-            Number = number;
-        }
-
-        public uint Number { get; }
+        private readonly uint _number;
 
         public ReadOnlySpan<byte> AsSpan()
         {
@@ -44,12 +38,12 @@ namespace Nethermind.Core2.Types
                 throw new ArgumentOutOfRangeException(nameof(span), span.Length, $"{nameof(ForkVersion)} must have exactly {sizeof(uint)} bytes");
             }
             
-            Number = MemoryMarshal.Cast<byte, uint>(span)[0];
+            _number = MemoryMarshal.Cast<byte, uint>(span)[0];
         }
 
         public static bool operator ==(ForkVersion a, ForkVersion b)
         {
-            return a.Number == b.Number;
+            return a._number == b._number;
         }
 
         public static bool operator !=(ForkVersion a, ForkVersion b)
@@ -59,7 +53,7 @@ namespace Nethermind.Core2.Types
 
         public bool Equals(ForkVersion other)
         {
-            return Number == other.Number;
+            return _number == other._number;
         }
 
         public override bool Equals(object? obj)
@@ -69,17 +63,12 @@ namespace Nethermind.Core2.Types
 
         public override int GetHashCode()
         {
-            return Number.GetHashCode();
+            return _number.GetHashCode();
         }
 
         public override string ToString()
         {
-            return Number.ToString();
-        }
-
-        public int CompareTo(ForkVersion other)
-        {
-            return Number.CompareTo(other.Number);
+            return BitConverter.ToString(AsSpan().ToArray()).Replace("-", "");
         }
     }
 }

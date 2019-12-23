@@ -4,7 +4,7 @@ on:
   push:
     tags:
     - '*'
-
+    
 jobs:
   arm64_building:
     runs-on: ubuntu-18.04

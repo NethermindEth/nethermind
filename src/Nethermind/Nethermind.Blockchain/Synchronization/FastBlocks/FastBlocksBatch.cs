@@ -1,20 +1,18 @@
-/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Diagnostics;
@@ -98,21 +96,23 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         
         public override string ToString()
         {
-            string startBlock = Headers?.StartNumber.ToString();
-            string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
             string details = string.Empty;
             switch (BatchType)
             {
                 case FastBlocksBatchType.None:
                     break;
                 case FastBlocksBatchType.Headers:
+                    string startBlock = Headers?.StartNumber.ToString();
+                    string endBlock = (Headers?.StartNumber != null ? Headers.StartNumber + (Headers.RequestSize - 1) : (Headers?.RequestSize ?? 0) - 1).ToString();
                     details = $"[{startBlock}, {endBlock}]({Headers?.RequestSize ?? Bodies?.Request.Length})";
                     break;
                 case FastBlocksBatchType.Bodies:
                     details = $"({Bodies.Request.Length})";
                     break;
                 case FastBlocksBatchType.Receipts:
-                    details = $"[{Receipts.Blocks[Receipts.Blocks.Length - 1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})";
+                    details = Receipts.Blocks.Length != 0
+                        ? $"[{Receipts.Blocks[^1].Number},{Receipts.Blocks[0].Number}]({Receipts.Request.Length})"
+                        : "[0,0](0)";
                     break;
                 default:
                     throw new ArgumentOutOfRangeException();

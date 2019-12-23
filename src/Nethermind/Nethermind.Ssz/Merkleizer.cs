@@ -441,7 +441,9 @@ namespace Nethermind.Ssz
         
         public void Feed(ForkVersion value)
         {
-            Merkle.Ize(out _chunks[^1], value.Number);
+            Span<byte> padded = stackalloc byte[32];
+            value.AsSpan().CopyTo(padded);
+            Merkle.Ize(out _chunks[^1], padded);
             Feed(_chunks[^1]);
         }
         

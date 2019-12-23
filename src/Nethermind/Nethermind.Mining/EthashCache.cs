@@ -1,22 +1,21 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Mining
@@ -25,12 +24,14 @@ namespace Nethermind.Mining
     {
         private uint[][] Data { get; set; }
 
-        public uint Size => (uint)(Data.Length * Ethash.HashBytes);
+        public uint Size { get; set; }
 
         public EthashCache(uint cacheSize, byte[] seed)
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
-            Data = new uint[cachePageCount][];
+            Size = cachePageCount * Ethash.HashBytes;
+                
+            Data = ArrayPool<uint[]>.Shared.Rent((int)cachePageCount);
             Data[0] = Keccak512.ComputeToUInts(seed);
             for (uint i = 1; i < cachePageCount; i++)
             {
@@ -57,7 +58,7 @@ namespace Nethermind.Mining
 
         public uint[] CalcDataSetItem(uint i)
         {
-            uint n = (uint)Data.Length;
+            uint n = Size / Ethash.HashBytes;
             int r = Ethash.HashBytes / Ethash.WordBytes;
 
             uint[] mixInts = new uint[Ethash.HashBytes / Ethash.WordBytes];
@@ -74,6 +75,35 @@ namespace Nethermind.Mining
 
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
             return mixInts;
+        }
+
+        private bool isDisposed;
+        
+        public void Dispose()
+        {
+            Dispose(true);
+        }
+        
+        private void Dispose(bool isDisposing)
+        {
+            if (isDisposed)
+            {
+                return;
+            }
+            
+            isDisposed = true;
+            
+            if (isDisposing)
+            {
+                GC.SuppressFinalize(this);
+            }
+            
+            ArrayPool<uint[]>.Shared.Return(Data);
+        }
+
+        ~EthashCache()
+        {
+            Dispose(false);
         }
     }
 }

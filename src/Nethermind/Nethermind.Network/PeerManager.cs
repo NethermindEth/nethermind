@@ -1,20 +1,18 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
 using Nethermind.Network.Config;
@@ -56,11 +54,10 @@ namespace Nethermind.Network
         private long _prevActivePeersCount;
         private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
         private Task _peerUpdateLoopTask;
-        private readonly ConcurrentDictionary<PublicKey, Peer> _staticNodes =
-            new ConcurrentDictionary<PublicKey, Peer>();
+        private readonly ConcurrentDictionary<PublicKey, Peer> _staticNodes = new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _candidatePeers = new ConcurrentDictionary<PublicKey, Peer>();
-
+        
         public PeerManager(
             IRlpxPeer rlpxPeer,
             IDiscoveryApp discoveryApp,
@@ -93,20 +90,36 @@ namespace Nethermind.Network
             _discoveryApp.NodeDiscovered += OnNodeDiscovered;
             _staticNodesManager.NodeAdded += (sender, args) =>
             {
-                _staticNodes.TryAdd(args.Node.NodeId, new Peer(new Node(args.Node.Host, args.Node.Port, true)));
-                if (_candidatePeers.TryAdd(args.Node.NodeId,
-                        new Peer(new Node(args.Node.Host, args.Node.Port, true))) && _logger.IsDebug)
+                if (args.NodeIsStatic)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Added the new static node to peers candidates: {args.Node}");
+                    _staticNodes.TryAdd(args.Node.NodeId, new Peer(new Node(args.Node.Host, args.Node.Port, true)));
+                }
+
+                if (_candidatePeers.TryAdd(args.Node.NodeId, new Peer(new Node(args.Node.Host, args.Node.Port, true))) && _logger.IsDebug)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Added new {(args.NodeIsStatic ? "static" : string.Empty)} node to peers candidates: {args.Node}");
                 }
             };
             _staticNodesManager.NodeRemoved += (sender, args) =>
             {
-                _staticNodes.TryRemove(args.Node.NodeId, out _);
-                if (_candidatePeers.TryRemove(args.Node.NodeId, out var peer) && _logger.IsDebug)
+                if (args.NodeIsStatic)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Removed the static node from peers candidates: {args.Node}");
-                    _activePeers.TryRemove(peer.Node.Id, out _);
+                    _staticNodes.TryRemove(args.Node.NodeId, out _);
+                }
+
+                if (_candidatePeers.TryRemove(args.Node.NodeId, out var peer))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Removed {(args.NodeIsStatic ? "static" : string.Empty)} node from peers candidates: {args.Node}");
+
+                    if (_activePeers.ContainsKey(args.Node.NodeId))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Removed {(args.NodeIsStatic ? "static" : string.Empty)} node from active peers: {args.Node}");
+                        
+                        peer.InSession?.Disconnect(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
+                        peer.OutSession?.Disconnect(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
+                    }
+
+                    args.Removed = true;
                 }
             };
             _rlpxPeer.SessionCreated += (sender, args) =>
@@ -197,6 +210,7 @@ namespace Nethermind.Network
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
+
         public IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToList().AsReadOnly();
 
         private class CandidateSelection

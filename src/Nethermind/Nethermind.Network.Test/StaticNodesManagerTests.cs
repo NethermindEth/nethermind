@@ -1,3 +1,19 @@
+//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -44,12 +60,25 @@ namespace Nethermind.Network.Test
         public async Task remove_should_delete_an_existing_static_node_and_trigger_an_event()
         {
             var eventRaised = false;
-            _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; };
+            var nodeIsStatic = false;
+            _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; nodeIsStatic = e.NodeIsStatic; };
             await _staticNodesManager.AddAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(1);
             await _staticNodesManager.RemoveAsync(Enode, false);
             _staticNodesManager.Nodes.Count().Should().Be(0);
             eventRaised.Should().BeTrue();
+            nodeIsStatic.Should().BeTrue();
+        }
+        
+        [Test]
+        public async Task remove_should_trigger_an_event_even_if_no_static_node()
+        {
+            var eventRaised = false;
+            var nodeIsStatic = false;
+            _staticNodesManager.NodeRemoved += (s, e) => { eventRaised = true; nodeIsStatic = e.NodeIsStatic; };
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            eventRaised.Should().BeTrue();
+            nodeIsStatic.Should().BeFalse();
         }
     }
 }

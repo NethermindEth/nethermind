@@ -17,6 +17,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -25,13 +26,13 @@ namespace Nethermind.Ssz
     {
         public static void Encode(Span<byte> span, ForkVersion value)
         {
-            Encode(span, value.Number);
+            value.AsSpan().CopyTo(span);
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ForkVersion DecodeForkVersion(Span<byte> span, ref int offset)
         {
-            ForkVersion forkVersion = new ForkVersion(BinaryPrimitives.ReadUInt32LittleEndian(span.Slice(offset)));
+            ForkVersion forkVersion = new ForkVersion(span.Slice(offset, ForkVersion.SszLength));
             offset += ForkVersion.SszLength;
             return forkVersion;
         }
@@ -39,13 +40,14 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, ForkVersion value, ref int offset)
         {
-            BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset), value.Number);
+            // FIXME: ForkVersion can be created by marshalling a span onto it, with no guarantee the underlying architecture is little endian.
+            value.AsSpan().CopyTo(span.Slice(offset, ForkVersion.SszLength));
             offset += ForkVersion.SszLength;
         }
         
         public static ForkVersion DecodeForkVersion(Span<byte> span)
         {
-            return new ForkVersion(DecodeUInt(span));
+            return new ForkVersion(span.Slice(0, ForkVersion.SszLength));
         }
     }
 }

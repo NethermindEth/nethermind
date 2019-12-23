@@ -1,20 +1,18 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
 
@@ -84,14 +82,14 @@ namespace Nethermind.Db.Config
         public ulong ConsumerDepositApprovalsDbBlockCacheSize { get; set; } = 64.MB();
         public bool ConsumerDepositApprovalsDbCacheIndexAndFilterBlocks { get; set; } = true;
 
-        public ulong ConfigsDbWriteBufferSize { get; set; } = 16.MB();
+        public ulong ConfigsDbWriteBufferSize { get; set; } = 2.MB();
         public uint ConfigsDbWriteBufferNumber { get; set; } = 4;
-        public ulong ConfigsDbBlockCacheSize { get; set; } = 64.MB();
+        public ulong ConfigsDbBlockCacheSize { get; set; } = 8.MB();
         public bool ConfigsDbCacheIndexAndFilterBlocks { get; set; } = true;
 
-        public ulong EthRequestsDbWriteBufferSize { get; set; } = 16.MB();
+        public ulong EthRequestsDbWriteBufferSize { get; set; } = 2.MB();
         public uint EthRequestsDbWriteBufferNumber { get; set; } = 4;
-        public ulong EthRequestsDbBlockCacheSize { get; set; } = 64.MB();
+        public ulong EthRequestsDbBlockCacheSize { get; set; } = 8.MB();
         public bool EthRequestsDbCacheIndexAndFilterBlocks { get; set; } = true;
         public uint RecycleLogFileNum { get; set; } = 0;
         public bool WriteAheadLogSync { get; set; } = false;

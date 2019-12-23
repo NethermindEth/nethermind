@@ -1,4 +1,20 @@
-﻿using System.Buffers.Binary;
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+using System.Buffers.Binary;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Configuration;
@@ -172,23 +188,23 @@ namespace Nethermind.BeaconNode
             {
                 configuration.Bind("BeaconChain:SignatureDomains", section =>
                 {
-                    x.BeaconProposer =  (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.BeaconProposer =  new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconProposer",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_PROPOSER",
                                 () => new byte[4])));
-                    x.BeaconAttester = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.BeaconAttester = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainBeaconAttester",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_BEACON_ATTESTER",
                                 () => new byte[4])));
-                    x.Randao = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.Randao = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainRandao",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_RANDAO",
                                 () => new byte[4])));
-                    x.Deposit = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.Deposit = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainDeposit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_DEPOSIT",
                                 () => new byte[4])));
-                    x.VoluntaryExit = (DomainType)BinaryPrimitives.ReadUInt32LittleEndian(
+                    x.VoluntaryExit = new DomainType(
                         section.GetBytesFromPrefixedHex("DomainVoluntaryExit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT",
                                 () => new byte[4])));
@@ -199,6 +215,14 @@ namespace Nethermind.BeaconNode
                 x.SafeSlotsToUpdateJustified = new Slot(
                     configuration.GetValue<ulong>("ForkChoiceConfiguration:SafeSlotsToUpdateJustified",
                         () => configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED")));
+            });
+            services.Configure<HonestValidatorConstants>(x =>
+            {
+                configuration.Bind("HonestValidatorConstants", section =>
+                {
+                    x.Eth1FollowDistance = section.GetValue(nameof(x.Eth1FollowDistance),
+                        () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
+                });
             });
         }
     }

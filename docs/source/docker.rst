@@ -14,9 +14,19 @@ In order to start Nethermind.Runner, simply run::
 
     docker run -it nethermind/nethermind
 
-To enable JSON RPC, publish port 8545 and set NETHERMIND_INITCONFIG_JSONRPCENABLED=true::
+You can use ``--help`` to get a list of possible start parameters for Nethermind::
+
+    docker run -it nethermind/nethermind --help
+
+To enable JSON RPC, publish port 8545 and set NETHERMIND_JSONRPCCONFIG_ENABLED=true and NETHERMIND_URL=http://*:8545
+or --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0::
     
-    docker run -it -p 8545:8545 -p 30312:30312 -e NETHERMIND_INITCONFIG_JSONRPCENABLED=true nethermind/nethermind
+    docker run -it -e NETHERMIND_URL=http://*:8545 -e NETHERMIND_JSONRPCCONFIG_ENABLED=true -e NETHERMIND_NETWORKCONFIG_P2PPORT=30312 -e NETHERMIND_NETWORKCONFIG_DISCOVERYPORT=30312 nethermind/nethermind
+
+    or
+
+    docker run -it --network host nethermind/nethermind --JsonRpc.Enabled true --Network.DiscoveryPort 30312 --Network.P2PPort 30312
+
 
 To switch the network, set NETHERMIND_CONFIG variable (default value is mainnet).
 
@@ -26,12 +36,16 @@ Available configurations
 - goerli
 - rinkeby
 - ropsten
+- xdai
+- poacore
+- sokol
+- volta
 
 For example::
 
     docker run -it -e NETHERMIND_CONFIG=goerli nethermind/nethermind
 
-It's possible to modify each configuration property via environment variable, using a simple convention::
+It's also possible to modify each configuration property via environment variable, using a simple convention::
     
     NETHERMIND_{MODULE}_{PROPERTY}
 

@@ -12,10 +12,6 @@
     
     <ItemGroup>
       <PackageReference Include="Colorful.Console" Version="1.2.9" />
-      <PackageReference Include="GitVersionTask" Version="5.1.2">
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        <PrivateAssets>all</PrivateAssets>
-      </PackageReference>
       <PackageReference Include="Jint" Version="2.11.58" />
       <PackageReference Include="ReadLine" Version="2.0.1" />
     </ItemGroup>

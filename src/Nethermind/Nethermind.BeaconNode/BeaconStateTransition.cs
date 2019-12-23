@@ -1,4 +1,20 @@
-﻿using System;
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -360,16 +376,16 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public void ProcessBlock(BeaconState state, BeaconBlock block)
+        public void ProcessBlock(BeaconState state, BeaconBlock block, bool validateStateRoot)
         {
             if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessBlock, "Process block {BeaconBlock} for state {BeaconState}", block, state);
-            ProcessBlockHeader(state, block);
+            ProcessBlockHeader(state, block, validateStateRoot);
             ProcessRandao(state, block.Body);
             ProcessEth1Data(state, block.Body);
             ProcessOperations(state, block.Body);
         }
 
-        public void ProcessBlockHeader(BeaconState state, BeaconBlock block)
+        public void ProcessBlockHeader(BeaconState state, BeaconBlock block, bool validateStateRoot)
         {
             if(_logger.IsInfo()) _logger.LogInformation(Event.ProcessBlock, "Process block header for block {BeaconBlock}", block);
             // Verify that the slots match
@@ -403,12 +419,18 @@ namespace Nethermind.BeaconNode
             }
 
             // Verify proposer signature
-            Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
-            bool validSignature = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
-            if (!validSignature)
+            if (validateStateRoot)
             {
-                throw new Exception($"Block signature must match proposer public key {proposer.PublicKey}");
+                Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue,
+                    _maxOperationsPerBlockOptions.CurrentValue);
+                Domain domain = _beaconStateAccessor.GetDomain(state,
+                    _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
+                bool validSignature =
+                    _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot, block.Signature, domain);
+                if (!validSignature)
+                {
+                    throw new Exception($"Block signature must match proposer public key {proposer.PublicKey}");
+                }
             }
         }
 
@@ -515,7 +537,7 @@ namespace Nethermind.BeaconNode
             Epoch nextEpoch = currentEpoch + new Epoch(1);
 
             // Reset eth1 data votes
-            Slot nextSlot = state.Slot + new Slot(1);
+            Slot nextSlot = state.Slot + Slot.One;
             if (nextSlot % timeParameters.SlotsPerEth1VotingPeriod == Slot.Zero)
             {
                 state.ClearEth1DataVotes();
@@ -916,7 +938,7 @@ namespace Nethermind.BeaconNode
             // Process slots (including those with no blocks) since block
             ProcessSlots(state, block.Slot);
             // Process block
-            ProcessBlock(state, block);
+            ProcessBlock(state, block, validateStateRoot);
             // Validate state root (True in production)
             if (validateStateRoot)
             {

@@ -1,12 +1,14 @@
-FROM mcr.microsoft.com/dotnet/core/sdk:3.0.101-disco-arm64v8 AS build
-COPY . .
-RUN git submodule update --init src/Dirichlet src/rocksdb-sharp
-RUN dotnet publish src/Nethermind/Nethermind.Runner -c release -o out
+FROM mcr.microsoft.com/dotnet/core/sdk:3.0-stretch-arm64v8 AS build
+RUN git clone https://github.com/NethermindEth/nethermind.git nethermind/ && \
+    cd nethermind/ && \
+    git submodule update --init src/Dirichlet src/rocksdb-sharp && \
+    dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
+    git describe --tags > out/git-hash
 
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.0.1-disco-arm64v8
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.0-stretch-arm64v8
+RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0.0
 WORKDIR /nethermind
-COPY --from=build /out .
+COPY --from=build /nethermind/out .
 
 ENV ASPNETCORE_ENVIRONMENT docker
 ENV NETHERMIND_CONFIG mainnet
@@ -21,4 +23,4 @@ RUN ln -s /lib/aarch64-linux-gnu/libgflags.so /lib/aarch64-linux-gnu/libgflags.s
 COPY arm/lib/librocksdb.so /nethermind/librocksdb.so
 COPY arm/lib/libsecp256k1.so /nethermind/runtimes/linux-x64/native/libsecp256k1.so
 
-ENTRYPOINT dotnet Nethermind.Runner.dll
+ENTRYPOINT ["dotnet", "Nethermind.Runner.dll"]

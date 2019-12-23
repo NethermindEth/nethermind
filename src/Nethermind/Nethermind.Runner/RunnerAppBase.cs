@@ -1,20 +1,18 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.IO;
@@ -57,16 +55,15 @@ namespace Nethermind.Runner
 {
     public abstract class RunnerAppBase
     {
-        protected ILogger Logger;
+        private ILogger _logger;
         private IRunner _jsonRpcRunner = NullRunner.Instance;
         private IRunner _ethereumRunner = NullRunner.Instance;
         private IRunner _grpcRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
         private IMonitoringService _monitoringService;
         
-        protected RunnerAppBase(ILogger logger)
+        protected RunnerAppBase()
         {
-            Logger = logger;
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         }
 
@@ -76,28 +73,29 @@ namespace Nethermind.Runner
 
         private void LogMemoryConfiguration()
         {
-            if (Logger.IsDebug) Logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
-            if (Logger.IsDebug) Logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
-            if (Logger.IsDebug) Logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+            if (_logger.IsDebug) _logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
+            if (_logger.IsDebug) _logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
+            if (_logger.IsDebug) _logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
         }
 
         public void Run(string[] args)
         {
             var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
-            ManualResetEventSlim appClosed = new ManualResetEventSlim(false);
+            ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
             app.OnExecute(async () =>
             {
+                appClosed.Reset();
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
                 LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
-                Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
+                _logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 LogMemoryConfiguration();
 
                 var pathDbPath = getDbBasePath();
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
                     var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
-                    if (Logger.IsDebug) Logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                    if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                     initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
                 }
 
@@ -105,9 +103,9 @@ namespace Nethermind.Runner
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 var serializer = new EthereumJsonSerializer();
-                if (Logger.IsInfo)
+                if (_logger.IsInfo)
                 {
-                    Logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
+                    _logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
                 }
 
                 _cancelKeySource = new TaskCompletionSource<object>();
@@ -160,12 +158,12 @@ namespace Nethermind.Runner
 
                 await _monitoringService.StartAsync().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during starting a monitoring.", x.Exception);
+                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during starting a monitoring.", x.Exception);
                 });
             }
             else
             {
-                if (Logger.IsInfo) Logger.Info("Monitoring is disabled");
+                if (_logger.IsInfo) _logger.Info("Monitoring is disabled");
             }
 
             INdmDataPublisher ndmDataPublisher = null;
@@ -178,7 +176,7 @@ namespace Nethermind.Runner
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
                 var initializerName = ndmConfig.InitializerName;
-                if (Logger.IsInfo) Logger.Info($"NDM initializer: {initializerName}");
+                if (_logger.IsInfo) _logger.Info($"NDM initializer: {initializerName}");
                 var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
                     .SelectMany(a => a.GetTypes())
                     .FirstOrDefault(t =>
@@ -202,7 +200,7 @@ namespace Nethermind.Runner
                 _grpcRunner = new GrpcRunner(grpcServer, grpcConfig, logManager);
                 await _grpcRunner.Start().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during GRPC runner start", x.Exception);
+                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during GRPC runner start", x.Exception);
                 });
             }
             
@@ -221,7 +219,7 @@ namespace Nethermind.Runner
             
             await _ethereumRunner.Start().ContinueWith(x =>
             {
-                if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
+                if (x.IsFaulted && _logger.IsError) _logger.Error("Error during ethereum runner start", x.Exception);
             });
 
             if (jsonRpcConfig.Enabled)
@@ -241,12 +239,12 @@ namespace Nethermind.Runner
                     webSocketsManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>
                 {
-                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during jsonRpc runner start", x.Exception);
+                    if (x.IsFaulted && _logger.IsError) _logger.Error("Error during jsonRpc runner start", x.Exception);
                 });
             }
             else
             {
-                if (Logger.IsInfo) Logger.Info("Json RPC is disabled");
+                if (_logger.IsInfo) _logger.Info("Json RPC is disabled");
             }
         }
 

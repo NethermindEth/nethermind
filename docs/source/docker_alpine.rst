@@ -14,7 +14,7 @@ Sync with mainnet
 -----------------
 ::
 
-    docker run -it -p 30303:30303 -p 30303:30303/udp nethermind/nethermind:alpine
+    docker run -it --network host nethermind/nethermind:alpine
 
 Port 30303 has to be accessible if you want incoming connections. (tcp and udp)
 
@@ -22,10 +22,9 @@ Enable JSON-RPC
 ---------------
 ::
 
-    docker run -it -p 127.0.0.1:8545:8545 -p 30303:30303 -p 30303:30303/udp nethermind/nethermind:alpine --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0
-
-Be carefull to use ``-p 127.0.0.1:8545:8545`` and NOT ``-p 8545:8545``!
-
+    docker run -it --network host nethermind/nethermind:alpine --JsonRpc.Enabled true
+    
+The default port is 8545.
 
 Persistent data
 ---------------
@@ -34,7 +33,7 @@ The database is located at ``/data``
 ::
 
     docker volume create nethermind_db
-    docker run -it -p 30303:30303 -p 30303:30303/udp -v nethermind_db:/data nethermind/nethermind:alpine
+    docker run -it --network host -v nethermind_db:/data nethermind/nethermind:alpine
 
 To use an existing database, you need to make the files accessible for the user inside the container. (uid/gid 1337)
 

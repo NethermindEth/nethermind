@@ -1,20 +1,18 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Generic;
@@ -28,6 +26,7 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Store;
+using Nethermind.Store.BeamSyncStore;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -37,15 +36,16 @@ namespace Nethermind.Evm.Test
         private IEthereumEcdsa _ethereumEcdsa;
         private ITransactionProcessor _processor;
         private ISnapshotableDb _stateDb;
+        protected bool UseBeamSync { get; set; }
 
         protected IVirtualMachine Machine { get; private set; }
         protected IStateProvider TestState { get; private set; }
         protected IStorageProvider Storage { get; private set; }
 
-        protected static Address Contract { get; private set; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
-        protected static Address Sender { get; private set; } = TestItem.AddressA;
-        protected static Address Recipient { get; private set; } = TestItem.AddressB;
-        protected static Address Miner { get; private set; } = TestItem.AddressD;
+        protected static Address Contract { get; } = new Address("0xd75a3a95360e44a3874e691fb48d77855f127069");
+        protected static Address Sender { get; } = TestItem.AddressA;
+        protected static Address Recipient { get; } = TestItem.AddressB;
+        protected static Address Miner { get; } = TestItem.AddressD;
 
         protected virtual long BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
         protected virtual ISpecProvider SpecProvider => MainNetSpecProvider.Instance;
@@ -54,9 +54,12 @@ namespace Nethermind.Evm.Test
         [SetUp]
         public virtual void Setup()
         {
-            ILogManager logger = LimboLogs.Instance;;
-            IDb codeDb = new StateDb();
-            _stateDb = new StateDb();
+            ILogManager logger = LimboLogs.Instance;
+
+            ISnapshotableDb beamSyncDb = new StateDb(new BeamSyncDb());
+            IDb beamSyncCodeDb = new BeamSyncDb();
+            IDb codeDb = UseBeamSync ? beamSyncCodeDb : new StateDb();
+            _stateDb = UseBeamSync ? beamSyncDb : new StateDb();
             TestState = new StateProvider(_stateDb, codeDb, logger);
             Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumEcdsa = new EthereumEcdsa(SpecProvider, logger);
@@ -88,7 +91,7 @@ namespace Nethermind.Evm.Test
             _processor.Execute(transaction, block.Header, tracer);
             return (tracer.BuildResult(), block, transaction);
         }
-        
+
         protected (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteAndTraceParityCall(ParityTraceTypes traceTypes, params byte[] code)
         {
             (var block, var transaction) = PrepareTx(BlockNumber, 100000, code);
@@ -219,7 +222,7 @@ namespace Nethermind.Evm.Test
             byte[] actualValue = Storage.Get(new StorageAddress(Recipient, address));
             Assert.AreEqual(expectedValue.ToBigEndianByteArray(), actualValue, "storage");
         }
-        
+
         protected void AssertStorage(StorageAddress storageAddress, BigInteger expectedValue)
         {
             byte[] actualValue = Storage.Get(storageAddress);
@@ -286,12 +289,12 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CALL);
                 return this;
             }
-            
+
             public Prepare CallWithInput(Address address, long gasLimit, string input)
             {
                 return CallWithInput(address, gasLimit, Bytes.FromHexString(input));
             }
-            
+
             public Prepare CallWithInput(Address address, long gasLimit, byte[] input)
             {
                 StoreDataInMemory(0, input);
@@ -305,7 +308,7 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CALL);
                 return this;
             }
-            
+
             public Prepare CallWithValue(Address address, long gasLimit, UInt256 value)
             {
                 PushData(0);
@@ -318,7 +321,7 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.CALL);
                 return this;
             }
-            
+
             public Prepare DelegateCall(Address address, long gasLimit)
             {
                 PushData(0);
@@ -330,7 +333,7 @@ namespace Nethermind.Evm.Test
                 Op(Instruction.DELEGATECALL);
                 return this;
             }
-            
+
             public Prepare CallCode(Address address, long gasLimit)
             {
                 PushData(0);
@@ -345,7 +348,7 @@ namespace Nethermind.Evm.Test
             }
 
             public Prepare StaticCall(Address address, long gasLimit)
-            {                
+            {
                 PushData(0);
                 PushData(0);
                 PushData(0);

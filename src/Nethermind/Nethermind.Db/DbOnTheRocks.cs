@@ -1,27 +1,27 @@
-﻿/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Threading;
 using Nethermind.Db.Config;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 using Nethermind.Store;
 using RocksDbSharp;
@@ -37,23 +37,22 @@ namespace Nethermind.Db
 
         public abstract string Name { get; }
 
+        private static long _maxRocksSize;
+
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
         {
-            var fullPath = dbPath.GetApplicationResourcePath(basePath);
-            var logger = logManager?.GetClassLogger();
+            string fullPath = dbPath.GetApplicationResourcePath(basePath);
+            _logger = logManager?.GetClassLogger() ?? NullLogger.Instance;
             if (!Directory.Exists(fullPath))
             {
                 Directory.CreateDirectory(fullPath);
             }
-            
-            if (logger != null)
-            {
-                if (logger.IsInfo) logger.Info($"Using database directory {fullPath}");
-            }
+
+            if (_logger.IsInfo) _logger.Info($"Using database directory {fullPath}");
 
             try
             {
-                var options = BuildOptions(dbConfig);
+                DbOptions options = BuildOptions(dbConfig);
                 _db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -62,13 +61,13 @@ namespace Nethermind.Db
                                                "sudo apt update && sudo apt install libsnappy-dev libc6-dev libc6");
             }
         }
-        
+
         protected abstract void UpdateReadMetrics();
         protected abstract void UpdateWriteMetrics();
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {
-            var prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"),
+            string prefixed = string.Concat(Name == "State" ? string.Empty : string.Concat(Name, "Db"),
                 propertyName);
             try
             {
@@ -83,7 +82,8 @@ namespace Nethermind.Db
 
         private DbOptions BuildOptions(IDbConfig dbConfig)
         {
-            var tableOptions = new BlockBasedTableOptions();
+            long thisDbSize = 0;
+            BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
             tableOptions.SetCacheIndexAndFilterBlocks(ReadConfig<bool>(dbConfig, nameof(dbConfig.CacheIndexAndFilterBlocks)));
@@ -91,11 +91,13 @@ namespace Nethermind.Db
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            var blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
-            var cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
+            ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
+            thisDbSize += (long) blockCacheSize;
+
+            IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
 
-            var options = new DbOptions();
+            DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
             options.SetAdviseRandomOnOpen(true);
             options.OptimizeForPointLookup(blockCacheSize); // I guess this should be the one option controlled by the DB size property - bind it to LRU cache size
@@ -113,23 +115,31 @@ namespace Nethermind.Db
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
-            options.SetWriteBufferSize(ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize)));
-            options.SetMaxWriteBufferNumber((int)ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber)));
+            ulong writeBufferSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.WriteBufferSize));
+            options.SetWriteBufferSize(writeBufferSize);
+            int writeBufferNumber = (int) ReadConfig<uint>(dbConfig, nameof(dbConfig.WriteBufferNumber));
+            options.SetMaxWriteBufferNumber(writeBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
+
+
+            thisDbSize += (long) writeBufferSize * writeBufferNumber;
+            Interlocked.Add(ref _maxRocksSize, thisDbSize);
+            _logger.Info($"Expected max memory footprint of {Name} DB is {thisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
+            _logger.Info($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
+
             options.SetBlockBasedTableFactory(tableOptions);
-            
+
             options.SetMaxBackgroundFlushes(Environment.ProcessorCount);
             options.IncreaseParallelism(Environment.ProcessorCount);
             options.SetRecycleLogFileNum(dbConfig.RecycleLogFileNum); // potential optimization for reusing allocated log files
-            
-            
+
 //            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
             _writeOptions = new WriteOptions();
             _writeOptions.SetSync(dbConfig.WriteAheadLogSync); // potential fix for corruption on hard process termination, may cause performance degradation
 
             return options;
         }
-        
+
         public byte[] this[byte[] key]
         {
             get
@@ -183,7 +193,7 @@ namespace Nethermind.Db
 
         public byte[][] GetAll()
         {
-            var iterator = _db.NewIterator();
+            Iterator iterator = _db.NewIterator();
             iterator = iterator.SeekToFirst();
             var values = new List<byte[]>();
             while (iterator.Valid())
@@ -198,14 +208,15 @@ namespace Nethermind.Db
         }
 
         private byte[] _keyExistsBuffer = new byte[1];
-        
+        private ILogger _logger;
+
         public bool KeyExists(byte[] key)
         {
             // seems it has no performance impact
             return _db.Get(key) != null;
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
-        
+
         public void StartBatch()
         {
             _currentBatch = new WriteBatch();

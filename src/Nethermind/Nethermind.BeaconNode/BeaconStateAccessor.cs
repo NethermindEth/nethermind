@@ -1,7 +1,24 @@
-﻿using System;
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  This file is part of the Nethermind library.
+// 
+//  The Nethermind library is free software: you can redistribute it and/or modify
+//  it under the terms of the GNU Lesser General Public License as published by
+//  the Free Software Foundation, either version 3 of the License, or
+//  (at your option) any later version.
+// 
+//  The Nethermind library is distributed in the hope that it will be useful,
+//  but WITHOUT ANY WARRANTY; without even the implied warranty of
+//  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+//  GNU Lesser General Public License for more details.
+// 
+//  You should have received a copy of the GNU Lesser General Public License
+//  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+
+using System;
 using System.Buffers.Binary;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
@@ -43,21 +60,21 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public IndexedAttestation GetIndexedAttestation(BeaconState state, Attestation attestation)
         {
-            var attestingIndices = GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
-            var custodyBit1Indices = GetAttestingIndices(state, attestation.Data, attestation.CustodyBits);
+            IEnumerable<ValidatorIndex> attestingIndices = GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
+            IEnumerable<ValidatorIndex> custodyBit1Indices = GetAttestingIndices(state, attestation.Data, attestation.CustodyBits);
 
-            var isSubset = custodyBit1Indices.All(x => attestingIndices.Contains(x));
+            bool isSubset = custodyBit1Indices.All(x => attestingIndices.Contains(x));
             if (!isSubset)
             {
                 throw new Exception("Custody bit indices must be a subset of attesting indices");
             }
 
-            var custodyBit0Indices = attestingIndices.Except(custodyBit1Indices);
+            IEnumerable<ValidatorIndex> custodyBit0Indices = attestingIndices.Except(custodyBit1Indices);
 
-            var sortedCustodyBit0Indices = custodyBit0Indices.OrderBy(x => x);
-            var sortedCustodyBit1Indices = custodyBit1Indices.OrderBy(x => x);
+            IOrderedEnumerable<ValidatorIndex> sortedCustodyBit0Indices = custodyBit0Indices.OrderBy(x => x);
+            IOrderedEnumerable<ValidatorIndex> sortedCustodyBit1Indices = custodyBit1Indices.OrderBy(x => x);
 
-            var indexedAttestation = new IndexedAttestation(sortedCustodyBit0Indices, sortedCustodyBit1Indices, attestation.Data, attestation.Signature);
+            IndexedAttestation indexedAttestation = new IndexedAttestation(sortedCustodyBit0Indices, sortedCustodyBit1Indices, attestation.Data, attestation.Signature);
             return indexedAttestation;
         }
 
@@ -78,7 +95,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public IEnumerable<ValidatorIndex> GetAttestingIndices(BeaconState state, AttestationData data, BitArray bits)
         {
-            var committee = GetBeaconCommittee(state, data.Slot, data.Index);
+            IReadOnlyList<ValidatorIndex> committee = GetBeaconCommittee(state, data.Slot, data.Index);
             return committee.Where((x, index) => bits[index]);
         }
 
@@ -87,17 +104,17 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public IReadOnlyList<ValidatorIndex> GetBeaconCommittee(BeaconState state, Slot slot, CommitteeIndex index)
         {
-            var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
-            var committeesPerSlot = GetCommitteeCountAtSlot(state, slot);
+            Epoch epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
+            ulong committeesPerSlot = GetCommitteeCountAtSlot(state, slot);
             //var committeeCount = GetCommitteeCount(state, epoch);
 
-            var indices = GetActiveValidatorIndices(state, epoch);
-            var seed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconAttester);
+            IList<ValidatorIndex> indices = GetActiveValidatorIndices(state, epoch);
+            Hash32 seed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconAttester);
             //var index = (shard + miscellaneousParameters.ShardCount - GetStartShard(state, epoch)) % miscellaneousParameters.ShardCount;
-            var committeeIndex = (ulong)(slot % _timeParameterOptions.CurrentValue.SlotsPerEpoch) * committeesPerSlot + (ulong)index;
-            var committeeCount = committeesPerSlot * (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch;
+            ulong committeeIndex = (ulong)(slot % _timeParameterOptions.CurrentValue.SlotsPerEpoch) * committeesPerSlot + (ulong)index;
+            ulong committeeCount = committeesPerSlot * (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch;
 
-            var committee = _beaconChainUtility.ComputeCommittee(indices, seed, committeeIndex, committeeCount);
+            IReadOnlyList<ValidatorIndex> committee = _beaconChainUtility.ComputeCommittee(indices, seed, committeeIndex, committeeCount);
             return committee;
         }
 
@@ -106,20 +123,16 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public ValidatorIndex GetBeaconProposerIndex(BeaconState state)
         {
-            var epoch = GetCurrentEpoch(state);
+            Epoch epoch = GetCurrentEpoch(state);
 
-            var seedBytes = new Span<byte>(new byte[40]);
-            var initialSeed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconProposer);
+            Span<byte> seedBytes = stackalloc byte[40];
+            Hash32 initialSeed = GetSeed(state, epoch, _signatureDomainOptions.CurrentValue.BeaconProposer);
             initialSeed.AsSpan().CopyTo(seedBytes);
-            BitConverter.TryWriteBytes(seedBytes.Slice(32), (ulong)state.Slot);
-            if (!BitConverter.IsLittleEndian)
-            {
-                seedBytes.Slice(32).Reverse();
-            }
-            var seed = _cryptographyService.Hash(seedBytes);
+            BinaryPrimitives.WriteUInt64LittleEndian(seedBytes.Slice(32), (ulong)state.Slot);
+            Hash32 seed = _cryptographyService.Hash(seedBytes);
 
-            var indices = GetActiveValidatorIndices(state, epoch);
-            var proposerIndex = _beaconChainUtility.ComputeProposerIndex(state, indices, seed);
+            IList<ValidatorIndex> indices = GetActiveValidatorIndices(state, epoch);
+            ValidatorIndex proposerIndex = _beaconChainUtility.ComputeProposerIndex(state, indices, seed);
             return proposerIndex;
         }
 
@@ -128,10 +141,10 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public ulong GetValidatorChurnLimit(BeaconState state)
         {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            var currentEpoch = GetCurrentEpoch(state);
-            var activeValidatorIndices = GetActiveValidatorIndices(state, currentEpoch);
-            var churnLimit = (ulong)activeValidatorIndices.Count / miscellaneousParameters.ChurnLimitQuotient;
+            MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+            Epoch currentEpoch = GetCurrentEpoch(state);
+            IList<ValidatorIndex> activeValidatorIndices = GetActiveValidatorIndices(state, currentEpoch);
+            ulong churnLimit = (ulong)activeValidatorIndices.Count / miscellaneousParameters.ChurnLimitQuotient;
             return Math.Max(churnLimit, miscellaneousParameters.MinimumPerEpochChurnLimit);
         }
 
@@ -140,7 +153,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Hash32 GetBlockRoot(BeaconState state, Epoch epoch)
         {
-            var startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
             return GetBlockRootAtSlot(state, startSlot);
         }
 
@@ -149,7 +162,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Hash32 GetBlockRootAtSlot(BeaconState state, Slot slot)
         {
-            var timeParameters = _timeParameterOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             // NOTE: Need to use '+' to avoid underflow issues
             if (slot + timeParameters.SlotsPerHistoricalRoot < state.Slot)
             {
@@ -159,7 +172,7 @@ namespace Nethermind.BeaconNode
             {
                 throw new ArgumentOutOfRangeException(nameof(slot), slot, $"Slot must be less than than the state slot {state.Slot}");
             }
-            var blockIndex = slot % timeParameters.SlotsPerHistoricalRoot;
+            ulong blockIndex = slot % timeParameters.SlotsPerHistoricalRoot;
             return state.BlockRoots[(int)blockIndex];
         }
 
@@ -199,9 +212,9 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public ulong GetCommitteeCountAtSlot(BeaconState state, Slot slot)
         {
-            var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
-            var indices = GetActiveValidatorIndices(state, epoch);
-            var committeeCount = (ulong)indices.Count
+            Epoch epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
+            IList<ValidatorIndex> indices = GetActiveValidatorIndices(state, epoch);
+            ulong committeeCount = (ulong)indices.Count
                 / (ulong)_timeParameterOptions.CurrentValue.SlotsPerEpoch
                 / _miscellaneousParameterOptions.CurrentValue.TargetCommitteeSize;
 
@@ -249,7 +262,7 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Epoch GetPreviousEpoch(BeaconState state)
         {
-            var currentEpoch = GetCurrentEpoch(state);
+            Epoch currentEpoch = GetCurrentEpoch(state);
             if (currentEpoch == _initialValueOptions.CurrentValue.GenesisEpoch)
             {
                 return _initialValueOptions.CurrentValue.GenesisEpoch;
@@ -262,8 +275,8 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Hash32 GetRandaoMix(BeaconState state, Epoch epoch)
         {
-            var index = (int)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
-            var mix = state.RandaoMixes[index];
+            int index = (int)(epoch % _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector);
+            Hash32 mix = state.RandaoMixes[index];
             return mix;
         }
 
@@ -275,17 +288,13 @@ namespace Nethermind.BeaconNode
             Epoch mixEpoch = (Epoch)(epoch + _stateListLengthOptions.CurrentValue.EpochsPerHistoricalVector
                 - _timeParameterOptions.CurrentValue.MinimumSeedLookahead - 1UL);
             // # Avoid underflow
-            var mix = GetRandaoMix(state, mixEpoch);
-            var seedHashInput = new Span<byte>(new byte[4 + 8 + 32]);
-            BinaryPrimitives.WriteUInt32LittleEndian(seedHashInput, (uint)domainType);
-            var epochBytes = BitConverter.GetBytes((ulong)epoch);
-            if (!BitConverter.IsLittleEndian)
-            {
-                epochBytes = epochBytes.Reverse().ToArray();
-            }
-            epochBytes.CopyTo(seedHashInput.Slice(4));
-            mix.AsSpan().CopyTo(seedHashInput.Slice(12));
-            var seed = _cryptographyService.Hash(seedHashInput);
+            Hash32 mix = GetRandaoMix(state, mixEpoch);
+            
+            Span<byte> seedHashInput = stackalloc byte[DomainType.SszLength + Epoch.SszLength + Hash32.SszLength];
+            domainType.AsSpan().CopyTo(seedHashInput);
+            BinaryPrimitives.WriteUInt64LittleEndian(seedHashInput.Slice(DomainType.SszLength), epoch);
+            mix.AsSpan().CopyTo(seedHashInput.Slice(DomainType.SszLength + Epoch.SszLength));
+            Hash32 seed = _cryptographyService.Hash(seedHashInput);
             return seed;
         }
 
@@ -333,8 +342,8 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Gwei GetTotalActiveBalance(BeaconState state)
         {
-            var epoch = GetPreviousEpoch(state);
-            var validatorIndices = GetActiveValidatorIndices(state, epoch);
+            Epoch epoch = GetPreviousEpoch(state);
+            IList<ValidatorIndex> validatorIndices = GetActiveValidatorIndices(state, epoch);
             return GetTotalBalance(state, validatorIndices);
         }
 
@@ -343,11 +352,11 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public Gwei GetTotalBalance(BeaconState state, IEnumerable<ValidatorIndex> validatorIndices)
         {
-            var total = Gwei.Zero;
-            foreach (var index in validatorIndices)
+            Gwei total = Gwei.Zero;
+            foreach (ValidatorIndex index in validatorIndices)
             {
-                var validator = state.Validators[(int)index];
-                var balance = validator.EffectiveBalance;
+                Validator validator = state.Validators[(int)index];
+                Gwei balance = validator.EffectiveBalance;
                 total += balance;
             }
             if (total == Gwei.Zero)
