@@ -115,8 +115,8 @@ namespace Nethermind.Network
                     {
                         if (_logger.IsDebug) _logger.Debug($"Removed {(args.NodeIsStatic ? "static" : string.Empty)} node from active peers: {args.Node}");
                         
-                        peer.InSession?.Disconnect(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
-                        peer.OutSession?.Disconnect(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
+                        peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
+                        peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
                     }
 
                     args.Removed = true;
@@ -397,7 +397,7 @@ namespace Nethermind.Network
                 if (peer.OutSession != null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
-                    peer.OutSession?.Disconnect(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
+                    peer.OutSession?.MarkDisconnected(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local, "timeout");
                 }
 
                 DeactivatePeerIfDisconnected(peer, "Failed to initialize connections");

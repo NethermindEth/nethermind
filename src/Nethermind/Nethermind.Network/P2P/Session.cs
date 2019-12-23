@@ -334,7 +334,7 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            Disconnect(disconnectReason, DisconnectType.Local, details);
+            MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         private object _sessionStateLock = new object();
@@ -354,7 +354,7 @@ namespace Nethermind.Network.P2P
 
         public SessionState BestStateReached { get; private set; }
 
-        public void Disconnect(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
+        public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnect call {disconnectReason} {disconnectType}");
 

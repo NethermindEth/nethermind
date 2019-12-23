@@ -207,7 +207,7 @@ namespace Nethermind.Network.Rlpx
             channel.CloseCompletion.ContinueWith(x =>
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
-                session.Disconnect(DisconnectReason.ClientQuitting, DisconnectType.Remote, "channel disconnected");
+                session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "channel disconnected");
             });
         }
 
