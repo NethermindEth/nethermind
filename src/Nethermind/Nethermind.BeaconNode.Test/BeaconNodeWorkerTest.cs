@@ -137,7 +137,7 @@ namespace Nethermind.BeaconNode.Tests
 
             // Assert
             signal.ShouldBeTrue();
-            TimeSpan minTime = TimeSpan.FromMilliseconds(250);
+            TimeSpan minTime = TimeSpan.FromMilliseconds(240);
             TimeSpan maxTime = TimeSpan.FromMilliseconds(350);
             stopwatch.Elapsed.ShouldBeInRange(minTime, maxTime);
         }
