@@ -11,6 +11,10 @@
 #  
 # * The integer uint64 format is not generated correctly; it is created as an int. This occurs in the parameter to GET block, the return result of GET genesis time, and in some data classes, e.g. the Slot value of BeaconBlockHeader.
 #   - To fix, change the definitions to ulong (aka System.UInt64).
+#
+# * In BeaconNodeOApiClient.cs the parameter conversion of byte[] to string uses Base64 instead of prefixed hex.
+#   - To fix, replace the section in ConvertToString() for byte[] with the correct encoding. 
+#
 
 dotnet restore # ensure the tool is installed
 dotnet nswag openapi2cscontroller /input:oapi/beacon-node-oapi.yaml /classname:BeaconNodeOApi /namespace:Nethermind.BeaconNode.OApi /output:BeaconNodeOApi-generated.cs /UseLiquidTemplates:true /AspNetNamespace:"Microsoft.AspNetCore.Mvc" /ControllerBaseClass:"Microsoft.AspNetCore.Mvc.Controller"

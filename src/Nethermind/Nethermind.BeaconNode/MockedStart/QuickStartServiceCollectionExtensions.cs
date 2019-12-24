@@ -18,9 +18,11 @@ using System;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
@@ -61,8 +63,14 @@ namespace Nethermind.BeaconNode.MockedStart
                     ulong genesisTime = configuration.GetValue<ulong>("QuickStart:GenesisTime");
                     clockOffset = (long) genesisTime - DateTimeOffset.Now.ToUnixTimeSeconds();
                 }
-                QuickStartClock quickStartClock = new QuickStartClock(clockOffset);
-                services.AddSingleton<IClock>(quickStartClock);
+
+                services.AddSingleton<IClock>(serviceProvider =>
+                {
+                    ILogger<QuickStartClock> logger = serviceProvider.GetService<ILogger<QuickStartClock>>();
+                    if (logger.IsWarn()) Log.QuickStartClockCreated(logger, clockOffset, null);
+                    QuickStartClock quickStartClock = new QuickStartClock(clockOffset);
+                    return quickStartClock;
+                });
             }
         }
     }

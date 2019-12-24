@@ -71,6 +71,14 @@ namespace Nethermind.HonestValidator
                 new EventId(2401, nameof(ValidatorDutyProposalChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty proposal slot {Slot}.");
 
+        // 4bxx warning
+        
+        // FIXME: Duplicate of beacon node
+        public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
+            LoggerMessage.Define<long>(LogLevel.Warning,
+                new EventId(4901, nameof(QuickStartClockCreated)),
+                "Quick start clock created with offset {ClockOffset:n0}.");
+
         // 5bxx error
         
         public static readonly Action<ILogger, Exception?> HonestValidatorWorkerLoopError =

@@ -26,18 +26,16 @@ namespace Nethermind.BeaconNode.OApiClient
             
         public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
         {
-            if (value is byte[] bytes)
-            {
-                string stringValue = Prefix + BitConverter.ToString(bytes).Replace("-", string.Empty);
-                writer.WriteValue(stringValue);
-            }
+            byte[] bytes = (byte[]) value;
+            string stringValue = Prefix + BitConverter.ToString(bytes).Replace("-", string.Empty);
+            serializer.Serialize(writer, stringValue);
         }
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            if (objectType == typeof(byte[]))
+            if (reader.TokenType == JsonToken.String)
             {
-                string hex = reader.ReadAsString();
+                string hex = serializer.Deserialize<string>(reader);
                 if (!string.IsNullOrEmpty(hex) && hex.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
                 {
                     return Enumerable.Range(Prefix.Length, hex.Length - Prefix.Length)
