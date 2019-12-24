@@ -20,6 +20,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
 [assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Infrastructure")]
+[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Consumers.Test")]
 namespace Nethermind.DataMarketplace.Core.Domain
 {
     public class TransactionInfo : IEquatable<TransactionInfo>

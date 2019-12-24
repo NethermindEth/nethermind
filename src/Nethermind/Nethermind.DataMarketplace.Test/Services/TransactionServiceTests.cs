@@ -79,6 +79,19 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         [Test]
+        public void update_gas_price_should_fail_if_transaction_is_not_pending()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var transaction = Build.A.Transaction.TestObject;
+            _blockchainBridge.GetTransactionAsync(transactionHash)
+                .Returns(new NdmTransaction(transaction, false, 1, TestItem.KeccakB, 1));
+            Func<Task> act = () => _transactionService.UpdateGasPriceAsync(transactionHash, 1);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"Transaction with hash: '{transactionHash}' is not pending.");
+            _blockchainBridge.Received().GetTransactionAsync(transactionHash);
+        }
+
+        [Test]
         public void update_gas_price_should_fail_if_sending_new_transaction_fails()
         {
             var transactionHash = TestItem.KeccakA;
@@ -127,6 +140,30 @@ namespace Nethermind.DataMarketplace.Test.Services
             await _blockchainBridge.Received().GetTransactionAsync(transactionHash);
             await _blockchainBridge.Received().GetNetworkIdAsync();
             await _blockchainBridge.Received().SendOwnTransactionAsync(transaction);
+        }
+
+        [Test]
+        public void cancel_should_fail_if_gas_price_multiplier_is_0()
+        {
+            var transactionHash = TestItem.KeccakA;
+            _config.CancelTransactionGasPricePercentageMultiplier = 0;
+            Func<Task> act = () => _transactionService.CancelAsync(transactionHash);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage("Multiplier for gas price when canceling transaction cannot be 0.");
+            _blockchainBridge.DidNotReceive().GetTransactionAsync(transactionHash);
+        }
+
+        [Test]
+        public void  cancel_should_fail_if_transaction_is_not_pending()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var transaction = Build.A.Transaction.TestObject;
+            _blockchainBridge.GetTransactionAsync(transactionHash)
+                .Returns(new NdmTransaction(transaction, false, 1, TestItem.KeccakB, 1));
+            Func<Task> act = () => _transactionService.CancelAsync(transactionHash);
+            act.Should().Throw<InvalidOperationException>()
+                .WithMessage($"Transaction with hash: '{transactionHash}' is not pending.");
+            _blockchainBridge.Received().GetTransactionAsync(transactionHash);
         }
 
         [Test]

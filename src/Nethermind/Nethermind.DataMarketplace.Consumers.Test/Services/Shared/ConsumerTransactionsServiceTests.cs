@@ -189,6 +189,18 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
             info.Hash.Should().BeNull();
         }
+        
+        [Test]
+        public async Task update_refund_gas_price_should_fail_for_cancelled_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash, cancelled: true);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceCancelled);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
 
         [Test]
         public async Task update_refund_gas_price_should_fail_for_rejected_deposit()
@@ -245,6 +257,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             info.Status.Should().Be(UpdatedTransactionStatus.Ok);
             deposit.ClaimedRefundTransaction.Hash.Should().Be(newTransactionHash);
             deposit.ClaimedRefundTransaction.GasPrice.Should().Be(gasPrice);
+            deposit.ClaimedRefundTransaction.Type.Should().Be(TransactionType.SpeedUp);
             await _depositRepository.Received().GetAsync(deposit.Id);
             await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(claimedRefundTransactionHash, gasPrice);
@@ -257,6 +270,34 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var info = await _consumerTransactionsService.CancelDepositAsync(depositId);
             info.Status.Should().Be(UpdatedTransactionStatus.ResourceNotFound);
             info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(depositId);
+        }
+        
+        [Test]
+        public async Task cancel_deposit_should_fail_for_confirmed_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.SetConfirmations(1);
+            deposit.SetConfirmationTimestamp(1);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceConfirmed);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_deposit_should_fail_for_not_pending_transaction()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.Transaction.SetIncluded();
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.AlreadyIncluded);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
         }
         
         [Test]
@@ -266,6 +307,72 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var info = await _consumerTransactionsService.CancelRefundAsync(depositId);
             info.Status.Should().Be(UpdatedTransactionStatus.ResourceNotFound);
             info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(depositId);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_missing_transaction()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_if_already_claimed()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.AddClaimedRefundTransaction(TransactionInfo.Default(TestItem.KeccakB, 0, 0, 0, 0));
+            deposit.SetRefundClaimed();
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceConfirmed);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_cancelled_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash, cancelled: true);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceCancelled);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_rejected_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.Reject();
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceRejected);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+
+        [Test]
+        public async Task cancel_refund_should_fail_for_not_pending_transaction()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.AddClaimedRefundTransaction(new TransactionInfo(TestItem.KeccakB, 0, 0, 0, 0,
+                state: TransactionState.Included));
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.AlreadyIncluded);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
         [Test]
@@ -306,13 +413,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         }
 
         private static DepositDetails GetDepositDetails(Keccak transactionHash = null,
-            Keccak claimedRefundTransactionHash = null)
+            Keccak claimedRefundTransactionHash = null, bool cancelled = false)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
                 transactionHash is null ? null : new[] {TransactionInfo.Default(transactionHash, 1, 1, 1, 1)},
                 claimedRefundTransactions: claimedRefundTransactionHash is null
                     ? null
-                    : new[] {TransactionInfo.Default(claimedRefundTransactionHash, 1, 1, 1, 1)});
+                    : new[] {TransactionInfo.Default(claimedRefundTransactionHash, 1, 1, 1, 1)},
+                cancelled: cancelled);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,
