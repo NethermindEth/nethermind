@@ -298,7 +298,7 @@ namespace Nethermind.Network.P2P
             }
 
             // Received disconnect message, triggering direct TCP disconnection
-            Session.Disconnect(disconnectReason, DisconnectType.Remote, "message");
+            Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
         }
 
         private void HandlePong(Packet msg)

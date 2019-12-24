@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test
             TestRandom testRandom = new TestRandom((i) => 1);
             SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
-            session.Disconnect(DisconnectReason.Other, DisconnectType.Remote, "test");
+            session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         }
         
         [TestCase(0)]

@@ -50,6 +50,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly ITxPool _txPool;
         private readonly ITimestamper _timestamper;
 
+        private BlockHeadersMessage _eth1920000HeaderMessage;
+        
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
@@ -58,9 +60,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ITxPool txPool)
             : base(session, statsManager, serializer, logManager)
         {
-            SyncServer = syncServer;
-            _txPool = txPool;
-            _timestamper = new Timestamper();
+            SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _timestamper = Timestamper.Default;
 
             _txFloodCheckTimer = new System.Timers.Timer(_txFloodCheckInterval.TotalMilliseconds);
             _txFloodCheckTimer.Elapsed += CheckTxFlooding;
@@ -246,7 +248,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
             }
 
-            Session.Disconnect(disconnectReason, DisconnectType.Local, details);
+            Session.MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
         public void SendNewBlock(Block block)
@@ -389,14 +391,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             // to clearly state that this client is an ETH client and not ETC (and avoid disconnections on reversed sync)
             // also to improve performance as this is the most common request
-//            if (getBlockHeadersMessage.StartingBlockNumber == 1920000 && getBlockHeadersMessage.MaxHeaders == 1)
-//            {
-//                // hardcoded response
-//                Packet packet = new Packet(ProtocolCode, Eth62MessageCode.BlockHeaders, Bytes.FromHexString("f90210f9020da0a218e2c611f21232d857e3c8cecdcdf1f65f25a4477f98f6f47e4063807f2308a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794bcdfc35b86bedf72f0cda046a3c16829a2ef41d1a0c5e389416116e3696cce82ec4533cce33efccb24ce245ae9546a4b8f0d5e9a75a07701df8e07169452554d14aadd7bfa256d4a1d0355c1d174ab373e3e2d0a3743a026cf9d9422e9dd95aedc7914db690b92bab6902f5221d62694a2fa5d065f534bb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008638c3bf2616aa831d4c008347e7c08301482084578f7aa88d64616f2d686172642d666f726ba05b5acbf4bf305f948bd7be176047b20623e1417f75597341a059729165b9239788bede87201de42426"));
-//                Session.DeliverMessage(packet);
-//                if (Logger.IsTrace) Logger.Trace($"OUT {_counter:D5} hardcoded 1920000 BlockHeaders to {Node:c}");
-//                return;
-//            }
+            if (getBlockHeadersMessage.StartingBlockNumber == 1920000 && getBlockHeadersMessage.MaxHeaders == 1)
+            {
+                // hardcoded response
+                // Packet packet = new Packet(ProtocolCode, Eth62MessageCode.BlockHeaders, Bytes.FromHexString("f90210f9020da0a218e2c611f21232d857e3c8cecdcdf1f65f25a4477f98f6f47e4063807f2308a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794bcdfc35b86bedf72f0cda046a3c16829a2ef41d1a0c5e389416116e3696cce82ec4533cce33efccb24ce245ae9546a4b8f0d5e9a75a07701df8e07169452554d14aadd7bfa256d4a1d0355c1d174ab373e3e2d0a3743a026cf9d9422e9dd95aedc7914db690b92bab6902f5221d62694a2fa5d065f534bb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008638c3bf2616aa831d4c008347e7c08301482084578f7aa88d64616f2d686172642d666f726ba05b5acbf4bf305f948bd7be176047b20623e1417f75597341a059729165b9239788bede87201de42426"));
+                // Session.DeliverMessage(packet);
+                Session.DeliverMessage(_eth1920000HeaderMessage);
+                LazyInitializer.EnsureInitialized(ref _eth1920000HeaderMessage, () => Deserialize<BlockHeadersMessage>(Bytes.FromHexString("f90210f9020da0a218e2c611f21232d857e3c8cecdcdf1f65f25a4477f98f6f47e4063807f2308a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d4934794bcdfc35b86bedf72f0cda046a3c16829a2ef41d1a0c5e389416116e3696cce82ec4533cce33efccb24ce245ae9546a4b8f0d5e9a75a07701df8e07169452554d14aadd7bfa256d4a1d0355c1d174ab373e3e2d0a3743a026cf9d9422e9dd95aedc7914db690b92bab6902f5221d62694a2fa5d065f534bb90100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000008638c3bf2616aa831d4c008347e7c08301482084578f7aa88d64616f2d686172642d666f726ba05b5acbf4bf305f948bd7be176047b20623e1417f75597341a059729165b9239788bede87201de42426")));
+                
+                if (Logger.IsTrace) Logger.Trace($"OUT hardcoded 1920000 BlockHeaders to {Node:c}");
+                return;
+            }
 
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)

@@ -100,54 +100,50 @@ namespace Nethermind.Blockchain.Synchronization
         {
             foreach (PeerInfo peerInfo in _peerRefreshQueue.GetConsumingEnumerable(_refreshLoopCancellation.Token))
             {
-                try
+                if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
+                CancellationTokenSource initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
+                CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
+#pragma warning disable 4014
+                RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
+#pragma warning restore 4014
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo}.");
-                    var initCancelSource = _refreshCancelTokens[peerInfo.SyncPeer.Node.Id] = new CancellationTokenSource();
-                    var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
-                    await RefreshPeerInfo(peerInfo, linkedSource.Token).ContinueWith(t =>
+                    _refreshCancelTokens.TryRemove(peerInfo.SyncPeer.Node.Id, out _);
+                    if (t.IsFaulted)
                     {
-                        _refreshCancelTokens.TryRemove(peerInfo.SyncPeer.Node.Id, out _);
-                        if (t.IsFaulted)
+                        if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                         {
-                            if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
-                            {
-                                if (_logger.IsTrace) _logger.Trace($"Refreshing info for {peerInfo} failed due to timeout: {t.Exception.Message}");
-                            }
-                            else if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo} failed {t.Exception}");
+                            if (_logger.IsTrace) _logger.Trace($"Refreshing info for {peerInfo} failed due to timeout: {t.Exception.Message}");
                         }
-                        else if (t.IsCanceled)
+                        else if (_logger.IsDebug) _logger.Debug($"Refreshing info for {peerInfo} failed {t.Exception}");
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (_logger.IsTrace) _logger.Trace($"Refresh peer info canceled: {peerInfo.SyncPeer.Node:s}");
+                    }
+                    else
+                    {
+                        UpdateAllocations("REFRESH");
+                        // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
+                        if (peerInfo.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"Refresh peer info canceled: {peerInfo.SyncPeer.Node:s}");
-                        }
-                        else
-                        {
-                            UpdateAllocations("REFRESH");
-                            // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                            if (peerInfo.TotalDifficulty == _blockTree.BestSuggestedHeader?.TotalDifficulty && peerInfo.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
+                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
+                            if (block != null) // can be null if fast syncing headers only
                             {
-                                Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash, BlockTreeLookupOptions.None);
-                                if (block != null) // can be null if fast syncing headers only
-                                {
-                                    peerInfo.SyncPeer.SendNewBlock(block);
-                                    if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo}");
-                                }
+                                peerInfo.SyncPeer.SendNewBlock(block);
+                                if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {peerInfo}");
                             }
                         }
+                    }
 
-                        if (_logger.IsDebug) _logger.Debug($"Refreshed peer info for {peerInfo}.");
+                    if (_logger.IsDebug) _logger.Debug($"Refreshed peer info for {peerInfo}.");
 
-                        initCancelSource.Dispose();
-                        linkedSource.Dispose();
-                    });
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Failed to refresh {peerInfo} {e}");
-                }
+                    initCancelSource.Dispose();
+                    linkedSource.Dispose();
+                });
             }
 
             if (_logger.IsInfo) _logger.Info($"Exiting sync peer refresh loop");
+            await Task.CompletedTask;
         }
 
         private bool _isStarted;
@@ -691,7 +687,7 @@ namespace Nethermind.Blockchain.Synchronization
                     {
                         return allocation;
                     }
-                    
+
                     await _signals.WaitOneAsync(10 * tryCount, CancellationToken.None);
                 }
             }
