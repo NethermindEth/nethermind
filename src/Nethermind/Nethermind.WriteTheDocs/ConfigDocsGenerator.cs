@@ -129,7 +129,8 @@ Use '/' as the path separator so the configs can be shared between all platforms
 
             Console.WriteLine(result);
             File.WriteAllText("configuration.rst", result);
-            File.WriteAllText(Path.Combine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName, @"../../../../docs/source/configuration.rst"), result);
+            Console.WriteLine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName);
+            File.WriteAllText(Path.Combine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName, @"../docs/source/configuration.rst"), result);
         }
     }
 }

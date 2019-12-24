@@ -1,9 +1,11 @@
 name: Update Documentation
 
-on:
-  push:
-    tags:
-    - '*'
+#on:
+#  push:
+#    tags:
+#    - '*'
+
+on: push
 
 jobs:
   neth-docs:

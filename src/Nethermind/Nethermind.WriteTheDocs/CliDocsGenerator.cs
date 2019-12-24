@@ -85,7 +85,7 @@ CLI access is not currently included in the Nethermind launcher but will be adde
 
             Console.WriteLine(result);
             File.WriteAllText("cli.rst", result);
-            File.WriteAllText(Path.Combine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName, @"../../../../docs/source/cli.rst"), result);
+            File.WriteAllText(Path.Combine(Directory.GetParent(Environment.CurrentDirectory).Parent.FullName, @"../docs/source/cli.rst"), result);
         }
     }
 }
