@@ -15,23 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.MockedStart;
-using Nethermind.BeaconNode.Storage;
 
-namespace Nethermind.BeaconNode.Host
+namespace Nethermind.HonestValidator.Host
 {
     public class Program
-    {
-        private const string DefaultProductionYamlConfig = "mainnet";
-        private const string DefaultNonProductionYamlConfig = "minimal";
-        private const string YamlConfigKey = "config";
-
+    { 
         public static IHostBuilder CreateHostBuilder(string[] args) =>
             Microsoft.Extensions.Hosting.Host.CreateDefaultBuilder(args)
                 // Default loads host configuration from DOTNET_ and command line,
@@ -59,17 +51,7 @@ namespace Nethermind.BeaconNode.Host
 
                     // Base JSON settings
                     config.AddJsonFile("appsettings.json");
-
-                    // Support standard YAML config files
-                    var yamlConfig = hostContext.Configuration[YamlConfigKey];
-                    if (string.IsNullOrWhiteSpace(yamlConfig))
-                    {
-                        yamlConfig = hostContext.HostingEnvironment.IsProduction()
-                            ? DefaultProductionYamlConfig : DefaultNonProductionYamlConfig;
-                        config.AddInMemoryCollection(new Dictionary<string, string> { { YamlConfigKey, yamlConfig } });
-                    }
-                    config.AddYamlFile($"{yamlConfig}.yaml", true, true);
-
+                    
                     // Override with environment specific JSON files
                     config.AddJsonFile("appsettings." + hostContext.HostingEnvironment.EnvironmentName + ".json", true, true);
 
@@ -77,17 +59,7 @@ namespace Nethermind.BeaconNode.Host
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
-                    services.AddBeaconNode(hostContext.Configuration);
-                    services.AddBeaconNodeStorage(hostContext.Configuration);
-
-                    if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
-                    {
-                        services.AddQuickStart(hostContext.Configuration);
-                    }
-                })
-                .ConfigureWebHostDefaults(webBuilder =>
-                {
-                    webBuilder.UseStartup<Startup>();
+                    services.AddHonestValidator(hostContext.Configuration);
                 });
 
         public static void Main(string[] args)

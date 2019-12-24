@@ -17,7 +17,6 @@
 using System;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
@@ -53,10 +52,10 @@ namespace Nethermind.BeaconNode
         
         // 1bxx preliminary
 
-        public static readonly Action<ILogger, string, string, string, int, Exception?> WorkerExecuteStarted =
+        public static readonly Action<ILogger, string, string, string, int, Exception?> BeaconNodeWorkerExecuteStarted =
             LoggerMessage.Define<string, string, string, int>(LogLevel.Information,
-                new EventId(1000, nameof(WorkerExecuteStarted)),
-                "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]");
+                new EventId(1000, nameof(BeaconNodeWorkerExecuteStarted)),
+                "{ProductTokenVersion} beacon node started; {Environment} environment (config '{Config}') [{ThreadId}]");
         
         public static readonly Action<ILogger, Hash32, ulong, int, Exception?> InitializeBeaconState =
             LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Information,

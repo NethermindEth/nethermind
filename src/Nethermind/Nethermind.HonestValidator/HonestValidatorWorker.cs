@@ -20,91 +20,63 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Services;
-using Nethermind.BeaconNode.Storage;
 using Nethermind.Logging.Microsoft;
 
-namespace Nethermind.BeaconNode
+namespace Nethermind.HonestValidator
 {
-    // ReSharper disable once ClassNeverInstantiated.Global
-    public class BeaconNodeWorker : BackgroundService
+    public class HonestValidatorWorker : BackgroundService
     {
-        private const string ConfigKey = "config";
-
         private readonly IConfiguration _configuration;
         private readonly ClientVersion _clientVersion;
-        private readonly IStoreProvider _storeProvider;
-        private readonly ForkChoice _forkChoice;
-        private readonly INodeStart _nodeStart;
         private readonly ILogger _logger;
         private readonly IClock _clock;
         private readonly IHostEnvironment _environment;
         private bool _stopped;
 
-        public BeaconNodeWorker(ILogger<BeaconNodeWorker> logger,
+        public HonestValidatorWorker(ILogger<HonestValidatorWorker> logger,
             IClock clock,
             IHostEnvironment environment,
             IConfiguration configuration,
-            ClientVersion clientVersion,
-            IStoreProvider storeProvider,
-            ForkChoice forkChoice,
-            INodeStart nodeStart)
+            ClientVersion clientVersion)
         {
             _logger = logger;
             _clock = clock;
             _environment = environment;
             _configuration = configuration;
             _clientVersion = clientVersion;
-            _storeProvider = storeProvider;
-            _forkChoice = forkChoice;
-            _nodeStart = nodeStart;
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStopping(_logger, null);
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStopping(_logger, null);
             _stopped = true;
             await base.StopAsync(cancellationToken);
         }
 
         public override async Task StartAsync(CancellationToken cancellationToken)
         {
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStarting(_logger, null);
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStarting(_logger, null);
             await base.StartAsync(cancellationToken);
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerStarted(_logger, null);
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerStarted(_logger, null);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (_logger.IsInfo())
-                Log.BeaconNodeWorkerExecuteStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
-                    _configuration[ConfigKey], Thread.CurrentThread.ManagedThreadId, null);
+                Log.HonestValidatorWorkerExecuteStarted(_logger, _clientVersion.Description,
+                    _environment.EnvironmentName, Thread.CurrentThread.ManagedThreadId, null);
 
             try
             {
-                await _nodeStart.InitializeNodeAsync();
-
-                IStore? store = null;
                 while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
                     try
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
-                        if (store == null)
-                        {
-                            if (_storeProvider.TryGetStore(out store))
-                            {
-                                if (_logger.IsInfo())
-                                    Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime,
-                                        Thread.CurrentThread.ManagedThreadId, null);
-                            }
-                        }
 
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
-                        if (store != null)
-                        {
-                            await _forkChoice.OnTickAsync(store, time);
-                        }
 
                         // Wait for remaining time, if any
                         // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
@@ -120,17 +92,17 @@ namespace Nethermind.BeaconNode
                     }
                     catch (Exception ex)
                     {
-                        if (_logger.IsError()) Log.BeaconNodeWorkerLoopError(_logger, ex);
+                        if (_logger.IsError()) Log.HonestValidatorWorkerLoopError(_logger, ex);
                     }
                 }
             }
             catch (Exception ex)
             {
-                Log.BeaconNodeWorkerCriticalError(_logger, ex);
+                Log.HonestValidatorWorkerCriticalError(_logger, ex);
                 throw;
             }
 
-            if (_logger.IsDebug()) LogDebug.BeaconNodeWorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
+            if (_logger.IsDebug()) LogDebug.HonestValidatorWorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
         }
     }
 }
