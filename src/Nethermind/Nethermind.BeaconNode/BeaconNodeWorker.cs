@@ -117,6 +117,7 @@ namespace Nethermind.BeaconNode
                     }
                     catch (TaskCanceledException)
                     {
+                        // This is expected when exiting
                     }
                     catch (Exception ex)
                     {

@@ -29,6 +29,7 @@ namespace Nethermind.HonestValidator
     public class HonestValidatorWorker : BackgroundService
     {
         private readonly IConfiguration _configuration;
+        private readonly IBeaconNodeApi _beaconNodeApi;
         private readonly ClientVersion _clientVersion;
         private readonly ILogger _logger;
         private readonly IClock _clock;
@@ -39,12 +40,14 @@ namespace Nethermind.HonestValidator
             IClock clock,
             IHostEnvironment environment,
             IConfiguration configuration,
+            IBeaconNodeApi beaconNodeApi,
             ClientVersion clientVersion)
         {
             _logger = logger;
             _clock = clock;
             _environment = environment;
             _configuration = configuration;
+            _beaconNodeApi = beaconNodeApi;
             _clientVersion = clientVersion;
         }
 
@@ -70,13 +73,38 @@ namespace Nethermind.HonestValidator
 
             try
             {
+                // Config
+                // List of nodes
+                // Validator private keys (or quickstart)
+                // Seconds per slot
+                        
+                // The proxy needs to take care of this (i.e. transparent to worker)
+                // Not connected: (remote vs local)
+                // connect to beacon node (priority order)
+                // if not connected, wait and try next
+                        
+                // Log beacon node connected to
+                string nodeVersion = await _beaconNodeApi.GetNodeVersionAsync().ConfigureAwait(false);
+                // Check and record genesis time
+                ulong genesisTime = await _beaconNodeApi.GetGenesisTimeAsync().ConfigureAwait(false);
+                Log.HonestValidatorWorkerConnected(_logger, nodeVersion, genesisTime, null);
+                
                 while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
                     try
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
-
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
+                        
+                        // Check start of each slot
+                        // Get duties
+                        
+                        // If proposer, get block, sign block, return to node
+                        // Retry if not successful; need to queue this up to send immediately if connection issue. (or broadcast?)
+                        
+                        // If upcoming attester, join (or change) topics
+                        // Subscribe to topics
+                        // Attest 1/3 way through slot
 
                         // Wait for remaining time, if any
                         // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
@@ -89,6 +117,7 @@ namespace Nethermind.HonestValidator
                     }
                     catch (TaskCanceledException)
                     {
+                        // This is expected when exiting
                     }
                     catch (Exception ex)
                     {

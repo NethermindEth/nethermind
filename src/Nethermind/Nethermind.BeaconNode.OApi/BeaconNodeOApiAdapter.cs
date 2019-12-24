@@ -41,30 +41,21 @@ namespace Nethermind.BeaconNode.OApi
             _logger = logger;
             _beaconNode = beaconNode;
         }
-
-        /// <summary>Publish a signed attestation.</summary>
-        /// <param name="attestation">An `IndexedAttestation` structure, as originally provided by the beacon node, but now with the signature field completed.</param>
-        /// <returns>The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
-        public Task Attestation2Async(IndexedAttestation attestation)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>Produce an attestation, without signature.</summary>
-        /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
-        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `IndexedAttestation`.</param>
-        /// <param name="slot">The slot for which the attestation should be proposed.</param>
-        /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
-        /// <returns>Success response</returns>
-        public Task<IndexedAttestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
-        {
-            throw new NotImplementedException();
-        }
-
+        
         /// <summary>Publish a signed block.</summary>
         /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         public Task Block2Async(BeaconBlock beacon_block)
+        {
+            throw new NotImplementedException();
+        }
+
+        Task<Attestation> IBeaconNodeOApiController.AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task Attestation2Async(Attestation body)
         {
             throw new NotImplementedException();
         }
@@ -170,6 +161,11 @@ namespace Nethermind.BeaconNode.OApi
                 State_root = value.StateRoot.ToString(),
                 Signature = value.Signature.ToString()
             };
+        }
+
+        public Task<Validator> ValidatorAsync(byte[] pubkey)
+        {
+            throw new NotImplementedException();
         }
 
         /// <summary>Get validator duties for the requested validators.</summary>

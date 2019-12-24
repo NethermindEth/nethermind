@@ -49,8 +49,13 @@ namespace Nethermind.HonestValidator
         public static readonly Action<ILogger, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
             LoggerMessage.Define<string, string, int>(LogLevel.Information,
                 new EventId(1400, nameof(HonestValidatorWorkerExecuteStarted)),
-                "{ProductTokenVersion} honest validator started; {Environment} environment [{ThreadId}]");
-        
+                "Honest Validator {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
+
+        public static readonly Action<ILogger, string, ulong, Exception?> HonestValidatorWorkerConnected =
+            LoggerMessage.Define<string, ulong>(LogLevel.Information,
+                new EventId(1401, nameof(HonestValidatorWorkerConnected)),
+                "Validator connected to {NodeVersion} with genesis time {GenesisTime}.");
+
         // 5bxx error
         
         public static readonly Action<ILogger, Exception?> HonestValidatorWorkerLoopError =

@@ -55,7 +55,7 @@ namespace Nethermind.BeaconNode
         public static readonly Action<ILogger, string, string, string, int, Exception?> BeaconNodeWorkerExecuteStarted =
             LoggerMessage.Define<string, string, string, int>(LogLevel.Information,
                 new EventId(1000, nameof(BeaconNodeWorkerExecuteStarted)),
-                "{ProductTokenVersion} beacon node started; {Environment} environment (config '{Config}') [{ThreadId}]");
+                "Beacon Node {ProductTokenVersion} worker started; {Environment} environment (config '{Config}') [{ThreadId}]");
         
         public static readonly Action<ILogger, Hash32, ulong, int, Exception?> InitializeBeaconState =
             LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Information,

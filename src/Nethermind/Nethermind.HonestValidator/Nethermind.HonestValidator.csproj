@@ -14,11 +14,13 @@
         <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Http" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="3.1.0" />
         <PackageReference Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="3.0.1" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj" />
       <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     </ItemGroup>
 
