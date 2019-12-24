@@ -50,14 +50,14 @@ namespace Nethermind.BeaconNode.Storage
 
         Task SetTimeAsync(ulong time);
 
-        Task<BeaconBlock> GetBlockAsync(Hash32 signingRoot);
+        ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot);
 
-        Task<BeaconState> GetBlockStateAsync(Hash32 signingRoot);
+        ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot);
 
-        Task<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
+        ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
 
         IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot);
 
-        Task<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
+        ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
     }
 }

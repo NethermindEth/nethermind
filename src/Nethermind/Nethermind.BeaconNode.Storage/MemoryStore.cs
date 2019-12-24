@@ -118,25 +118,25 @@ namespace Nethermind.BeaconNode.Storage
             return Task.CompletedTask;
         }
 
-        public Task<BeaconBlock> GetBlockAsync(Hash32 signingRoot)
+        public ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot)
         {
             if (!_blocks.TryGetValue(signingRoot, out BeaconBlock? block))
             {
                 throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "Block not found in store.");
             }
-            return Task.FromResult(block!);
+            return new ValueTask<BeaconBlock>(block!);
         }
 
-        public Task<BeaconState> GetBlockStateAsync(Hash32 signingRoot)
+        public ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot)
         {
             if (!_blockStates.TryGetValue(signingRoot, out BeaconState? state))
             {
                 throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "State not found in store.");
             }
-            return Task.FromResult(state!);
+            return new ValueTask<BeaconState?>(state!);
         }
 
-        public Task<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)
+        public ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)
         {
             if (!_checkpointStates.TryGetValue(checkpoint, out BeaconState? state))
             {
@@ -146,7 +146,7 @@ namespace Nethermind.BeaconNode.Storage
                         "Checkpoint state not found in store."); 
                 }
             }
-            return Task.FromResult(state);
+            return new ValueTask<BeaconState?>(state);
         }
 
         public async IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot)
@@ -163,7 +163,7 @@ namespace Nethermind.BeaconNode.Storage
             }
         }
 
-        public Task<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
+        public ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
         {
             if (!_latestMessages.TryGetValue(validatorIndex, out LatestMessage? latestMessage))
             {
@@ -173,7 +173,7 @@ namespace Nethermind.BeaconNode.Storage
                         "Latest message not found in store.");
                 }
             }
-            return Task.FromResult(latestMessage);
+            return new ValueTask<LatestMessage?>(latestMessage);
         }
     }
 }
