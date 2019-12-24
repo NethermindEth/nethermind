@@ -98,7 +98,9 @@ namespace Nethermind.HonestValidator
         {
             IEnumerable<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
 
-            await foreach (ValidatorDuty validatorDuty in _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch))
+            IAsyncEnumerable<ValidatorDuty> validatorDuties = _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch);
+
+            await foreach (ValidatorDuty validatorDuty in validatorDuties)
             {
                 Slot? currentAttestationSlot =
                     _validatorState.AttestationSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
@@ -113,7 +115,10 @@ namespace Nethermind.HonestValidator
                         Log.ValidatorDutyAttestationChanged(_logger, validatorDuty.ValidatorPublicKey, epoch,
                             validatorDuty.AttestationSlot, validatorDuty.AttestationShard, null);
                 }
-                
+            }
+
+            await foreach (ValidatorDuty validatorDuty in validatorDuties)
+            {
                 Slot? currentProposalSlot = _validatorState.ProposalSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
                 if (validatorDuty.BlockProposalSlot != Slot.None &&
                     validatorDuty.BlockProposalSlot != currentProposalSlot)
