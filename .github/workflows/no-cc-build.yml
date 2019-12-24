@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Unshallow fetching
-      run: git fetch --unshallow
+      run: git fetch --unshallow --progress --prune origin +refs/heads/*:refs/remotes/origin/*
     - name: Updating submodules
       run: git submodule update --init src/Dirichlet src/rocksdb-sharp
     - name: Installing Linux packages

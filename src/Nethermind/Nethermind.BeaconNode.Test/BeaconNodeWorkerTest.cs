@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -87,5 +88,58 @@ namespace Nethermind.BeaconNode.Tests
             mockStoreProvider.Received(4).TryGetStore(out IStore? store);
         }
 
+        [TestMethod]
+        public async Task SleepTimeIsCorrectFromStartOfSecond()
+        {
+            // Arrange
+            IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
+
+            testServiceCollection.AddHostedService<BeaconNodeWorker>();
+            
+            DateTimeOffset[] testTimes = new[]
+            {
+                // start time
+                new DateTimeOffset(2020, 01, 02, 23, 55, 00, 0, TimeSpan.Zero),
+                // check wait time against previous + 1 second.. will trigger immediately
+                new DateTimeOffset(2020, 01, 02, 23, 55, 01, 0, TimeSpan.Zero),
+
+                // start time of second loop, 600 ms in
+                new DateTimeOffset(2020, 01, 02, 23, 55, 01, 600, TimeSpan.Zero),
+                // start waiting at 750 ms, so should wait 250 ms
+                new DateTimeOffset(2020, 01, 02, 23, 55, 01, 750, TimeSpan.Zero),
+
+                // start time of third loop
+                new DateTimeOffset(2020, 01, 02, 23, 55, 02, 0, TimeSpan.Zero),
+                // when last it dequeued, the wait handle will be triggered (with cancellation token should exit immediately)
+                new DateTimeOffset(2020, 01, 02, 23, 55, 02, 500, TimeSpan.Zero),
+            };
+            FastTestClock fastTestClock = new FastTestClock(testTimes);
+            testServiceCollection.AddSingleton<IClock>(fastTestClock);
+            
+            IStoreProvider mockStoreProvider = Substitute.For<IStoreProvider>();
+            testServiceCollection.AddSingleton<IStoreProvider>(mockStoreProvider);
+
+            testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
+
+            ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
+
+            // Act
+            IEnumerable<IHostedService> hostedServices = testServiceProvider.GetServices<IHostedService>();
+            BeaconNodeWorker worker = hostedServices.OfType<BeaconNodeWorker>().First();
+
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            await worker.StartAsync(new CancellationToken());
+            bool signal = fastTestClock.CompleteWaitHandle.WaitOne(TimeSpan.FromSeconds(10));
+            await worker.StopAsync(new CancellationToken());
+            
+            stopwatch.Stop();
+
+            // Assert
+            signal.ShouldBeTrue();
+            TimeSpan minTime = TimeSpan.FromMilliseconds(240);
+            TimeSpan maxTime = TimeSpan.FromMilliseconds(350);
+            stopwatch.Elapsed.ShouldBeInRange(minTime, maxTime);
+        }
     }
 }

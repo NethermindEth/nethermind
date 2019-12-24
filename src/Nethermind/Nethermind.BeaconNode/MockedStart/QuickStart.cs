@@ -30,6 +30,7 @@ using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 using Hash32 = Nethermind.Core2.Types.Hash32;
 
 namespace Nethermind.BeaconNode.MockedStart
@@ -94,8 +95,7 @@ namespace Nethermind.BeaconNode.MockedStart
         {
             QuickStartParameters quickStartParameters = _quickStartParameterOptions.CurrentValue;
 
-            _logger.LogWarning(0, "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.",
-                quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount);
+            if (_logger.IsWarn()) Log.MockedQuickStart(_logger, quickStartParameters.GenesisTime, quickStartParameters.ValidatorCount, null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             InitialValues initialValues = _initialValueOptions.CurrentValue;
@@ -105,11 +105,11 @@ namespace Nethermind.BeaconNode.MockedStart
             Gwei amount = gweiValues.MaximumEffectiveBalance;
 
             // Build deposits
-            var depositDataList = new List<DepositData>();
-            var deposits = new List<Deposit>();
+            List<DepositData> depositDataList = new List<DepositData>();
+            List<Deposit> deposits = new List<Deposit>();
             for (ulong validatorIndex = 0uL; validatorIndex < quickStartParameters.ValidatorCount; validatorIndex++)
             {
-                var privateKey = GeneratePrivateKey(validatorIndex);
+                byte[] privateKey = GeneratePrivateKey(validatorIndex);
 
                 // Public Key
                 BLSParameters blsParameters = new BLSParameters()
@@ -117,12 +117,12 @@ namespace Nethermind.BeaconNode.MockedStart
                     PrivateKey = privateKey
                 };
                 using BLS bls = BLS.Create(blsParameters);
-                var publicKeyBytes = new byte[BlsPublicKey.Length];
+                byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
                 bls.TryExportBLSPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
                 BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
 
                 // Withdrawal Credentials
-                var withdrawalCredentialBytes = _cryptographyService.Hash(publicKey.AsSpan()).AsSpan().ToArray();
+                byte[] withdrawalCredentialBytes = _cryptographyService.Hash(publicKey.AsSpan()).AsSpan().ToArray();
                 withdrawalCredentialBytes[0] = initialValues.BlsWithdrawalPrefix;
                 Hash32 withdrawalCredentials = new Hash32(withdrawalCredentialBytes);
 
@@ -132,7 +132,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 // Sign deposit data
                 Hash32 depositDataSigningRoot = depositData.SigningRoot();
                 Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
-                var destination = new byte[96];
+                byte[] destination = new byte[96];
                 bls.TrySignHash(depositDataSigningRoot.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
                 BlsSignature depositDataSignature = new BlsSignature(destination);
                 depositData.SetSignature(depositDataSignature);
@@ -147,13 +147,13 @@ namespace Nethermind.BeaconNode.MockedStart
                 int index = depositDataList.Count;
                 depositDataList.Add(depositData);
                 Hash32 root = depositDataList.HashTreeRoot((ulong)1 << _chainConstants.DepositContractTreeDepth);
-                var allLeaves = depositDataList.Select(x => x.HashTreeRoot());
-                var tree = CalculateMerkleTreeFromLeaves(allLeaves);
+                IEnumerable<Hash32> allLeaves = depositDataList.Select(x => x.HashTreeRoot());
+                IList<IList<Hash32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
                 
 
-                var merkleProof = GetMerkleProof(tree, index, 32);
-                var proof = new List<Hash32>(merkleProof);
-                var indexBytes = new Span<byte>(new byte[32]);
+                IList<Hash32> merkleProof = GetMerkleProof(tree, index, 32);
+                List<Hash32> proof = new List<Hash32>(merkleProof);
+                Span<byte> indexBytes = new Span<byte>(new byte[32]);
                 BitConverter.TryWriteBytes(indexBytes, (ulong)index + 1);
                 if (!BitConverter.IsLittleEndian)
                 {
@@ -166,8 +166,9 @@ namespace Nethermind.BeaconNode.MockedStart
                 _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
                 Deposit deposit = new Deposit(proof, depositData);
 
-                if(_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug("Quick start adding deposit for mocked validator {ValidatorIndex} with public key {PublicKey}.",
-                    validatorIndex, publicKey.ToString().Substring(0, 12));
+                if (_logger.IsEnabled(LogLevel.Debug))
+                    LogDebug.QuickStartAddValidator(_logger, validatorIndex, publicKey.ToString().Substring(0, 12),
+                        null);
 
                 deposits.Add(deposit);
             }
@@ -177,23 +178,23 @@ namespace Nethermind.BeaconNode.MockedStart
             genesisState.SetGenesisTime(quickStartParameters.GenesisTime);
             IStore store = _forkChoice.GetGenesisStore(genesisState);
 
-            _logger.LogDebug("Quick start genesis store created with genesis time {GenesisTime:n0}.", store.GenesisTime);
+            if (_logger.IsEnabled(LogLevel.Debug)) LogDebug.QuickStartStoreCreated(_logger, store.GenesisTime, null);
         }
 
         private static IList<IList<Hash32>> CalculateMerkleTreeFromLeaves(IEnumerable<Hash32> values, int layerCount = 32)
         {
-            var workingValues = new List<Hash32>(values);
-            var tree = new List<IList<Hash32>>(new[] { workingValues.ToArray() });
+            List<Hash32> workingValues = new List<Hash32>(values);
+            List<IList<Hash32>> tree = new List<IList<Hash32>>(new[] { workingValues.ToArray() });
             for (int height = 0; height < layerCount; height++)
             {
                 if (workingValues.Count % 2 == 1)
                 {
                     workingValues.Add(new Hash32(s_zeroHashes[height]));
                 }
-                var hashes = new List<Hash32>();
+                List<Hash32> hashes = new List<Hash32>();
                 for (int index = 0; index < workingValues.Count; index += 2)
                 {
-                    var hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
+                    byte[] hash = Hash(workingValues[index].AsSpan(), workingValues[index + 1].AsSpan());
                     hashes.Add(new Hash32(hash));
                 }
                 tree.Add(hashes.ToArray());
@@ -204,7 +205,7 @@ namespace Nethermind.BeaconNode.MockedStart
 
         private static IList<Hash32> GetMerkleProof(IList<IList<Hash32>> tree, int itemIndex, int? treeLength = null)
         {
-            var proof = new List<Hash32>();
+            List<Hash32> proof = new List<Hash32>();
             for (int height = 0; height < (treeLength ?? tree.Count); height++)
             {
                 int subindex = (itemIndex / (1 << height)) ^ 1;
@@ -218,7 +219,7 @@ namespace Nethermind.BeaconNode.MockedStart
 
         private static byte[] Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b)
         {
-            var combined = new Span<byte>(new byte[64]);
+            Span<byte> combined = new Span<byte>(new byte[64]);
             a.CopyTo(combined);
             b.CopyTo(combined.Slice(32));
             return s_hashAlgorithm.ComputeHash(combined.ToArray());
@@ -226,7 +227,7 @@ namespace Nethermind.BeaconNode.MockedStart
 
         public byte[] GeneratePrivateKey(ulong index)
         {
-            var input = new Span<byte>(new byte[32]);
+            Span<byte> input = new Span<byte>(new byte[32]);
             BigInteger bigIndex = new BigInteger(index);
             bool indexWriteSuccess = bigIndex.TryWriteBytes(input, out int indexBytesWritten, isUnsigned: true, isBigEndian: false);
             if (!indexWriteSuccess || indexBytesWritten == 0)
@@ -235,7 +236,7 @@ namespace Nethermind.BeaconNode.MockedStart
             }
 
             Hash32 hash32 = _cryptographyService.Hash(input);
-            var hash = hash32.AsSpan();
+            Span<byte> hash = hash32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
             BigInteger privateKey = value % s_curveOrder;
@@ -244,7 +245,7 @@ namespace Nethermind.BeaconNode.MockedStart
             // However, we want to pad the big endian on the left to get 32 bytes.
             // So, write as little endian (will pad to right), then reverse.
             // NOTE: Alternative, write to Span 64, and then slice based on bytesWritten to get the padding.
-            var privateKeySpan = new Span<byte>(new byte[32]);
+            Span<byte> privateKeySpan = new Span<byte>(new byte[32]);
             bool keyWriteSuccess = privateKey.TryWriteBytes(privateKeySpan, out int keyBytesWritten, isUnsigned: true, isBigEndian: false);
             if (!keyWriteSuccess)
             {

@@ -54,12 +54,12 @@ namespace Nethermind.BeaconNode.Tests.Storage
             for (ulong timeSinceGenesis = 1; timeSinceGenesis <= targetTime; timeSinceGenesis++)
             {
                 ulong time = state.GenesisTime + timeSinceGenesis;
-                forkChoice.OnTick(store, time);
+                await forkChoice.OnTickAsync(store, time);
                 if (timeSinceGenesis % timeParameters.SecondsPerSlot == 0)
                 {
                     BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
                     TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                    forkChoice.OnBlock(store, block);
+                    await forkChoice.OnBlockAsync(store, block);
                 }
             }
             
@@ -74,19 +74,19 @@ namespace Nethermind.BeaconNode.Tests.Storage
             retrievedStore!.ShouldBeOfType(typeof(MemoryStore));
 
             Hash32 headRoot = await forkChoice.GetHeadAsync(store);
-            Hash32 block2Root = forkChoice.GetAncestor(store, headRoot, new Slot(2));
-            Hash32 block1Root = forkChoice.GetAncestor(store, block2Root, Slot.One);
-            Hash32 genesisRoot = forkChoice.GetAncestor(store, block1Root, Slot.Zero);
+            Hash32 block2Root = await forkChoice.GetAncestorAsync(store, headRoot, new Slot(2));
+            Hash32 block1Root = await forkChoice.GetAncestorAsync(store, block2Root, Slot.One);
+            Hash32 genesisRoot = await forkChoice.GetAncestorAsync(store, block1Root, Slot.Zero);
 
-            store.TryGetBlock(headRoot, out BeaconBlock? headBlock).ShouldBeTrue();
-            store.TryGetBlock(block2Root, out BeaconBlock? block2).ShouldBeTrue();
-            store.TryGetBlock(block1Root, out BeaconBlock? block1).ShouldBeTrue();
-            store.TryGetBlock(genesisRoot, out BeaconBlock? genesisBlock).ShouldBeTrue();
+            BeaconBlock headBlock = await store.GetBlockAsync(headRoot);
+            BeaconBlock block2 = await store.GetBlockAsync(block2Root);
+            BeaconBlock block1 = await store.GetBlockAsync(block1Root);
+            BeaconBlock genesisBlock = await store.GetBlockAsync(genesisRoot);
 
-            store.TryGetBlockState(headRoot, out BeaconState? headState).ShouldBeTrue();
-            store.TryGetBlockState(block2Root, out BeaconState? block2State).ShouldBeTrue();
-            store.TryGetBlockState(block1Root, out BeaconState? block1State).ShouldBeTrue();
-            store.TryGetBlockState(genesisRoot, out BeaconState? genesisState).ShouldBeTrue();
+            BeaconState headState= await store.GetBlockStateAsync(headRoot);
+            BeaconState block2State = await store.GetBlockStateAsync(block2Root);
+            BeaconState block1State = await store.GetBlockStateAsync(block1Root);
+            BeaconState genesisState = await store.GetBlockStateAsync(genesisRoot);
 
             TestContext.WriteLine("Genesis lookup root: {0}", genesisRoot);
             TestContext.WriteLine("Block 1 lookup root: {0}", block1Root);

@@ -107,13 +107,10 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
             storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
 
-            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
-            {
-                throw new InvalidDataException("Missing finalized checkpoint block state");
-            }
+            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
 
             BlsPublicKey expectedKey0 = new BlsPublicKey(_testDataItems[0].PublicKey);
-            state!.Validators[0].PublicKey.ShouldBe(expectedKey0);
+            state.Validators[0].PublicKey.ShouldBe(expectedKey0);
         }
         
         [TestMethod]
@@ -134,15 +131,12 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             // Assert
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
             storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
-            {
-                throw new InvalidDataException("Missing finalized checkpoint block state");
-            }
+            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
 
             for (int index = 1; index < 10; index++)
             {
                 BlsPublicKey expectedKey = new BlsPublicKey(_testDataItems[index].PublicKey);
-                state!.Validators[index].PublicKey.ShouldBe(expectedKey, $"Validator index {index}");
+                state.Validators[index].PublicKey.ShouldBe(expectedKey, $"Validator index {index}");
             }
         }
 
@@ -164,11 +158,9 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             // Assert
             IStoreProvider storeProvider = testServiceProvider.GetService<IStoreProvider>();
             storeProvider.TryGetStore(out IStore? store).ShouldBeTrue();
-            if (!store!.TryGetBlockState(store.FinalizedCheckpoint.Root, out BeaconState? state))
-            {
-                throw new InvalidDataException("Missing finalized checkpoint block state");
-            }
-            state!.Validators.Count.ShouldBe(64);
+            BeaconState state = await store!.GetBlockStateAsync(store!.FinalizedCheckpoint.Root);
+
+            state.Validators.Count.ShouldBe(64);
         }
 
         
@@ -228,7 +220,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
 
             // Act
             QuickStart quickStart = (testServiceProvider.GetService<INodeStart>() as QuickStart)!;
-            var privateKey = quickStart.GeneratePrivateKey(63);
+            byte[] privateKey = quickStart.GeneratePrivateKey(63);
 
             // Assert
             privateKey.Length.ShouldBe(32);

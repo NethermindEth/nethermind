@@ -16,6 +16,7 @@
 
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -32,7 +33,7 @@ namespace Nethermind.BeaconNode.Tests.Fork
     public class OnTickTest
     {
         [TestMethod]
-        public void BasicOnTick()
+        public async Task BasicOnTick()
         {
             // Arrange
             var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
@@ -42,13 +43,13 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var store = forkChoice.GetGenesisStore(state);
 
             // Act
-            RunOnTick(testServiceProvider, store, store.Time + 1, expectNewJustifiedCheckpoint: false);
+            await RunOnTick(testServiceProvider, store, store.Time + 1, expectNewJustifiedCheckpoint: false);
 
             // Assert
         }
 
         [TestMethod]
-        public void UpdateJustifiedSingle()
+        public async Task UpdateJustifiedSingle()
         {
             // Arrange
             var testServiceProvider = TestSystem.BuildTestServiceProvider(useStore: true);
@@ -63,21 +64,21 @@ namespace Nethermind.BeaconNode.Tests.Fork
             var checkpoint = new Checkpoint(
                 store.JustifiedCheckpoint.Epoch + Epoch.One,
                 new Hash32(Enumerable.Repeat((byte)0x55, 32).ToArray()));
-            store.SetBestJustifiedCheckpoint(checkpoint);
+            await store.SetBestJustifiedCheckpointAsync(checkpoint);
 
             // Act
-            RunOnTick(testServiceProvider, store, store.Time + secondsPerEpoch, expectNewJustifiedCheckpoint: true);
+            await RunOnTick(testServiceProvider, store, store.Time + secondsPerEpoch, expectNewJustifiedCheckpoint: true);
 
             // Assert
         }
 
-        private void RunOnTick(IServiceProvider testServiceProvider, IStore store, ulong time, bool expectNewJustifiedCheckpoint)
+        private async Task RunOnTick(IServiceProvider testServiceProvider, IStore store, ulong time, bool expectNewJustifiedCheckpoint)
         {
             var forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             var previousJustifiedCheckpoint = store.JustifiedCheckpoint;
 
-            forkChoice.OnTick(store, time);
+            await forkChoice.OnTickAsync(store, time);
 
             store.Time.ShouldBe(time);
 

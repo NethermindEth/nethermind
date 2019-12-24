@@ -22,6 +22,7 @@ using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -63,7 +64,7 @@ namespace Nethermind.BeaconNode
 
         public BeaconState InitializeBeaconStateFromEth1(Hash32 eth1BlockHash, ulong eth1Timestamp, IEnumerable<Deposit> deposits)
         {
-            _logger.LogDebug(Event.InitializeBeaconState, "Initialise beacon state from ETH1 block {Eth1BlockHash}, time {Eth1Timestamp}, with {DepositCount} deposits.", eth1BlockHash, eth1Timestamp, deposits.Count());
+            if (_logger.IsInfo()) Log.InitializeBeaconState(_logger, eth1BlockHash, eth1Timestamp, deposits.Count(), null);
 
             GweiValues gweiValues = _gweiValueOptions.CurrentValue;
             InitialValues initialValues = _initialValueOptions.CurrentValue;
@@ -78,7 +79,7 @@ namespace Nethermind.BeaconNode
             BeaconState state = new BeaconState(genesisTime, 0, eth1Data, latestBlockHeader, timeParameters.SlotsPerHistoricalRoot, stateListLengths.EpochsPerHistoricalVector, stateListLengths.EpochsPerSlashingsVector, _chainConstants.JustificationBitsLength);
 
             // Process deposits
-            var depositDataList = new List<DepositData>();
+            List<DepositData> depositDataList = new List<DepositData>();
             foreach (Deposit deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
@@ -113,7 +114,7 @@ namespace Nethermind.BeaconNode
             {
                 return false;
             }
-            var activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
+            IList<ValidatorIndex> activeValidatorIndices = _beaconStateAccessor.GetActiveValidatorIndices(state, initialValues.GenesisEpoch);
             if (activeValidatorIndices.Count < miscellaneousParameters.MinimumGenesisActiveValidatorCount)
             {
                 return false;

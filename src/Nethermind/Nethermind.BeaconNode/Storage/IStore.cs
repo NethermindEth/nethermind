@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
 
@@ -22,38 +23,41 @@ namespace Nethermind.BeaconNode.Storage
 {
     public interface IStore
     {
+//        IReadOnlyDictionary<Hash32, BeaconBlock> Blocks { get; }
+//        IReadOnlyDictionary<Hash32, BeaconState> BlockStates { get; }
+//        IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
+//        IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; }
+
         Checkpoint BestJustifiedCheckpoint { get; }
-        IReadOnlyDictionary<Hash32, BeaconBlock> Blocks { get; }
-        IReadOnlyDictionary<Hash32, BeaconState> BlockStates { get; }
-        IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get; }
         Checkpoint FinalizedCheckpoint { get; }
         ulong GenesisTime { get; }
         Checkpoint JustifiedCheckpoint { get; }
-        IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get; }
         ulong Time { get; }
 
-        void SetBestJustifiedCheckpoint(Checkpoint checkpoint);
+        Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint);
 
-        void SetBlock(Hash32 signingRoot, BeaconBlock block);
+        Task SetBlockAsync(Hash32 signingRoot, BeaconBlock block);
 
-        void SetBlockState(Hash32 signingRoot, BeaconState state);
+        Task SetBlockStateAsync(Hash32 signingRoot, BeaconState state);
 
-        void SetCheckpointState(Checkpoint checkpoint, BeaconState state);
+        Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state);
 
-        void SetFinalizedCheckpoint(Checkpoint checkpoint);
+        Task SetFinalizedCheckpointAsync(Checkpoint checkpoint);
 
-        void SetJustifiedCheckpoint(Checkpoint checkpoint);
+        Task SetJustifiedCheckpointAsync(Checkpoint checkpoint);
 
-        void SetLatestMessage(ValidatorIndex validatorIndex, LatestMessage latestMessage);
+        Task SetLatestMessageAsync(ValidatorIndex validatorIndex, LatestMessage latestMessage);
 
-        void SetTime(ulong time);
+        Task SetTimeAsync(ulong time);
 
-        bool TryGetBlock(Hash32 signingRoot, out BeaconBlock? block);
+        ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot);
 
-        bool TryGetBlockState(Hash32 signingRoot, out BeaconState? state);
+        ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot);
 
-        bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState? state);
+        ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing);
 
-        bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage? latestMessage);
+        IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot);
+
+        ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing);
     }
 }

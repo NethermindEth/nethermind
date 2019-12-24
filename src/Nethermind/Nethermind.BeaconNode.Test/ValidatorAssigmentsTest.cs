@@ -83,8 +83,8 @@ namespace Nethermind.BeaconNode.Tests
             Console.WriteLine("Validator [{0}] {1} in slot {2} committee {3}", 
                 validatorIndex, state.Validators[(int)validatorIndex].PublicKey, committeeAssignment.Slot, committeeAssignment.CommitteeIndex);
             
-            var expectedSlot = new Slot(slot);
-            var expectedCommitteeIndex = new CommitteeIndex(committeeIndex);
+            Slot expectedSlot = new Slot(slot);
+            CommitteeIndex expectedCommitteeIndex = new CommitteeIndex(committeeIndex);
             committeeAssignment.Slot.ShouldBe(expectedSlot);
             committeeAssignment.CommitteeIndex.ShouldBe(expectedCommitteeIndex);
         }
@@ -176,12 +176,12 @@ namespace Nethermind.BeaconNode.Tests
             for (ulong timeSinceGenesis = 1; timeSinceGenesis <= targetTime; timeSinceGenesis++)
             {
                 ulong time = state.GenesisTime + timeSinceGenesis;
-                forkChoice.OnTick(store, time);
+                await forkChoice.OnTickAsync(store, time);
                 if (timeSinceGenesis % timeParameters.SecondsPerSlot == 0)
                 {
                     BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
                     TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                    forkChoice.OnBlock(store, block);
+                    await forkChoice.OnBlockAsync(store, block);
                 }
             }
             
@@ -233,24 +233,24 @@ namespace Nethermind.BeaconNode.Tests
             {
                 while (time < nextSlotTime)
                 {
-                    forkChoice.OnTick(store, time);
+                    await forkChoice.OnTickAsync(store, time);
                     time++;
                 }
-                forkChoice.OnTick(store, time);
+                await forkChoice.OnTickAsync(store, time);
                 time++;
 //                Hash32 head = await forkChoice.GetHeadAsync(store);
 //                store.TryGetBlockState(head, out BeaconState headState);
                 BeaconState headState = state;
                 BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, headState, signed: true);
                 TestState.StateTransitionAndSignBlock(testServiceProvider, headState, block);
-                forkChoice.OnBlock(store, block);
+                await forkChoice.OnBlockAsync(store, block);
                 nextSlotTime = nextSlotTime + timeParameters.SecondsPerSlot;
             }
             // halfway through slot
             ulong futureTime = nextSlotTime + timeParameters.SecondsPerSlot / 2;
             while (time < futureTime)
             {
-                forkChoice.OnTick(store, time);
+                await forkChoice.OnTickAsync(store, time);
                 time++;
             }
             

@@ -94,28 +94,18 @@ namespace Nethermind.BeaconNode
             IStore store = retrievedStore!;
 
             Slot previousSlot = slot - Slot.One;
-            Hash32 head = await _forkChoice.GetHeadAsync(store);
-            if (!store.TryGetBlock(head, out BeaconBlock? headBlock))
-            {
-                throw new Exception($"Cannot find block for head root {head}");
-            }
+            Hash32 head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
+            BeaconBlock headBlock = await store.GetBlockAsync(head).ConfigureAwait(false);
 
             BeaconBlock parentBlock;
-            BeaconState? retrievedParentState;
+            BeaconState parentState;
             Hash32 parentRoot;
             if (headBlock!.Slot > previousSlot)
             {
                 // Requesting a block for a past slot?
-                Hash32 ancestorSigningRoot = _forkChoice.GetAncestor(store, head, previousSlot);
-                if (!store.TryGetBlock(ancestorSigningRoot, out BeaconBlock? retrievedParentBlock))
-                {
-                    throw new Exception($"Cannot find block for ancestor signing root {ancestorSigningRoot}");
-                }
-                parentBlock = retrievedParentBlock!;
-                if (!store.TryGetBlockState(ancestorSigningRoot, out retrievedParentState))
-                {
-                    throw new Exception($"Cannot find state for ancestor signing root {ancestorSigningRoot}");
-                }
+                Hash32 ancestorSigningRoot = await _forkChoice.GetAncestorAsync(store, head, previousSlot);
+                parentBlock = await store.GetBlockAsync(ancestorSigningRoot).ConfigureAwait(false);
+                parentState = await store.GetBlockStateAsync(ancestorSigningRoot).ConfigureAwait(false);
                 parentRoot = ancestorSigningRoot;
             }
             else
@@ -123,30 +113,27 @@ namespace Nethermind.BeaconNode
                 parentBlock = headBlock!;
                 if (parentBlock.Slot < previousSlot)
                 {
-                    if (_logger.IsDebug()) Log.NewBlockSkippedSlots(_logger, slot, randaoReveal, parentBlock.Slot, null);
+                    if (_logger.IsDebug()) LogDebug.NewBlockSkippedSlots(_logger, slot, randaoReveal, parentBlock.Slot, null);
                 }
-                if (!store.TryGetBlockState(head, out retrievedParentState))
-                {
-                    throw new Exception($"Cannot find state for head signing root {head}");
-                }
+                parentState = await store.GetBlockStateAsync(head).ConfigureAwait(false);
                 parentRoot = head;
             }
 
             // Clone state (will mutate) and process outstanding slots
-            BeaconState state = BeaconState.Clone(retrievedParentState!);
+            BeaconState state = BeaconState.Clone(parentState);
             _beaconStateTransition.ProcessSlots(state, slot);
 
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
 
             // Eth 1 Data
-            ulong previousEth1Distance = await GetPreviousEth1Distance(store, state, parentRoot);
-            Eth1Data eth1Vote = await GetEth1VoteAsync(state, previousEth1Distance);
+            ulong previousEth1Distance = await GetPreviousEth1Distance(store, state, parentRoot).ConfigureAwait(false);
+            Eth1Data eth1Vote = await GetEth1VoteAsync(state, previousEth1Distance).ConfigureAwait(false);
 
             List<Deposit> deposits = new List<Deposit>();
             if (eth1Vote.DepositCount > state.Eth1DepositIndex)
             {
                 await foreach (Deposit deposit in _eth1DataProvider.GetDepositsAsync(eth1Vote.DepositRoot,
-                    state.Eth1DepositIndex, maxOperationsPerBlock.MaximumDeposits))
+                    state.Eth1DepositIndex, maxOperationsPerBlock.MaximumDeposits).ConfigureAwait(false))
                 {
                     deposits.Add(deposit);
                 }
@@ -155,28 +142,28 @@ namespace Nethermind.BeaconNode
             // Operations
             List<Attestation> attestations = new List<Attestation>();
             await foreach (Attestation attestation in _operationPool.GetAttestationsAsync(
-                maxOperationsPerBlock.MaximumAttestations))
+                maxOperationsPerBlock.MaximumAttestations).ConfigureAwait(false))
             {
                 attestations.Add(attestation);
             }
 
             List<AttesterSlashing> attesterSlashings = new List<AttesterSlashing>();
             await foreach (AttesterSlashing attesterSlashing in _operationPool.GetAttesterSlashingsAsync(
-                maxOperationsPerBlock.MaximumAttesterSlashings))
+                maxOperationsPerBlock.MaximumAttesterSlashings).ConfigureAwait(false))
             {
                 attesterSlashings.Add(attesterSlashing);
             }
             
             List<ProposerSlashing> proposerSlashings = new List<ProposerSlashing>();
             await foreach (ProposerSlashing proposerSlashing in _operationPool.GetProposerSlashingsAsync(
-                maxOperationsPerBlock.MaximumProposerSlashings))
+                maxOperationsPerBlock.MaximumProposerSlashings).ConfigureAwait(false))
             {
                 proposerSlashings.Add(proposerSlashing);
             }
 
             List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
             await foreach (VoluntaryExit voluntaryExit in _operationPool.GetVoluntaryExits(
-                maxOperationsPerBlock.MaximumVoluntaryExits))
+                maxOperationsPerBlock.MaximumVoluntaryExits).ConfigureAwait(false))
             {
                 voluntaryExits.Add(voluntaryExit);
             }
@@ -211,15 +198,11 @@ namespace Nethermind.BeaconNode
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             Slot eth1VotingPeriodSlot = new Slot(state.Slot % timeParameters.SlotsPerEth1VotingPeriod);
             Slot startOfEth1VotingPeriodSlot = state.Slot - eth1VotingPeriodSlot;
-            Hash32 startOfEth1VotingPeriodSigningRoot = _forkChoice.GetAncestor(store, parentRoot, startOfEth1VotingPeriodSlot);
-            if (!store.TryGetBlockState(startOfEth1VotingPeriodSigningRoot,
-                out BeaconState? startOfEth1VotingPeriodState))
-            {
-                throw new Exception($"Could not find start of Eth1 voting period state {startOfEth1VotingPeriodSigningRoot}.");
-            }
-
-            Hash32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState!.Eth1Data.BlockHash;
-            ulong distance = await _eth1DataProvider.GetDistanceAsync(startOfEth1VotingPeriodBlockHash);
+            Hash32 startOfEth1VotingPeriodSigningRoot = await _forkChoice.GetAncestorAsync(store, parentRoot, startOfEth1VotingPeriodSlot);
+            BeaconState startOfEth1VotingPeriodState =
+                await store.GetBlockStateAsync(startOfEth1VotingPeriodSigningRoot).ConfigureAwait(false);
+            Hash32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState.Eth1Data.BlockHash;
+            ulong distance = await _eth1DataProvider.GetDistanceAsync(startOfEth1VotingPeriodBlockHash).ConfigureAwait(false);
             return distance;
         }
 
@@ -246,7 +229,7 @@ namespace Nethermind.BeaconNode
                 .GroupBy(x => x)
                 .ToDictionary(x => x.Key, x => x.Count());
 
-            Eth1Data bestEth1Data = await _eth1DataProvider.GetEth1DataAsync(honestValidatorConstants.Eth1FollowDistance);
+            Eth1Data bestEth1Data = await _eth1DataProvider.GetEth1DataAsync(honestValidatorConstants.Eth1FollowDistance).ConfigureAwait(false);
             if (!voteCount.TryGetValue(bestEth1Data, out int bestEth1DataVotes))
             {
                 bestEth1DataVotes = 0;
@@ -254,7 +237,7 @@ namespace Nethermind.BeaconNode
             
             for (ulong distance = honestValidatorConstants.Eth1FollowDistance + 1; distance < maximumDistance; distance++)
             {
-                Eth1Data eth1Data = await _eth1DataProvider.GetEth1DataAsync(distance);
+                Eth1Data eth1Data = await _eth1DataProvider.GetEth1DataAsync(distance).ConfigureAwait(false);
                 if (voteCount.TryGetValue(eth1Data, out int eth1DataVotes))
                 {
                     if (eth1DataVotes > bestEth1DataVotes)

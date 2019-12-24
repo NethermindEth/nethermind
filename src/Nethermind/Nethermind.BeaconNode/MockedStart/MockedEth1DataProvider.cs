@@ -65,13 +65,8 @@ namespace Nethermind.BeaconNode.MockedStart
             }
 
             Hash32 head = await _forkChoice.GetHeadAsync(store!);
-            if (!store!.TryGetBlockState(head, out BeaconState? state))
-            {
-                throw new Exception($"Could not find head state {head}.");
-            }
-
+            BeaconState state = await store!.GetBlockStateAsync(head);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state!);
-
             Eth1Data eth1Data = GetEth1DataStub(state!, currentEpoch);
             
             return eth1Data;

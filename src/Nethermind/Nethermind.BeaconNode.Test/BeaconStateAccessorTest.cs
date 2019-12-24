@@ -38,7 +38,7 @@ namespace Nethermind.BeaconNode.Tests
     public class BeaconStateAccessorTest
     {
         [TestMethod]
-        public void ProposerIndexForFirstTwoEpochsMustBeValid()
+        public async Task ProposerIndexForFirstTwoEpochsMustBeValid()
         {
             // Arrange
             IServiceCollection testServiceCollection = TestSystem.BuildTestServiceCollection(useStore: true);
@@ -69,16 +69,16 @@ namespace Nethermind.BeaconNode.Tests
                 nextSlotTime = nextSlotTime + timeParameters.SecondsPerSlot;
                 while (time < nextSlotTime)
                 {
-                    forkChoice.OnTick(store, time);
+                    await forkChoice.OnTickAsync(store, time);
                     time++;
                 }
 
-                forkChoice.OnTick(store, time);
+                await forkChoice.OnTickAsync(store, time);
                 time++;
                 BeaconBlock block = TestBlock.BuildEmptyBlockForNextSlot(testServiceProvider, state, signed: true);
                 TestState.StateTransitionAndSignBlock(testServiceProvider, state, block);
-                forkChoice.OnBlock(store, block);
-                forkChoice.OnTick(store, time);
+                await forkChoice.OnBlockAsync(store, block);
+                await forkChoice.OnTickAsync(store, time);
                 time++;
 
                 ValidatorIndex validatorIndex = beaconStateAccessor.GetBeaconProposerIndex(state);
@@ -87,7 +87,7 @@ namespace Nethermind.BeaconNode.Tests
                 proposerIndexes.Add(validatorIndex);
             }
 
-            for (var slotIndex = 0; slotIndex < proposerIndexes.Count; slotIndex++)
+            for (int slotIndex = 0; slotIndex < proposerIndexes.Count; slotIndex++)
             {
                 ValidatorIndex proposerIndex = proposerIndexes[slotIndex];
                 Validator proposer = state.Validators[(int)(ulong)proposerIndex];

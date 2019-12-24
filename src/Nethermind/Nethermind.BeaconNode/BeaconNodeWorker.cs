@@ -22,6 +22,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -61,54 +62,72 @@ namespace Nethermind.BeaconNode
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            _logger.LogDebug("Worker stopping.");
+            if (_logger.IsDebug()) LogDebug.WorkerStopping(_logger, null);
             _stopped = true;
             await base.StopAsync(cancellationToken);
         }
 
         public override async Task StartAsync(CancellationToken cancellationToken)
         {
-            _logger.LogDebug("Worker starting.");
+            if (_logger.IsDebug()) LogDebug.WorkerStarting(_logger, null);
             await base.StartAsync(cancellationToken);
-            _logger.LogDebug("Worker started.");
+            if (_logger.IsDebug()) LogDebug.WorkerStarted(_logger, null);
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            string version = _clientVersion.Description;
-            string environmentName = _environment.EnvironmentName;
-            string configName = _configuration[ConfigKey];
-            _logger.LogInformation(Event.WorkerStarted, "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]",
-                version, environmentName, configName, Thread.CurrentThread.ManagedThreadId);
+            if (_logger.IsInfo())
+                Log.WorkerExecuteStarted(_logger, _clientVersion.Description, _environment.EnvironmentName,
+                    _configuration[ConfigKey], Thread.CurrentThread.ManagedThreadId, null);
 
-            await _nodeStart.InitializeNodeAsync();
-
-            IStore? store = null;
-            while (!stoppingToken.IsCancellationRequested && !_stopped)
+            try
             {
-                DateTimeOffset time = _clock.UtcNow();
-                if (store == null)
+                await _nodeStart.InitializeNodeAsync();
+
+                IStore? store = null;
+                while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
-                    if (_storeProvider.TryGetStore(out store))
+                    try
                     {
-                        _logger.LogInformation(Event.WorkerStoreAvailableTickStarted, "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]",
-                            store!.GenesisTime, Thread.CurrentThread.ManagedThreadId);
+                        DateTimeOffset clockTime = _clock.UtcNow();
+                        if (store == null)
+                        {
+                            if (_storeProvider.TryGetStore(out store))
+                            {
+                                if (_logger.IsInfo())
+                                    Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime,
+                                        Thread.CurrentThread.ManagedThreadId, null);
+                            }
+                        }
+
+                        ulong time = (ulong) clockTime.ToUnixTimeSeconds();
+                        if (store != null)
+                        {
+                            await _forkChoice.OnTickAsync(store, time);
+                        }
+
+                        // Wait for remaining time, if any
+                        // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
+                        DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long) time + 1);
+                        TimeSpan remaining = nextClockTime - _clock.UtcNow();
+                        if (remaining > TimeSpan.Zero)
+                        {
+                            await Task.Delay(remaining, stoppingToken);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (_logger.IsError()) Log.BeaconNodeWorkerLoopError(_logger, ex);
                     }
                 }
-                if (store != null)
-                {
-                    _forkChoice.OnTick(store, (ulong)time.ToUnixTimeSeconds());
-                }
-                // Wait for remaining time, if any
-                // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
-                TimeSpan remaining = time.AddSeconds(1) - _clock.UtcNow();
-                if (remaining > TimeSpan.Zero)
-                {
-                    await Task.Delay(remaining, stoppingToken);
-                }
+            }
+            catch (Exception ex)
+            {
+                Log.BeaconNodeWorkerCriticalError(_logger, ex);
+                throw;
             }
 
-            _logger.LogDebug("Worker execute thread exiting [{ThreadId}].", Thread.CurrentThread.ManagedThreadId);
+            if (_logger.IsDebug()) LogDebug.WorkerExecuteExiting(_logger, Thread.CurrentThread.ManagedThreadId, null);
         }
     }
 }

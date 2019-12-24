@@ -14,7 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
@@ -62,37 +65,115 @@ namespace Nethermind.BeaconNode.Storage
         }
 
         public Checkpoint BestJustifiedCheckpoint { get; private set; }
-        public IReadOnlyDictionary<Hash32, BeaconBlock> Blocks { get { return _blocks; } }
-        public IReadOnlyDictionary<Hash32, BeaconState> BlockStates { get { return _blockStates; } }
-        public IReadOnlyDictionary<Checkpoint, BeaconState> CheckpointStates { get { return _checkpointStates; } }
         public Checkpoint FinalizedCheckpoint { get; private set; }
         public ulong GenesisTime { get; }
         public Checkpoint JustifiedCheckpoint { get; private set; }
-        public IReadOnlyDictionary<ValidatorIndex, LatestMessage> LatestMessages { get { return _latestMessages; } }
         public ulong Time { get; private set; }
 
-        public void SetBestJustifiedCheckpoint(Checkpoint checkpoint) => BestJustifiedCheckpoint = checkpoint;
+        public Task SetBestJustifiedCheckpointAsync(Checkpoint checkpoint)
+        {
+            BestJustifiedCheckpoint = checkpoint;
+            return Task.CompletedTask;
+        }
 
-        public void SetBlock(Hash32 signingRoot, BeaconBlock block) => _blocks[signingRoot] = block;
+        public Task SetBlockAsync(Hash32 signingRoot, BeaconBlock block)
+        {
+            _blocks[signingRoot] = block;
+            return Task.CompletedTask;
+        }
 
-        public void SetBlockState(Hash32 signingRoot, BeaconState state) => _blockStates[signingRoot] = state;
+        public Task SetBlockStateAsync(Hash32 signingRoot, BeaconState state)
+        {
+            _blockStates[signingRoot] = state;
+            return Task.CompletedTask;
+        }
 
-        public void SetCheckpointState(Checkpoint checkpoint, BeaconState state) => _checkpointStates[checkpoint] = state;
+        public Task SetCheckpointStateAsync(Checkpoint checkpoint, BeaconState state)
+        {
+            _checkpointStates[checkpoint] = state;
+            return Task.CompletedTask;
+        }
 
-        public void SetFinalizedCheckpoint(Checkpoint checkpoint) => FinalizedCheckpoint = checkpoint;
+        public Task SetFinalizedCheckpointAsync(Checkpoint checkpoint)
+        {
+            FinalizedCheckpoint = checkpoint;
+            return Task.CompletedTask;
+        }
 
-        public void SetJustifiedCheckpoint(Checkpoint checkpoint) => JustifiedCheckpoint = checkpoint;
+        public Task SetJustifiedCheckpointAsync(Checkpoint checkpoint)
+        {
+            JustifiedCheckpoint = checkpoint;
+            return Task.CompletedTask;
+        }
 
-        public void SetLatestMessage(ValidatorIndex validatorIndex, LatestMessage latestMessage) => _latestMessages[validatorIndex] = latestMessage;
+        public Task SetLatestMessageAsync(ValidatorIndex validatorIndex, LatestMessage latestMessage)
+        {
+            _latestMessages[validatorIndex] = latestMessage;
+            return Task.CompletedTask;
+        }
 
-        public void SetTime(ulong time) => Time = time;
+        public Task SetTimeAsync(ulong time)
+        {
+            Time = time;
+            return Task.CompletedTask;
+        }
 
-        public bool TryGetBlock(Hash32 signingRoot, out BeaconBlock? block) => _blocks.TryGetValue(signingRoot, out block);
+        public ValueTask<BeaconBlock> GetBlockAsync(Hash32 signingRoot)
+        {
+            if (!_blocks.TryGetValue(signingRoot, out BeaconBlock? block))
+            {
+                throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "Block not found in store.");
+            }
+            return new ValueTask<BeaconBlock>(block!);
+        }
 
-        public bool TryGetBlockState(Hash32 signingRoot, out BeaconState? state) => _blockStates.TryGetValue(signingRoot, out state);
+        public ValueTask<BeaconState> GetBlockStateAsync(Hash32 signingRoot)
+        {
+            if (!_blockStates.TryGetValue(signingRoot, out BeaconState? state))
+            {
+                throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "State not found in store.");
+            }
+            return new ValueTask<BeaconState?>(state!);
+        }
 
-        public bool TryGetCheckpointState(Checkpoint checkpoint, out BeaconState? state) => _checkpointStates.TryGetValue(checkpoint, out state);
+        public ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)
+        {
+            if (!_checkpointStates.TryGetValue(checkpoint, out BeaconState? state))
+            {
+                if (throwIfMissing)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(checkpoint), checkpoint,
+                        "Checkpoint state not found in store."); 
+                }
+            }
+            return new ValueTask<BeaconState?>(state);
+        }
 
-        public bool TryGetLatestMessage(ValidatorIndex validatorIndex, out LatestMessage? latestMessage) => _latestMessages.TryGetValue(validatorIndex, out latestMessage);
+        public async IAsyncEnumerable<Hash32> GetChildKeysAfterSlotAsync(Hash32 parent, Slot slot)
+        {
+            await Task.CompletedTask;
+            IEnumerable<Hash32> childKeys = _blocks
+                .Where(kvp =>
+                    kvp.Value.ParentRoot.Equals(parent)
+                    && kvp.Value.Slot > slot)
+                .Select(kvp => kvp.Key);
+            foreach (Hash32 childKey in childKeys)
+            {
+                yield return childKey;
+            }
+        }
+
+        public ValueTask<LatestMessage?> GetLatestMessageAsync(ValidatorIndex validatorIndex, bool throwIfMissing)
+        {
+            if (!_latestMessages.TryGetValue(validatorIndex, out LatestMessage? latestMessage))
+            {
+                if (throwIfMissing)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(validatorIndex), validatorIndex,
+                        "Latest message not found in store.");
+                }
+            }
+            return new ValueTask<LatestMessage?>(latestMessage);
+        }
     }
 }

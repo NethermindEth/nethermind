@@ -8,7 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Cortex.Cryptography.Bls" Version="0.4.0" />
     <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
-    <PackageReference Include="GitVersionTask" Version="5.1.2">
+    <PackageReference Include="GitVersionTask" Version="5.1.3">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>

@@ -229,10 +229,7 @@ namespace Nethermind.BeaconNode
             // Verify no index has custody bit equal to 1 [to be removed in phase 1]
             if (bit1Indices.Count != 0) // [to be removed in phase 1]
             {
-                if (_logger.IsWarn())
-                    _logger.LogWarning(Event.InvalidIndexedAttestation,
-                        "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has {BitIndicesCount} bit 1 indices.",
-                        indexedAttestation.Data.Index, indexedAttestation.Data.Slot, bit1Indices.Count());
+                if (_logger.IsWarn()) Log.InvalidIndexedAttestationBit1(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, bit1Indices.Count(), null);
                 return false; //[to be removed in phase 1]
             }
 
@@ -240,9 +237,7 @@ namespace Nethermind.BeaconNode
             int totalIndices = bit0Indices.Count + bit1Indices.Count;
             if ((ulong) totalIndices > miscellaneousParameters.MaximumValidatorsPerCommittee)
             {
-                if (_logger.IsWarn()) _logger.LogWarning(Event.InvalidIndexedAttestation,
-                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has total indices {TotalIndices}, more than the maximum validators per committe {MaximumValidatorsPerCommittee}.",
-                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot, totalIndices, miscellaneousParameters.MaximumValidatorsPerCommittee);
+                if (_logger.IsWarn()) Log.InvalidIndexedAttestationTooMany(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, totalIndices, miscellaneousParameters.MaximumValidatorsPerCommittee, null);
                 return false;
             }
 
@@ -250,9 +245,7 @@ namespace Nethermind.BeaconNode
             IEnumerable<ValidatorIndex> intersect = bit0Indices.Intersect(bit1Indices);
             if (intersect.Count() != 0)
             {
-                if (_logger.IsWarn()) _logger.LogWarning(Event.InvalidIndexedAttestation,
-                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because it has {IntersectingValidatorCount} validator indexes in common between custody bit 0 and custody bit 1.",
-                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot, intersect.Count());
+                if (_logger.IsWarn()) Log.InvalidIndexedAttestationIntersection(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, intersect.Count(), null);
                 return false;
             }
 
@@ -263,9 +256,7 @@ namespace Nethermind.BeaconNode
                 {
                     if (!(bit0Indices[index] < bit0Indices[index + 1]))
                     {
-                        if (_logger.IsWarn()) _logger.LogWarning(Event.InvalidIndexedAttestation,
-                            "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because custody bit 0 index {IndexNumber} is not sorted.",
-                            indexedAttestation.Data.Index, indexedAttestation.Data.Slot, index);
+                        if (_logger.IsWarn()) Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, 0, index, null);
                         return false;
                     }
                 }
@@ -277,9 +268,7 @@ namespace Nethermind.BeaconNode
                 {
                     if (!(bit1Indices[index] < bit1Indices[index + 1]))
                     {
-                        if (_logger.IsWarn()) _logger.LogWarning(Event.InvalidIndexedAttestation,
-                            "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because custody bit 1 index {IndexNumber} is not sorted.",
-                            indexedAttestation.Data.Index, indexedAttestation.Data.Slot, index);
+                        if (_logger.IsWarn()) Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, 1, index, null);
                         return false;
                     }
                 }
@@ -303,9 +292,7 @@ namespace Nethermind.BeaconNode
             bool isValid = _cryptographyService.BlsVerifyMultiple(publicKeys, messageHashes, signature, domain);
             if (!isValid)
             {
-                if (_logger.IsWarn()) _logger.LogWarning(Event.InvalidIndexedAttestation,
-                    "Invalid indexed attestion from committee {CommitteeIndex} for slot {Slot}, because the aggregate signature does not match.",
-                    indexedAttestation.Data.Index, indexedAttestation.Data.Slot);
+                if (_logger.IsWarn()) Log.InvalidIndexedAttestationSignature(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, null);
                 return false;
             }
 

@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Configuration;
@@ -25,6 +26,7 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode
 {
@@ -73,23 +75,20 @@ namespace Nethermind.BeaconNode
 
         public Slot ComputeSlotsSinceEpochStart(Slot slot)
         {
-            var epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
-            var startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
+            Epoch epoch = _beaconChainUtility.ComputeEpochAtSlot(slot);
+            Slot startSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(epoch);
             return slot - startSlot;
         }
 
-        public Hash32 GetAncestor(IStore store, Hash32 root, Slot slot)
+        public async Task<Hash32> GetAncestorAsync(IStore store, Hash32 root, Slot slot)
         {
             // NOTE: This method should probably live in IStore, for various efficient implementations.
 
-            if (!store.TryGetBlock(root, out BeaconBlock? block) || block is null)
-            {
-                throw new Exception($"Block not found for get ancestor root {root}.");
-            }
+            BeaconBlock block = await store.GetBlockAsync(root).ConfigureAwait(false);
 
             if (block.Slot > slot)
             {
-                return GetAncestor(store, block.ParentRoot, slot);
+                return await GetAncestorAsync(store, block.ParentRoot, slot).ConfigureAwait(false);
             }
             else if (block.Slot == slot)
             {
@@ -104,38 +103,38 @@ namespace Nethermind.BeaconNode
 
         public Slot GetCurrentSlot(IStore store)
         {
-            var slotValue = (store.Time - store.GenesisTime) / _timeParameterOptions.CurrentValue.SecondsPerSlot;
+            ulong slotValue = (store.Time - store.GenesisTime) / _timeParameterOptions.CurrentValue.SecondsPerSlot;
             return new Slot(slotValue);
         }
 
         public IStore GetGenesisStore(BeaconState genesisState)
         {
-            var miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            var maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
+            MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+            MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
 
-            var stateRoot = genesisState.HashTreeRoot(miscellaneousParameters, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, maxOperationsPerBlock);
-            var genesisBlock = new BeaconBlock(stateRoot);
-            var root = genesisBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
-            var justifiedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
-            var finalizedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
+            Hash32 stateRoot = genesisState.HashTreeRoot(miscellaneousParameters, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, maxOperationsPerBlock);
+            BeaconBlock genesisBlock = new BeaconBlock(stateRoot);
+            Hash32 root = genesisBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+            Checkpoint justifiedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
+            Checkpoint finalizedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
 
-            _logger.LogInformation(Event.CreateGenesisStore, "Creating genesis store with block {BeaconBlock} for state {BeaconState}, with checkpoint {JustifiedCheckpoint}, with signing root {SigningRoot}",
-                genesisBlock, genesisState, justifiedCheckpoint, root);
+            if (_logger.IsInfo())
+                Log.CreateGenesisStore(_logger, genesisBlock, genesisState, justifiedCheckpoint, root, null);
 
-            var blocks = new Dictionary<Hash32, BeaconBlock>
+            Dictionary<Hash32, BeaconBlock> blocks = new Dictionary<Hash32, BeaconBlock>
             {
                 [root] = genesisBlock
             };
-            var blockStates = new Dictionary<Hash32, BeaconState>
+            Dictionary<Hash32, BeaconState> blockStates = new Dictionary<Hash32, BeaconState>
             {
                 [root] = BeaconState.Clone(genesisState)
             };
-            var checkpointStates = new Dictionary<Checkpoint, BeaconState>
+            Dictionary<Checkpoint, BeaconState> checkpointStates = new Dictionary<Checkpoint, BeaconState>
             {
                 [justifiedCheckpoint] = BeaconState.Clone(genesisState)
             };
 
-            var store = _storeProvider.CreateStore(
+            IStore store = _storeProvider.CreateStore(
                 genesisState.GenesisTime,
                 genesisState.GenesisTime,
                 justifiedCheckpoint,
@@ -151,55 +150,54 @@ namespace Nethermind.BeaconNode
 
         public async Task<Hash32> GetHeadAsync(IStore store)
         {
-            return await Task.Run(() =>
+            // NOTE: This method should probably live in a separate object, for different implementations, possibly part of Store (for efficiency).
+
+            // Execute the LMD-GHOST fork choice
+            Hash32 head = store.JustifiedCheckpoint.Root;
+            Slot justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
+            while (true)
             {
-                // Execute the LMD-GHOST fork choice
-                var head = store.JustifiedCheckpoint.Root;
-                var justifiedSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
-                while (true)
+                List<Tuple<Hash32, Gwei>> childKeysWithBalances = new List<Tuple<Hash32, Gwei>>();
+                await foreach (Hash32 childKey in store.GetChildKeysAfterSlotAsync(head, justifiedSlot)
+                    .ConfigureAwait(false))
                 {
-                    var children = store.Blocks
-                        .Where(kvp =>
-                            kvp.Value.ParentRoot.Equals(head)
-                            && kvp.Value.Slot > justifiedSlot)
-                        .Select(kvp => kvp.Key);
-                    if (children.Count() == 0)
-                    {
-                        return head;
-                    }
-                    head = children
-                        .OrderByDescending(x => GetLatestAttestingBalance(store, x))
-                        .ThenByDescending(x => x)
-                        .First();
+                    Gwei balance = await GetLatestAttestingBalanceAsync(store, childKey).ConfigureAwait(false);
+                    childKeysWithBalances.Add(Tuple.Create(childKey, balance));
                 }
-            });
+                if (childKeysWithBalances.Count == 0)
+                {
+                    return head;
+                }
+
+                head = childKeysWithBalances
+                    .OrderByDescending(x => x.Item2)
+                    .ThenByDescending(x => x.Item1)
+                    .Select(x => x.Item1)
+                    .First();
+            }
         }
 
-        public Gwei GetLatestAttestingBalance(IStore store, Hash32 root)
+        public async Task<Gwei> GetLatestAttestingBalanceAsync(IStore store, Hash32 root)
         {
-            if (!store.TryGetCheckpointState(store.JustifiedCheckpoint, out var storedState))
-            {
-                throw new Exception($"Not able to get checkpoint state {store.JustifiedCheckpoint}");
-            }
+            // NOTE: This method should probably live in IStore, for various efficient implementations.
 
-            var state = storedState!;
-            var currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
-            var activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
-            if (!store.TryGetBlock(root, out var rootBlock))
-            {
-                throw new Exception($"Not ble to find block {root}");
-            }
+            Checkpoint justifiedCheckpoint = store.JustifiedCheckpoint;
+            BeaconState state = (await store.GetCheckpointStateAsync(justifiedCheckpoint, true).ConfigureAwait(false))!;
+            Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
+            IList<ValidatorIndex> activeIndexes = _beaconStateAccessor.GetActiveValidatorIndices(state, currentEpoch);
+            BeaconBlock rootBlock = await store.GetBlockAsync(root).ConfigureAwait(false);
             
             Slot rootSlot = rootBlock!.Slot;
             Gwei balance = Gwei.Zero;
             foreach (ValidatorIndex index in activeIndexes)
             {
-                if (store.TryGetLatestMessage(index, out var latestMessage))
+                LatestMessage? latestMessage = await store.GetLatestMessageAsync(index, false);
+                if (latestMessage != null)
                 {
-                    var ancestor = GetAncestor(store, latestMessage!.Root, rootSlot);
+                    Hash32 ancestor = await GetAncestorAsync(store, latestMessage.Root, rootSlot);
                     if (ancestor == root)
                     {
-                        var validator = state.Validators[(int)index];
+                        Validator validator = state.Validators[(int)index];
                         balance += validator.EffectiveBalance;
                     }
                 }
@@ -213,19 +211,21 @@ namespace Nethermind.BeaconNode
         /// An ``attestation`` that is asserted as invalid may be valid at a later time,
         /// consider scheduling it for later processing in such case.
         /// </summary>
-        public void OnAttestation(IStore store, Attestation attestation)
+        public async Task OnAttestationAsync(IStore store, Attestation attestation)
         {
-            var initialValues = _initialValueOptions.CurrentValue;
-            var timeParameters = _timeParameterOptions.CurrentValue;
+            if (_logger.IsInfo()) Log.OnAttestation(_logger, attestation, null);
+            
+            InitialValues initialValues = _initialValueOptions.CurrentValue;
+            TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
 
-            var target = attestation.Data.Target;
+            Checkpoint target = attestation.Data.Target;
 
             // Attestations must be from the current or previous epoch
-            var currentSlot = GetCurrentSlot(store);
-            var currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
+            Slot currentSlot = GetCurrentSlot(store);
+            Epoch currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
 
             // Use GENESIS_EPOCH for previous when genesis to avoid underflow
-            var previousEpoch = currentEpoch > initialValues.GenesisEpoch
+            Epoch previousEpoch = currentEpoch > initialValues.GenesisEpoch
                 ? currentEpoch - new Epoch(1)
                 : initialValues.GenesisEpoch;
 
@@ -234,33 +234,23 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentOutOfRangeException("attestation.Target.Epoch", target.Epoch, $"Attestation target epoch must be either the current epoch {currentEpoch} or previous epoch {previousEpoch}.");
             }
             // Cannot calculate the current shuffling if have not seen the target
-            if (!store.TryGetBlock(target.Root, out var targetBlock))
-            {
-                throw new ArgumentOutOfRangeException("attestation.Target.Root", target.Root, "Attestation target root not found in the block history.");
-            }
+            BeaconBlock targetBlock = await store.GetBlockAsync(target.Root).ConfigureAwait(false);
 
             // Attestations target be for a known block. If target block is unknown, delay consideration until the block is found
-            if (!store.TryGetBlockState(target.Root, out var targetStoredState))
-            {
-                throw new ArgumentOutOfRangeException("attestation.Target.Root", target.Root, "Attestation target root not found in the block stores history.");
-            }
+            BeaconState targetStoredState = await store.GetBlockStateAsync(target.Root).ConfigureAwait(false);
 
             // Attestations cannot be from future epochs. If they are, delay consideration until the epoch arrives
-            var baseState = BeaconState.Clone(targetStoredState!);
-            var targetEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(target.Epoch);
-            var targetEpochStartSlotTime = baseState.GenesisTime + (ulong)targetEpochStartSlot * timeParameters.SecondsPerSlot;
+            BeaconState baseState = BeaconState.Clone(targetStoredState);
+            Slot targetEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(target.Epoch);
+            ulong targetEpochStartSlotTime = baseState.GenesisTime + (ulong)targetEpochStartSlot * timeParameters.SecondsPerSlot;
             if (store.Time < targetEpochStartSlotTime)
             {
                 throw new Exception($"Ättestation target state time {targetEpochStartSlotTime} should not be larger than the store time {store.Time}).");
             }
 
             // Attestations must be for a known block. If block is unknown, delay consideration until the block is found
-            if (!store.TryGetBlock(attestation.Data.BeaconBlockRoot, out var storedAttestationBlock))
-            {
-                throw new ArgumentOutOfRangeException("attestation.Data.BeaconBlockRoot", attestation.Data.BeaconBlockRoot, "Attestation data root not found in the block history.");
-            }
+            BeaconBlock attestationBlock = await store.GetBlockAsync(attestation.Data.BeaconBlockRoot).ConfigureAwait(false);
 
-            var attestationBlock = storedAttestationBlock!;
             // Attestations must not be for blocks in the future. If not, the attestation should not be considered
             if (attestationBlock.Slot > attestation.Data.Slot)
             {
@@ -269,136 +259,133 @@ namespace Nethermind.BeaconNode
 
             // Store target checkpoint state if not yet seen
 
-            if (!store.TryGetCheckpointState(target, out var targetState))
+            BeaconState? targetState = await store.GetCheckpointStateAsync(target, false).ConfigureAwait(false);
+            if (targetState == null)
             {
                 _beaconStateTransition.ProcessSlots(baseState, targetEpochStartSlot);
-                store.SetCheckpointState(target, baseState);
+                await store.SetCheckpointStateAsync(target, baseState).ConfigureAwait(false);
                 targetState = baseState;
             }
 
             // Attestations can only affect the fork choice of subsequent slots.
             // Delay consideration in the fork choice until their slot is in the past.
-            //var attestationDataSlotTime = ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
             ulong attestationDataSlotTime = targetState!.GenesisTime + ((ulong)attestation.Data.Slot + 1) * timeParameters.SecondsPerSlot;
             if (store.Time < attestationDataSlotTime)
             {
-                throw new Exception($"Ättestation data time {attestationDataSlotTime} should not be larger than the store time {store.Time}).");
+                throw new Exception($"Attestation data time {attestationDataSlotTime} should not be larger than the store time {store.Time}).");
             }
 
             // Get state at the `target` to validate attestation and calculate the committees
-            var indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(targetState, attestation);
-            var domain = _beaconStateAccessor.GetDomain(targetState, _signatureDomainOptions.CurrentValue.BeaconAttester, indexedAttestation.Data.Target.Epoch);
-            var isValid = _beaconChainUtility.IsValidIndexedAttestation(targetState, indexedAttestation, domain);
+            IndexedAttestation indexedAttestation = _beaconStateAccessor.GetIndexedAttestation(targetState, attestation);
+            Domain domain = _beaconStateAccessor.GetDomain(targetState, _signatureDomainOptions.CurrentValue.BeaconAttester, indexedAttestation.Data.Target.Epoch);
+            bool isValid = _beaconChainUtility.IsValidIndexedAttestation(targetState, indexedAttestation, domain);
             if (!isValid)
             {
                 throw new Exception($"Indexed attestation {indexedAttestation} is not valid.");
             }
 
             // Update latest messages
-            var attestingIndices = _beaconStateAccessor.GetAttestingIndices(targetState, attestation.Data, attestation.AggregationBits);
-            foreach (var index in attestingIndices)
+            IEnumerable<ValidatorIndex> attestingIndices = _beaconStateAccessor.GetAttestingIndices(targetState, attestation.Data, attestation.AggregationBits);
+            foreach (ValidatorIndex index in attestingIndices)
             {
-                if (!store.TryGetLatestMessage(index, out var latestMessage) || target.Epoch > latestMessage!.Epoch)
+                LatestMessage? latestMessage = await store.GetLatestMessageAsync(index, false).ConfigureAwait(false);
+                if (latestMessage == null || target.Epoch > latestMessage!.Epoch)
                 {
                     latestMessage = new LatestMessage(target.Epoch, attestation.Data.BeaconBlockRoot);
-                    store.SetLatestMessage(index, latestMessage);
+                    await store.SetLatestMessageAsync(index, latestMessage).ConfigureAwait(false);
                 }
             }
         }
 
-        public void OnBlock(IStore store, BeaconBlock block)
+        public async Task OnBlockAsync(IStore store, BeaconBlock block)
         {
-            // Make a copy of the state to avoid mutability issues
-            if (!store.TryGetBlockState(block.ParentRoot, out BeaconState? parentState) || parentState is null)
-            {
-                throw new ArgumentOutOfRangeException(nameof(block), block.ParentRoot, "Block parent root not found in the block states history.");
-            }
+            Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
             
-            var preState = BeaconState.Clone(parentState);
+            if (_logger.IsInfo()) Log.OnBlock(_logger, signingRoot, block, null);
+            
+            // Make a copy of the state to avoid mutability issues
+            BeaconState parentState = await store.GetBlockStateAsync(block.ParentRoot).ConfigureAwait(false);
+            BeaconState preState = BeaconState.Clone(parentState);
 
             // Blocks cannot be in the future. If they are, their consideration must be delayed until the are in the past.
-            var blockTime = preState.GenesisTime + (ulong)block.Slot * _timeParameterOptions.CurrentValue.SecondsPerSlot;
+            ulong blockTime = preState.GenesisTime + (ulong)block.Slot * _timeParameterOptions.CurrentValue.SecondsPerSlot;
             if (blockTime > store.Time)
             {
                 throw new ArgumentOutOfRangeException(nameof(block), blockTime, $"Block slot time cannot be in the future, compared to store time {store.Time}.");
             }
 
             // Add new block to the store
-            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
-            store.SetBlock(signingRoot, block);
+            await store.SetBlockAsync(signingRoot, block).ConfigureAwait(false);
 
             // Check block is a descendant of the finalized block
-            if (!store.TryGetBlock(store.FinalizedCheckpoint.Root, out var finalizedCheckpointBlock))
-            {
-                throw new Exception($"Block not found for finalized checkpoint root {store.FinalizedCheckpoint.Root}.");
-            }
-            
-            Hash32 ancestor = GetAncestor(store, signingRoot, finalizedCheckpointBlock!.Slot);
+            BeaconBlock finalizedCheckpointBlock = await store.GetBlockAsync(store.FinalizedCheckpoint.Root).ConfigureAwait(false);
+            Hash32 ancestor = await GetAncestorAsync(store, signingRoot, finalizedCheckpointBlock!.Slot).ConfigureAwait(false);
             if (ancestor != store.FinalizedCheckpoint.Root)
             {
                 throw new Exception($"Block with signing root {signingRoot} is not a descendant of the finalized block {store.FinalizedCheckpoint.Root} at slot {finalizedCheckpointBlock.Slot}.");
             }
 
             // Check that block is later than the finalized epoch slot
-            var finalizedEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.FinalizedCheckpoint.Epoch);
+            Slot finalizedEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.FinalizedCheckpoint.Epoch);
             if (block.Slot <= finalizedEpochStartSlot)
             {
                 throw new ArgumentOutOfRangeException(nameof(block), block.Slot, $"Block slot must be later than the finalized epoch start slot {finalizedEpochStartSlot}.");
             }
 
             // Check the block is valid and compute the post-state
-            var state = _beaconStateTransition.StateTransition(preState, block, validateStateRoot: true);
+            BeaconState state = _beaconStateTransition.StateTransition(preState, block, validateStateRoot: true);
 
             // Add new state for this block to the store
-            store.SetBlockState(signingRoot, state);
+            await store.SetBlockStateAsync(signingRoot, state).ConfigureAwait(false);
 
-            _logger.LogInformation(Event.CreateGenesisStore, "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}",
-                block, state, signingRoot);
+            if (_logger.IsDebug()) LogDebug.AddedBlockToStore(_logger, block, state, signingRoot, null);
 
             // Update justified checkpoint
             if (state.CurrentJustifiedCheckpoint.Epoch > store.JustifiedCheckpoint.Epoch)
             {
-                store.SetBestJustifiedCheckpoint(state.CurrentJustifiedCheckpoint);
-                var shouldUpdateJustifiedCheckpoint = ShouldUpdateJustifiedCheckpoint(store, state.CurrentJustifiedCheckpoint);
+                await store.SetBestJustifiedCheckpointAsync(state.CurrentJustifiedCheckpoint).ConfigureAwait(false);
+                bool shouldUpdateJustifiedCheckpoint = await ShouldUpdateJustifiedCheckpointAsync(store, state.CurrentJustifiedCheckpoint).ConfigureAwait(false);
                 if (shouldUpdateJustifiedCheckpoint)
                 {
-                    store.SetJustifiedCheckpoint(state.CurrentJustifiedCheckpoint);
-                    _logger.LogDebug("Updated justified checkpoint {JustifiedCheckpoint}", state.CurrentJustifiedCheckpoint);
+                    await store.SetJustifiedCheckpointAsync(state.CurrentJustifiedCheckpoint).ConfigureAwait(false);
+                    if (_logger.IsDebug()) LogDebug.UpdateJustifiedCheckpoint(_logger, state.CurrentJustifiedCheckpoint, null);
                 }
                 else
                 {
-                    _logger.LogDebug("Updated best justified checkpoint {JustifiedCheckpoint}", state.CurrentJustifiedCheckpoint);
+                    if (_logger.IsDebug()) LogDebug.UpdateBestJustifiedCheckpoint(_logger, state.CurrentJustifiedCheckpoint, null);
                 }
             }
 
             // Update finalized checkpoint
             if (state.FinalizedCheckpoint.Epoch > store.FinalizedCheckpoint.Epoch)
             {
-                store.SetFinalizedCheckpoint(state.FinalizedCheckpoint);
-                _logger.LogDebug("Updated finalized checkpoint {FinalizedCheckpoint}", state.FinalizedCheckpoint);
+                await store.SetFinalizedCheckpointAsync(state.FinalizedCheckpoint).ConfigureAwait(false);
+                if (_logger.IsDebug()) LogDebug.UpdateFinalizedCheckpoint(_logger, state.FinalizedCheckpoint, null);
             }
         }
 
-        public void OnTick(IStore store, ulong time)
+        public async Task OnTickAsync(IStore store, ulong time)
         {
-            var previousSlot = GetCurrentSlot(store);
+            Slot previousSlot = GetCurrentSlot(store);
 
             // update store time
-            store.SetTime(time);
+            await store.SetTimeAsync(time).ConfigureAwait(false);
 
-            var currentSlot = GetCurrentSlot(store);
+            Slot currentSlot = GetCurrentSlot(store);
             // Not a new epoch, return
-            var isNewEpoch = (currentSlot > previousSlot) && (ComputeSlotsSinceEpochStart(currentSlot) == Slot.Zero);
+            bool isNewEpoch = (currentSlot > previousSlot) && (ComputeSlotsSinceEpochStart(currentSlot) == Slot.Zero);
             if (!isNewEpoch)
             {
                 return;
             }
-            var currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
-            _logger.LogDebug("New epoch {Epoch} at time {Time:n0}", currentEpoch, store.Time);
+            Epoch currentEpoch = _beaconChainUtility.ComputeEpochAtSlot(currentSlot);
+
+            if (_logger.IsInfo()) Log.OnTickNewEpoch(_logger, currentEpoch, currentSlot, store.Time, null);
+
             // Update store.justified_checkpoint if a better checkpoint is known
             if (store.BestJustifiedCheckpoint.Epoch > store.JustifiedCheckpoint.Epoch)
             {
-                store.SetJustifiedCheckpoint(store.BestJustifiedCheckpoint);
+                await store.SetJustifiedCheckpointAsync(store.BestJustifiedCheckpoint).ConfigureAwait(false);
             }
         }
 
@@ -408,32 +395,25 @@ namespace Nethermind.BeaconNode
         /// Otherwise, delay incorporation of new justified checkpoint until next epoch boundary.
         /// See https://ethresear.ch/t/prevention-of-bouncing-attack-on-ffg/6114 for more detailed analysis and discussion.
         /// </summary>
-        public bool ShouldUpdateJustifiedCheckpoint(IStore store, Checkpoint newJustifiedCheckpoint)
+        public async Task<bool> ShouldUpdateJustifiedCheckpointAsync(IStore store, Checkpoint newJustifiedCheckpoint)
         {
-            var currentSlot = GetCurrentSlot(store);
-            var slotsSinceEpochStart = ComputeSlotsSinceEpochStart(currentSlot);
+            Slot currentSlot = GetCurrentSlot(store);
+            Slot slotsSinceEpochStart = ComputeSlotsSinceEpochStart(currentSlot);
             if (slotsSinceEpochStart < _forkChoiceConfigurationOptions.CurrentValue.SafeSlotsToUpdateJustified)
             {
                 return true;
             }
 
-            if (!store.TryGetBlock(newJustifiedCheckpoint.Root, out var newJustifiedBlock))
-            {
-                throw new NotImplementedException("What if block is null");
-            }
-            
+            BeaconBlock newJustifiedBlock = await store.GetBlockAsync(newJustifiedCheckpoint.Root).ConfigureAwait(false);
             Slot justifiedCheckpointEpochStartSlot = _beaconChainUtility.ComputeStartSlotOfEpoch(store.JustifiedCheckpoint.Epoch);
-            if (newJustifiedBlock!.Slot <= justifiedCheckpointEpochStartSlot)
+            if (newJustifiedBlock.Slot <= justifiedCheckpointEpochStartSlot)
             {
                 return false;
             }
+
+            BeaconBlock justifiedCheckPointBlock = await store.GetBlockAsync(store.JustifiedCheckpoint.Root).ConfigureAwait(false);
             
-            if (!store.TryGetBlock(store.JustifiedCheckpoint.Root, out var justifiedCheckPointBlock))
-            {
-                throw new NotImplementedException("What if justified checkpoint block is null");
-            }
-            
-            Hash32 ancestorOfNewCheckpointAtOldCheckpointSlot = GetAncestor(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock!.Slot);
+            Hash32 ancestorOfNewCheckpointAtOldCheckpointSlot = await GetAncestorAsync(store, newJustifiedCheckpoint.Root, justifiedCheckPointBlock.Slot).ConfigureAwait(false);
             
             // i.e. new checkpoint is descendant of old checkpoint
             return ancestorOfNewCheckpointAtOldCheckpointSlot == store.JustifiedCheckpoint.Root;
