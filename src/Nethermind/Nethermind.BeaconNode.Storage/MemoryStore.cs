@@ -133,7 +133,7 @@ namespace Nethermind.BeaconNode.Storage
             {
                 throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "State not found in store.");
             }
-            return new ValueTask<BeaconState?>(state!);
+            return new ValueTask<BeaconState>(state!);
         }
 
         public ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)
