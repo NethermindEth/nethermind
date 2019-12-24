@@ -14,40 +14,75 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
+[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Infrastructure")]
+[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Test")]
+[assembly:InternalsVisibleTo("Nethermind.DataMarketplace.Consumers.Test")]
 namespace Nethermind.DataMarketplace.Core.Domain
 {
-    public class TransactionInfo
+    public class TransactionInfo : IEquatable<TransactionInfo>
     {
         public Keccak Hash { get; private set; }
         public UInt256 Value { get; private set; }
         public UInt256 GasPrice { get; private set; }
         public ulong GasLimit { get; private set; }
         public ulong Timestamp { get; private set; }
+        public TransactionType Type { get; private set; }
         public TransactionState State { get; private set; }
 
-        public TransactionInfo(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
-            TransactionState state = TransactionState.Pending)
+        internal TransactionInfo(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit, ulong timestamp,
+            TransactionType type = TransactionType.Default, TransactionState state = TransactionState.Pending)
         {
             Hash = hash;
             Value = value;
             GasPrice = gasPrice;
             GasLimit = gasLimit;
             Timestamp = timestamp;
+            Type = type;
             State = state;
         }
+
+        public static TransactionInfo Default(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit,
+            ulong timestamp)
+            => new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp);
+
+        public static TransactionInfo SpeedUp(Keccak hash, UInt256 value, UInt256 gasPrice, ulong gasLimit,
+            ulong timestamp)
+            => new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, TransactionType.SpeedUp);
+
+        public static TransactionInfo Cancellation(Keccak hash, UInt256 gasPrice, ulong gasLimit, ulong timestamp)
+            => new TransactionInfo(hash, 0, gasPrice, gasLimit, timestamp, TransactionType.Cancellation);
 
         public void SetIncluded()
         {
             State = TransactionState.Included;
         }
 
-        public void SetCanceled(Keccak hash)
+        public void SetRejected()
         {
-            Hash = hash;
-            State = TransactionState.Canceled;
+            State = TransactionState.Rejected;
+        }
+
+        public bool Equals(TransactionInfo other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            return ReferenceEquals(this, other) || Equals(Hash, other.Hash);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((TransactionInfo) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return (Hash != null ? Hash.GetHashCode() : 0);
         }
     }
 }

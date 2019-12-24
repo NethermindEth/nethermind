@@ -29,6 +29,7 @@ using Nethermind.DataMarketplace.Consumers.Shared;
 using Nethermind.DataMarketplace.Consumers.Shared.Services;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -87,21 +88,21 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         }
 
         [Test]
-        public void update_deposit_gas_price_should_fail_for_zero_gas_price()
+        public async Task update_deposit_gas_price_should_fail_for_zero_gas_price()
         {
             var depositId = TestItem.KeccakA;
-            Func<Task> act = () => _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, 0);
-            act.Should().Throw<ArgumentException>()
-                .WithMessage("Gas price cannot be 0. (Parameter 'gasPrice')");
+            var info = await _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, 0);
+            info.Status.Should().Be(UpdatedTransactionStatus.InvalidGasPrice);
+            info.Hash.Should().BeNull();
         }
 
         [Test]
-        public void update_deposit_gas_price_should_fail_for_not_existing_deposit()
+        public async Task update_deposit_gas_price_should_fail_for_not_existing_deposit()
         {
             var depositId = TestItem.KeccakA;
-            Func<Task> act = () => _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{depositId}' was not found.");
+            var info = await _consumerTransactionsService.UpdateDepositGasPriceAsync(depositId, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceNotFound);
+            info.Hash.Should().BeNull();
         }
 
         [Test]
@@ -109,9 +110,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         {
             var deposit = GetDepositDetails();
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction.");
+            var info = await _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -122,9 +123,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var deposit = GetDepositDetails(transactionHash);
             deposit.Reject();
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' was rejected.");
+            var info = await _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceRejected);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -136,14 +137,14 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' was confirmed.");
+            var info = await _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceConfirmed);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
         [Test]
-        public async Task update_deposit_gas_price_should_succeed()
+        public async Task update_deposit_gas_price_should_return_transaction_status()
         {
             var transactionHash = TestItem.KeccakC;
             var newTransactionHash = TestItem.KeccakD;
@@ -151,8 +152,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var deposit = GetDepositDetails(transactionHash);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             _transactionService.UpdateGasPriceAsync(deposit.Transaction.Hash, gasPrice).Returns(newTransactionHash);
-            var hash = await _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, gasPrice);
-            hash.Should().Be(newTransactionHash);
+            var info = await _consumerTransactionsService.UpdateDepositGasPriceAsync(deposit.Id, gasPrice);
+            info.Hash.Should().Be(newTransactionHash);
+            info.Status.Should().Be(UpdatedTransactionStatus.Ok);
             deposit.Transaction.Hash.Should().Be(newTransactionHash);
             deposit.Transaction.GasPrice.Should().Be(gasPrice);
             await _depositRepository.Received().GetAsync(deposit.Id);
@@ -161,21 +163,21 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         }
 
         [Test]
-        public void update_refund_gas_price_should_fail_for_zero_gas_price()
+        public async Task update_refund_gas_price_should_fail_for_zero_gas_price()
         {
             var depositId = TestItem.KeccakA;
-            Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, 0);
-            act.Should().Throw<ArgumentException>()
-                .WithMessage("Gas price cannot be 0. (Parameter 'gasPrice')");
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, 0);
+            info.Status.Should().Be(UpdatedTransactionStatus.InvalidGasPrice);
+            info.Hash.Should().BeNull();
         }
 
         [Test]
-        public void update_refund_gas_price_should_fail_for_not_existing_deposit()
+        public async Task update_refund_gas_price_should_fail_for_not_existing_deposit()
         {
             var depositId = TestItem.KeccakA;
-            Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{depositId}' was not found.");
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(depositId, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceNotFound);
+            info.Hash.Should().BeNull();
         }
 
         [Test]
@@ -183,9 +185,20 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         {
             var deposit = GetDepositDetails();
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction.");
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
+            info.Hash.Should().BeNull();
+        }
+        
+        [Test]
+        public async Task update_refund_gas_price_should_fail_for_cancelled_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash, cancelled: true);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceCancelled);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -196,9 +209,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var deposit = GetDepositDetails(transactionHash);
             deposit.Reject();
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' was rejected.");
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceRejected);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -208,9 +221,9 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             var transactionHash = TestItem.KeccakC;
             var deposit = GetDepositDetails(transactionHash);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{deposit.Id}' has no transaction for refund claim.");
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
@@ -219,19 +232,17 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
         {
             var transactionHash = TestItem.KeccakC;
             var claimedRefundTransactionHash = TestItem.KeccakD;
-            var deposit =
-                GetDepositDetails(transactionHash, claimedRefundTransactionHash: claimedRefundTransactionHash);
+            var deposit = GetDepositDetails(transactionHash, claimedRefundTransactionHash);
             deposit.SetRefundClaimed();
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            Func<Task> act = () => _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage(
-                    $"Deposit with id: '{deposit.Id}' has already claimed refund (transaction hash: '{deposit.ClaimedRefundTransaction.Hash}').");
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, 1);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceConfirmed);
+            info.Hash.Should().BeNull();
             await _depositRepository.Received().GetAsync(deposit.Id);
         }
 
         [Test]
-        public async Task update_refund_gas_price_should_succeed()
+        public async Task update_refund_gas_price_should_return_transaction_status()
         {
             var transactionHash = TestItem.KeccakC;
             var claimedRefundTransactionHash = TestItem.KeccakD;
@@ -241,76 +252,175 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Shared
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
             _transactionService.UpdateGasPriceAsync(deposit.ClaimedRefundTransaction.Hash, gasPrice)
                 .Returns(newTransactionHash);
-            var hash = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, gasPrice);
-            hash.Should().Be(newTransactionHash);
+            var info = await _consumerTransactionsService.UpdateRefundGasPriceAsync(deposit.Id, gasPrice);
+            info.Hash.Should().Be(newTransactionHash);
+            info.Status.Should().Be(UpdatedTransactionStatus.Ok);
             deposit.ClaimedRefundTransaction.Hash.Should().Be(newTransactionHash);
             deposit.ClaimedRefundTransaction.GasPrice.Should().Be(gasPrice);
+            deposit.ClaimedRefundTransaction.Type.Should().Be(TransactionType.SpeedUp);
             await _depositRepository.Received().GetAsync(deposit.Id);
             await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().UpdateGasPriceAsync(claimedRefundTransactionHash, gasPrice);
         }
         
         [Test]
-        public void cancel_deposit_should_fail_for_missing_deposit()
+        public async Task cancel_deposit_should_fail_for_missing_deposit()
         {
             var depositId = TestItem.KeccakA;
-            Func<Task> act = () => _consumerTransactionsService.CancelDepositAsync(depositId);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{depositId}' was not found.");
+            var info = await _consumerTransactionsService.CancelDepositAsync(depositId);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceNotFound);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(depositId);
         }
         
         [Test]
-        public void cancel_refund_should_fail_for_missing_deposit()
-        {
-            var depositId = TestItem.KeccakA;
-            Func<Task> act = () => _consumerTransactionsService.CancelRefundAsync(depositId);
-            act.Should().Throw<InvalidOperationException>()
-                .WithMessage($"Deposit with id: '{depositId}' was not found.");
-        }
-
-        [Test]
-        public async Task cancel_deposit_should_return_transaction_hash()
+        public async Task cancel_deposit_should_fail_for_confirmed_deposit()
         {
             var transactionHash = TestItem.KeccakA;
             var deposit = GetDepositDetails(transactionHash);
-            var canceledTransactionHash = TestItem.KeccakB;
+            deposit.SetConfirmations(1);
+            deposit.SetConfirmationTimestamp(1);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            _transactionService.CancelAsync(transactionHash).Returns(canceledTransactionHash);
-            var hash = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
-            hash.Should().Be(canceledTransactionHash);
-            deposit.Transaction.Hash.Should().Be(canceledTransactionHash);
-            deposit.Transaction.State.Should().Be(TransactionState.Canceled);
+            var info = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceConfirmed);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_deposit_should_fail_for_not_pending_transaction()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.Transaction.SetIncluded();
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.AlreadyIncluded);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_missing_deposit()
+        {
+            var depositId = TestItem.KeccakA;
+            var info = await _consumerTransactionsService.CancelRefundAsync(depositId);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceNotFound);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(depositId);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_missing_transaction()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.MissingTransaction);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_if_already_claimed()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.AddClaimedRefundTransaction(TransactionInfo.Default(TestItem.KeccakB, 0, 0, 0, 0));
+            deposit.SetRefundClaimed();
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceConfirmed);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_cancelled_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash, cancelled: true);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceCancelled);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+        
+        [Test]
+        public async Task cancel_refund_should_fail_for_rejected_deposit()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.Reject();
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.ResourceRejected);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+
+        [Test]
+        public async Task cancel_refund_should_fail_for_not_pending_transaction()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            deposit.AddClaimedRefundTransaction(new TransactionInfo(TestItem.KeccakB, 0, 0, 0, 0,
+                state: TransactionState.Included));
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            var info = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            info.Status.Should().Be(UpdatedTransactionStatus.AlreadyIncluded);
+            info.Hash.Should().BeNull();
+            await _depositRepository.Received().GetAsync(deposit.Id);
+        }
+
+        [Test]
+        public async Task cancel_deposit_should_return_transaction_status()
+        {
+            var transactionHash = TestItem.KeccakA;
+            var deposit = GetDepositDetails(transactionHash);
+            var info = new CanceledTransactionInfo(TestItem.KeccakB, 10.GWei(), 1000);
+            _depositRepository.GetAsync(deposit.Id).Returns(deposit);
+            _transactionService.CancelAsync(transactionHash).Returns(info);
+            var transactionInfo = await _consumerTransactionsService.CancelDepositAsync(deposit.Id);
+            transactionInfo.Hash.Should().Be(info.Hash);
+            transactionInfo.Status.Should().Be(UpdatedTransactionStatus.Ok);
+            deposit.Transaction.Hash.Should().Be(transactionInfo.Hash);
+            deposit.Transaction.Type.Should().Be(TransactionType.Cancellation);
             await _depositRepository.Received().GetAsync(deposit.Id);
             await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().CancelAsync(transactionHash);
         }
         
         [Test]
-        public async Task cancel_refund_should_return_transaction_hash()
+        public async Task cancel_refund_should_return_transaction_status()
         {
             var transactionHash = TestItem.KeccakA;
             var claimedRefundTransactionHash = TestItem.KeccakB;
             var deposit = GetDepositDetails(transactionHash, claimedRefundTransactionHash);
-            var canceledTransactionHash = TestItem.KeccakC;
+            var info = new CanceledTransactionInfo(TestItem.KeccakB, 10.GWei(), 1000);
             _depositRepository.GetAsync(deposit.Id).Returns(deposit);
-            _transactionService.CancelAsync(claimedRefundTransactionHash).Returns(canceledTransactionHash);
-            var hash = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
-            hash.Should().Be(canceledTransactionHash);
-            deposit.ClaimedRefundTransaction.Hash.Should().Be(canceledTransactionHash);
-            deposit.ClaimedRefundTransaction.State.Should().Be(TransactionState.Canceled);
+            _transactionService.CancelAsync(claimedRefundTransactionHash).Returns(info);
+            var transactionInfo = await _consumerTransactionsService.CancelRefundAsync(deposit.Id);
+            transactionInfo.Hash.Should().Be(info.Hash);
+            transactionInfo.Status.Should().Be(UpdatedTransactionStatus.Ok);
+            deposit.ClaimedRefundTransaction.Hash.Should().Be(transactionInfo.Hash);
+            deposit.ClaimedRefundTransaction.Type.Should().Be(TransactionType.Cancellation);
             await _depositRepository.Received().GetAsync(deposit.Id);
             await _depositRepository.Received().UpdateAsync(deposit);
             await _transactionService.Received().CancelAsync(claimedRefundTransactionHash);
         }
 
         private static DepositDetails GetDepositDetails(Keccak transactionHash = null,
-            Keccak claimedRefundTransactionHash = null)
+            Keccak claimedRefundTransactionHash = null, bool cancelled = false)
             => new DepositDetails(new Deposit(TestItem.KeccakA, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                transactionHash is null ? null : new TransactionInfo(transactionHash, 1, 1, 1, 1),
-                claimedRefundTransaction: claimedRefundTransactionHash is null
+                transactionHash is null ? null : new[] {TransactionInfo.Default(transactionHash, 1, 1, 1, 1)},
+                claimedRefundTransactions: claimedRefundTransactionHash is null
                     ? null
-                    : new TransactionInfo(claimedRefundTransactionHash, 1, 1, 1, 1));
+                    : new[] {TransactionInfo.Default(claimedRefundTransactionHash, 1, 1, 1, 1)},
+                cancelled: cancelled);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

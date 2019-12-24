@@ -23,8 +23,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
+using Nethermind.DataMarketplace.Consumers.Shared.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.DataMarketplace.Core.Services.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
@@ -55,140 +57,187 @@ namespace Nethermind.DataMarketplace.Consumers.Shared.Services
                 Results = int.MaxValue
             });
 
-            return deposits.Items.Select(MapPendingTransaction);
+            return deposits.Items.SelectMany(MapPendingTransactions);
         }
 
-        private static PendingTransaction MapPendingTransaction(DepositDetails deposit)
-            => deposit.ClaimedRefundTransaction is null
-                ? new PendingTransaction(deposit.Id.ToString(), "deposit", deposit.Transaction)
-                : new PendingTransaction(deposit.Id.ToString(), "refund", deposit.ClaimedRefundTransaction);
+        private static IEnumerable<PendingTransaction> MapPendingTransactions(DepositDetails deposit)
+        {
+            var depositId = deposit.Id.ToString();
 
-        public async Task<Keccak> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice)
+            return deposit.ClaimedRefundTransaction is null
+                ? deposit.Transactions.Select(t => new PendingTransaction(depositId, "deposit", t))
+                : deposit.ClaimedRefundTransactions.Select(t => new PendingTransaction(depositId, "refund", t));
+        }
+
+        public async Task<UpdatedTransactionInfo> UpdateDepositGasPriceAsync(Keccak depositId, UInt256 gasPrice)
         {
             if (gasPrice == 0)
             {
-                throw new ArgumentException("Gas price cannot be 0.", nameof(gasPrice));
+                if (_logger.IsError) _logger.Error($"Gas price cannot be 0.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.InvalidGasPrice);
             }
             
-            var deposit = await GetDepositAsync(depositId);
+            var (status, deposit) = await TryGetDepositAsync(depositId);
+            if (status != UpdatedTransactionStatus.Ok)
+            {
+                return new UpdatedTransactionInfo(status);
+            }
+            
             if (deposit.Confirmed)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' was confirmed.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was confirmed, transaction hash: '{deposit.Transaction.Hash}'.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
-
+            
             var currentHash = deposit.Transaction.Hash;
             var gasLimit = deposit.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
             var transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price.");
-            deposit.SetTransaction(new TransactionInfo(transactionHash, deposit.Deposit.Value, gasPrice, gasLimit, _timestamper.EpochSeconds));
+            deposit.AddTransaction(TransactionInfo.SpeedUp(transactionHash, deposit.Deposit.Value, gasPrice, gasLimit,
+                _timestamper.EpochSeconds));
             await _depositRepository.UpdateAsync(deposit);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
-            return transactionHash;
+            return new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, transactionHash);
         }
 
-        public async Task<Keccak> UpdateRefundGasPriceAsync(Keccak depositId, UInt256 gasPrice)
+        public async Task<UpdatedTransactionInfo> UpdateRefundGasPriceAsync(Keccak depositId, UInt256 gasPrice)
         {
             if (gasPrice == 0)
             {
-                throw new ArgumentException("Gas price cannot be 0.", nameof(gasPrice));
+                if (_logger.IsError) _logger.Error($"Gas price cannot be 0.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.InvalidGasPrice);
             }
             
-            var deposit = await GetDepositAsync(depositId);
+            var (status, deposit) = await TryGetDepositAsync(depositId);
+            if (status != UpdatedTransactionStatus.Ok)
+            {
+                return new UpdatedTransactionInfo(status);
+            }
+            
             if (deposit.ClaimedRefundTransaction is null)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' has no transaction for refund claim.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has no transaction for refund claim.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
 
             var currentHash = deposit.ClaimedRefundTransaction.Hash;
             if (deposit.RefundClaimed)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
             
             var gasLimit = deposit.Transaction.GasLimit;
             if (_logger.IsInfo) _logger.Info($"Updating gas price for refund claim for deposit with id: '{depositId}', current transaction hash: '{currentHash}'.");
             var transactionHash = await _transactionService.UpdateGasPriceAsync(currentHash, gasPrice);
             if (_logger.IsInfo) _logger.Info($"Received transaction hash: '{transactionHash}' for deposit with id: '{depositId}' after updating gas price for refund claim.");
-            deposit.SetClaimedRefundTransaction(new TransactionInfo(transactionHash, 0, gasPrice, gasLimit, _timestamper.EpochSeconds));
+            deposit.AddClaimedRefundTransaction(TransactionInfo.SpeedUp(transactionHash, 0, gasPrice, gasLimit,
+                _timestamper.EpochSeconds));
             await _depositRepository.UpdateAsync(deposit);
             if (_logger.IsInfo) _logger.Info($"Updated gas price for refund claim for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
 
-            return transactionHash;
+            return new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, transactionHash);
         }
 
-        public async Task<Keccak> CancelDepositAsync(Keccak depositId)
+        public async Task<UpdatedTransactionInfo> CancelDepositAsync(Keccak depositId)
         {
             if (_logger.IsWarn) _logger.Warn($"Canceling transaction for deposit with id: '{depositId}'.");
-            var deposit = await GetDepositAsync(depositId);
+            var (status, deposit) = await TryGetDepositAsync(depositId);
+            if (status != UpdatedTransactionStatus.Ok)
+            {
+                return new UpdatedTransactionInfo(status);
+            }
+            
             if (deposit.Confirmed)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' was confirmed.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was confirmed, transaction hash: '{deposit.Transaction.Hash}'.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
             
             if (deposit.Transaction.State != TransactionState.Pending)
             {
-                throw new InvalidOperationException($"Cannot cancel transaction with hash: '{deposit.Transaction.Hash}' for deposit with id: '{depositId}' (state: '{deposit.Transaction.State}').");
+                if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{deposit.Transaction.Hash}' for deposit with id: '{depositId}' (state: '{deposit.Transaction.State}').");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.AlreadyIncluded);
             }
             
-            var transactionHash = await _transactionService.CancelAsync(deposit.Transaction.Hash);
-            if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
-            
-            deposit.Transaction.SetCanceled(transactionHash);
+            var transaction = await _transactionService.CancelAsync(deposit.Transaction.Hash);
+            if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transaction.Hash}'.");
+            var cancellingTransaction = TransactionInfo.Cancellation(transaction.Hash, transaction.GasPrice,
+                transaction.GasLimit, _timestamper.EpochSeconds);
+            deposit.AddTransaction(cancellingTransaction);
             await _depositRepository.UpdateAsync(deposit);
 
-            return transactionHash;
+            return new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, transaction.Hash);
         }
 
-        public async Task<Keccak> CancelRefundAsync(Keccak depositId)
+        public async Task<UpdatedTransactionInfo> CancelRefundAsync(Keccak depositId)
         {
             if (_logger.IsWarn) _logger.Warn($"Canceling transaction for refund for deposit with id: '{depositId}'.");
-            var deposit = await GetDepositAsync(depositId);
+            var (status, deposit) = await TryGetDepositAsync(depositId);
+            if (status != UpdatedTransactionStatus.Ok)
+            {
+                return new UpdatedTransactionInfo(status);
+            }
+            
             if (deposit.ClaimedRefundTransaction is null)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' has no transaction for refund claim.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has no transaction for refund claim.");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.MissingTransaction);
             }
             
             var currentHash = deposit.ClaimedRefundTransaction.Hash;
             if (deposit.RefundClaimed)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has already claimed refund (transaction hash: '{currentHash}').");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.ResourceConfirmed);
             }
             
             if (deposit.ClaimedRefundTransaction.State != TransactionState.Pending)
             {
-                throw new InvalidOperationException($"Cannot cancel transaction with hash: '{deposit.ClaimedRefundTransaction.Hash}' for refund for deposit with id: '{depositId}' (state: '{deposit.ClaimedRefundTransaction.State}').");
+                if (_logger.IsError) _logger.Error($"Cannot cancel transaction with hash: '{deposit.ClaimedRefundTransaction.Hash}' for refund for deposit with id: '{depositId}' (state: '{deposit.ClaimedRefundTransaction.State}').");
+                return new UpdatedTransactionInfo(UpdatedTransactionStatus.AlreadyIncluded);
             }
             
-            var transactionHash = await _transactionService.CancelAsync(currentHash);
-            if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transactionHash}'.");
-            
-            deposit.ClaimedRefundTransaction.SetCanceled(transactionHash);
+            var transaction = await _transactionService.CancelAsync(currentHash);
+            if (_logger.IsWarn) _logger.Warn($"Canceled transaction for deposit with id: '{depositId}', transaction hash: '{transaction.Hash}'.");
+            var cancellingTransaction = TransactionInfo.Cancellation(transaction.Hash, transaction.GasPrice,
+                transaction.GasLimit, _timestamper.EpochSeconds);
+            deposit.AddClaimedRefundTransaction(cancellingTransaction);
             await _depositRepository.UpdateAsync(deposit);
 
-            return transactionHash;
+            return new UpdatedTransactionInfo(UpdatedTransactionStatus.Ok, transaction.Hash);
         }
 
-        private async Task<DepositDetails> GetDepositAsync(Keccak depositId)
+        private async Task<(UpdatedTransactionStatus status, DepositDetails deposit)> TryGetDepositAsync(Keccak depositId)
         {
             var deposit = await _depositRepository.GetAsync(depositId);
             if (deposit is null)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' was not found.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was not found.");
+                return (UpdatedTransactionStatus.ResourceNotFound, null);
             }
 
             if (deposit.Transaction is null)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' has no transaction.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' has no transaction.");
+                return (UpdatedTransactionStatus.MissingTransaction, null);
+            }
+            
+            if (deposit.Cancelled)
+            {
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was cancelled.");
+                return (UpdatedTransactionStatus.ResourceCancelled, null);
             }
 
             if (deposit.Rejected)
             {
-                throw new InvalidOperationException($"Deposit with id: '{depositId}' was rejected.");
+                if (_logger.IsError) _logger.Error($"Deposit with id: '{depositId}' was rejected.");
+                return (UpdatedTransactionStatus.ResourceRejected, null);
             }
 
-            return deposit;
+            return (UpdatedTransactionStatus.Ok, deposit);
         }
     }
 }

@@ -217,7 +217,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.DataStreams
         private static DepositDetails GetDepositDetails(DataAssetUnitType unitType = DataAssetUnitType.Unit)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(unitType), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1), DepositConfirmationTimestamp);
+                new []{TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, DepositConfirmationTimestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

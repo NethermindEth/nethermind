@@ -16,6 +16,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -50,19 +51,21 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 var consumer = rlpStream.DecodeAddress();
                 var pepper = rlpStream.DecodeByteArray();
                 var timestamp = rlpStream.DecodeUInt();
-                var transaction = Nethermind.Core.Encoding.Rlp.Decode<TransactionInfo>(rlpStream);
+                var transactions = Nethermind.Core.Encoding.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var confirmationTimestamp = rlpStream.DecodeUInt();
                 var rejected = rlpStream.DecodeBool();
+                var cancelled = rlpStream.DecodeBool();
                 var earlyRefundTicket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(rlpStream);
-                var claimedRefundTransaction = Nethermind.Core.Encoding.Rlp.Decode<TransactionInfo>(rlpStream);
+                var claimedRefundTransactions = Nethermind.Core.Encoding.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var refundClaimed = rlpStream.DecodeBool();
+                var refundCancelled = rlpStream.DecodeBool();
                 var kyc = rlpStream.DecodeString();
                 var confirmations = rlpStream.DecodeUInt();
                 var requiredConfirmations = rlpStream.DecodeUInt();
 
-                return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transaction,
-                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransaction, refundClaimed, kyc,
-                    confirmations, requiredConfirmations);
+                return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactions,
+                    confirmationTimestamp, rejected, cancelled, earlyRefundTicket, claimedRefundTransactions,
+                    refundClaimed, refundCancelled, kyc, confirmations, requiredConfirmations);
             }
             catch (Exception)
             {
@@ -77,12 +80,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 var dataAsset = Nethermind.Core.Encoding.Rlp.Decode<DataAsset>(rlpStream);
                 var consumer = rlpStream.DecodeAddress();
                 var pepper = rlpStream.DecodeByteArray();
-                var transaction = Nethermind.Core.Encoding.Rlp.Decode<TransactionInfo>(rlpStream);
+                var transactions = Nethermind.Core.Encoding.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var confirmationTimestamp = rlpStream.DecodeUInt();
                 var rejected = rlpStream.DecodeBool();
+                var cancelled = rlpStream.DecodeBool();
                 var earlyRefundTicket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(rlpStream);
-                var claimedRefundTransaction = Nethermind.Core.Encoding.Rlp.Decode<TransactionInfo>(rlpStream);
+                var claimedRefundTransactions = Nethermind.Core.Encoding.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var refundClaimed = rlpStream.DecodeBool();
+                var refundCancelled = rlpStream.DecodeBool();
                 var kyc = rlpStream.DecodeString();
                 var confirmations = rlpStream.DecodeUInt();
                 var requiredConfirmations = rlpStream.DecodeUInt();
@@ -92,9 +97,9 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                     timestamp = rlpStream.DecodeUInt();
                 }
 
-                return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transaction,
-                    confirmationTimestamp, rejected, earlyRefundTicket, claimedRefundTransaction, refundClaimed, kyc,
-                    confirmations, requiredConfirmations);
+                return new DepositDetails(deposit, dataAsset, consumer, pepper, timestamp, transactions,
+                    confirmationTimestamp, rejected, cancelled, earlyRefundTicket, claimedRefundTransactions,
+                    refundClaimed, refundCancelled, kyc, confirmations, requiredConfirmations);
             }
         }
 
@@ -111,12 +116,14 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 Nethermind.Core.Encoding.Rlp.Encode(item.Consumer),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Pepper),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Timestamp),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Transaction),
+                Nethermind.Core.Encoding.Rlp.Encode(item.Transactions.ToArray()),
                 Nethermind.Core.Encoding.Rlp.Encode(item.ConfirmationTimestamp),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Rejected),
+                Nethermind.Core.Encoding.Rlp.Encode(item.Cancelled),
                 Nethermind.Core.Encoding.Rlp.Encode(item.EarlyRefundTicket),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ClaimedRefundTransaction),
+                Nethermind.Core.Encoding.Rlp.Encode(item.ClaimedRefundTransactions.ToArray()),
                 Nethermind.Core.Encoding.Rlp.Encode(item.RefundClaimed),
+                Nethermind.Core.Encoding.Rlp.Encode(item.RefundCancelled),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Kyc),
                 Nethermind.Core.Encoding.Rlp.Encode(item.Confirmations),
                 Nethermind.Core.Encoding.Rlp.Encode(item.RequiredConfirmations));

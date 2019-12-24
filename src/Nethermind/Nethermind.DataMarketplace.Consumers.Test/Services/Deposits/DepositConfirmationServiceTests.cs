@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
@@ -60,7 +61,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             var deposit = GetDepositDetails();
             deposit.SetConfirmations(1);
             deposit.SetConfirmationTimestamp(1);
-            deposit.SetTransaction(new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1));
+            deposit.AddTransaction(TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1));
             await _depositConfirmationService.TryConfirmAsync(deposit);
             await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
             deposit.Confirmed.Should().BeTrue();
@@ -73,6 +74,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             deposit.Reject();
             await _depositConfirmationService.TryConfirmAsync(deposit);
             await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
+            deposit.Confirmed.Should().BeFalse();
             deposit.Rejected.Should().BeTrue();
         }
         
@@ -87,16 +89,52 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         }
         
         [Test]
-        public async Task try_confirm_should_skip_further_processing_if_transaction_is_pending()
+        public async Task try_confirm_should_not_confirm_deposit_if_transaction_is_pending()
         {
             var deposit = GetDepositDetails();
             var transaction = GetTransaction(true);
             _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transaction);
             await _depositConfirmationService.TryConfirmAsync(deposit);
+            deposit.Confirmed.Should().BeFalse();
+            deposit.Transaction.State.Should().Be(TransactionState.Pending);
             await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
-            await _depositService.DidNotReceive().VerifyDepositAsync(deposit.Consumer, deposit.Id, Arg.Any<long>());
+        }
+
+        [Test]
+        public async Task try_confirm_should_not_confirm_deposit_if_transaction_is_of_type_cancellation()
+        {
+            var transactionDetails = GetTransaction();
+            var transaction = transactionDetails.Transaction;
+            var deposit = GetDepositDetails(transactions: new[]
+            {
+                new TransactionInfo(transaction.Hash, transaction.Value, transaction.GasPrice,
+                    (ulong) transaction.GasLimit,
+                    (ulong) transaction.Timestamp, TransactionType.Cancellation, TransactionState.Included)
+            });
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transactionDetails);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            deposit.Confirmed.Should().BeFalse();
+            deposit.Transaction.Type.Should().Be(TransactionType.Cancellation);
+            await _blockchainBridge.DidNotReceive().GetTransactionAsync(deposit.Transaction.Hash);
         }
         
+        [Test]
+        public async Task try_confirm_should_not_confirm_deposit_if_transaction_is_set_as_included_but_was_not_found()
+        {
+            var transactionDetails = GetTransaction();
+            var transaction = transactionDetails.Transaction;
+            var deposit = GetDepositDetails(transactions: new[]
+            {
+                new TransactionInfo(transaction.Hash, transaction.Value, transaction.GasPrice,
+                    (ulong) transaction.GasLimit,
+                    (ulong) transaction.Timestamp, TransactionType.Default, TransactionState.Included)
+            });
+            _blockchainBridge.GetTransactionAsync(deposit.Transaction.Hash).Returns(transactionDetails);
+            await _depositConfirmationService.TryConfirmAsync(deposit);
+            deposit.Confirmed.Should().BeFalse();
+            await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
+        }
+
         [Test]
         public async Task try_confirm_should_set_transaction_state_to_included_if_was_pending_before()
         {
@@ -106,6 +144,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
             await _depositConfirmationService.TryConfirmAsync(deposit);
             deposit.Transaction.State.Should().Be(TransactionState.Included);
             await _blockchainBridge.Received().GetTransactionAsync(deposit.Transaction.Hash);
+            deposit.Confirmed.Should().BeFalse();
         }
         
         [Test]
@@ -214,10 +253,11 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Services.Deposits
         private static NdmTransaction GetTransaction(bool pending = false)
             => new NdmTransaction(Build.A.Transaction.TestObject, pending, 1, TestItem.KeccakA, 1);
 
-        private static DepositDetails GetDepositDetails(uint timestamp = 0)
+        private static DepositDetails GetDepositDetails(uint timestamp = 0,
+            IEnumerable<TransactionInfo> transactions = null)
             => new DepositDetails(new Deposit(Keccak.Zero, 1, 1, 1),
                 GetDataAsset(DataAssetUnitType.Unit), TestItem.AddressB, Array.Empty<byte>(), 1,
-                new TransactionInfo(TestItem.KeccakA, 1, 1, 1, 1), timestamp);
+                transactions ?? new[] {TransactionInfo.Default(TestItem.KeccakA, 1, 1, 1, 1)}, timestamp);
 
         private static DataAsset GetDataAsset(DataAssetUnitType unitType)
             => new DataAsset(Keccak.OfAnEmptyString, "test", "test", 1,

@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.DataMarketplace.Core.Domain;
@@ -23,18 +25,36 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 {
     public class DepositDetails : IEquatable<DepositDetails>
     {
+        private ISet<TransactionInfo> _transactions = new HashSet<TransactionInfo>();
+        private ISet<TransactionInfo> _claimedRefundTransactions = new HashSet<TransactionInfo>();
         public Keccak Id { get; private set; }
         public Deposit Deposit { get; private set; }
         public DataAsset DataAsset { get; private set; }
         public Address Consumer { get; private set; }
         public byte[] Pepper { get; private set; }
         public uint Timestamp { get; private set; }
+
+        public IEnumerable<TransactionInfo> Transactions
+        {
+            get => _transactions;
+            private set => _transactions = new HashSet<TransactionInfo>(value);
+        }
+
         public TransactionInfo Transaction { get; private set; }
         public uint ConfirmationTimestamp { get; private set; }
         public bool Confirmed => ConfirmationTimestamp > 0 && Confirmations >= RequiredConfirmations;
         public bool Rejected { get; private set; }
+        public bool Cancelled { get; private set; }
         public EarlyRefundTicket EarlyRefundTicket { get; private set; }
+
+        public IEnumerable<TransactionInfo> ClaimedRefundTransactions
+        {
+            get => _claimedRefundTransactions;
+            private set => _claimedRefundTransactions = new HashSet<TransactionInfo>(value);
+        }
+        
         public TransactionInfo ClaimedRefundTransaction { get; private set; }
+        public bool RefundCancelled { get; private set; }
         public bool RefundClaimed { get; private set; }
         public uint ConsumedUnits { get; private set; }
         public string Kyc { get; private set; }
@@ -42,9 +62,10 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public uint RequiredConfirmations { get; private set; }
 
         public DepositDetails(Deposit deposit, DataAsset dataAsset, Address consumer, byte[] pepper, uint timestamp,
-            TransactionInfo transaction, uint confirmationTimestamp = 0, bool rejected = false,
-            EarlyRefundTicket earlyRefundTicket = null, TransactionInfo claimedRefundTransaction = null,
-            bool refundClaimed = false, string kyc = null, uint confirmations = 0, uint requiredConfirmations = 0)
+            IEnumerable<TransactionInfo> transactions, uint confirmationTimestamp = 0, bool rejected = false,
+            bool cancelled = false, EarlyRefundTicket earlyRefundTicket = null,
+            IEnumerable<TransactionInfo> claimedRefundTransactions = null, bool refundClaimed = false,
+            bool refundCancelled = false, string kyc = null, uint confirmations = 0, uint requiredConfirmations = 0)
         {
             Id = deposit.Id;
             Deposit = deposit;
@@ -52,15 +73,30 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             Consumer = consumer;
             Pepper = pepper;
             Timestamp = timestamp;
-            Transaction = transaction;
+            Transactions = transactions ?? Enumerable.Empty<TransactionInfo>();
             ConfirmationTimestamp = confirmationTimestamp;
             Rejected = rejected;
+            Cancelled = cancelled;
             EarlyRefundTicket = earlyRefundTicket;
-            ClaimedRefundTransaction = claimedRefundTransaction;
+            ClaimedRefundTransactions = claimedRefundTransactions ?? Enumerable.Empty<TransactionInfo>();
             RefundClaimed = refundClaimed;
+            RefundCancelled = refundCancelled;
             Kyc = kyc;
             Confirmations = confirmations;
             RequiredConfirmations = requiredConfirmations;
+
+            if (Transactions.Any())
+            {
+                Transaction = Transactions.SingleOrDefault(t => t.State == TransactionState.Included) ??
+                              Transactions.OrderBy(t => t.Timestamp).LastOrDefault();
+            }
+
+            if (ClaimedRefundTransactions.Any())
+            {
+                ClaimedRefundTransaction = ClaimedRefundTransactions.SingleOrDefault(
+                                               t => t.State == TransactionState.Included) ??
+                                           ClaimedRefundTransactions.OrderBy(t => t.Timestamp).LastOrDefault();
+            }
         }
 
         public bool IsExpired(uint timestamp) => timestamp >= Deposit.ExpiryTime;
@@ -75,9 +111,30 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
             ConfirmationTimestamp = timestamp;
         }
 
-        public void SetTransaction(TransactionInfo transaction)
+        public void AddTransaction(TransactionInfo transaction)
         {
             Transaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+            _transactions.Add(transaction);
+        }
+        
+        public void SetIncludedTransaction(Keccak transactionHash)
+        {
+            Transaction = _transactions.Single(t => t.Hash == transactionHash);
+            Transaction.SetIncluded();
+            foreach (var transaction in _transactions)
+            {
+                if (Transaction.Equals(transaction))
+                {
+                    continue;
+                }
+                
+                transaction.SetRejected();
+            }
+
+            if (Transaction.Type == TransactionType.Cancellation)
+            {
+                Cancelled = true;
+            }
         }
         
         public void Reject()
@@ -87,12 +144,33 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
 
         public void SetEarlyRefundTicket(EarlyRefundTicket earlyRefundTicket)
         {
-            EarlyRefundTicket = earlyRefundTicket;
+            EarlyRefundTicket = earlyRefundTicket ?? throw new ArgumentNullException(nameof(earlyRefundTicket));
         }
 
-        public void SetClaimedRefundTransaction(TransactionInfo transaction)
+        public void AddClaimedRefundTransaction(TransactionInfo transaction)
         {
             ClaimedRefundTransaction = transaction ?? throw new ArgumentNullException(nameof(transaction));
+            _claimedRefundTransactions.Add(transaction);
+        }
+
+        public void SetIncludedClaimedRefundTransaction(Keccak transactionHash)
+        {
+            ClaimedRefundTransaction = _claimedRefundTransactions.Single(t => t.Hash == transactionHash);
+            ClaimedRefundTransaction.SetIncluded();
+            foreach (var transaction in _claimedRefundTransactions)
+            {
+                if (ClaimedRefundTransaction.Equals(transaction))
+                {
+                    continue;
+                }
+
+                transaction.SetRejected();
+            }
+            
+            if (ClaimedRefundTransaction.Type == TransactionType.Cancellation)
+            {
+                RefundCancelled = true;
+            }
         }
 
         public void SetRefundClaimed()
@@ -106,15 +184,13 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         }
 
         public bool CanClaimEarlyRefund(ulong currentBlockTimestamp)
-            => Confirmed && !Rejected && !RefundClaimed && !(EarlyRefundTicket is null) &&
-               ClaimedRefundTransaction?.State != TransactionState.Canceled &&
-               EarlyRefundTicket.ClaimableAfter <= currentBlockTimestamp;
+            => Claimable && !(EarlyRefundTicket is null) && EarlyRefundTicket.ClaimableAfter <= currentBlockTimestamp;
 
         public bool CanClaimRefund(ulong currentBlockTimestamp)
-            => Confirmed && !Rejected && !RefundClaimed &&
-               ClaimedRefundTransaction?.State != TransactionState.Canceled &&
-               currentBlockTimestamp >= Deposit.ExpiryTime &&
+            => Claimable && currentBlockTimestamp >= Deposit.ExpiryTime &&
                ConfirmationTimestamp + Deposit.Units + DataAsset.Rules.Expiry.Value <= currentBlockTimestamp;
+
+        private bool Claimable => Confirmed && !Rejected && !Cancelled && !RefundClaimed && !RefundCancelled;
 
         public void SetConfirmations(uint confirmations)
         {
@@ -124,16 +200,14 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Domain
         public bool Equals(DepositDetails other)
         {
             if (ReferenceEquals(null, other)) return false;
-            if (ReferenceEquals(this, other)) return true;
-            return Equals(Id, other.Id);
+            return ReferenceEquals(this, other) || Equals(Id, other.Id);
         }
 
         public override bool Equals(object obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
-            return Equals((DepositDetails) obj);
+            return obj.GetType() == this.GetType() && Equals((DepositDetails) obj);
         }
 
         public override int GetHashCode()

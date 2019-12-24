@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
@@ -47,35 +48,65 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
         
         public async Task TryConfirmAsync(DepositDetails deposit)
         {
-            if (deposit.Transaction is null || deposit.Confirmed || deposit.Rejected ||
-                deposit.Transaction.State == TransactionState.Canceled)
+            if (deposit.Confirmed || deposit.Rejected || deposit.Cancelled || deposit.Transaction is null)
             {
                 return;
             }
 
-            var transactionHash = deposit.Transaction.Hash;
-            var transaction = await _blockchainBridge.GetTransactionAsync(transactionHash);                        
-            if (transaction is null)
+            NdmTransaction transactionDetails = null;
+            var includedTransaction = deposit.Transactions.SingleOrDefault(t => t.State == TransactionState.Included);
+            var pendingTransactions = deposit.Transactions
+                .Where(t => t.State == TransactionState.Pending)
+                .OrderBy(t => t.Timestamp);
+
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' pending transactions: {string.Join(", ", pendingTransactions.Select(t => $"{t.Hash} [{t.Type}]"))}");
+            
+            if (includedTransaction is null)
             {
-                if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
+                foreach (var transaction in pendingTransactions)
+                {
+                    var transactionHash = transaction.Hash;
+                    transactionDetails = await _blockchainBridge.GetTransactionAsync(transactionHash);
+                    if (transactionDetails is null)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Transaction was not found for hash: '{transactionHash}' for deposit: '{deposit.Id}' to be confirmed.");
+                        continue;
+                    }
+
+                    if (transactionDetails.IsPending)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' is still pending.");
+                        continue;
+                    }
+
+                    deposit.SetIncludedTransaction(transactionHash);
+                    if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}', type: '{transaction.Type}' for deposit: '{deposit.Id}' was included into block: {transactionDetails.BlockNumber}.");
+                    await _depositRepository.UpdateAsync(deposit);
+                    includedTransaction = transaction;
+                    break;
+                }
+            }
+            else if (includedTransaction.Type == TransactionType.Cancellation)
+            {
                 return;
             }
-
-            if (transaction.IsPending)
+            else
             {
-                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' is still pending.");
+                transactionDetails = await _blockchainBridge.GetTransactionAsync(includedTransaction.Hash);
+                if (transactionDetails is null)
+                {
+                    if (_logger.IsWarn) _logger.Warn($"Transaction (set as included) was not found for hash: '{includedTransaction.Hash}' for deposit: '{deposit.Id}'.");
+                    return;
+                }
+            }
+
+            if (includedTransaction is null)
+            {
                 return;
             }
-
-            if (deposit.Transaction.State == TransactionState.Pending)
-            {
-                deposit.Transaction.SetIncluded();
-                if (_logger.IsInfo) _logger.Info($"Transaction with hash: '{transactionHash}' for deposit: '{deposit.Id}' was included into block: {transaction.BlockNumber}.");
-                await _depositRepository.UpdateAsync(deposit);
-            }
-
+            
             var headNumber = await _blockchainBridge.GetLatestBlockNumberAsync();
-            var (confirmations, rejected) = await VerifyDepositConfirmationsAsync(deposit, transaction, headNumber);
+            var (confirmations, rejected) = await VerifyDepositConfirmationsAsync(deposit, transactionDetails, headNumber);
             if (rejected)
             {
                 deposit.Reject();
@@ -84,13 +115,13 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}) for transaction hash: '{transactionHash}' to be confirmed.");
+            if (_logger.IsInfo) _logger.Info($"Deposit: '{deposit.Id}' has {confirmations} confirmations (required at least {_requiredBlockConfirmations}) for transaction hash: '{includedTransaction.Hash}' to be confirmed.");
             var confirmed = confirmations >= _requiredBlockConfirmations;
             if (confirmed)
             {
                 if (_logger.IsInfo) _logger.Info($"Deposit with id: '{deposit.Deposit.Id}' has been confirmed.");
             }
-            
+
             if (confirmations != deposit.Confirmations || confirmed)
             {
                 deposit.SetConfirmations(confirmations);

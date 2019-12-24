@@ -257,19 +257,23 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc
             return ResultWrapper<bool>.Success(true);
         }
 
-        public async Task<ResultWrapper<Keccak>> ndm_updateDepositGasPrice(Keccak depositId, UInt256 gasPrice)
-            => ResultWrapper<Keccak>.Success(await _transactionsService
-                .UpdateDepositGasPriceAsync(depositId, gasPrice));
+        public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateDepositGasPrice(Keccak depositId,
+            UInt256 gasPrice)
+            => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(new UpdatedTransactionInfoForRpc(
+                await _transactionsService.UpdateDepositGasPriceAsync(depositId, gasPrice)));
 
-        public async Task<ResultWrapper<Keccak>> ndm_updateRefundGasPrice(Keccak depositId, UInt256 gasPrice)
-            => ResultWrapper<Keccak>.Success(await _transactionsService
-                .UpdateRefundGasPriceAsync(depositId, gasPrice));
+        public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_updateRefundGasPrice(Keccak depositId,
+            UInt256 gasPrice)
+            => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(new UpdatedTransactionInfoForRpc(
+                await _transactionsService.UpdateRefundGasPriceAsync(depositId, gasPrice)));
 
-        public async Task<ResultWrapper<Keccak>> ndm_cancelDeposit(Keccak depositId)
-            => ResultWrapper<Keccak>.Success(await _transactionsService.CancelDepositAsync(depositId));
+        public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_cancelDeposit(Keccak depositId)
+            => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(
+                new UpdatedTransactionInfoForRpc(await _transactionsService.CancelDepositAsync(depositId)));
 
-        public async Task<ResultWrapper<Keccak>> ndm_cancelRefund(Keccak depositId)
-            => ResultWrapper<Keccak>.Success(await _transactionsService.CancelRefundAsync(depositId));
+        public async Task<ResultWrapper<UpdatedTransactionInfoForRpc>> ndm_cancelRefund(Keccak depositId)
+            => ResultWrapper<UpdatedTransactionInfoForRpc>.Success(
+                new UpdatedTransactionInfoForRpc(await _transactionsService.CancelRefundAsync(depositId)));
 
         public async Task<ResultWrapper<IEnumerable<PendingTransactionForRpc>>> ndm_getConsumerPendingTransactions()
         {
