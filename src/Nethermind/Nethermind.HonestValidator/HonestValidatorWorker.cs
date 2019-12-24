@@ -22,6 +22,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Services;
+using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.HonestValidator
@@ -30,6 +31,8 @@ namespace Nethermind.HonestValidator
     {
         private readonly IConfiguration _configuration;
         private readonly IBeaconNodeApi _beaconNodeApi;
+        private readonly BeaconChain _beaconChain;
+        private readonly ValidatorClient _validatorClient;
         private readonly ClientVersion _clientVersion;
         private readonly ILogger _logger;
         private readonly IClock _clock;
@@ -41,6 +44,8 @@ namespace Nethermind.HonestValidator
             IHostEnvironment environment,
             IConfiguration configuration,
             IBeaconNodeApi beaconNodeApi,
+            BeaconChain beaconChain,
+            ValidatorClient validatorClient,
             ClientVersion clientVersion)
         {
             _logger = logger;
@@ -48,6 +53,8 @@ namespace Nethermind.HonestValidator
             _environment = environment;
             _configuration = configuration;
             _beaconNodeApi = beaconNodeApi;
+            _beaconChain = beaconChain;
+            _validatorClient = validatorClient;
             _clientVersion = clientVersion;
         }
 
@@ -77,17 +84,12 @@ namespace Nethermind.HonestValidator
                 // List of nodes
                 // Validator private keys (or quickstart)
                 // Seconds per slot
-                        
-                // The proxy needs to take care of this (i.e. transparent to worker)
-                // Not connected: (remote vs local)
-                // connect to beacon node (priority order)
-                // if not connected, wait and try next
-                        
-                // Log beacon node connected to
+                
                 string nodeVersion = await _beaconNodeApi.GetNodeVersionAsync().ConfigureAwait(false);
-                // Check and record genesis time
                 ulong genesisTime = await _beaconNodeApi.GetGenesisTimeAsync().ConfigureAwait(false);
                 Log.HonestValidatorWorkerConnected(_logger, nodeVersion, genesisTime, null);
+                
+                await _beaconChain.SetGenesisTimeAsync(genesisTime).ConfigureAwait(false);
                 
                 while (!stoppingToken.IsCancellationRequested && !_stopped)
                 {
@@ -95,17 +97,9 @@ namespace Nethermind.HonestValidator
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
-                        
-                        // Check start of each slot
-                        // Get duties
-                        
-                        // If proposer, get block, sign block, return to node
-                        // Retry if not successful; need to queue this up to send immediately if connection issue. (or broadcast?)
-                        
-                        // If upcoming attester, join (or change) topics
-                        // Subscribe to topics
-                        // Attest 1/3 way through slot
 
+                        await _validatorClient.OnTickAsync(_beaconChain, time).ConfigureAwait(false);
+                        
                         // Wait for remaining time, if any
                         // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
                         DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long) time + 1);

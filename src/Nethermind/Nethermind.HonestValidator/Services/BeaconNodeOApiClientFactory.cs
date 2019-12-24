@@ -14,11 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using System.Linq;
 using System.Net.Http;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.OApiClient;
 using Nethermind.HonestValidator.Configuration;
+using Newtonsoft.Json;
+using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.HonestValidator.Services
 {
@@ -41,9 +46,9 @@ namespace Nethermind.HonestValidator.Services
             string baseUrl = beaconNodeConnection.RemoteUrls[0];
             
             HttpClient httpClient = _httpClientFactory.CreateClient();
-            
-            BeaconNodeOApiClient beaconNodeOApiClient = new BeaconNodeOApiClient(baseUrl, httpClient);
 
+            BeaconNodeOApiClient beaconNodeOApiClient = new BeaconNodeOApiClient(baseUrl, httpClient);
+            
             return beaconNodeOApiClient;
         }
     }

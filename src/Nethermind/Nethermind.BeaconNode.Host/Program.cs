@@ -82,7 +82,7 @@ namespace Nethermind.BeaconNode.Host
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
                     {
-                        services.AddQuickStart(hostContext.Configuration);
+                        services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
                 })
                 .ConfigureWebHostDefaults(webBuilder =>

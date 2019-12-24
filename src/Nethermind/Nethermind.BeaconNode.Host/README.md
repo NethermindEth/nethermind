@@ -46,10 +46,18 @@ Note: With QuickStart validator count 64, validators index 20, with public key 0
 
 ### Test the Honest Validator
 
-With the Beacon Node running, run the validator host in a separate shell (which connects to the node):
+Using the quick start clock, you want to synchronise the clock offset of the node and validator.
+
+The following will set genesis to occur at the next full minute. First run the node in one shell:
 
 ```
-dotnet run --project src/Nethermind/Nethermind.HonestValidator.Host
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset
+```
+
+Then run the validator host in a separate shell (which connects to the node):
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
 ```
 
 ### Optional requirements

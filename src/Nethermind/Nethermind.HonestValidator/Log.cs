@@ -16,6 +16,9 @@
 
 using System;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.HonestValidator
 {
@@ -55,6 +58,18 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<string, ulong>(LogLevel.Information,
                 new EventId(1401, nameof(HonestValidatorWorkerConnected)),
                 "Validator connected to {NodeVersion} with genesis time {GenesisTime}.");
+
+        // 2bxx 
+        
+        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
+            LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Information,
+                new EventId(2400, nameof(ValidatorDutyAttestationChanged)),
+                "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
+
+        public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Exception?> ValidatorDutyProposalChanged =
+            LoggerMessage.Define<BlsPublicKey, Epoch, Slot>(LogLevel.Information,
+                new EventId(2401, nameof(ValidatorDutyProposalChanged)),
+                "Validator {PublicKey} epoch {Epoch} duty proposal slot {Slot}.");
 
         // 5bxx error
         

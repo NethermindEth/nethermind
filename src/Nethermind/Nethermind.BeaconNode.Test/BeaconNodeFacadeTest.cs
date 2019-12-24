@@ -186,7 +186,7 @@ namespace Nethermind.BeaconNode.Tests
                     ["QuickStart:GenesisTime"] = $"{genesisTime}"
                 })
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             

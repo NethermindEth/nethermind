@@ -14,23 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.BeaconNode.Services;
-
-namespace Nethermind.BeaconNode.MockedStart
+namespace Nethermind.BeaconNode.OApiClient
 {
-    /// <summary>
-    /// Clock that runs at normal pace, but starting at the specified unix time.
-    /// </summary>
-    public class QuickStartClock : IClock
+    public partial class BeaconNodeOApiClient
     {
-        private readonly TimeSpan _adjustment;
-
-        public QuickStartClock(long clockOffset)
+        partial void UpdateJsonSerializerSettings(Newtonsoft.Json.JsonSerializerSettings settings)
         {
-            _adjustment = TimeSpan.FromSeconds(clockOffset);
+            settings.Converters.Add(new PrefixedHexByteArrayNewtonsoftJsonConverter());
         }
-
-        public DateTimeOffset UtcNow() => DateTimeOffset.Now + _adjustment;
     }
 }

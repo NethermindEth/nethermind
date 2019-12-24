@@ -366,7 +366,7 @@ namespace Nethermind.BeaconNode.OApiClient
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public System.Threading.Tasks.Task<System.Collections.Generic.ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, int? epoch)
+        public System.Threading.Tasks.Task<System.Collections.Generic.ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, ulong? epoch)
         {
             return DutiesAsync(validator_pubkeys, epoch, System.Threading.CancellationToken.None);
         }
@@ -376,7 +376,7 @@ namespace Nethermind.BeaconNode.OApiClient
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public async System.Threading.Tasks.Task<System.Collections.Generic.ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, int? epoch, System.Threading.CancellationToken cancellationToken)
+        public async System.Threading.Tasks.Task<System.Collections.Generic.ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, ulong? epoch, System.Threading.CancellationToken cancellationToken)
         {
             if (validator_pubkeys == null)
                 throw new System.ArgumentNullException("validator_pubkeys");
@@ -1041,15 +1041,15 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>The slot at which the validator must attest.</summary>
         [Newtonsoft.Json.JsonProperty("attestation_slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Attestation_slot { get; set; }
+        public ulong Attestation_slot { get; set; }
     
         /// <summary>The shard in which the validator must attest.</summary>
         [Newtonsoft.Json.JsonProperty("attestation_shard", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Attestation_shard { get; set; }
+        public ulong Attestation_shard { get; set; }
     
         /// <summary>The slot in which a validator must propose a block, or `null` if block production is not required.</summary>
         [Newtonsoft.Json.JsonProperty("block_proposal_slot", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int? Block_proposal_slot { get; set; }
+        public ulong? Block_proposal_slot { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     

@@ -19,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.HonestValidator.MockedStart;
 
 namespace Nethermind.HonestValidator.Host
 {
@@ -60,6 +61,11 @@ namespace Nethermind.HonestValidator.Host
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddHonestValidator(hostContext.Configuration);
+                    
+                    if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
+                    {
+                        services.AddHonestValidatorQuickStart(hostContext.Configuration);
+                    }
                 });
 
         public static void Main(string[] args)

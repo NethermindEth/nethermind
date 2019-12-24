@@ -14,23 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.BeaconNode.Services;
+using System.Collections.Generic;
+using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.MockedStart
+namespace Nethermind.HonestValidator.Services
 {
-    /// <summary>
-    /// Clock that runs at normal pace, but starting at the specified unix time.
-    /// </summary>
-    public class QuickStartClock : IClock
+    public interface IValidatorKeyProvider
     {
-        private readonly TimeSpan _adjustment;
-
-        public QuickStartClock(long clockOffset)
-        {
-            _adjustment = TimeSpan.FromSeconds(clockOffset);
-        }
-
-        public DateTimeOffset UtcNow() => DateTimeOffset.Now + _adjustment;
+        IEnumerable<BlsPublicKey> GetPublicKeys();
+        // Task<BeaconBlock> SignBlock(BlsPublicKey publicKey, BeaconBlock block);
     }
 }

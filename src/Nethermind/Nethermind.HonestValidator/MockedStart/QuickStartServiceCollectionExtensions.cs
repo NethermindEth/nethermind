@@ -18,30 +18,30 @@ using System;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
+using Nethermind.HonestValidator.Services;
 
-namespace Nethermind.BeaconNode.MockedStart
+namespace Nethermind.HonestValidator.MockedStart
 {
     public static class QuickStartServiceCollectionExtensions
     {
-        private const ulong DefaultEth1Timestamp = (ulong)1 << 40;
-        private static readonly byte[] s_defaultEth1BlockHash = Enumerable.Repeat((byte)0x42, 32).ToArray();
-
-        public static void AddBeaconNodeQuickStart(this IServiceCollection services, IConfiguration configuration)
+        public static void AddHonestValidatorQuickStart(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<INodeStart, QuickStart>();
-            services.AddSingleton<IEth1DataProvider, MockedEth1DataProvider>();
-            services.AddSingleton<IOperationPool, MockedOperationPool>();
+            services.AddSingleton<IValidatorKeyProvider, QuickStartKeyProvider>();
+            
             services.Configure<QuickStartParameters>(x =>
             {
+                // FIXME: Duplication with quickstart in beacon node... need to move configuration to Nethermind.Core2.Configuration.
                 configuration.Bind("QuickStart", section =>
                 {
                     x.GenesisTime = section.GetValue<ulong>("GenesisTime");
                     x.ValidatorCount = section.GetValue<ulong>("ValidatorCount");
-                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
-                    x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
+//                    x.Eth1BlockHash = new Hash32(section.GetBytesFromPrefixedHex("Eth1BlockHash", () => s_defaultEth1BlockHash));
+//                    x.Eth1Timestamp = section.GetValue("Eth1Timestamp", DefaultEth1Timestamp);
                     x.UseSystemClock = section.GetValue<bool>("UseSystemClock");
                     x.ValidatorStartIndex = section.GetValue<ulong>("ValidatorStartIndex");
                     x.NumberOfValidators = section.GetValue<ulong>("NumberOfValidators");

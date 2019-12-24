@@ -64,10 +64,10 @@ namespace Nethermind.BeaconNode
 
         // 2bxx completion
         
-        public static readonly Action<ILogger, ulong, int, Exception?> WorkerStoreAvailableTickStarted =
-            LoggerMessage.Define<ulong, int>(LogLevel.Information,
+        public static readonly Action<ILogger, ulong, ulong, long, int, Exception?> WorkerStoreAvailableTickStarted =
+            LoggerMessage.Define<ulong, ulong, long, int>(LogLevel.Information,
                 new EventId(2000, nameof(WorkerStoreAvailableTickStarted)),
-                "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]");
+                "Store available with genesis time {GenesisTime}, at clock time {Time} (slot {SlotValue}), starting clock tick [{ThreadId}]");
         
         public static readonly Action<ILogger, Hash32, BeaconState, Hash32, BeaconBlock, Exception?> ValidatedStateTransition =
             LoggerMessage.Define<Hash32, BeaconState, Hash32, BeaconBlock>(LogLevel.Information,
@@ -93,6 +93,11 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Epoch, Slot, ulong>(LogLevel.Information,
                 new EventId(2203, nameof(OnTickNewEpoch)),
                 "Fork choice new epoch {Epoch} at slot {Slot} time {Time:n0}");
+
+        public static readonly Action<ILogger, long, Exception?> GenesisCountdown =
+            LoggerMessage.Define<long>(LogLevel.Information,
+                new EventId(2204, nameof(GenesisCountdown)),
+                "Countdown {Time:n0} seconds to expected genesis.");
 
         // 4bxx warning
 

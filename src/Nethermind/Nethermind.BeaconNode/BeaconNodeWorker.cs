@@ -20,6 +20,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Logging.Microsoft;
@@ -37,11 +39,13 @@ namespace Nethermind.BeaconNode
         private readonly ForkChoice _forkChoice;
         private readonly INodeStart _nodeStart;
         private readonly ILogger _logger;
+        private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         private readonly IClock _clock;
         private readonly IHostEnvironment _environment;
         private bool _stopped;
 
         public BeaconNodeWorker(ILogger<BeaconNodeWorker> logger,
+            IOptionsMonitor<TimeParameters> timeParameterOptions,
             IClock clock,
             IHostEnvironment environment,
             IConfiguration configuration,
@@ -51,6 +55,7 @@ namespace Nethermind.BeaconNode
             INodeStart nodeStart)
         {
             _logger = logger;
+            _timeParameterOptions = timeParameterOptions;
             _clock = clock;
             _environment = environment;
             _configuration = configuration;
@@ -90,20 +95,35 @@ namespace Nethermind.BeaconNode
                     try
                     {
                         DateTimeOffset clockTime = _clock.UtcNow();
+                        ulong time = (ulong) clockTime.ToUnixTimeSeconds();
+                        
                         if (store == null)
                         {
                             if (_storeProvider.TryGetStore(out store))
                             {
                                 if (_logger.IsInfo())
-                                    Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime,
+                                {
+                                    long slotValue = ((long)time - (long)store!.GenesisTime) / _timeParameterOptions.CurrentValue.SecondsPerSlot;
+                                    Log.WorkerStoreAvailableTickStarted(_logger, store!.GenesisTime, time, slotValue,
                                         Thread.CurrentThread.ManagedThreadId, null);
+                                }
                             }
                         }
 
-                        ulong time = (ulong) clockTime.ToUnixTimeSeconds();
-                        if (store != null)
+                        if (store != null )
                         {
-                            await _forkChoice.OnTickAsync(store, time);
+                            if (time >= store.GenesisTime)
+                            {
+                                await _forkChoice.OnTickAsync(store, time);
+                            }
+                            else
+                            {
+                                long timeToGenesis = (long)store.GenesisTime - (long)time;
+                                if (timeToGenesis < 10 || timeToGenesis % 10 == 0)
+                                {
+                                    if (_logger.IsInfo()) Log.GenesisCountdown(_logger, timeToGenesis, null);
+                                }
+                            }
                         }
 
                         // Wait for remaining time, if any
