@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Storage;
@@ -53,7 +54,7 @@ namespace Nethermind.BeaconNode
             _blockProducer = blockProducer;
         }
 
-        public Task<string> GetNodeVersionAsync()
+        public Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
             try
             {

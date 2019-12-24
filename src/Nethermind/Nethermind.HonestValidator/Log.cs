@@ -51,24 +51,29 @@ namespace Nethermind.HonestValidator
 
         public static readonly Action<ILogger, string, string, int, Exception?> HonestValidatorWorkerExecuteStarted =
             LoggerMessage.Define<string, string, int>(LogLevel.Information,
-                new EventId(1400, nameof(HonestValidatorWorkerExecuteStarted)),
+                new EventId(1450, nameof(HonestValidatorWorkerExecuteStarted)),
                 "Honest Validator {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
+
+        public static readonly Action<ILogger, string, int, Exception?> NodeConnectionSuccess =
+            LoggerMessage.Define<string, int>(LogLevel.Warning,
+                new EventId(1451, nameof(NodeConnectionFailed)),
+                "Connected to node '{NodeUrl}' (index {NodeUrlIndex}).");
 
         public static readonly Action<ILogger, string, ulong, Exception?> HonestValidatorWorkerConnected =
             LoggerMessage.Define<string, ulong>(LogLevel.Information,
-                new EventId(1401, nameof(HonestValidatorWorkerConnected)),
-                "Validator connected to {NodeVersion} with genesis time {GenesisTime}.");
+                new EventId(1452, nameof(HonestValidatorWorkerConnected)),
+                "Validator connected to '{NodeVersion}' with genesis time {GenesisTime}.");
 
         // 2bxx 
         
         public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Shard, Exception?> ValidatorDutyAttestationChanged =
             LoggerMessage.Define<BlsPublicKey, Epoch, Slot, Shard>(LogLevel.Information,
-                new EventId(2400, nameof(ValidatorDutyAttestationChanged)),
+                new EventId(2450, nameof(ValidatorDutyAttestationChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty attestation slot {Slot} for shard {Shard}.");
 
         public static readonly Action<ILogger, BlsPublicKey, Epoch, Slot, Exception?> ValidatorDutyProposalChanged =
             LoggerMessage.Define<BlsPublicKey, Epoch, Slot>(LogLevel.Information,
-                new EventId(2401, nameof(ValidatorDutyProposalChanged)),
+                new EventId(2451, nameof(ValidatorDutyProposalChanged)),
                 "Validator {PublicKey} epoch {Epoch} duty proposal slot {Slot}.");
 
         // 4bxx warning
@@ -78,12 +83,22 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<long>(LogLevel.Warning,
                 new EventId(4901, nameof(QuickStartClockCreated)),
                 "Quick start clock created with offset {ClockOffset:n0}.");
+        
+        public static readonly Action<ILogger, string, Exception?> NodeConnectionFailed =
+            LoggerMessage.Define<string>(LogLevel.Warning,
+                new EventId(4450, nameof(NodeConnectionFailed)),
+                "Connection to '{NodeUrl}' failed. Attempting reconnection.");
+        
+        public static readonly Action<ILogger, int, int, Exception?> AllNodeConnectionsFailing =
+            LoggerMessage.Define<int, int>(LogLevel.Warning,
+                new EventId(4451, nameof(AllNodeConnectionsFailing)),
+                "All node connections failing (configured with {NodeUrlCount} URLs). Waiting {MillisecondsDelay} milliseconds before attempting reconnection.");
 
         // 5bxx error
         
         public static readonly Action<ILogger, Exception?> HonestValidatorWorkerLoopError =
             LoggerMessage.Define(LogLevel.Error,
-                new EventId(5400, nameof(HonestValidatorWorkerLoopError)),
+                new EventId(5450, nameof(HonestValidatorWorkerLoopError)),
                 "Unexpected error caught in honest validator worker, loop continuing.");
 
         // 8bxx finalization
@@ -92,7 +107,7 @@ namespace Nethermind.HonestValidator
 
         public static readonly Action<ILogger, Exception?> HonestValidatorWorkerCriticalError =
             LoggerMessage.Define(LogLevel.Critical,
-                new EventId(9400, nameof(HonestValidatorWorkerCriticalError)),
+                new EventId(9450, nameof(HonestValidatorWorkerCriticalError)),
                 "Critical unhandled error in honest validator worker. Worker cannot continue.");
 
     }

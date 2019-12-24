@@ -30,21 +30,17 @@ namespace Nethermind.HonestValidator.Services
     public class BeaconNodeOApiClientFactory
     {
         private readonly ILogger<BeaconNodeOApiClientFactory> _logger;
-        private readonly IOptionsMonitor<BeaconNodeConnection> _beaconNodeConnectionOptions;
         private readonly IHttpClientFactory _httpClientFactory;
 
-        public BeaconNodeOApiClientFactory(ILogger<BeaconNodeOApiClientFactory> logger, IOptionsMonitor<BeaconNodeConnection> beaconNodeConnectionOptions, IHttpClientFactory httpClientFactory)
+        public BeaconNodeOApiClientFactory(ILogger<BeaconNodeOApiClientFactory> logger, 
+            IHttpClientFactory httpClientFactory)
         {
             _logger = logger;
-            _beaconNodeConnectionOptions = beaconNodeConnectionOptions;
             _httpClientFactory = httpClientFactory;
         }
         
-        public BeaconNodeOApiClient CreateClient()
+        public BeaconNodeOApiClient CreateClient(string baseUrl)
         {
-            BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
-            string baseUrl = beaconNodeConnection.RemoteUrls[0];
-            
             HttpClient httpClient = _httpClientFactory.CreateClient();
 
             BeaconNodeOApiClient beaconNodeOApiClient = new BeaconNodeOApiClient(baseUrl, httpClient);

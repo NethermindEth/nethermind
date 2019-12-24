@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
@@ -226,7 +227,7 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Request successful</returns>
         public async Task<string> VersionAsync()
         {
-            return await _beaconNode.GetNodeVersionAsync();
+            return await _beaconNode.GetNodeVersionAsync(CancellationToken.None);
         }
     }
 }

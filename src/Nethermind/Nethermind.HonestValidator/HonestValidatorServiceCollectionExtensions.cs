@@ -105,6 +105,7 @@ namespace Nethermind.HonestValidator
                 configuration.Bind("BeaconNodeConnection", section =>
                 {
                     x.RemoteUrls = section.GetSection(nameof(x.RemoteUrls)).Get<string[]>();
+                    x.ConnectionFailureLoopMillisecondsDelay = section.GetValue<int>("ConnectionFailureLoopMillisecondsDelay", 1000);
                 });
             });
         }

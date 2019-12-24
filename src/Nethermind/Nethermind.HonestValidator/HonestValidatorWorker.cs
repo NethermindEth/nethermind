@@ -85,7 +85,7 @@ namespace Nethermind.HonestValidator
                 // Validator private keys (or quickstart)
                 // Seconds per slot
                 
-                string nodeVersion = await _beaconNodeApi.GetNodeVersionAsync().ConfigureAwait(false);
+                string nodeVersion = await _beaconNodeApi.GetNodeVersionAsync(stoppingToken).ConfigureAwait(false);
                 ulong genesisTime = await _beaconNodeApi.GetGenesisTimeAsync().ConfigureAwait(false);
                 Log.HonestValidatorWorkerConnected(_logger, nodeVersion, genesisTime, null);
                 

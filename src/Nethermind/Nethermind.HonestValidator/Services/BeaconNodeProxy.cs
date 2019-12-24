@@ -16,13 +16,19 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.OApiClient;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.HonestValidator.Configuration;
+using Nethermind.Logging.Microsoft;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using Fork = Nethermind.Core2.Containers.Fork;
 using ValidatorDuty = Nethermind.BeaconNode.ValidatorDuty;
@@ -32,11 +38,18 @@ namespace Nethermind.HonestValidator.Services
     public class BeaconNodeProxy : IBeaconNodeApi
     {
         private readonly ILogger _logger;
+        private readonly IOptionsMonitor<BeaconNodeConnection> _beaconNodeConnectionOptions;
         private readonly BeaconNodeOApiClientFactory _oapiClientFactory;
+        static SemaphoreSlim _connectionAttemptSemaphore = new SemaphoreSlim(1, 1);
+        private BeaconNodeOApiClient? _oapiClient;
+        private int _connectionIndex = -1;
 
-        public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger, BeaconNodeOApiClientFactory oapiClientFactory)
+        public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger, 
+            IOptionsMonitor<BeaconNodeConnection> beaconNodeConnectionOptions,
+            BeaconNodeOApiClientFactory oapiClientFactory)
         {
             _logger = logger;
+            _beaconNodeConnectionOptions = beaconNodeConnectionOptions;
             _oapiClientFactory = oapiClientFactory;
         }
         
@@ -45,16 +58,84 @@ namespace Nethermind.HonestValidator.Services
         // connect to beacon node (priority order)
         // if not connected, wait and try next
 
-        public async Task<string> GetNodeVersionAsync()
+        public async Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
-            BeaconNodeOApiClient oapiClient = _oapiClientFactory.CreateClient();
-            string result = await oapiClient.VersionAsync().ConfigureAwait(false);
-            return result;
+            string? result = null;
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                BeaconNodeOApiClient? localClient = _oapiClient;
+                if (!(localClient is null))
+                {
+                    try
+                    {
+                        result = await localClient.VersionAsync(cancellationToken).ConfigureAwait(false);
+                        break;
+                    }
+                    catch (HttpRequestException ex)
+                    {
+                        // Only null out if the same client is still there (i.e. no one else has replaced)
+                        BeaconNodeOApiClient? exchangeResult = Interlocked.CompareExchange(ref _oapiClient, null, localClient);
+                        if (exchangeResult == localClient)
+                        {
+                            if (_logger.IsWarn()) Log.NodeConnectionFailed(_logger, localClient.BaseUrl, ex);
+                        }
+                    }
+                }
+
+                // take turns trying the first connection
+                await _connectionAttemptSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    // this routine's turn to try and connect (if no one else has) 
+                    if (_oapiClient is null)
+                    {
+                        // create new client
+                        _connectionIndex++; 
+                        BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
+                        if (_connectionIndex >= beaconNodeConnection.RemoteUrls.Length)
+                        {
+                            _connectionIndex = 0;
+                            if (_logger.IsWarn())
+                                Log.AllNodeConnectionsFailing(_logger, beaconNodeConnection.RemoteUrls.Length,
+                                    beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay, null);
+                            await Task.Delay(beaconNodeConnection.ConnectionFailureLoopMillisecondsDelay, cancellationToken).ConfigureAwait(false);
+                        }
+                        string baseUrl = beaconNodeConnection.RemoteUrls[_connectionIndex];
+                        if (_logger.IsDebug())
+                            LogDebug.AttemptingConnectionToNode(_logger, baseUrl, _connectionIndex, null);
+                        BeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
+                        
+                        // check if it works
+                        result = await newClient.VersionAsync(cancellationToken).ConfigureAwait(false);
+
+                        // success! set the client, and if not the first, set the connection index to restart from first
+                        if (_logger.IsInfo()) Log.NodeConnectionSuccess(_logger, baseUrl, _connectionIndex, null);
+                        _oapiClient = newClient;
+                        if (_connectionIndex > 0)
+                        {
+                            _connectionIndex = -1;
+                        }
+                        break;
+                    }
+                }
+                catch (HttpRequestException)
+                {
+                    // Continue
+                }
+                finally
+                {
+                    _connectionAttemptSemaphore.Release();
+                }
+            }
+
+            return result!;
         }
 
         public async Task<ulong> GetGenesisTimeAsync()
         {
-            var oapiClient = _oapiClientFactory.CreateClient();
+            BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
+            string baseUrl = beaconNodeConnection.RemoteUrls[0];
+            var oapiClient = _oapiClientFactory.CreateClient(baseUrl);
             var result = await oapiClient.TimeAsync().ConfigureAwait(false);
             return result;
         }
@@ -71,9 +152,12 @@ namespace Nethermind.HonestValidator.Services
 
         public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch)
         {
+            BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
+            string baseUrl = beaconNodeConnection.RemoteUrls[0];
+            var oapiClient = _oapiClientFactory.CreateClient(baseUrl);
+            
             IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
             ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null; 
-            var oapiClient = _oapiClientFactory.CreateClient();
             var result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue).ConfigureAwait(false);
             foreach (var value in result)
             {

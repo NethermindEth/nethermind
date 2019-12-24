@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -31,7 +32,7 @@ namespace Nethermind.BeaconNode
     /// </remarks>
     public interface IBeaconNodeApi
     {
-        Task<string> GetNodeVersionAsync();
+        Task<string> GetNodeVersionAsync(CancellationToken cancellationToken);
         Task<ulong> GetGenesisTimeAsync();
         Task<bool> GetIsSyncingAsync();
         Task<Fork> GetNodeForkAsync();
