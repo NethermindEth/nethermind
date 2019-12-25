@@ -60,6 +60,8 @@ Then run the validator host in a separate shell (which connects to the node):
 $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
 ```
 
+Note that from Epoch 2, the beacon node will throw errors, as it has not received any blocks to advance the epoch.
+
 ### Optional requirements
 
 * PowerShell Core, to run build scripts
