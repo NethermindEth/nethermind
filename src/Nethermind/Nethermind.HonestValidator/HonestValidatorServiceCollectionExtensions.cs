@@ -32,15 +32,12 @@ namespace Nethermind.HonestValidator
         public static void AddHonestValidator(this IServiceCollection services, IConfiguration configuration)
         {
             AddConfiguration(services, configuration);
-
-            services.AddHttpClient();
             
             services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<ICryptographyService, CortexCryptographyService>();
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<ValidatorClient>();
             services.AddSingleton<ClientVersion>();
-            services.AddSingleton<BeaconNodeOApiClientFactory>();
             
             services.AddSingleton<IBeaconNodeApi, BeaconNodeProxy>();
 

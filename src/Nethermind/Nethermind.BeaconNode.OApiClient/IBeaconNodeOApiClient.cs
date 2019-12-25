@@ -14,13 +14,22 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+
 namespace Nethermind.BeaconNode.OApiClient
 {
-    public partial class BeaconNodeOApiClient : IBeaconNodeOApiClient
+    public interface IBeaconNodeOApiClient
     {
-        partial void UpdateJsonSerializerSettings(Newtonsoft.Json.JsonSerializerSettings settings)
-        {
-            settings.Converters.Add(new PrefixedHexByteArrayNewtonsoftJsonConverter());
-        }
+        string BaseUrl { get; }
+        Task<string> VersionAsync(CancellationToken cancellationToken);
+//        Task<Response> SyncingAsync(CancellationToken cancellationToken);
+//        Task<Response2> ForkAsync(CancellationToken cancellationToken);
+//        Task<Validator> ValidatorAsync(byte[] pubkey, CancellationToken cancellationToken);
+        Task<ICollection<ValidatorDuty>> DutiesAsync(IEnumerable<byte[]> validator_pubkeys, ulong? epoch,
+            CancellationToken cancellationToken);
+        Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal, CancellationToken cancellationToken);
+        Task<ulong> TimeAsync(CancellationToken cancellationToken);
     }
 }

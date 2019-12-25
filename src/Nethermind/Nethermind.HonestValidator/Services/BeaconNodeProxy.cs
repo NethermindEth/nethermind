@@ -40,14 +40,14 @@ namespace Nethermind.HonestValidator.Services
     {
         private readonly ILogger _logger;
         private readonly IOptionsMonitor<BeaconNodeConnection> _beaconNodeConnectionOptions;
-        private readonly BeaconNodeOApiClientFactory _oapiClientFactory;
+        private readonly IBeaconNodeOApiClientFactory _oapiClientFactory;
         static SemaphoreSlim _connectionAttemptSemaphore = new SemaphoreSlim(1, 1);
-        private BeaconNodeOApiClient? _oapiClient;
+        private IBeaconNodeOApiClient? _oapiClient;
         private int _connectionIndex = -1;
 
         public BeaconNodeProxy(ILogger<BeaconNodeProxy> logger, 
             IOptionsMonitor<BeaconNodeConnection> beaconNodeConnectionOptions,
-            BeaconNodeOApiClientFactory oapiClientFactory)
+            IBeaconNodeOApiClientFactory oapiClientFactory)
         {
             _logger = logger;
             _beaconNodeConnectionOptions = beaconNodeConnectionOptions;
@@ -64,7 +64,7 @@ namespace Nethermind.HonestValidator.Services
             string? result = null;
             while (!cancellationToken.IsCancellationRequested)
             {
-                BeaconNodeOApiClient? localClient = _oapiClient;
+                IBeaconNodeOApiClient? localClient = _oapiClient;
                 if (!(localClient is null))
                 {
                     try
@@ -75,7 +75,7 @@ namespace Nethermind.HonestValidator.Services
                     catch (HttpRequestException ex)
                     {
                         // Only null out if the same client is still there (i.e. no one else has replaced)
-                        BeaconNodeOApiClient? exchangeResult = Interlocked.CompareExchange(ref _oapiClient, null, localClient);
+                        IBeaconNodeOApiClient? exchangeResult = Interlocked.CompareExchange(ref _oapiClient, null, localClient);
                         if (exchangeResult == localClient)
                         {
                             if (_logger.IsWarn()) Log.NodeConnectionFailed(_logger, localClient.BaseUrl, ex);
@@ -104,7 +104,7 @@ namespace Nethermind.HonestValidator.Services
                         string baseUrl = beaconNodeConnection.RemoteUrls[_connectionIndex];
                         if (_logger.IsDebug())
                             LogDebug.AttemptingConnectionToNode(_logger, baseUrl, _connectionIndex, null);
-                        BeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
+                        IBeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
                         
                         // check if it works
                         result = await newClient.VersionAsync(cancellationToken).ConfigureAwait(false);

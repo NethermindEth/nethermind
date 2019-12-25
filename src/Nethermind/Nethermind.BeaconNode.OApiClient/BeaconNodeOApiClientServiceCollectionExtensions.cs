@@ -14,13 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+
 namespace Nethermind.BeaconNode.OApiClient
 {
-    public partial class BeaconNodeOApiClient : IBeaconNodeOApiClient
+    public static class BeaconNodeOApiClientServiceCollectionExtensions
     {
-        partial void UpdateJsonSerializerSettings(Newtonsoft.Json.JsonSerializerSettings settings)
+        public static void AddBeaconNodeOapiClient(this IServiceCollection services, IConfiguration configuration)
         {
-            settings.Converters.Add(new PrefixedHexByteArrayNewtonsoftJsonConverter());
+            services.AddHttpClient();
+            services.AddSingleton<IBeaconNodeOApiClientFactory, BeaconNodeOApiClientFactory>();
         }
     }
 }

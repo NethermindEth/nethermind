@@ -19,6 +19,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.OApiClient;
 using Nethermind.HonestValidator.MockedStart;
 
 namespace Nethermind.HonestValidator.Host
@@ -61,6 +62,7 @@ namespace Nethermind.HonestValidator.Host
                 .ConfigureServices((hostContext, services) =>
                 {
                     services.AddHonestValidator(hostContext.Configuration);
+                    services.AddBeaconNodeOapiClient(hostContext.Configuration);
                     
                     if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
                     {
