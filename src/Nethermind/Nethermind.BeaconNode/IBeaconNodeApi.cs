@@ -33,11 +33,11 @@ namespace Nethermind.BeaconNode
     public interface IBeaconNodeApi
     {
         Task<string> GetNodeVersionAsync(CancellationToken cancellationToken);
-        Task<ulong> GetGenesisTimeAsync();
-        Task<bool> GetIsSyncingAsync();
-        Task<Fork> GetNodeForkAsync();
-        IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch);
-        Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal);
+        Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken);
+        Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken);
+        Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken);
+        IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch, CancellationToken cancellationToken);
+        Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);
 //        bool PublishBlock(BeaconBlock block);
 //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
 //        bool PublishAttestation(BeaconBlock block);

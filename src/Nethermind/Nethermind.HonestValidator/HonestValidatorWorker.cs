@@ -86,7 +86,7 @@ namespace Nethermind.HonestValidator
                 // Seconds per slot
                 
                 string nodeVersion = await _beaconNodeApi.GetNodeVersionAsync(stoppingToken).ConfigureAwait(false);
-                ulong genesisTime = await _beaconNodeApi.GetGenesisTimeAsync().ConfigureAwait(false);
+                ulong genesisTime = await _beaconNodeApi.GetGenesisTimeAsync(stoppingToken).ConfigureAwait(false);
                 Log.HonestValidatorWorkerConnected(_logger, nodeVersion, genesisTime, null);
                 
                 await _beaconChain.SetGenesisTimeAsync(genesisTime).ConfigureAwait(false);
@@ -98,7 +98,7 @@ namespace Nethermind.HonestValidator
                         DateTimeOffset clockTime = _clock.UtcNow();
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
 
-                        await _validatorClient.OnTickAsync(_beaconChain, time).ConfigureAwait(false);
+                        await _validatorClient.OnTickAsync(_beaconChain, time, stoppingToken).ConfigureAwait(false);
                         
                         // Wait for remaining time, if any
                         // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.

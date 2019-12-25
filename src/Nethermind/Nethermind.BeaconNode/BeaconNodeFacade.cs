@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -68,7 +69,7 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<ulong> GetGenesisTimeAsync()
+        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -82,12 +83,12 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public Task<bool> GetIsSyncingAsync()
+        public Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken)
         {
             throw new System.NotImplementedException();
         }
 
-        public async Task<Fork> GetNodeForkAsync()
+        public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
         {
             try
             {
@@ -102,7 +103,7 @@ namespace Nethermind.BeaconNode
         }
 
         public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
-            Epoch epoch)
+            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             // TODO: Rather than check one by one (each of which loops through potentially all slots for the epoch), optimise by either checking multiple, or better possibly caching or pre-calculating
             foreach (BlsPublicKey validatorPublicKey in validatorPublicKeys)
@@ -122,7 +123,7 @@ namespace Nethermind.BeaconNode
             }
         }
 
-        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal)
+        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
         {
             try
             {

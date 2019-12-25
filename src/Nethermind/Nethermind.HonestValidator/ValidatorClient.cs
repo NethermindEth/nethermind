@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -59,7 +60,7 @@ namespace Nethermind.HonestValidator
             return new Slot(slotValue);
         }
         
-        public async Task OnTickAsync(BeaconChain beaconChain, ulong time)
+        public async Task OnTickAsync(BeaconChain beaconChain, ulong time, CancellationToken cancellationToken)
         {
             // update time
             Slot previousSlot = GetCurrentSlot(beaconChain);
@@ -77,7 +78,7 @@ namespace Nethermind.HonestValidator
             
             Epoch currentEpoch = ComputeEpochAtSlot(currentSlot);
 
-            await UpdateDutiesAsync(currentEpoch);
+            await UpdateDutiesAsync(currentEpoch, cancellationToken).ConfigureAwait(false);
             
             // Check start of each slot
             // Get duties
@@ -94,13 +95,13 @@ namespace Nethermind.HonestValidator
             // Attest 1/3 way through slot
         }
 
-        public async Task UpdateDutiesAsync(Epoch epoch)
+        public async Task UpdateDutiesAsync(Epoch epoch, CancellationToken cancellationToken)
         {
             IEnumerable<BlsPublicKey> publicKeys = _validatorKeyProvider.GetPublicKeys();
 
-            IAsyncEnumerable<ValidatorDuty> validatorDuties = _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch);
+            IAsyncEnumerable<ValidatorDuty> validatorDuties = _beaconNodeApi.ValidatorDutiesAsync(publicKeys, epoch, cancellationToken);
 
-            await foreach (ValidatorDuty validatorDuty in validatorDuties)
+            await foreach (ValidatorDuty validatorDuty in validatorDuties.ConfigureAwait(false))
             {
                 Slot? currentAttestationSlot =
                     _validatorState.AttestationSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
@@ -117,7 +118,7 @@ namespace Nethermind.HonestValidator
                 }
             }
 
-            await foreach (ValidatorDuty validatorDuty in validatorDuties)
+            await foreach (ValidatorDuty validatorDuty in validatorDuties.ConfigureAwait(false))
             {
                 Slot? currentProposalSlot = _validatorState.ProposalSlot.GetValueOrDefault(validatorDuty.ValidatorPublicKey);
                 if (validatorDuty.BlockProposalSlot != Slot.None &&
