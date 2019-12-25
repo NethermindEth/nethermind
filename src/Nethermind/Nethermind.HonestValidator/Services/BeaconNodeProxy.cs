@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -62,6 +63,66 @@ namespace Nethermind.HonestValidator.Services
         public async Task<string> GetNodeVersionAsync(CancellationToken cancellationToken)
         {
             string? result = null;
+            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
+            {
+                result = await oapiClient.VersionAsync(innerCancellationToken).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+            return result!;
+        }
+
+        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
+        {
+            ulong result = 0;
+            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
+            {
+                result = await oapiClient.TimeAsync(innerCancellationToken).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+            return result;
+        }
+
+        public Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
+            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
+            ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null;
+
+            ICollection<Nethermind.BeaconNode.OApiClient.ValidatorDuty>? result = null;
+            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
+            {
+                result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue, innerCancellationToken).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+            foreach (var value in result!)
+            {
+                var validatorPublicKey = new BlsPublicKey(value.Validator_pubkey);
+                var proposalSlot = value.Block_proposal_slot.HasValue
+                    ? new Slot(value.Block_proposal_slot.Value)
+                    : Slot.None;
+                var validatorDuty = new ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
+                    new Shard(value.Attestation_shard), proposalSlot);
+                yield return validatorDuty;
+            }
+        }
+
+        public Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        {
+            throw new System.NotImplementedException();
+        }
+        
+        private async Task ClientOperationWithRetry(Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
+        {
             while (!cancellationToken.IsCancellationRequested)
             {
                 IBeaconNodeOApiClient? localClient = _oapiClient;
@@ -69,7 +130,8 @@ namespace Nethermind.HonestValidator.Services
                 {
                     try
                     {
-                        result = await localClient.VersionAsync(cancellationToken).ConfigureAwait(false);
+                        await clientOperation(localClient, cancellationToken).ConfigureAwait(false);
+                        // exit loop and complete on success
                         break;
                     }
                     catch (HttpRequestException ex)
@@ -107,7 +169,7 @@ namespace Nethermind.HonestValidator.Services
                         IBeaconNodeOApiClient newClient = _oapiClientFactory.CreateClient(baseUrl);
                         
                         // check if it works
-                        result = await newClient.VersionAsync(cancellationToken).ConfigureAwait(false);
+                        await clientOperation(newClient, cancellationToken).ConfigureAwait(false);
 
                         // success! set the client, and if not the first, set the connection index to restart from first
                         if (_logger.IsInfo()) Log.NodeConnectionSuccess(_logger, baseUrl, _connectionIndex, null);
@@ -116,6 +178,7 @@ namespace Nethermind.HonestValidator.Services
                         {
                             _connectionIndex = -1;
                         }
+                        // exit loop and complete on success
                         break;
                     }
                 }
@@ -128,55 +191,6 @@ namespace Nethermind.HonestValidator.Services
                     _connectionAttemptSemaphore.Release();
                 }
             }
-
-            return result!;
-        }
-
-        public async Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken)
-        {
-            BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
-            string baseUrl = beaconNodeConnection.RemoteUrls[0];
-            var oapiClient = _oapiClientFactory.CreateClient(baseUrl);
-            var result = await oapiClient.TimeAsync(cancellationToken).ConfigureAwait(false);
-            return result;
-        }
-
-        public Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
-        {
-            throw new System.NotImplementedException();
-        }
-
-        public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
-            Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
-        {
-            BeaconNodeConnection beaconNodeConnection = _beaconNodeConnectionOptions.CurrentValue;
-            string baseUrl = beaconNodeConnection.RemoteUrls[0];
-            var oapiClient = _oapiClientFactory.CreateClient(baseUrl);
-
-            IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
-            ulong? epochValue = (epoch != Epoch.None) ? (ulong?) epoch : null;
-            var result = await oapiClient.DutiesAsync(validator_pubkeys, epochValue, cancellationToken)
-                .ConfigureAwait(false);
-            foreach (var value in result)
-            {
-                var validatorPublicKey = new BlsPublicKey(value.Validator_pubkey);
-                var proposalSlot = value.Block_proposal_slot.HasValue
-                    ? new Slot(value.Block_proposal_slot.Value)
-                    : Slot.None;
-                var validatorDuty = new ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
-                    new Shard(value.Attestation_shard), proposalSlot);
-                yield return validatorDuty;
-            }
-        }
-
-        public Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
-        {
-            throw new System.NotImplementedException();
         }
     }
 }
