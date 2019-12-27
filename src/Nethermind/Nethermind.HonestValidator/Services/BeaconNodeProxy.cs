@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -27,12 +28,24 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.OApiClient;
+using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Configuration;
 using Nethermind.Logging.Microsoft;
+using Attestation = Nethermind.Core2.Containers.Attestation;
+using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
+using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
+using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
+using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
+using Checkpoint = Nethermind.BeaconNode.Containers.Checkpoint;
+using Deposit = Nethermind.BeaconNode.Containers.Deposit;
+using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 using Fork = Nethermind.Core2.Containers.Fork;
+using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
+using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 using ValidatorDuty = Nethermind.BeaconNode.ValidatorDuty;
 
 namespace Nethermind.HonestValidator.Services
@@ -87,9 +100,21 @@ namespace Nethermind.HonestValidator.Services
             throw new System.NotImplementedException();
         }
 
-        public Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
+        public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
         {
-            throw new System.NotImplementedException();
+            Response2 result = null;
+            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
+            {
+                result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+            Fork fork = new Fork(
+                new ForkVersion(result.Fork.Previous_version),
+                new ForkVersion(result.Fork.Current_version), 
+                new Epoch((ulong) result.Fork.Epoch)
+            );
+
+            return fork;
         }
 
         public async IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
@@ -116,11 +141,59 @@ namespace Nethermind.HonestValidator.Services
             }
         }
 
-        public Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        public async Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
         {
-            throw new System.NotImplementedException();
+            ulong slotValue = (ulong) slot;
+            byte[] randaoRevealBytes = randaoReveal.Bytes;
+            
+            BeaconNode.OApiClient.BeaconBlock result = null;
+            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
+            {
+                result = await oapiClient.BlockAsync(slotValue, randaoRevealBytes, innerCancellationToken).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+            BeaconBlock beaconBlock = new BeaconBlock(
+                new Slot((ulong)result.Slot),
+                new Hash32(Bytes.FromHexString(result.Parent_root)),
+                new Hash32(Bytes.FromHexString(result.State_root)),
+                new BeaconBlockBody(
+                    new BlsSignature(result.Body.Randao_reveal), 
+                    new Eth1Data(
+                        new Hash32(result.Body.Eth1_data.Deposit_root),
+                        (ulong)result.Body.Eth1_data.Deposit_count,
+                        new Hash32(result.Body.Eth1_data.Block_hash)
+                        ), 
+                    new Bytes32(result.Body.Graffiti), 
+                    result.Body.Proposer_slashings.Select(x => new ProposerSlashing(
+                        new ValidatorIndex((ulong)x.Proposer_index),
+                        MapBeaconBlockHeader(x.Header_1),
+                        MapBeaconBlockHeader(x.Header_2)
+                        )),
+                    result.Body.Attester_slashings.Select(x => new AttesterSlashing(
+                        MapIndexedAttestation(x.Attestation_1),
+                        MapIndexedAttestation(x.Attestation_2)
+                    )),
+                    result.Body.Attestations.Select(x => 
+                        new BeaconNode.Containers.Attestation(
+                            new BitArray(x.Aggregation_bits),
+                            MapAttestationData(x.Data),
+                            new BitArray(x.Custody_bits),
+                            new BlsSignature(x.Signature)
+                        )
+                    ),
+                    new Deposit[0],
+                    new VoluntaryExit[0]),
+                BlsSignature.Empty
+            );
+
+            return beaconBlock;
         }
-        
+
+        public Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken)
+        {
+            throw new NotImplementedException();
+        }
+
         private async Task ClientOperationWithRetry(Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
         {
             while (!cancellationToken.IsCancellationRequested)
@@ -192,5 +265,45 @@ namespace Nethermind.HonestValidator.Services
                 }
             }
         }
+        
+        private static IndexedAttestation MapIndexedAttestation(BeaconNode.OApiClient.IndexedAttestation indexedAttestation)
+        {
+            return new IndexedAttestation(
+                indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong)y)),
+                indexedAttestation.Custody_bit_1_indices.Select(y => new ValidatorIndex((ulong)y)),
+                MapAttestationData(indexedAttestation.Data),
+                new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
+            );
+        }
+
+        private static AttestationData MapAttestationData(BeaconNode.OApiClient.AttestationData attestationData)
+        {
+            // NOTE: This mapping isn't right, spec changes (sharding)
+            return new AttestationData(
+                Slot.None,
+                CommitteeIndex.None, 
+                new Hash32(attestationData.Beacon_block_root), 
+                new Checkpoint(
+                    new Epoch((ulong)attestationData.Source_epoch), 
+                    new Hash32(attestationData.Source_root) 
+                ),
+                new Checkpoint(
+                    new Epoch((ulong)attestationData.Target_epoch), 
+                    new Hash32(attestationData.Target_root) 
+                )
+            );
+        }
+
+        private static BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.OApiClient.BeaconBlockHeader value)
+        {
+            return new BeaconBlockHeader(
+                new Slot((ulong)value.Slot),
+                new Hash32(Bytes.FromHexString(value.Parent_root)), 
+                new Hash32(Bytes.FromHexString(value.State_root)), 
+                new Hash32(Bytes.FromHexString(value.Body_root)),
+                new BlsSignature(Bytes.FromHexString(value.Signature))
+            );
+        }
+        
     }
 }

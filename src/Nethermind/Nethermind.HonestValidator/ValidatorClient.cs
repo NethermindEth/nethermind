@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,31 +23,43 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Configuration;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
+using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 
 namespace Nethermind.HonestValidator
 {
     public class ValidatorClient
     {
         private readonly ILogger _logger;
+        private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
+        private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
+        private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
         private readonly IBeaconNodeApi _beaconNodeApi;
         private readonly IValidatorKeyProvider _validatorKeyProvider;
         private readonly BeaconChain _beaconChain;
         private readonly ValidatorState _validatorState;
 
         public ValidatorClient(ILogger<ValidatorClient> logger,
+            IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
             IOptionsMonitor<TimeParameters> timeParameterOptions,
+            IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
+            IOptionsMonitor<SignatureDomains> signatureDomainOptions,
             IBeaconNodeApi beaconNodeApi,
             IValidatorKeyProvider validatorKeyProvider,
             BeaconChain beaconChain)
         {
             _logger = logger;
+            _miscellaneousParameterOptions = miscellaneousParameterOptions;
             _timeParameterOptions = timeParameterOptions;
+            _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
+            _signatureDomainOptions = signatureDomainOptions;
             _beaconNodeApi = beaconNodeApi;
             _validatorKeyProvider = validatorKeyProvider;
             _beaconChain = beaconChain;
@@ -75,24 +88,96 @@ namespace Nethermind.HonestValidator
             {
                 return;
             }
+
+            await UpdateForkVersion(cancellationToken).ConfigureAwait(false);
             
             Epoch currentEpoch = ComputeEpochAtSlot(currentSlot);
-
             await UpdateDutiesAsync(currentEpoch, cancellationToken).ConfigureAwait(false);
-            
-            // Check start of each slot
-            // Get duties
-            //await _validatorClient.UpdateDutiesAsync(time);
 
-            //await _validatorClient.ProcessProposerDutiesAsync(time);
-                        
-            // If proposer, get block, sign block, return to node
-            // Retry if not successful; need to queue this up to send immediately if connection issue. (or broadcast?)
-                        
+            await ProcessProposalDutiesAsync(currentSlot, cancellationToken).ConfigureAwait(false);
+            
             // If upcoming attester, join (or change) topics
             // Subscribe to topics
-                        
+
             // Attest 1/3 way through slot
+        }
+
+        public async Task UpdateForkVersion(CancellationToken cancellationToken)
+        {
+            Fork fork = await _beaconNodeApi.GetNodeForkAsync(cancellationToken).ConfigureAwait(false);
+            await _beaconChain.SetForkAsync(fork).ConfigureAwait(false);
+        }
+
+        public async Task ProcessProposalDutiesAsync(Slot slot, CancellationToken cancellationToken)
+        {
+            // If proposer, get block, sign block, return to node
+            // Retry if not successful; need to queue this up to send immediately if connection issue. (or broadcast?)
+
+            BlsPublicKey? blsPublicKey = _validatorState.GetProposalDutyForSlot(slot);
+            if (blsPublicKey != null)
+            {
+                BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
+                
+                BeaconBlock unsignedBlock = await _beaconNodeApi.NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
+
+                BeaconBlock signedBlock = SignBlock(unsignedBlock, blsPublicKey);
+
+                bool nodeAccepted = await _beaconNodeApi.PublishBlockAsync(signedBlock, cancellationToken).ConfigureAwait(false);
+                
+                _validatorState.ClearProposalDutyForSlot(slot);
+            }
+        }
+
+        public BeaconBlock SignBlock(BeaconBlock block, BlsPublicKey blsPublicKey)
+        {
+            var fork = _beaconChain.Fork;
+            var epoch = ComputeEpochAtSlot(block.Slot);
+            
+            ForkVersion forkVersion;
+            if (epoch < fork.Epoch)
+            {
+                forkVersion = fork.PreviousVersion;
+            }
+            else
+            {
+                forkVersion = fork.CurrentVersion;
+            }
+
+            var domainType = _signatureDomainOptions.CurrentValue.BeaconProposer;
+            var proposerDomain = ComputeDomain(domainType, forkVersion);
+            
+            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+
+            var signature = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, signingRoot, proposerDomain);
+
+            block.SetSignature(signature);
+            
+            return block;
+        }
+
+        public BlsSignature GetEpochSignature(Slot slot, BlsPublicKey blsPublicKey)
+        {
+            var fork = _beaconChain.Fork;
+            var epoch = ComputeEpochAtSlot(slot);
+            
+            ForkVersion forkVersion;
+            if (epoch < fork.Epoch)
+            {
+                forkVersion = fork.PreviousVersion;
+            }
+            else
+            {
+                forkVersion = fork.CurrentVersion;
+            }
+
+            var domainType = _signatureDomainOptions.CurrentValue.Randao;
+            var randaoDomain = ComputeDomain(domainType, forkVersion);
+            
+            var randaoRevealHash = epoch.HashTreeRoot();
+
+            var randaoReveal = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, randaoRevealHash, randaoDomain);
+
+            return randaoReveal;
         }
 
         public async Task UpdateDutiesAsync(Epoch epoch, CancellationToken cancellationToken)
@@ -145,5 +230,15 @@ namespace Nethermind.HonestValidator
             return new Epoch(slot / _timeParameterOptions.CurrentValue.SlotsPerEpoch);
         }
 
+        /// <summary>
+        /// Returns the domain for the 'domain_type' and 'fork_version'
+        /// </summary>
+        public Domain ComputeDomain(DomainType domainType, ForkVersion forkVersion = new ForkVersion())
+        {
+            Span<byte> combined = stackalloc byte[Domain.Length];
+            domainType.AsSpan().CopyTo(combined);
+            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.SszLength));
+            return new Domain(combined);
+        }
     }
 }

@@ -48,6 +48,8 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         public Task Block2Async(BeaconBlock beacon_block)
         {
+            // TODO: Map and call facade.
+            
             throw new NotImplementedException();
         }
 

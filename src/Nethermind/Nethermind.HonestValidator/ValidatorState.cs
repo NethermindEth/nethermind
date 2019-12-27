@@ -28,6 +28,8 @@ namespace Nethermind.HonestValidator
         private readonly Dictionary<BlsPublicKey, Slot> _attestationSlot = new Dictionary<BlsPublicKey, Slot>();
         private readonly Dictionary<BlsPublicKey, Slot> _proposalSlot = new Dictionary<BlsPublicKey, Slot>();
 
+        private readonly Dictionary<Slot, BlsPublicKey> _proposalDutyBySlot = new Dictionary<Slot, BlsPublicKey>();
+
         public IReadOnlyDictionary<BlsPublicKey, Shard> AttestationShard => _attestationShard;
         public IReadOnlyDictionary<BlsPublicKey, Slot> AttestationSlot => _attestationSlot;
         public IReadOnlyDictionary<BlsPublicKey, Slot> ProposalSlot => _proposalSlot;
@@ -42,6 +44,17 @@ namespace Nethermind.HonestValidator
         public void SetProposalDuty(BlsPublicKey key, Slot slot)
         {
             _proposalSlot[key] = slot;
+            _proposalDutyBySlot[slot] = key;
+        }
+
+        public BlsPublicKey? GetProposalDutyForSlot(Slot slot)
+        {
+            return _proposalDutyBySlot.GetValueOrDefault(slot);
+        }
+
+        public void ClearProposalDutyForSlot(Slot slot)
+        {
+            _proposalDutyBySlot.Remove(slot);
         }
     }
 }

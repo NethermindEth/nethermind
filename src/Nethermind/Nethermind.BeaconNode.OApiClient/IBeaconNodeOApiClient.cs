@@ -25,7 +25,7 @@ namespace Nethermind.BeaconNode.OApiClient
         string BaseUrl { get; }
         Task<string> VersionAsync(CancellationToken cancellationToken);
 //        Task<Response> SyncingAsync(CancellationToken cancellationToken);
-//        Task<Response2> ForkAsync(CancellationToken cancellationToken);
+        Task<Response2> ForkAsync(CancellationToken cancellationToken);
 //        Task<Validator> ValidatorAsync(byte[] pubkey, CancellationToken cancellationToken);
         Task<ICollection<ValidatorDuty>> DutiesAsync(IEnumerable<byte[]> validator_pubkeys, ulong? epoch,
             CancellationToken cancellationToken);
