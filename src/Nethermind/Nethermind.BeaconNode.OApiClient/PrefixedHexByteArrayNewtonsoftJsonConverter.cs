@@ -16,40 +16,23 @@
 
 using System;
 using System.Linq;
+using Nethermind.Core2;
 using Newtonsoft.Json;
 
 namespace Nethermind.BeaconNode.OApiClient
 {
-    internal class PrefixedHexByteArrayNewtonsoftJsonConverter : JsonConverter
+    internal class PrefixedHexByteArrayNewtonsoftJsonConverter : JsonConverter<byte[]>
     {
-        private const string Prefix = "0x";
-            
-        public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)
+        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
         {
-            byte[] bytes = (byte[]) value;
-            string stringValue = Prefix + BitConverter.ToString(bytes).Replace("-", string.Empty);
-            serializer.Serialize(writer, stringValue);
+            writer.WriteValue(Nethermind.Core2.Bytes.ToHexString(value, withZeroX: true));
         }
-
-        public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+        
+        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,
+            JsonSerializer serializer)
         {
-            if (reader.TokenType == JsonToken.String)
-            {
-                string hex = serializer.Deserialize<string>(reader);
-                if (!string.IsNullOrEmpty(hex) && hex.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase))
-                {
-                    return Enumerable.Range(Prefix.Length, hex.Length - Prefix.Length)
-                        .Where(x => x % 2 == 0)
-                        .Select(x => Convert.ToByte(hex.Substring(x, 2), 16))
-                        .ToArray();
-                }
-            }
-            return new byte[0];
-        }
-
-        public override bool CanConvert(Type objectType)
-        {
-            return objectType == typeof(byte[]);
+            string s = (string) reader.Value;
+            return Bytes.FromHexString(s);
         }
     }
 }

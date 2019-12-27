@@ -1021,9 +1021,7 @@ namespace Nethermind.BeaconNode.OApiClient
             else if (value is byte[])
             {
                 //return System.Convert.ToBase64String((byte[]) value);
-                string Prefix = "0x";
-                string stringValue = Prefix + System.BitConverter.ToString((byte[]) value).Replace("-", string.Empty);
-                return stringValue;
+                return Nethermind.Core2.Bytes.ToHexString((byte[]) value, withZeroX: true);
             }
             else if (value != null && value.GetType().IsArray)
             {
