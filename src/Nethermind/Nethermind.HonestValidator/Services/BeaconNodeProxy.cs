@@ -191,7 +191,8 @@ namespace Nethermind.HonestValidator.Services
 
         public Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken)
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
+            return Task.FromResult(true);
         }
 
         private async Task ClientOperationWithRetry(Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)

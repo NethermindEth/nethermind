@@ -98,9 +98,41 @@ namespace Nethermind.HonestValidator.Test
                 .DutiesAsync(Arg.Any<IEnumerable<byte[]>>(), Arg.Any<ulong?>(), Arg.Any<CancellationToken>())
                 .Returns(validatorDuties);
             
+            Deposits deposit = new Deposits()
+            {
+                Index = 0,
+                Data = new Data()
+                {
+                    Amount = 1_000_000,
+                    Pubkey = Enumerable.Repeat((byte)0x9a, 32).ToArray(),
+                    Withdrawal_credentials = Enumerable.Repeat((byte)0xbc, 32).ToArray(),
+                    Signature = Enumerable.Repeat((byte)0xde, 96).ToArray()
+                },
+                Proof = Enumerable.Repeat(Enumerable.Repeat((byte)0x01, 32).ToArray(), 32).ToList()
+            };
+            
             BeaconBlock beaconBlock = new BeaconBlock()
             {
                 Slot = 1,
+                Parent_root = "0x1212121212121212121212121212121212121212121212121212121212121212",
+                State_root = "0x3434343434343434343434343434343434343434343434343434343434343434",
+                Signature = "0x0000000000000000000000000000000000000000000000000000000000000000",
+                Body = new BeaconBlockBody()
+                {
+                    Randao_reveal = Enumerable.Repeat((byte) 0x42, 96).ToArray(),
+                    Eth1_data = new Eth1_data()
+                    {
+                        Block_hash = Enumerable.Repeat((byte) 0x56, 32).ToArray(),
+                        Deposit_count = 1,
+                        Deposit_root = Enumerable.Repeat((byte) 0x78, 32).ToArray()
+                    },
+                    Graffiti = new byte[32],
+                    Attester_slashings = new List<Attester_slashings>(),
+                    Proposer_slashings = new List<Proposer_slashings>(),
+                    Attestations = new List<Attestations>(),
+                    Deposits = new List<Deposits>(),
+                    Voluntary_exits = new List<Voluntary_exits>()
+                }
             };
             
             beaconNodeOApiClient
@@ -124,6 +156,7 @@ namespace Nethermind.HonestValidator.Test
             // Assert
             List<ICall> clientReceived = beaconNodeOApiClient.ReceivedCalls().ToList();
             clientReceived.Count(x => x.GetMethodInfo().Name == nameof(beaconNodeOApiClient.BlockAsync)).ShouldBe(1);
+            // TODO: Check signed block received
         }
     }
 }
