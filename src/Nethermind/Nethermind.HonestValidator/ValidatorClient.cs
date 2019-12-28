@@ -116,7 +116,7 @@ namespace Nethermind.HonestValidator
             // Retry if not successful; need to queue this up to send immediately if connection issue. (or broadcast?)
 
             BlsPublicKey? blsPublicKey = _validatorState.GetProposalDutyForSlot(slot);
-            if (blsPublicKey != null)
+            if (!(blsPublicKey is null))
             {
                 BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
                 

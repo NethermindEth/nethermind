@@ -46,18 +46,25 @@ Note: With QuickStart validator count 64, validators index 20, with public key 0
 
 ### Test the Honest Validator
 
-Using the quick start clock, you want to synchronise the clock offset of the node and validator.
+Using the quick start clock, you want to synchronise the clock offset of the node and validator. The following will set genesis to occur at the next full minute. 
 
-The following will set genesis to occur at the next full minute. First run the node in one shell:
-
-```
-$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset
-```
-
-Then run the validator host in a separate shell (which connects to the node):
+First, build both the required hosts:
 
 ```
-$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
+dotnet build src/Nethermind/Nethermind.BeaconNode.Host
+dotnet build src/Nethermind/Nethermind.HonestValidator.Host
+```
+
+Then run the node in one shell:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset
+```
+
+And the validator host in a separate shell (which connects to the node):
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
 ```
 
 Note that from Epoch 2, the beacon node will throw errors, as it has not received any blocks to advance the epoch.

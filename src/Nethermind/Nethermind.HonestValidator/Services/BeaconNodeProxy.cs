@@ -102,16 +102,16 @@ namespace Nethermind.HonestValidator.Services
 
         public async Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken)
         {
-            Response2 result = null;
+            Response2? result = null;
             await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
             {
                 result = await oapiClient.ForkAsync(innerCancellationToken).ConfigureAwait(false);
             }, cancellationToken).ConfigureAwait(false);
 
             Fork fork = new Fork(
-                new ForkVersion(result.Fork.Previous_version),
-                new ForkVersion(result.Fork.Current_version), 
-                new Epoch((ulong) result.Fork.Epoch)
+                new ForkVersion(result!.Fork.Previous_version),
+                new ForkVersion(result!.Fork.Current_version), 
+                new Epoch((ulong) result!.Fork.Epoch)
             );
 
             return fork;
@@ -146,34 +146,35 @@ namespace Nethermind.HonestValidator.Services
             ulong slotValue = (ulong) slot;
             byte[] randaoRevealBytes = randaoReveal.Bytes;
             
-            BeaconNode.OApiClient.BeaconBlock result = null;
+            BeaconNode.OApiClient.BeaconBlock? result = null;
             await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
             {
                 result = await oapiClient.BlockAsync(slotValue, randaoRevealBytes, innerCancellationToken).ConfigureAwait(false);
             }, cancellationToken).ConfigureAwait(false);
 
+            BeaconNode.OApiClient.BeaconBlock oapiBeaconBlock = result!;
             BeaconBlock beaconBlock = new BeaconBlock(
-                new Slot((ulong) result.Slot),
-                new Hash32(Bytes.FromHexString(result.Parent_root)),
-                new Hash32(Bytes.FromHexString(result.State_root)),
+                new Slot((ulong) oapiBeaconBlock.Slot),
+                new Hash32(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
+                new Hash32(Bytes.FromHexString(oapiBeaconBlock.State_root)),
                 new BeaconBlockBody(
-                    new BlsSignature(result.Body.Randao_reveal),
+                    new BlsSignature(oapiBeaconBlock.Body.Randao_reveal),
                     new Eth1Data(
-                        new Hash32(result.Body.Eth1_data.Deposit_root),
-                        (ulong) result.Body.Eth1_data.Deposit_count,
-                        new Hash32(result.Body.Eth1_data.Block_hash)
+                        new Hash32(oapiBeaconBlock.Body.Eth1_data.Deposit_root),
+                        (ulong) oapiBeaconBlock.Body.Eth1_data.Deposit_count,
+                        new Hash32(oapiBeaconBlock.Body.Eth1_data.Block_hash)
                     ),
-                    new Bytes32(result.Body.Graffiti),
-                    result.Body.Proposer_slashings.Select(x => new ProposerSlashing(
+                    new Bytes32(oapiBeaconBlock.Body.Graffiti),
+                    oapiBeaconBlock.Body.Proposer_slashings.Select(x => new ProposerSlashing(
                         new ValidatorIndex((ulong) x.Proposer_index),
                         MapBeaconBlockHeader(x.Header_1),
                         MapBeaconBlockHeader(x.Header_2)
                     )),
-                    result.Body.Attester_slashings.Select(x => new AttesterSlashing(
+                    oapiBeaconBlock.Body.Attester_slashings.Select(x => new AttesterSlashing(
                         MapIndexedAttestation(x.Attestation_1),
                         MapIndexedAttestation(x.Attestation_2)
                     )),
-                    result.Body.Attestations.Select(x =>
+                    oapiBeaconBlock.Body.Attestations.Select(x =>
                         new BeaconNode.Containers.Attestation(
                             new BitArray(x.Aggregation_bits),
                             MapAttestationData(x.Data),
@@ -181,7 +182,7 @@ namespace Nethermind.HonestValidator.Services
                             new BlsSignature(x.Signature)
                         )
                     ),
-                    result.Body.Deposits.Select(x =>
+                    oapiBeaconBlock.Body.Deposits.Select(x =>
                         new BeaconNode.Containers.Deposit(
                             x.Proof.Select(y => new Hash32(y)),
                             new BeaconNode.Containers.DepositData(
@@ -192,7 +193,7 @@ namespace Nethermind.HonestValidator.Services
                             )
                         )
                     ),
-                    result.Body.Voluntary_exits.Select(x =>
+                    oapiBeaconBlock.Body.Voluntary_exits.Select(x =>
                         new VoluntaryExit(
                             new Epoch((ulong) x.Epoch),
                             new ValidatorIndex((ulong) x.Validator_index),
