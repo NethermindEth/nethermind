@@ -1,7 +1,8 @@
 FROM mcr.microsoft.com/dotnet/core/sdk:3.1 AS build
 
-RUN git clone --branch fix/PR_auto_create https://github.com/NethermindEth/nethermind.git nethermind/ && \
-    cd nethermind/ && \
+COPY . nethermind/
+
+RUN cd nethermind/ && \
     git submodule update --init src/Dirichlet src/rocksdb-sharp && \
     dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
     git describe --all --long > out/git-hash
