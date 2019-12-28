@@ -16,18 +16,21 @@
 
 using System;
 using System.Text.Json;
-using Nethermind.Core2;
+using System.Text.Json.Serialization;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers.Json
 {
-    public static class Utf8JsonWriterExtensions
+    public class JsonConverterByteArrayPrefixedHex : JsonConverter<byte[]>
     {
-        public static void WritePrefixedHexStringValue(this Utf8JsonWriter writer, ReadOnlySpan<byte> bytes)
+        public override byte[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            // TODO: Not sure why ToHexString needs a (writeable) Span<>, rather than ReadOnlySpan.
-            // Also, should add faster version that writes directly to Writer (zero allocation).
-            string hex = Bytes.ToHexString(bytes.ToArray(), withZeroX: true);
-            writer.WriteStringValue(hex);
+            return reader.GetBytesFromPrefixedHex();
+        }
+
+        public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+        {
+            writer.WritePrefixedHexStringValue(value);
         }
     }
 }

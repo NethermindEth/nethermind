@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
@@ -24,6 +25,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode;
+using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.OApiClient;
 using Nethermind.BeaconNode.Services;
@@ -43,6 +45,14 @@ namespace Nethermind.HonestValidator.Test
     [TestClass]
     public class ValidatorClientTest
     {
+        private TestContext? _testContext;
+
+        public TestContext TestContext
+        {
+            get => _testContext!;
+            set => _testContext = value;
+        }
+
         [TestMethod]
         public async Task BasicSignBlock()
         {
@@ -104,19 +114,18 @@ namespace Nethermind.HonestValidator.Test
                 Data = new Data()
                 {
                     Amount = 1_000_000,
-                    Pubkey = Enumerable.Repeat((byte)0x9a, 32).ToArray(),
+                    Pubkey = Enumerable.Repeat((byte)0x9a, 48).ToArray(),
                     Withdrawal_credentials = Enumerable.Repeat((byte)0xbc, 32).ToArray(),
                     Signature = Enumerable.Repeat((byte)0xde, 96).ToArray()
                 },
                 Proof = Enumerable.Repeat(Enumerable.Repeat((byte)0x01, 32).ToArray(), 32).ToList()
             };
-            
             BeaconBlock beaconBlock = new BeaconBlock()
             {
                 Slot = 1,
                 Parent_root = "0x1212121212121212121212121212121212121212121212121212121212121212",
                 State_root = "0x3434343434343434343434343434343434343434343434343434343434343434",
-                Signature = "0x0000000000000000000000000000000000000000000000000000000000000000",
+                Signature =  "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
                 Body = new BeaconBlockBody()
                 {
                     Randao_reveal = Enumerable.Repeat((byte) 0x42, 96).ToArray(),
@@ -130,15 +139,20 @@ namespace Nethermind.HonestValidator.Test
                     Attester_slashings = new List<Attester_slashings>(),
                     Proposer_slashings = new List<Proposer_slashings>(),
                     Attestations = new List<Attestations>(),
-                    Deposits = new List<Deposits>(),
+                    Deposits = new List<Deposits>() { deposit },
                     Voluntary_exits = new List<Voluntary_exits>()
                 }
             };
-            
             beaconNodeOApiClient
                 .BlockAsync(Arg.Any<ulong>(), Arg.Any<byte[]>(), Arg.Any<CancellationToken>())
                 .Returns(beaconBlock);
             
+            JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            options.AddCortexContainerConverters();
+            options.Converters.Add(new JsonConverterByteArrayPrefixedHex());
+            string originalBlock = System.Text.Json.JsonSerializer.Serialize(beaconBlock, options);
+            TestContext.WriteLine("Original block: {0}", originalBlock);
+
             IBeaconNodeOApiClientFactory beaconNodeOApiClientFactory = Substitute.For<IBeaconNodeOApiClientFactory>();
             beaconNodeOApiClientFactory.CreateClient(Arg.Any<string>()).Returns(beaconNodeOApiClient);
             testServiceCollection.AddSingleton<IBeaconNodeOApiClientFactory>(beaconNodeOApiClientFactory);
@@ -156,7 +170,16 @@ namespace Nethermind.HonestValidator.Test
             // Assert
             List<ICall> clientReceived = beaconNodeOApiClient.ReceivedCalls().ToList();
             clientReceived.Count(x => x.GetMethodInfo().Name == nameof(beaconNodeOApiClient.BlockAsync)).ShouldBe(1);
-            // TODO: Check signed block received
+
+            ICall publishCall =
+                clientReceived.SingleOrDefault(x => x.GetMethodInfo().Name == nameof(beaconNodeOApiClient.Block2Async));
+            publishCall.ShouldNotBeNull();
+            BeaconBlock publishedBlock = publishCall.GetArguments()[0] as BeaconBlock;
+            // NOTE: This value not checked separately, just from running the test.
+            publishedBlock.Signature.ShouldBe("0xa7c6f0b6097bea4b60639c08d0f1f193f2e1dbfbddf6e4a54d2ecee89835db929ef272fb7c7a4078dddf14ec36cf3bab02eaa5ba1c2e9cb1c2de28450e4d6eb6238281c39f3f6f8083315e374816260c54bfa7b0b2370ab12e692c938ed3b5e0");
+
+            string signedBlock = System.Text.Json.JsonSerializer.Serialize(publishedBlock, options);
+            TestContext.WriteLine("Signed block: {0}", signedBlock);
         }
     }
 }

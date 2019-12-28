@@ -153,27 +153,27 @@ namespace Nethermind.HonestValidator.Services
             }, cancellationToken).ConfigureAwait(false);
 
             BeaconBlock beaconBlock = new BeaconBlock(
-                new Slot((ulong)result.Slot),
+                new Slot((ulong) result.Slot),
                 new Hash32(Bytes.FromHexString(result.Parent_root)),
                 new Hash32(Bytes.FromHexString(result.State_root)),
                 new BeaconBlockBody(
-                    new BlsSignature(result.Body.Randao_reveal), 
+                    new BlsSignature(result.Body.Randao_reveal),
                     new Eth1Data(
                         new Hash32(result.Body.Eth1_data.Deposit_root),
-                        (ulong)result.Body.Eth1_data.Deposit_count,
+                        (ulong) result.Body.Eth1_data.Deposit_count,
                         new Hash32(result.Body.Eth1_data.Block_hash)
-                        ), 
-                    new Bytes32(result.Body.Graffiti), 
+                    ),
+                    new Bytes32(result.Body.Graffiti),
                     result.Body.Proposer_slashings.Select(x => new ProposerSlashing(
-                        new ValidatorIndex((ulong)x.Proposer_index),
+                        new ValidatorIndex((ulong) x.Proposer_index),
                         MapBeaconBlockHeader(x.Header_1),
                         MapBeaconBlockHeader(x.Header_2)
-                        )),
+                    )),
                     result.Body.Attester_slashings.Select(x => new AttesterSlashing(
                         MapIndexedAttestation(x.Attestation_1),
                         MapIndexedAttestation(x.Attestation_2)
                     )),
-                    result.Body.Attestations.Select(x => 
+                    result.Body.Attestations.Select(x =>
                         new BeaconNode.Containers.Attestation(
                             new BitArray(x.Aggregation_bits),
                             MapAttestationData(x.Data),
@@ -181,18 +181,97 @@ namespace Nethermind.HonestValidator.Services
                             new BlsSignature(x.Signature)
                         )
                     ),
-                    new Deposit[0],
-                    new VoluntaryExit[0]),
+                    result.Body.Deposits.Select(x =>
+                        new BeaconNode.Containers.Deposit(
+                            x.Proof.Select(y => new Hash32(y)),
+                            new BeaconNode.Containers.DepositData(
+                                new BlsPublicKey(x.Data.Pubkey),
+                                new Hash32(x.Data.Withdrawal_credentials),
+                                new Gwei((ulong) x.Data.Amount),
+                                new BlsSignature(x.Data.Signature)
+                            )
+                        )
+                    ),
+                    result.Body.Voluntary_exits.Select(x =>
+                        new VoluntaryExit(
+                            new Epoch((ulong) x.Epoch),
+                            new ValidatorIndex((ulong) x.Validator_index),
+                            new BlsSignature((x.Signature))
+                        )
+                    )
+                ),
                 BlsSignature.Empty
             );
 
             return beaconBlock;
         }
 
-        public Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken)
-        {
-            //throw new NotImplementedException();
-            return Task.FromResult(true);
+        public async Task<bool> PublishBlockAsync(BeaconBlock block, CancellationToken cancellationToken)
+        { 
+            BeaconNode.OApiClient.BeaconBlock data = new BeaconNode.OApiClient.BeaconBlock()
+            {
+                // TODO: Should be ulong, not int
+                Slot = (int)(ulong)block.Slot,
+                Parent_root = block.ParentRoot.ToString(),
+                State_root = block.StateRoot.ToString(),
+                Signature = block.Signature.ToString(),
+                Body = new BeaconNode.OApiClient.BeaconBlockBody()
+                {
+                    Randao_reveal = block.Body!.RandaoReveal.AsSpan().ToArray(),
+                    Eth1_data = new Eth1_data()
+                    {
+                        Block_hash = block.Body.Eth1Data.BlockHash.Bytes,
+                        Deposit_count = (int)block.Body.Eth1Data.DepositCount,
+                        Deposit_root = block.Body.Eth1Data.DepositRoot.Bytes 
+                    },
+                    Graffiti = block.Body.Graffiti.AsSpan().ToArray(),
+                    Proposer_slashings = block.Body.ProposerSlashings.Select(x => new Proposer_slashings()
+                    {
+                        Header_1 = MapBeaconBlockHeader(x.Header1),
+                        Header_2 = MapBeaconBlockHeader(x.Header2),
+                        Proposer_index = (int)x.ProposerIndex
+                    }).ToList(),
+                    Attester_slashings = block.Body.AttesterSlashings.Select(x => new Attester_slashings()
+                    {
+                        Attestation_1 = MapIndexedAttestation(x.Attestation1),
+                        Attestation_2 = MapIndexedAttestation(x.Attestation2)
+                    }).ToList(),
+                    Attestations = block.Body.Attestations.Select(x => new Attestations()
+                    {
+                        Signature = x.Signature.Bytes,
+                        Aggregation_bits = x.AggregationBits.Cast<byte>().ToArray(),
+                        Custody_bits = x.CustodyBits.Cast<byte>().ToArray(),
+                        Data = MapAttestationData(x.Data)
+                    }).ToList(),
+                    Voluntary_exits = block.Body.VoluntaryExits.Select(x => new Voluntary_exits()
+                    {
+                        Validator_index = (int)x.ValidatorIndex,
+                        Epoch = x.Epoch,
+                        Signature = x.Signature.Bytes
+                    }).ToList(),
+                    Deposits = block.Body.Deposits.Select((x, index) => new Deposits()
+                    {
+                        Index = index,
+                        Proof = x.Proof.Select(y => y.Bytes).ToList(),
+                        Data = new Data()
+                        {
+                            Amount = (int)(ulong)x.Data.Amount,
+                            Pubkey = x.Data.PublicKey.Bytes,
+                            Signature = x.Data.Signature.Bytes,
+                            Withdrawal_credentials = x.Data.WithdrawalCredentials.Bytes
+                        }
+                    }).ToList(),
+                }
+            };
+            
+            await ClientOperationWithRetry(async (oapiClient, innerCancellationToken) =>
+            {
+                await oapiClient.Block2Async(data, innerCancellationToken).ConfigureAwait(false);
+            }, cancellationToken).ConfigureAwait(false);
+
+            // TODO: Parse 202 result separate from 200 result
+            
+            return true;
         }
 
         private async Task ClientOperationWithRetry(Func<IBeaconNodeOApiClient, CancellationToken, Task> clientOperation, CancellationToken cancellationToken)
@@ -305,6 +384,43 @@ namespace Nethermind.HonestValidator.Services
                 new BlsSignature(Bytes.FromHexString(value.Signature))
             );
         }
-        
+     
+        private static BeaconNode.OApiClient.IndexedAttestation MapIndexedAttestation(BeaconNode.Containers.IndexedAttestation indexedAttestation)
+        {
+            return new BeaconNode.OApiClient.IndexedAttestation()
+            {
+                Signature = indexedAttestation.Signature.ToString(),
+                Custody_bit_0_indices = indexedAttestation.CustodyBit0Indices.Select(y => (int)y).ToList(),
+                Custody_bit_1_indices = indexedAttestation.CustodyBit1Indices.Select(y => (int)y).ToList(),
+                Data = MapAttestationData(indexedAttestation.Data)
+            };
+        }
+
+        private static BeaconNode.OApiClient.AttestationData MapAttestationData(BeaconNode.Containers.AttestationData attestationData)
+        {
+            // NOTE: This mapping isn't right, spec changes (sharding)
+            return new BeaconNode.OApiClient.AttestationData()
+            {
+                Beacon_block_root = attestationData.BeaconBlockRoot.Bytes,
+                Crosslink = new BeaconNode.OApiClient.Crosslink(),
+                Source_epoch = attestationData.Source.Epoch,
+                Source_root = attestationData.Source.Root.Bytes,
+                Target_epoch =  attestationData.Target.Epoch,
+                Target_root = attestationData.Target.Root.Bytes
+            };
+        }
+
+        private static BeaconNode.OApiClient.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.Containers.BeaconBlockHeader value)
+        {
+            return new BeaconNode.OApiClient.BeaconBlockHeader()
+            {
+                Body_root = value.BodyRoot.ToString(),
+                Parent_root = value.ParentRoot.ToString(),
+                Slot = (int)(ulong)value.Slot,
+                State_root = value.StateRoot.ToString(),
+                Signature = value.Signature.ToString()
+            };
+        }
+
     }
 }

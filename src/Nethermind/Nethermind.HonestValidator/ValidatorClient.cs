@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -23,6 +24,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -146,6 +148,10 @@ namespace Nethermind.HonestValidator
             var domainType = _signatureDomainOptions.CurrentValue.BeaconProposer;
             var proposerDomain = ComputeDomain(domainType, forkVersion);
             
+            JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+            options.AddCortexContainerConverters();
+            string blockJson = System.Text.Json.JsonSerializer.Serialize(block, options);
+
             var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
 
             var signature = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, signingRoot, proposerDomain);

@@ -31,5 +31,6 @@ namespace Nethermind.BeaconNode.OApiClient
             CancellationToken cancellationToken);
         Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal, CancellationToken cancellationToken);
         Task<ulong> TimeAsync(CancellationToken cancellationToken);
+        Task Block2Async(BeaconBlock body, CancellationToken cancellationToken);
     }
 }

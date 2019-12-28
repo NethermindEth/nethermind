@@ -23,11 +23,16 @@ namespace Nethermind.BeaconNode.Containers
     public class DepositData
     {
         public DepositData(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Gwei amount)
+            : this(publicKey, withdrawalCredentials, amount, BlsSignature.Empty)
+        {
+        }
+
+        public DepositData(BlsPublicKey publicKey, Hash32 withdrawalCredentials, Gwei amount, BlsSignature signature)
         {
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;
             Amount = amount;
-            Signature = BlsSignature.Empty;
+            Signature = signature;
         }
 
         public Gwei Amount { get; }

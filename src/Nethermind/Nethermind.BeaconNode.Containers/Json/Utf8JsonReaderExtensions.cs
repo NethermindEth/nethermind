@@ -16,6 +16,7 @@
 
 using System;
 using System.Text.Json;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Containers.Json
 {
@@ -23,14 +24,9 @@ namespace Nethermind.BeaconNode.Containers.Json
     {
         public static byte[] GetBytesFromPrefixedHex(this Utf8JsonReader reader)
         {
-            var hex = reader.GetString();
-            var bytes = new byte[(hex.Length - 2) / 2];
-            var hexIndex = 2;
-            for (var byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
-            {
-                bytes[byteIndex] = Convert.ToByte(hex.Substring(hexIndex, 2), 16);
-                hexIndex += 2;
-            }
+            // TODO: Rather than get the string first, convert directly from reader to bytes (minimal allocation)
+            string hex = reader.GetString();
+            byte[] bytes = Bytes.FromHexString(hex);
             return bytes;
         }
     }
