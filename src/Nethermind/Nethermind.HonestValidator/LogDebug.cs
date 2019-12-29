@@ -16,6 +16,8 @@
 
 using System;
 using Microsoft.Extensions.Logging;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.HonestValidator
 {
@@ -44,5 +46,13 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<string, int>(LogLevel.Debug,
                 new EventId(6454, nameof(AttemptingConnectionToNode)),
                 "Attempting connection to node '{NodeUrl}' (index {NodeUrlIndex}).");
+        public static readonly Action<ILogger, Slot, string, string, Exception?> RequestingBlock =
+            LoggerMessage.Define<Slot, string, string>(LogLevel.Debug,
+                new EventId(6454, nameof(RequestingBlock)),
+                "Requesting new block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}.");
+        public static readonly Action<ILogger, Slot, string, string, Nethermind.BeaconNode.Containers.BeaconBlock, string, Exception?> PublishingSignedBlock =
+            LoggerMessage.Define<Slot, string, string, Nethermind.BeaconNode.Containers.BeaconBlock, string>(LogLevel.Debug,
+                new EventId(6454, nameof(PublishingSignedBlock)),
+                "Publishing signed block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and signature {Signature}.");
     }
 }

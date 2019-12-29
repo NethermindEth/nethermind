@@ -118,11 +118,17 @@ namespace Nethermind.HonestValidator
             BlsPublicKey? blsPublicKey = _validatorState.GetProposalDutyForSlot(slot);
             if (!(blsPublicKey is null))
             {
-                BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
+                if (_logger.IsInfo()) Log.ProposalDutyFor(_logger, slot, blsPublicKey, null);
                 
+                BlsSignature randaoReveal = GetEpochSignature(slot, blsPublicKey);
+
+                if (_logger.IsDebug()) LogDebug.RequestingBlock(_logger, slot, blsPublicKey.ToShortString(), randaoReveal.ToString().Substring(0, 10), null);
+
                 BeaconBlock unsignedBlock = await _beaconNodeApi.NewBlockAsync(slot, randaoReveal, cancellationToken).ConfigureAwait(false);
 
                 BeaconBlock signedBlock = SignBlock(unsignedBlock, blsPublicKey);
+
+                if (_logger.IsDebug()) LogDebug.PublishingSignedBlock(_logger, slot, blsPublicKey.ToShortString(), randaoReveal.ToString().Substring(0, 10), signedBlock, signedBlock.Signature.ToString().Substring(0, 10), null);
 
                 bool nodeAccepted = await _beaconNodeApi.PublishBlockAsync(signedBlock, cancellationToken).ConfigureAwait(false);
                 

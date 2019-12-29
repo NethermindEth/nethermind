@@ -169,7 +169,9 @@ namespace Nethermind.BeaconNode
             }
             
             // Graffiti
-            Bytes32 graffiti = new Bytes32();
+            var graffitiBytes = new byte[32];
+            graffitiBytes[0] = 0x4e; // 'N'
+            Bytes32 graffiti = new Bytes32(graffitiBytes);
 
             // Build block
             BeaconBlockBody body = new BeaconBlockBody(randaoReveal, eth1Vote, graffiti, proposerSlashings,
@@ -181,6 +183,11 @@ namespace Nethermind.BeaconNode
             block.SetStateRoot(stateRoot);
 
             // Unsigned block
+
+            if (_logger.IsDebug())
+                LogDebug.NewBlockProduced(_logger, block.Slot, block.Body.RandaoReveal.ToString().Substring(0, 10),
+                    block, block.Body.Graffiti.ToString().Substring(0, 10), null);
+            
             return block;
         }
 

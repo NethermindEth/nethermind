@@ -23,8 +23,10 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Nethermind.Logging.Microsoft;
 using BeaconBlock = Nethermind.BeaconNode.OApi.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.OApi.BeaconBlockBody;
 using IndexedAttestation = Nethermind.BeaconNode.OApi.IndexedAttestation;
@@ -48,9 +50,19 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         public Task Block2Async(BeaconBlock beacon_block)
         {
+            // TODO: Randao reveal and graffiti are not JSON serializing correctly (exist on client but blank on server)
+            
+            if (_logger.IsInfo())
+                Log.BlockPublished(_logger, beacon_block.Slot,
+                    Bytes.ToHexString(beacon_block.Body.Randao_reveal),
+                    beacon_block.Parent_root, beacon_block.State_root,
+                    Bytes.ToHexString(beacon_block.Body.Graffiti),
+                    beacon_block.Signature, null);
+            
             // TODO: Map and call facade.
             
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
+            return Task.CompletedTask;
         }
 
         Task<Attestation> IBeaconNodeOApiController.AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
@@ -69,6 +81,8 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Success response</returns>
         public async Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal)
         {
+            if (_logger.IsInfo()) Log.NewBlockRequested(_logger, slot, Bytes.ToHexString(randao_reveal), null);
+            
             Containers.BeaconBlock data =
                 await _beaconNode.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal), CancellationToken.None);
             
@@ -124,6 +138,7 @@ namespace Nethermind.BeaconNode.OApi
                             Withdrawal_credentials = x.Data.WithdrawalCredentials.Bytes
                         }
                     }).ToList(),
+                    Transfers = new List<Transfers>()
                 }
             };
             return result;
