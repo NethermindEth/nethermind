@@ -28,7 +28,8 @@ or --JsonRpc.Enabled true --JsonRpc.Host 0.0.0.0::
     docker run -it --network host nethermind/nethermind --JsonRpc.Enabled true --Network.DiscoveryPort 30312 --Network.P2PPort 30312
 
 
-To switch the network, set NETHERMIND_CONFIG variable (default value is mainnet).
+To switch the network, set NETHERMIND_CONFIG variable (default value is mainnet)
+or use --config flag e.g. --config goerli
 
 Available configurations
 
