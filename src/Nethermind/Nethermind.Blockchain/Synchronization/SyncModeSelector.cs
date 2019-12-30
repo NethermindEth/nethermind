@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
                 ChangeSyncMode(newSyncMode);
             }
-            else
+            else if (Current != SyncMode.Full)
             {
                 if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
             }
