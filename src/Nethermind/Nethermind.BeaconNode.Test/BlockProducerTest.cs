@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Configuration;
@@ -39,7 +40,7 @@ namespace Nethermind.BeaconNode.Tests
                     ["QuickStart:GenesisTime"] = $"{genesisTime}"
                 })
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
@@ -47,7 +48,7 @@ namespace Nethermind.BeaconNode.Tests
             await quickStart.InitializeNodeAsync();
             
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
-            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync();
+            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync(CancellationToken.None);
             fork.CurrentVersion.ShouldBe(new ForkVersion());
 
             // Act

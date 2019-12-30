@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
@@ -41,30 +42,21 @@ namespace Nethermind.BeaconNode.OApi
             _logger = logger;
             _beaconNode = beaconNode;
         }
-
-        /// <summary>Publish a signed attestation.</summary>
-        /// <param name="attestation">An `IndexedAttestation` structure, as originally provided by the beacon node, but now with the signature field completed.</param>
-        /// <returns>The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
-        public Task Attestation2Async(IndexedAttestation attestation)
-        {
-            throw new NotImplementedException();
-        }
-
-        /// <summary>Produce an attestation, without signature.</summary>
-        /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
-        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `IndexedAttestation`.</param>
-        /// <param name="slot">The slot for which the attestation should be proposed.</param>
-        /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
-        /// <returns>Success response</returns>
-        public Task<IndexedAttestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
-        {
-            throw new NotImplementedException();
-        }
-
+        
         /// <summary>Publish a signed block.</summary>
         /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         public Task Block2Async(BeaconBlock beacon_block)
+        {
+            throw new NotImplementedException();
+        }
+
+        Task<Attestation> IBeaconNodeOApiController.AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task Attestation2Async(Attestation body)
         {
             throw new NotImplementedException();
         }
@@ -76,7 +68,7 @@ namespace Nethermind.BeaconNode.OApi
         public async Task<BeaconBlock> BlockAsync(ulong slot, byte[] randao_reveal)
         {
             Containers.BeaconBlock data =
-                await _beaconNode.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal));
+                await _beaconNode.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal), CancellationToken.None);
             
             OApi.BeaconBlock result = new OApi.BeaconBlock()
             {
@@ -172,6 +164,11 @@ namespace Nethermind.BeaconNode.OApi
             };
         }
 
+        public Task<Validator> ValidatorAsync(byte[] pubkey)
+        {
+            throw new NotImplementedException();
+        }
+
         /// <summary>Get validator duties for the requested validators.</summary>
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
@@ -179,7 +176,7 @@ namespace Nethermind.BeaconNode.OApi
         {
             IEnumerable<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x));
             Epoch targetEpoch = epoch.HasValue ? new Epoch((ulong)epoch) : Epoch.None;
-            var duties = _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch);
+            var duties = _beaconNode.ValidatorDutiesAsync(publicKeys, targetEpoch, CancellationToken.None);
             List<ValidatorDuty> result = new List<ValidatorDuty>();
             await foreach(var duty in duties)
             {
@@ -197,7 +194,7 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Request successful</returns>
         public async Task<Response2> ForkAsync()
         {
-            Core2.Containers.Fork fork = await _beaconNode.GetNodeForkAsync();
+            Core2.Containers.Fork fork = await _beaconNode.GetNodeForkAsync(CancellationToken.None);
             Response2 response2 = new Response2();
             // TODO: Not sure what chain ID should be.
             response2.Chain_id = 0;
@@ -213,7 +210,7 @@ namespace Nethermind.BeaconNode.OApi
         public async Task<Response> SyncingAsync()
         {
             Response response = new Response();
-            response.Is_syncing = await _beaconNode.GetIsSyncingAsync();
+            response.Is_syncing = await _beaconNode.GetIsSyncingAsync(CancellationToken.None);
             response.Sync_status = new SyncingStatus();
             //response.Sync_status.Current_slot =
             return response;
@@ -223,14 +220,14 @@ namespace Nethermind.BeaconNode.OApi
         /// <returns>Request successful</returns>
         public async Task<ulong> TimeAsync()
         {
-            return await _beaconNode.GetGenesisTimeAsync();
+            return await _beaconNode.GetGenesisTimeAsync(CancellationToken.None);
         }
 
         /// <summary>Get version string of the running beacon node.</summary>
         /// <returns>Request successful</returns>
         public async Task<string> VersionAsync()
         {
-            return await _beaconNode.GetNodeVersionAsync();
+            return await _beaconNode.GetNodeVersionAsync(CancellationToken.None);
         }
     }
 }

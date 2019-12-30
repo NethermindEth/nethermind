@@ -16,6 +16,7 @@
 
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -38,14 +39,7 @@ namespace Nethermind.BeaconNode.Host
             {
                 app.UseDeveloperExceptionPage();
             }
-            //else
-            //{
-            //    app.UseExceptionHandler("/Error");
-            //}
 
-            app.UseHttpsRedirection();
-
-            //app.UseStaticFiles();
             app.UseRouting();
 
             app.UseAuthorization();
@@ -58,6 +52,9 @@ namespace Nethermind.BeaconNode.Host
 
         public void ConfigureServices(IServiceCollection services)
         {
+            services.Configure<KestrelServerOptions>(
+                Configuration.GetSection("Kestrel"));
+            
             services.AddBeaconNodeOApi();
         }
     }
