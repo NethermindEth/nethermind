@@ -3,7 +3,7 @@ RUN git clone https://github.com/NethermindEth/nethermind.git nethermind/ && \
     cd nethermind/ && \
     git submodule update --init src/Dirichlet src/rocksdb-sharp && \
     dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
-    git describe --tags > out/git-hash
+    git describe --all --long > out/git-hash
 
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.0-stretch-arm64v8
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0.0
