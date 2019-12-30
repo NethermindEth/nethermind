@@ -47,7 +47,7 @@ For example::
 
 It's also possible to modify each configuration property via environment variable, using a simple convention::
     
-    NETHERMIND_{MODULE}_{PROPERTY}
+    NETHERMIND_{MODULE}CONFIG_{PROPERTY}
 
 For example::
 
