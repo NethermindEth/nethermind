@@ -422,6 +422,5 @@ namespace Nethermind.HonestValidator.Services
                 Signature = value.Signature.ToString()
             };
         }
-
     }
 }
