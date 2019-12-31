@@ -642,7 +642,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
