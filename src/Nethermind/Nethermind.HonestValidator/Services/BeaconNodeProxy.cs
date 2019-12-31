@@ -211,8 +211,7 @@ namespace Nethermind.HonestValidator.Services
         { 
             BeaconNode.OApiClient.BeaconBlock data = new BeaconNode.OApiClient.BeaconBlock()
             {
-                // TODO: Should be ulong, not int
-                Slot = (int)(ulong)block.Slot,
+                Slot = block.Slot,
                 Parent_root = block.ParentRoot.ToString(),
                 State_root = block.StateRoot.ToString(),
                 Signature = block.Signature.ToString(),
@@ -222,7 +221,7 @@ namespace Nethermind.HonestValidator.Services
                     Eth1_data = new Eth1_data()
                     {
                         Block_hash = block.Body.Eth1Data.BlockHash.Bytes,
-                        Deposit_count = (int)block.Body.Eth1Data.DepositCount,
+                        Deposit_count = block.Body.Eth1Data.DepositCount,
                         Deposit_root = block.Body.Eth1Data.DepositRoot.Bytes 
                     },
                     Graffiti = block.Body.Graffiti.AsSpan().ToArray(),
@@ -230,7 +229,7 @@ namespace Nethermind.HonestValidator.Services
                     {
                         Header_1 = MapBeaconBlockHeader(x.Header1),
                         Header_2 = MapBeaconBlockHeader(x.Header2),
-                        Proposer_index = (int)x.ProposerIndex
+                        Proposer_index = x.ProposerIndex
                     }).ToList(),
                     Attester_slashings = block.Body.AttesterSlashings.Select(x => new Attester_slashings()
                     {
@@ -246,17 +245,17 @@ namespace Nethermind.HonestValidator.Services
                     }).ToList(),
                     Voluntary_exits = block.Body.VoluntaryExits.Select(x => new Voluntary_exits()
                     {
-                        Validator_index = (int)x.ValidatorIndex,
+                        Validator_index = x.ValidatorIndex,
                         Epoch = x.Epoch,
                         Signature = x.Signature.Bytes
                     }).ToList(),
                     Deposits = block.Body.Deposits.Select((x, index) => new Deposits()
                     {
-                        Index = index,
+                        Index = (ulong)index,
                         Proof = x.Proof.Select(y => y.Bytes).ToList(),
                         Data = new Data()
                         {
-                            Amount = (int)(ulong)x.Data.Amount,
+                            Amount = x.Data.Amount,
                             Pubkey = x.Data.PublicKey.Bytes,
                             Signature = x.Data.Signature.Bytes,
                             Withdrawal_credentials = x.Data.WithdrawalCredentials.Bytes
@@ -417,7 +416,7 @@ namespace Nethermind.HonestValidator.Services
             {
                 Body_root = value.BodyRoot.ToString(),
                 Parent_root = value.ParentRoot.ToString(),
-                Slot = (int)(ulong)value.Slot,
+                Slot = value.Slot,
                 State_root = value.StateRoot.ToString(),
                 Signature = value.Signature.ToString()
             };

@@ -114,7 +114,7 @@ namespace Nethermind.BeaconNode.OApi
             // TODO: return 200 or 202 based on whether accepted locally or not
         }
 
-        Task<Attestation> IBeaconNodeOApiController.AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
+        Task<Attestation> IBeaconNodeOApiController.AttestationAsync(byte[] validator_pubkey, int poc_bit, ulong slot, ulong shard)
         {
             throw new NotImplementedException();
         }
@@ -147,7 +147,7 @@ namespace Nethermind.BeaconNode.OApi
                     Eth1_data = new Eth1_data()
                     {
                         Block_hash = data.Body.Eth1Data.BlockHash.Bytes,
-                        Deposit_count = (int)data.Body.Eth1Data.DepositCount,
+                        Deposit_count = data.Body.Eth1Data.DepositCount,
                         Deposit_root = data.Body.Eth1Data.DepositRoot.Bytes 
                     },
                     Graffiti = data.Body.Graffiti.AsSpan().ToArray(),
@@ -155,7 +155,7 @@ namespace Nethermind.BeaconNode.OApi
                     {
                         Header_1 = MapBeaconBlockHeader(x.Header1),
                         Header_2 = MapBeaconBlockHeader(x.Header2),
-                        Proposer_index = (int)x.ProposerIndex
+                        Proposer_index = x.ProposerIndex
                     }).ToList(),
                     Attester_slashings = data.Body.AttesterSlashings.Select(x => new Attester_slashings()
                     {
@@ -171,17 +171,17 @@ namespace Nethermind.BeaconNode.OApi
                     }).ToList(),
                     Voluntary_exits = data.Body.VoluntaryExits.Select(x => new Voluntary_exits()
                     {
-                        Validator_index = (int)x.ValidatorIndex,
+                        Validator_index = x.ValidatorIndex,
                         Epoch = x.Epoch,
                         Signature = x.Signature.Bytes
                     }).ToList(),
                     Deposits = data.Body.Deposits.Select((x, index) => new Deposits()
                     {
-                        Index = index,
+                        Index = (ulong)index,
                         Proof = x.Proof.Select(y => y.Bytes).ToList(),
                         Data = new Data()
                         {
-                            Amount = (int)(ulong)x.Data.Amount,
+                            Amount = x.Data.Amount,
                             Pubkey = x.Data.PublicKey.Bytes,
                             Signature = x.Data.Signature.Bytes,
                             Withdrawal_credentials = x.Data.WithdrawalCredentials.Bytes
@@ -201,7 +201,7 @@ namespace Nethermind.BeaconNode.OApi
         /// <summary>Get validator duties for the requested validators.</summary>
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
-        public async Task<ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, int? epoch)
+        public async Task<ICollection<ValidatorDuty>> DutiesAsync(System.Collections.Generic.IEnumerable<byte[]> validator_pubkeys, ulong? epoch)
         {
             IEnumerable<BlsPublicKey> publicKeys = validator_pubkeys.Select(x => new BlsPublicKey(x));
             Epoch targetEpoch = epoch.HasValue ? new Epoch((ulong)epoch) : Epoch.None;
@@ -211,9 +211,9 @@ namespace Nethermind.BeaconNode.OApi
             {
                 ValidatorDuty validatorDuty = new ValidatorDuty();
                 validatorDuty.Validator_pubkey = duty.ValidatorPublicKey.Bytes;
-                validatorDuty.Attestation_slot = (int)duty.AttestationSlot;
-                validatorDuty.Attestation_shard = (int)(ulong)duty.AttestationShard;
-                validatorDuty.Block_proposal_slot = duty.BlockProposalSlot == Slot.None ? null : (int?)duty.BlockProposalSlot;
+                validatorDuty.Attestation_slot = duty.AttestationSlot;
+                validatorDuty.Attestation_shard = (ulong)duty.AttestationShard;
+                validatorDuty.Block_proposal_slot = duty.BlockProposalSlot == Slot.None ? null : (ulong?)duty.BlockProposalSlot;
                 result.Add(validatorDuty);
             }
             return result;

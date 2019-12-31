@@ -142,6 +142,10 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define(LogLevel.Warning,
                 new EventId(4404, nameof(ApiErrorNewBlock)),
                 "Exception result from API Block (get).");
+        public static readonly Action<ILogger, Slot, Slot, Hash32, Slot, Exception?> NoBlocksSinceEth1VotingPeriodDefaulting =
+            LoggerMessage.Define<Slot, Slot, Hash32, Slot>(LogLevel.Warning,
+                new EventId(4405, nameof(NoBlocksSinceEth1VotingPeriodDefaulting)),
+                "New block for state slot {StateSlot} is slot {Eth1VotingPeriodSlot} of the Eth1 voting period, but parent root {ParentRoot} is before slot {CheckSlot}, so using the parent's follow distance for start of Eth1 voting period.");
 
         public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
             LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
