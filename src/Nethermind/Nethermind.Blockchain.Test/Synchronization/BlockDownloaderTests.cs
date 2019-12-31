@@ -672,7 +672,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return true;
             }
 
-            public bool ValidateSeal(BlockHeader header)
+            public bool ValidateSeal(BlockHeader header, bool force)
             {
                 Thread.Sleep(1000);
                 return true;

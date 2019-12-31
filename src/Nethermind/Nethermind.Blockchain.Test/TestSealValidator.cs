@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Test
             return _alwaysSameResultForParams ?? _suggestedValidationResults.Dequeue();
         }
 
-        public bool ValidateSeal(BlockHeader header)
+        public bool ValidateSeal(BlockHeader header, bool force)
         {
             return _alwaysSameResultForSeal ?? _processedValidationResults.Dequeue();
         }

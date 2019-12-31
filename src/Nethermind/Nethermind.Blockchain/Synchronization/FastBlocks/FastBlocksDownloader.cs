@@ -209,7 +209,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     bool isHashValid = _blockValidator.ValidateHash(header);
-                    bool isSealValid = _sealValidator.ValidateSeal(header);
+                    bool isSealValid = _sealValidator.ValidateSeal(header, false);
                     if (!(isHashValid && isSealValid))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");

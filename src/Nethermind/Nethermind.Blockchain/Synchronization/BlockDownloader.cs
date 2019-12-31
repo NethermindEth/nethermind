@@ -399,7 +399,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 try
                 {
-                    if (!_sealValidator.ValidateSeal(headers[i]))
+                    if (!_sealValidator.ValidateSeal(headers[i], false))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                         throw new EthSynchronizationException("Peer sent a block with an invalid seal");

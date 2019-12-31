@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
 
-            if (!_sealValidator.ValidateSeal(block.Header)) throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+            if (!_sealValidator.ValidateSeal(block.Header, true)) throw new EthSynchronizationException("Peer sent a block with an invalid seal");
 
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {

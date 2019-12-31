@@ -49,7 +49,7 @@ namespace Nethermind.Core
                 return value;
             }
 
-            return default(TValue);
+            return default;
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]

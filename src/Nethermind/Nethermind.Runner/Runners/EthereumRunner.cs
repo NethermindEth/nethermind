@@ -721,7 +721,7 @@ namespace Nethermind.Runner.Runners
                         _sealer = NullSealEngine.Instance;
                     }
 
-                    _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
+                    _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, _cryptoRandom, new Ethash(_logManager));
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
