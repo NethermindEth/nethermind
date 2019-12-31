@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             var stats = new NodeStatsManager(new StatsConfig(), LimboLogs.Instance);
             _pool = new EthSyncPeerPool(_blockTree, stats, quickConfig, 25, LimboLogs.Instance);
             _synchronizer = new Synchronizer(MainNetSpecProvider.Instance, _blockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _pool, quickConfig, Substitute.For<INodeDataDownloader>(), Substitute.For<INodeStatsManager>(), LimboLogs.Instance);
-            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, sealValidator, _pool, _synchronizer, quickConfig, LimboLogs.Instance);
+            _syncServer = new SyncServer(_stateDb, _codeDb, _blockTree, _receiptStorage, blockValidator, sealValidator, _pool, _synchronizer, quickConfig, LimboLogs.Instance);
         }
 
         [TearDown]

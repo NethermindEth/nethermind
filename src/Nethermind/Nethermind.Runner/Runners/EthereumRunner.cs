@@ -789,6 +789,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.CodeDb,
                 _blockTree,
                 _receiptStorage,
+                _blockValidator,
                 _sealValidator,
                 _syncPeerPool,
                 _synchronizer,
