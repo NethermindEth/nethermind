@@ -188,6 +188,8 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void WriteSyncConfigReport()
         {
+            if (!_logger.IsTrace) return;
+            
             bool isFastSync = _syncConfig.FastSync;
             bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
@@ -216,7 +218,7 @@ namespace Nethermind.Blockchain.Synchronization
                 builder.Append($"Sync config - full archive sync");
             }
             
-            _logger.Debug(builder.ToString());
+            if(_logger.IsTrace) _logger.Trace(builder.ToString());
         }
 
         private void WriteWaitForProcessorReport()
