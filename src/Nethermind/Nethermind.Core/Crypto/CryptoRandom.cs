@@ -34,7 +34,7 @@ namespace Nethermind.Core.Crypto
 
         [RequiresSecurityReview("There should be no unsecured method in a class that suggests security")]
         public int NextInt(int max)
-        {   
+        {
             return _random.Next(max);
         }
     }

@@ -61,9 +61,9 @@ namespace Nethermind.Evm
 
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
-            block.GasUsed += (long) tx.GasLimit;
+            block.GasUsed += tx.GasLimit;
             Address recipient = tx.To ?? Address.OfContract(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
-            if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, (long) tx.GasLimit, Bytes.Empty, "invalid");
+            if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Bytes.Empty, "invalid");
         }
 
         private EthereumEcdsa _ecdsa;
@@ -80,7 +80,7 @@ namespace Nethermind.Evm
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
             UInt256 gasPrice = transaction.GasPrice;
-            long gasLimit = (long) transaction.GasLimit;
+            long gasLimit = transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Bytes.Empty;
 

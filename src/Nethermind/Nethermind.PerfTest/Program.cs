@@ -273,7 +273,7 @@ namespace Nethermind.PerfTest
             if (specProvider.ChainId == RopstenSpecProvider.Instance.ChainId)
             {
                 var difficultyCalculator = new DifficultyCalculator(specProvider);
-                sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new Ethash(_logManager));
+                sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(), new Ethash(_logManager));
             }
             else if (chainSpec.SealEngineType == SealEngineType.Clique)
             {

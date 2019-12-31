@@ -147,7 +147,7 @@ namespace Nethermind.AuRa.Test
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 
-            return _sealValidator.ValidateSeal(block);
+            return _sealValidator.ValidateSeal(block, false);
         }
     }
 }

@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _headerDb;
         private readonly IDb _blockInfoDb;
 
-        private ConcurrentDictionary<long, HashSet<Keccak>> _invalidBlocks = new ConcurrentDictionary<long, HashSet<Keccak>>();
+        private LruCache<long, HashSet<Keccak>> _invalidBlocks = new LruCache<long, HashSet<Keccak>>(128);
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
         private readonly ILogger _logger;
@@ -507,7 +507,8 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
-            if (_invalidBlocks.ContainsKey(header.Number) && _invalidBlocks[header.Number].Contains(header.Hash))
+            HashSet<Keccak> invalidBlocksWithThisNumber = _invalidBlocks.Get(header.Number);
+            if (invalidBlocksWithThisNumber?.Contains(header.Hash) ?? false)
             {
                 return AddBlockResult.InvalidBlock;
             }
@@ -791,15 +792,10 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsDebug) _logger.Debug($"Deleting invalid block {invalidBlock.ToString(Block.Format.FullHashAndNumber)}");
 
-            _invalidBlocks.AddOrUpdate(
-                invalidBlock.Number,
-                number => new HashSet<Keccak> {invalidBlock.Hash},
-                (number, set) =>
-                {
-                    set.Add(invalidBlock.Hash);
-                    return set;
-                });
-
+            var invalidBlocksWithThisNumber = _invalidBlocks.Get(invalidBlock.Number) ?? new HashSet<Keccak>();
+            invalidBlocksWithThisNumber.Add(invalidBlock.Hash);
+            _invalidBlocks.Set(invalidBlock.Number, invalidBlocksWithThisNumber);
+                
             BestSuggestedHeader = Head;
             BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
 

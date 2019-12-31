@@ -46,7 +46,7 @@ namespace Nethermind.Core.Test
         public void Setup()
         {
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));
-            _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new Ethash(NullLogManager.Instance));
+            _ethash = new EthashSealValidator(NullLogManager.Instance, calculator, new CryptoRandom(), new Ethash(NullLogManager.Instance));
             _testLogger = new TestLogger();
             var blockInfoDb = new MemDb();
             BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<ITxPool>(), NullLogManager.Instance);
