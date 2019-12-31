@@ -138,14 +138,22 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_synchronizer.SyncMode == SyncMode.Full)
                 {
-                    if (!_blockValidator.ValidateSuggestedBlock(block))
+                    AddBlockResult result = AddBlockResult.UnknownParent;
+                    bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
+                    if (isKnownParent)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block");
-                        throw new EthSynchronizationException("Peer sent an invalid block");
+
+                        if (!_blockValidator.ValidateSuggestedBlock(block))
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block");
+                            throw new EthSynchronizationException("Peer sent an invalid block");
+                        }
+
+                        result = _blockTree.SuggestBlock(block, true);
+                        if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     }
+
                     
-                    AddBlockResult result = _blockTree.SuggestBlock(block);
-                    if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
                 }
             }
@@ -235,7 +243,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         public Keccak FindHash(long number)
         {
-            return _blockTree.FindHash(number);
+            try
+            {
+                Keccak hash = _blockTree.FindHash(number);
+                return hash;
+            }
+            catch (Exception e)
+            {
+                _logger.Warn("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
+            }
+
+            return null;
         }
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]

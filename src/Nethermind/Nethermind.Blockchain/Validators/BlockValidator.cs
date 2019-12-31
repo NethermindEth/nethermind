@@ -77,19 +77,19 @@ namespace Nethermind.Blockchain.Validators
 
             if (releaseSpec.MaximumUncleCount < block.Ommers.Length)
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Ommers.Length} (MAX: {releaseSpec.MaximumUncleCount})");
+                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - uncle count is {block.Ommers.Length} (MAX: {releaseSpec.MaximumUncleCount})");
                 return false;
             }
 
             if (block.Header.OmmersHash != block.CalculateOmmersHash())
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
+                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles hash");
                 return false;
             }
             
             if (!_ommersValidator.Validate(block.Header, block.Ommers))
             {
-                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles");
+                _logger.Debug($"Invalid block ({block.ToString(Block.Format.FullHashAndNumber)}) - invalid uncles");
                 return false;
             }
             

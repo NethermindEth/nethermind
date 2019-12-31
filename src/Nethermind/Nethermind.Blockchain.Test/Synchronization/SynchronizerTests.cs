@@ -642,7 +642,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -660,7 +660,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .BestSuggested.BlockHasNumber(1).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
