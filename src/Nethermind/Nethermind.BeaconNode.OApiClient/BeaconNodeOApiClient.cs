@@ -666,7 +666,7 @@ namespace Nethermind.BeaconNode.OApiClient
         /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
         /// <returns>Success response</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
+        public System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, ulong slot, ulong shard)
         {
             return AttestationAsync(validator_pubkey, poc_bit, slot, shard, System.Threading.CancellationToken.None);
         }
@@ -679,7 +679,7 @@ namespace Nethermind.BeaconNode.OApiClient
         /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
         /// <returns>Success response</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public async System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard, System.Threading.CancellationToken cancellationToken)
+        public async System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, ulong slot, ulong shard, System.Threading.CancellationToken cancellationToken)
         {
             if (validator_pubkey == null)
                 throw new System.ArgumentNullException("validator_pubkey");
@@ -1078,7 +1078,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Balance at stake in Gwei.</summary>
         [Newtonsoft.Json.JsonProperty("effective_balance", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Effective_balance { get; set; }
+        public ulong Effective_balance { get; set; }
     
         /// <summary>Was validator slashed (not longer active).</summary>
         [Newtonsoft.Json.JsonProperty("slashed", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1086,19 +1086,19 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>When criteria for activation were met.</summary>
         [Newtonsoft.Json.JsonProperty("activation_eligibility_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Activation_eligibility_epoch { get; set; }
+        public ulong Activation_eligibility_epoch { get; set; }
     
         /// <summary>Epoch when validator activated. 'FAR_FUTURE_EPOCH' if not activated</summary>
         [Newtonsoft.Json.JsonProperty("activation_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Activation_epoch { get; set; }
+        public ulong Activation_epoch { get; set; }
     
         /// <summary>Epoch when validator exited. 'FAR_FUTURE_EPOCH' if not exited.</summary>
         [Newtonsoft.Json.JsonProperty("exit_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Exit_epoch { get; set; }
+        public ulong Exit_epoch { get; set; }
     
         /// <summary>When validator can withdraw or transfer funds. 'FAR_FUTURE_EPOCH' if not defined</summary>
         [Newtonsoft.Json.JsonProperty("withdrawable_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Withdrawable_epoch { get; set; }
+        public ulong Withdrawable_epoch { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     
@@ -1117,15 +1117,15 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         /// <summary>The slot at which syncing started (will only be reset after the sync reached its head)</summary>
         [Newtonsoft.Json.JsonProperty("starting_slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Starting_slot { get; set; }
+        public ulong Starting_slot { get; set; }
     
         /// <summary>The most recent slot sync'd by the beacon node.</summary>
         [Newtonsoft.Json.JsonProperty("current_slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Current_slot { get; set; }
+        public ulong Current_slot { get; set; }
     
         /// <summary>Globally, the estimated most recent slot number, or current target slot number.</summary>
         [Newtonsoft.Json.JsonProperty("highest_slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Highest_slot { get; set; }
+        public ulong Highest_slot { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     
@@ -1184,7 +1184,7 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         /// <summary>The slot to which this block corresponds.</summary>
         [Newtonsoft.Json.JsonProperty("slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Slot { get; set; }
+        public ulong Slot { get; set; }
     
         /// <summary>The signing merkle root of the parent `BeaconBlock`.</summary>
         [Newtonsoft.Json.JsonProperty("parent_root", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1276,7 +1276,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Fork epoch number.</summary>
         [Newtonsoft.Json.JsonProperty("epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Epoch { get; set; }
+        public ulong Epoch { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     
@@ -1367,7 +1367,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Source epoch from FFG vote.</summary>
         [Newtonsoft.Json.JsonProperty("source_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Source_epoch { get; set; }
+        public ulong Source_epoch { get; set; }
     
         /// <summary>Source root from FFG vote.</summary>
         [Newtonsoft.Json.JsonProperty("source_root", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1376,7 +1376,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Target epoch from FFG vote.</summary>
         [Newtonsoft.Json.JsonProperty("target_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Target_epoch { get; set; }
+        public ulong Target_epoch { get; set; }
     
         /// <summary>Target root from FFG vote.</summary>
         [Newtonsoft.Json.JsonProperty("target_root", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1453,7 +1453,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Total number of deposits.</summary>
         [Newtonsoft.Json.JsonProperty("deposit_count", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Deposit_count { get; set; }
+        public ulong Deposit_count { get; set; }
     
         /// <summary>Ethereum 1.x block hash.</summary>
         [Newtonsoft.Json.JsonProperty("block_hash", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1478,7 +1478,7 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         /// <summary>The index of the proposer to be slashed.</summary>
         [Newtonsoft.Json.JsonProperty("proposer_index", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Proposer_index { get; set; }
+        public ulong Proposer_index { get; set; }
     
         [Newtonsoft.Json.JsonProperty("header_1", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public BeaconBlockHeader Header_1 { get; set; }
@@ -1566,7 +1566,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Index in the deposit tree.</summary>
         [Newtonsoft.Json.JsonProperty("index", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Index { get; set; }
+        public ulong Index { get; set; }
     
         /// <summary>The [`DepositData`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#depositdata) object from the Eth2.0 spec.</summary>
         [Newtonsoft.Json.JsonProperty("data", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1590,11 +1590,11 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         /// <summary>Minimum epoch for processing exit.</summary>
         [Newtonsoft.Json.JsonProperty("epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Epoch { get; set; }
+        public ulong Epoch { get; set; }
     
         /// <summary>Index of the exiting validator.</summary>
         [Newtonsoft.Json.JsonProperty("validator_index", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Validator_index { get; set; }
+        public ulong Validator_index { get; set; }
     
         /// <summary>Validator signature.</summary>
         [Newtonsoft.Json.JsonProperty("signature", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1619,23 +1619,23 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         /// <summary>Sender index.</summary>
         [Newtonsoft.Json.JsonProperty("sender", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Sender { get; set; }
+        public ulong Sender { get; set; }
     
         /// <summary>Recipient index.</summary>
         [Newtonsoft.Json.JsonProperty("recipient", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Recipient { get; set; }
+        public ulong Recipient { get; set; }
     
         /// <summary>Amount in Gwei.</summary>
         [Newtonsoft.Json.JsonProperty("amount", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Amount { get; set; }
+        public ulong Amount { get; set; }
     
         /// <summary>Fee in Gwei for block producer.</summary>
         [Newtonsoft.Json.JsonProperty("fee", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Fee { get; set; }
+        public ulong Fee { get; set; }
     
         /// <summary>Inclusion slot.</summary>
         [Newtonsoft.Json.JsonProperty("slot", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Slot { get; set; }
+        public ulong Slot { get; set; }
     
         /// <summary>Sender withdrawal public key.</summary>
         [Newtonsoft.Json.JsonProperty("pubkey", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1664,15 +1664,15 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         /// <summary>The shard number.</summary>
         [Newtonsoft.Json.JsonProperty("shard", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Shard { get; set; }
+        public ulong Shard { get; set; }
     
         /// <summary>The first epoch which the crosslinking data references.</summary>
         [Newtonsoft.Json.JsonProperty("start_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Start_epoch { get; set; }
+        public ulong Start_epoch { get; set; }
     
         /// <summary>The 'end' epoch referred to by the crosslinking data; no data in this Crosslink should refer to the `end_epoch` since it is not included in the crosslinking data interval.</summary>
         [Newtonsoft.Json.JsonProperty("end_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int End_epoch { get; set; }
+        public ulong End_epoch { get; set; }
     
         /// <summary>Root of the previous crosslink.</summary>
         [Newtonsoft.Json.JsonProperty("parent_root", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
@@ -1710,7 +1710,7 @@ namespace Nethermind.BeaconNode.OApiClient
     
         /// <summary>Amount in Gwei.</summary>
         [Newtonsoft.Json.JsonProperty("amount", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
-        public int Amount { get; set; }
+        public ulong Amount { get; set; }
     
         /// <summary>Container self-signature.</summary>
         [Newtonsoft.Json.JsonProperty("signature", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]

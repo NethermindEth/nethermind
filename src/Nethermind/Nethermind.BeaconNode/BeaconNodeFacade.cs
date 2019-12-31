@@ -73,7 +73,7 @@ namespace Nethermind.BeaconNode
         {
             try
             {
-                BeaconState state = await GetHeadStateAsync();
+                BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
                 return state.GenesisTime;
             }
             catch (Exception ex)
@@ -92,7 +92,7 @@ namespace Nethermind.BeaconNode
         {
             try
             {
-                BeaconState state = await GetHeadStateAsync();
+                BeaconState state = await GetHeadStateAsync().ConfigureAwait(false);
                 return state.Fork;
             }
             catch (Exception ex)
@@ -112,7 +112,8 @@ namespace Nethermind.BeaconNode
                 try
                 {
                     validatorDuty =
-                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch);
+                        await _validatorAssignments.GetValidatorDutyAsync(validatorPublicKey, epoch)
+                            .ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {
@@ -127,7 +128,7 @@ namespace Nethermind.BeaconNode
         {
             try
             {
-                return await _blockProducer.NewBlockAsync(slot, randaoReveal);
+                return await _blockProducer.NewBlockAsync(slot, randaoReveal).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -135,7 +136,24 @@ namespace Nethermind.BeaconNode
                 throw;
             }
         }
-        
+
+        public async Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken)
+        {
+            if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
+            {
+                throw new Exception("Beacon chain is currently syncing or waiting for genesis.");
+            }
+
+            IStore store = retrievedStore!;
+            
+            await _forkChoice.OnBlockAsync(store, signedBlock).ConfigureAwait(false);
+
+            // TODO: validate as per honest validator spec and return true/false
+            // TODO: Peer broadcast (even if not valid)
+
+            return true;
+        }
+
         private async Task<BeaconState> GetHeadStateAsync()
         {
             if (!_storeProvider.TryGetStore(out IStore? retrievedStore))
@@ -144,8 +162,8 @@ namespace Nethermind.BeaconNode
             }
 
             IStore store = retrievedStore!;
-            Hash32 head = await _forkChoice.GetHeadAsync(store);
-            BeaconState state = await store.GetBlockStateAsync(head);
+            Hash32 head = await _forkChoice.GetHeadAsync(store).ConfigureAwait(false);
+            BeaconState state = await store.GetBlockStateAsync(head).ConfigureAwait(false);
 
             return state;
         }

@@ -31,6 +31,30 @@ namespace Nethermind.BeaconNode
 {
     internal static class LogDebug
     { 
+        // Event IDs: ABxx (based on Theory of Reply Codes)
+        
+        // Event ID Type:
+        // 6bxx debug - general
+        // 7bxx debug - test
+        // 1bxx info - preliminary
+        // 2bxx info - completion
+        // 3bxx info - intermediate
+        // 8bxx info - finalization
+        // 4bxx warning
+        // 5bxx error
+        // 9bxx critical
+        
+        // Event ID Category:
+        // a0xx core service, worker, configuration, peering
+        // a1xx beacon chain, incl. state transition
+        // a2xx fork choice
+        // a3xx deposit contract, Eth1, genesis
+        // a4xx honest validator, API
+        // a5xx custody game
+        // a6xx shard data chains
+        // a9xx miscellaneous / other
+        
+        
         // 6bxx debug
 
         // 60xx debug - worker
@@ -189,7 +213,12 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Slot, BlsSignature, Slot>(LogLevel.Debug,
                 new EventId(6400, nameof(NewBlockSkippedSlots)),
                 "Request for new block for slot {Slot} for randao {RandaoReveal} is skipping from parent slot {ParentSlot}.");
-        
+
+        public static readonly Action<ILogger, ulong, string, BeaconBlock, string, Exception?> NewBlockProduced
+            = LoggerMessage.Define<ulong, string, BeaconBlock, string>(LogLevel.Debug,
+                new EventId(6401, nameof(NewBlockProduced)),
+                "New block produced for slot {Slot} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and graffiti {Graffiti}");
+
         // 7bxx - mock
 
         public static readonly Action<ILogger, ulong, Exception?> QuickStartStoreCreated =

@@ -15,6 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Reflection;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Nethermind.BeaconNode.OApi
@@ -27,19 +31,15 @@ namespace Nethermind.BeaconNode.OApi
             services.AddScoped<IBeaconNodeOApiController, BeaconNodeOApiAdapter>();
             // Register controllers
             var apiAssembly = typeof(BeaconNodeServiceCollectionExtensions).GetTypeInfo().Assembly;
-            //services.AddControllers()
-            //    .AddJsonOptions(options => { });
-            services.AddMvc(setup =>
-            {
-                setup.ModelBinderProviders.Insert(0, new PrefixedHexByteArrayModelBinderProvider());
-            })
-                //.AddNewtonsoftJson(setup =>
-                //{
-                //    setup.SerializerSettings.Converters.Add(new ByteToPrefixedHexNewtonsoftJsonConverter());
-                //})
-                .AddJsonOptions(options =>
+            services.AddControllers()
+                .AddMvcOptions(mvcOptions =>
                 {
-                    options.JsonSerializerOptions.Converters.Add(new PrefixedHexByteArrayJsonConverter());
+                    mvcOptions.ModelBinderProviders.Insert(0, new PrefixedHexByteArrayModelBinderProvider());
+                })
+                .AddNewtonsoftJson(newtonsoftOptions =>
+                {
+                    newtonsoftOptions.SerializerSettings.Converters.Add(
+                        new PrefixedHexByteArrayNewtonsoftJsonConverter());
                 })
                 .AddApplicationPart(apiAssembly);
         }

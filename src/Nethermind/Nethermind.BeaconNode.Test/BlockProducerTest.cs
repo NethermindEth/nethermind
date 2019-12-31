@@ -73,7 +73,7 @@ namespace Nethermind.BeaconNode.Tests
             Hash32 expectedEth1DataDepositRoot = new Hash32(Bytes.FromHexString("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"));
             newBlock.Body.Eth1Data.DepositRoot.ShouldBe(expectedEth1DataDepositRoot);
             
-            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0x9c7d3e5180f95175691511fd56f8a610299f0b5a682b6fe178230493d74f6d13"));
+            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0xba7192e86b77d51c5e7835ece9c572f01b7fc720300acac8d98b4db42eb94321"));
             newBlock.StateRoot.ShouldBe(expectedStateRoot);
             
             newBlock.Signature.ShouldBe(new BlsSignature(new byte[96])); // signature should be empty

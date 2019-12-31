@@ -16,6 +16,7 @@
 
 using System;
 using System.Text.Json;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Containers.Json
 {
@@ -23,17 +24,9 @@ namespace Nethermind.BeaconNode.Containers.Json
     {
         public static void WritePrefixedHexStringValue(this Utf8JsonWriter writer, ReadOnlySpan<byte> bytes)
         {
-            var hex = new char[bytes.Length * 2 + 2];
-            hex[0] = '0';
-            hex[1] = 'x';
-            var hexIndex = 2;
-            for (var byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
-            {
-                var s = bytes[byteIndex].ToString("x2");
-                hex[hexIndex] = s[0];
-                hex[hexIndex + 1] = s[1];
-                hexIndex += 2;
-            }
+            // TODO: Not sure why ToHexString needs a (writeable) Span<>, rather than ReadOnlySpan.
+            // Also, should add faster version that writes directly to Writer (zero allocation).
+            string hex = Bytes.ToHexString(bytes.ToArray(), withZeroX: true);
             writer.WriteStringValue(hex);
         }
     }

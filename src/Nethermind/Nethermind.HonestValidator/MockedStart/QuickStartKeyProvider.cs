@@ -16,9 +16,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Options;
+using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Crypto;
@@ -27,12 +30,14 @@ using Nethermind.HonestValidator.Services;
 
 namespace Nethermind.HonestValidator.MockedStart
 {
-    public class QuickStartKeyProvider : IValidatorKeyProvider
+    public class QuickStartKeyProvider : IValidatorKeyProvider, IDisposable
     {
         private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
         
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
         private readonly ICryptographyService _cryptographyService;
+        
+        private readonly IDictionary<BlsPublicKey, BLS> _publicKeyToBls = new Dictionary<BlsPublicKey, BLS>();
 
         public QuickStartKeyProvider(
             IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
@@ -55,13 +60,35 @@ namespace Nethermind.HonestValidator.MockedStart
                 {
                     PrivateKey = privateKey
                 };
-                using BLS bls = BLS.Create(blsParameters);
+                BLS bls = BLS.Create(blsParameters);
                 byte[] publicKeyBytes = new byte[BlsPublicKey.Length];
                 bls.TryExportBLSPublicKey(publicKeyBytes, out int publicKeyBytesWritten);
                 BlsPublicKey publicKey = new BlsPublicKey(publicKeyBytes);
 
+                // Cache the BLS class, for easy signing
+                _publicKeyToBls[publicKey] = bls;
+                
                 yield return publicKey;
             }
+        }
+
+        public BlsSignature SignHashWithDomain(BlsPublicKey blsPublicKey, Hash32 hash, Domain domain)
+        {
+            if (_publicKeyToBls.Count == 0)
+            {
+                var keyCount = GetPublicKeys().Count();
+            }
+            
+            BLS bls = _publicKeyToBls[blsPublicKey];
+            
+            Span<byte> destination = stackalloc byte[BlsSignature.SszLength];
+            bool success = bls.TrySignHash(hash.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
+            if (!success || bytesWritten != BlsSignature.SszLength)
+            {
+                throw new Exception($"Failure signing hash {hash}, domain {domain} for public key {blsPublicKey}.");
+            }
+            BlsSignature blsSignature = new BlsSignature(destination.ToArray());
+            return blsSignature;
         }
         
         // FIXME: This is duplicate of beacon node, need to clean up
@@ -96,5 +123,23 @@ namespace Nethermind.HonestValidator.MockedStart
             return privateKeySpan.ToArray();
         }
 
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                var blsToDispose = _publicKeyToBls.Values;
+                _publicKeyToBls.Clear();
+                foreach (var bls in blsToDispose)
+                {
+                    bls.Dispose();
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            //GC.SuppressFinalize(this);
+        }
     }
 }
