@@ -2,8 +2,8 @@ name: Update Documentation
 
 on:
   push:
-    tags:
-    - '*'
+    branches:    
+      - master
 
 jobs:
   neth-docs:
