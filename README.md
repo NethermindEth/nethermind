@@ -53,7 +53,7 @@ sudo apt install libzstd1
 ### Build
 
 ```
-git clone https://github.com/tkstanczak/nethermind --recursive
+git clone https://github.com/NethermindEth/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build Nethermind.sln -c Release
 cd Nethermind.Runner

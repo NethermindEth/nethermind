@@ -27,7 +27,7 @@ jobs:
       env:
         GIT_COMMIT: $(git log -1 --format=%h)
       with:
-        name: nethermindeth/nethermind:arm64
+        name: nethermind/nethermind:arm64
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         build-args: GIT_COMMIT
