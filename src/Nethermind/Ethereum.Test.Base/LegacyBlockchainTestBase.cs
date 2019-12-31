@@ -60,7 +60,7 @@ namespace Ethereum.Test.Base
         static LegacyBlockchainTestBase()
         {
             DifficultyCalculator = new DifficultyCalculatorWrapper();
-            Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
+            Sealer = new EthashSealValidator(_logManager, DifficultyCalculator, new CryptoRandom(), new Ethash(_logManager)); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
         }
 
         [SetUp]
