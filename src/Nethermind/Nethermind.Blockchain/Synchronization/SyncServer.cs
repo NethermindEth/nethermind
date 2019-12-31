@@ -120,7 +120,12 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
 
-            if (!_sealValidator.ValidateSeal(block.Header, true)) throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+            if (!_sealValidator.ValidateSeal(block.Header, true))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");
+                throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+            }
+            
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
                 if (_logger.IsInfo)
@@ -133,7 +138,12 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_synchronizer.SyncMode == SyncMode.Full)
                 {
-                    if (!_blockValidator.ValidateSuggestedBlock(block)) throw new EthSynchronizationException("Peer sent an invalid block");
+                    if (!_blockValidator.ValidateSuggestedBlock(block))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block");
+                        throw new EthSynchronizationException("Peer sent an invalid block");
+                    }
+                    
                     AddBlockResult result = _blockTree.SuggestBlock(block);
                     if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
                     if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
