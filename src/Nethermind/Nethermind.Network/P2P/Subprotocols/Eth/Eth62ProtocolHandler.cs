@@ -476,7 +476,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private void Handle(NewBlockMessage newBlockMessage)
         {
             newBlockMessage.Block.TotalDifficulty = newBlockMessage.TotalDifficulty;
-            SyncServer.AddNewBlock(newBlockMessage.Block, Session.Node);
+
+            try
+            {
+                SyncServer.AddNewBlock(newBlockMessage.Block, Session.Node);
+            }
+            catch (Exception e)
+            {
+                Logger.Error($"Adding new block {newBlockMessage.Block?.ToString(Block.Format.Short)} from {Node:c} failed", e);
+                throw;
+            }
         }
 
         protected class Request<TMsg, TResult>
