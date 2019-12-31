@@ -422,6 +422,10 @@ NetworkConfig
 SyncConfig
 ^^^^^^^^^^
 
+ BeamSyncEnabled
+   Beam Sync - only for DEBUG / DEV - not working in prod yet.
+   default value: false
+
  DownloadBodiesInFastSync
    If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.
    default value: true
@@ -635,6 +639,7 @@ Sample configuration (mainnet)
               "TrustedPeers" : null
         },
         "Sync": {
+              "BeamSyncEnabled" : false,
               "DownloadBodiesInFastSync" : true,
               "DownloadReceiptsInFastSync" : true,
               "FastBlocks" : false,

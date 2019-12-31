@@ -34,22 +34,22 @@ namespace Nethermind.BeaconNode
         // 6bxx debug
 
         // 60xx debug - worker
-        public static readonly Action<ILogger, Exception?> WorkerStarting =
+        public static readonly Action<ILogger, Exception?> BeaconNodeWorkerStarting =
             LoggerMessage.Define(LogLevel.Debug,
-                new EventId(6000, nameof(WorkerStarting)),
-                "Worker starting.");
-        public static readonly Action<ILogger, Exception?> WorkerStarted =
+                new EventId(6000, nameof(BeaconNodeWorkerStarting)),
+                "Beacon node worker starting.");
+        public static readonly Action<ILogger, Exception?> BeaconNodeWorkerStarted =
             LoggerMessage.Define(LogLevel.Debug,
-                new EventId(6001, nameof(WorkerStarted)),
-                "Worker started.");
-        public static readonly Action<ILogger, Exception?> WorkerStopping =
+                new EventId(6001, nameof(BeaconNodeWorkerStarted)),
+                "Beacon node worker started.");
+        public static readonly Action<ILogger, Exception?> BeaconNodeWorkerStopping =
             LoggerMessage.Define(LogLevel.Debug,
-                new EventId(6002, nameof(WorkerStopping)),
-                "Worker stopping.");
-        public static readonly Action<ILogger, int, Exception?> WorkerExecuteExiting =
+                new EventId(6002, nameof(BeaconNodeWorkerStopping)),
+                "Beacon node worker stopping.");
+        public static readonly Action<ILogger, int, Exception?> BeaconNodeWorkerExecuteExiting =
             LoggerMessage.Define<int>(LogLevel.Debug,
-                new EventId(6003, nameof(WorkerExecuteExiting)),
-                "Worker execute thread exiting [{ThreadId}].");
+                new EventId(6003, nameof(BeaconNodeWorkerExecuteExiting)),
+                "Beacon node worker execute thread exiting [{ThreadId}].");
         
         // 61xx debug - state transition
         public static readonly Action<ILogger, Deposit, BeaconState, Exception?> ProcessDeposit =

@@ -17,7 +17,6 @@
 using System;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Containers;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
@@ -53,10 +52,10 @@ namespace Nethermind.BeaconNode
         
         // 1bxx preliminary
 
-        public static readonly Action<ILogger, string, string, string, int, Exception?> WorkerExecuteStarted =
+        public static readonly Action<ILogger, string, string, string, int, Exception?> BeaconNodeWorkerExecuteStarted =
             LoggerMessage.Define<string, string, string, int>(LogLevel.Information,
-                new EventId(1000, nameof(WorkerExecuteStarted)),
-                "{ProductTokenVersion} started; {Environment} environment (config '{Config}') [{ThreadId}]");
+                new EventId(1000, nameof(BeaconNodeWorkerExecuteStarted)),
+                "Beacon Node {ProductTokenVersion} worker started; {Environment} environment (config '{Config}') [{ThreadId}]");
         
         public static readonly Action<ILogger, Hash32, ulong, int, Exception?> InitializeBeaconState =
             LoggerMessage.Define<Hash32, ulong, int>(LogLevel.Information,
@@ -65,10 +64,10 @@ namespace Nethermind.BeaconNode
 
         // 2bxx completion
         
-        public static readonly Action<ILogger, ulong, int, Exception?> WorkerStoreAvailableTickStarted =
-            LoggerMessage.Define<ulong, int>(LogLevel.Information,
+        public static readonly Action<ILogger, ulong, ulong, long, int, Exception?> WorkerStoreAvailableTickStarted =
+            LoggerMessage.Define<ulong, ulong, long, int>(LogLevel.Information,
                 new EventId(2000, nameof(WorkerStoreAvailableTickStarted)),
-                "Store available with genesis time {GenesisTime}, starting clock tick [{ThreadId}]");
+                "Store available with genesis time {GenesisTime}, at clock time {Time} (slot {SlotValue}), starting clock tick [{ThreadId}]");
         
         public static readonly Action<ILogger, Hash32, BeaconState, Hash32, BeaconBlock, Exception?> ValidatedStateTransition =
             LoggerMessage.Define<Hash32, BeaconState, Hash32, BeaconBlock>(LogLevel.Information,
@@ -94,6 +93,11 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Epoch, Slot, ulong>(LogLevel.Information,
                 new EventId(2203, nameof(OnTickNewEpoch)),
                 "Fork choice new epoch {Epoch} at slot {Slot} time {Time:n0}");
+
+        public static readonly Action<ILogger, long, Exception?> GenesisCountdown =
+            LoggerMessage.Define<long>(LogLevel.Information,
+                new EventId(2204, nameof(GenesisCountdown)),
+                "Countdown {Time:n0} seconds to expected genesis.");
 
         // 4bxx warning
 
@@ -143,6 +147,11 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,
                 new EventId(4900, nameof(MockedQuickStart)),
                 "Mocked quick start with genesis time {GenesisTime:n0} and {ValidatorCount} validators.");
+
+        public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
+            LoggerMessage.Define<long>(LogLevel.Warning,
+                new EventId(4901, nameof(QuickStartClockCreated)),
+                "Quick start clock created with offset {ClockOffset:n0}.");
         
         // 5bxx error
         

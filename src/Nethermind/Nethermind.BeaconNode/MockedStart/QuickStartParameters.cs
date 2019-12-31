@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
 
@@ -26,5 +27,8 @@ namespace Nethermind.BeaconNode.MockedStart
         public ulong GenesisTime { get; set; }
         public bool UseSystemClock { get; set; }
         public ulong ValidatorCount { get; set; }
+        public long ClockOffset { get; set; }
+        public ulong ValidatorStartIndex { get; set; }
+        public ulong NumberOfValidators { get; set; }
     }
 }

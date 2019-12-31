@@ -10,12 +10,12 @@ RUN strip librocksdb.so
 ##################################################
 FROM mcr.microsoft.com/dotnet/core/sdk:3.0.101-alpine3.10 AS build
 
+COPY . source/
 RUN echo 'http://dl-cdn.alpinelinux.org/alpine/v3.8/main' >> /etc/apk/repositories
 RUN apk upgrade && apk add git openssl-dev libssl1.0
-RUN git clone https://github.com/NethermindEth/nethermind source/
 RUN cd source/ && git submodule update --init src/Dirichlet src/rocksdb-sharp
 RUN dotnet publish /source/src/Nethermind/Nethermind.Runner --configuration Release --output /artifacts
-RUN git describe --tags > source/artifacts/git-hash
+RUN cd source/ && git describe --tags --long > git-hash
 
 ##################################################
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.0.1-alpine3.10
@@ -27,6 +27,7 @@ RUN apk upgrade && apk add gosu snappy-dev --repository http://dl-cdn.alpinelinu
     chmod +x /entrypoint.sh && \
     mkdir /data
 
+COPY --from=build --chown=nethermind:nethermind source/git-hash .
 COPY --from=build --chown=nethermind:nethermind /artifacts /nethermind
 COPY --from=rocksdb --chown=nethermind:nethermind /source/librocksdb.so /nethermind/librocksdb.so
 

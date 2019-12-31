@@ -39,6 +39,8 @@ namespace Nethermind.BeaconNode
             services.AddSingleton<BeaconStateMutator>();
             services.AddSingleton<ForkChoice>();
             services.AddSingleton<ClientVersion>();
+
+            services.AddHostedService<BeaconNodeWorker>();
             
             services.AddScoped<ValidatorAssignments>();
             services.AddScoped<BlockProducer>();

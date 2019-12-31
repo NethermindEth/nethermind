@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,7 +58,7 @@ namespace Nethermind.BeaconNode.Tests
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
             beaconNode.ShouldBeOfType(typeof(BeaconNodeFacade));
 
-            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync();
+            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync(CancellationToken.None);
 
             // Assert
             fork.Epoch.ShouldBe(Epoch.Zero);
@@ -97,7 +98,7 @@ namespace Nethermind.BeaconNode.Tests
 
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch))
+            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None))
             {
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
@@ -148,7 +149,7 @@ namespace Nethermind.BeaconNode.Tests
             
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch))
+            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None))
             {
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",
@@ -186,7 +187,7 @@ namespace Nethermind.BeaconNode.Tests
                     ["QuickStart:GenesisTime"] = $"{genesisTime}"
                 })
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
             
@@ -205,7 +206,7 @@ namespace Nethermind.BeaconNode.Tests
             
             int validatorDutyIndex = 0;
             List<ValidatorDuty> validatorDuties = new List<ValidatorDuty>();
-            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch))
+            await foreach (ValidatorDuty validatorDuty in beaconNode.ValidatorDutiesAsync(validatorPublicKeys, targetEpoch, CancellationToken.None))
             {
                 validatorDuties.Add(validatorDuty);
                 Console.WriteLine("Index [{0}], Epoch {1}, Validator {2}, : attestation slot {3}, shard {4}, proposal slot {5}",

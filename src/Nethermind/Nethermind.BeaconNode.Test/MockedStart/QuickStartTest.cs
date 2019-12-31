@@ -96,7 +96,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "1"})
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
@@ -121,7 +121,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "10"})
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
@@ -148,7 +148,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "64"})
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
@@ -215,7 +215,7 @@ namespace Nethermind.BeaconNode.Tests.MockedStart
             IConfigurationRoot configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string> {["QuickStart:ValidatorCount"] = "64"})
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
             // Act
