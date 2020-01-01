@@ -19,6 +19,7 @@ using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.OApi
 {
@@ -59,10 +60,7 @@ namespace Nethermind.BeaconNode.OApi
             {
                 if (value.StartsWith(Prefix))
                 {
-                    model = Enumerable.Range(Prefix.Length, value.Length - Prefix.Length)
-                            .Where(x => x % 2 == 0)
-                            .Select(x => Convert.ToByte(value.Substring(x, 2), 16))
-                            .ToArray();
+                    model = Bytes.FromHexString(value);
                 }
                 else
                 {

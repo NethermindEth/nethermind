@@ -16,6 +16,8 @@
 
 using System.Threading.Tasks;
 using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.HonestValidator.Services
 {
@@ -24,6 +26,8 @@ namespace Nethermind.HonestValidator.Services
         public ulong GenesisTime { get; private set;  }
 
         public ulong Time { get; private set;  }
+
+        public Fork Fork { get; private set; }
 
         public Task SetGenesisTimeAsync(ulong time)
         {
@@ -34,6 +38,12 @@ namespace Nethermind.HonestValidator.Services
         public Task SetTimeAsync(ulong time)
         {
             Time = time;
+            return Task.CompletedTask;
+        }
+
+        public Task SetForkAsync(Fork fork)
+        {
+            Fork = fork;
             return Task.CompletedTask;
         }
     }

@@ -38,8 +38,9 @@ namespace Nethermind.BeaconNode
         Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken);
         IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch, CancellationToken cancellationToken);
         Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);
-//        bool PublishBlock(BeaconBlock block);
-//        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
+        Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken);
+
+        //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
 //        bool PublishAttestation(BeaconBlock block);
     }
 }

@@ -14,17 +14,33 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
+using System.Threading;
+using Nethermind.BeaconNode.Services;
 
-namespace Nethermind.HonestValidator.Services
+namespace Nethermind.HonestValidator.Tests.Helpers
 {
-    public interface IValidatorKeyProvider
+    public class FastTestClock : IClock
     {
-        IEnumerable<BlsPublicKey> GetPublicKeys();
-        BlsSignature SignHashWithDomain(BlsPublicKey blsPublicKey, Hash32 hash, Domain domain);
+        private readonly Queue<DateTimeOffset> _timeValues;
+
+        public FastTestClock(IEnumerable<DateTimeOffset> timeValues)
+        {
+            CompleteWaitHandle = new ManualResetEvent(false);
+            _timeValues = new Queue<DateTimeOffset>(timeValues);
+        }
+
+        public ManualResetEvent CompleteWaitHandle { get; }
+
+        public DateTimeOffset UtcNow()
+        {
+            var next = _timeValues.Dequeue();
+            if (_timeValues.Count == 0)
+            {
+                CompleteWaitHandle.Set();
+            }
+            return next;
+        }
     }
 }

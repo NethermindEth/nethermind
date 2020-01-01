@@ -14,17 +14,25 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
+using System;
+using System.Linq;
+using Nethermind.Core2;
+using Newtonsoft.Json;
 
-namespace Nethermind.HonestValidator.Services
+namespace Nethermind.BeaconNode.OApi
 {
-    public interface IValidatorKeyProvider
+    internal class PrefixedHexByteArrayNewtonsoftJsonConverter : JsonConverter<byte[]>
     {
-        IEnumerable<BlsPublicKey> GetPublicKeys();
-        BlsSignature SignHashWithDomain(BlsPublicKey blsPublicKey, Hash32 hash, Domain domain);
+        public override void WriteJson(JsonWriter writer, byte[] value, JsonSerializer serializer)
+        {
+            writer.WriteValue(Nethermind.Core2.Bytes.ToHexString(value, withZeroX: true));
+        }
+        
+        public override byte[] ReadJson(JsonReader reader, Type objectType, byte[] existingValue, bool hasExistingValue,
+            JsonSerializer serializer)
+        {
+            string s = (string) reader.Value;
+            return Bytes.FromHexString(s);
+        }
     }
 }

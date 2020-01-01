@@ -98,8 +98,11 @@ namespace Nethermind.HonestValidator
                         DateTimeOffset clockTime = _clock.UtcNow();
                         ulong time = (ulong) clockTime.ToUnixTimeSeconds();
 
-                        await _validatorClient.OnTickAsync(_beaconChain, time, stoppingToken).ConfigureAwait(false);
-                        
+                        if (time > genesisTime)
+                        {
+                            await _validatorClient.OnTickAsync(_beaconChain, time, stoppingToken).ConfigureAwait(false);
+                        }
+
                         // Wait for remaining time, if any
                         // NOTE: To fast forward time during testing, have the second call to test _clock.Now() jump forward to avoid waiting.
                         DateTimeOffset nextClockTime = DateTimeOffset.FromUnixTimeSeconds((long) time + 1);
