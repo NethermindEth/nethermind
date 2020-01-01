@@ -236,7 +236,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 if (request != null)
                 {
                     Stopwatch stopwatch = Stopwatch.StartNew();
-                    request.Allocation = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace | (request.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", request.MinNumber);
+                    request.Allocation = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace | (request.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", request.MinNumber, 1000);
                     stopwatch.Stop();
                     
                     _logger.Info($"Waited for alloc {stopwatch.ElapsedMilliseconds}ms - pending requests: {_pendingRequests}");
