@@ -7,7 +7,7 @@ RUN git submodule update --init src/Dirichlet src/rocksdb-sharp && \
     git describe --tags --long > out/git-hash
 
 FROM mcr.microsoft.com/dotnet/core/aspnet:3.1
-RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip gosu
+RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 unzip
 WORKDIR /nethermind
 
 COPY --from=build /out .
