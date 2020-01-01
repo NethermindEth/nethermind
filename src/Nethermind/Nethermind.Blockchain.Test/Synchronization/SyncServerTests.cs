@@ -127,5 +127,29 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
             Assert.AreEqual(localBlockTree.BestSuggestedHeader, block.Header);
         }
+        
+        [Test]
+        public void Rejects_new_old_blocks()
+        {
+            BlockTree remoteBlockTree = Build.A.BlockTree().OfChainLength(10).TestObject;
+            BlockTree localBlockTree = Build.A.BlockTree().OfChainLength(600).TestObject;
+
+            ISealValidator sealValidator = Substitute.For<ISealValidator>();
+            IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+            _syncServer = new SyncServer(new StateDb(), new StateDb(), localBlockTree, NullReceiptStorage.Instance, blockValidator, sealValidator, _peerPool, _synchronizer, new SyncConfig(), LimboLogs.Instance);
+
+            Node knownNode = new Node(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            _peerPool.TryFind(knownNode.Id, out PeerInfo peerInfo).Returns(x =>
+            {
+                x[1] = new PeerInfo(Substitute.For<ISyncPeer>());
+                return true;
+            });
+            Block block = remoteBlockTree.FindBlock(9, BlockTreeLookupOptions.None);
+
+            _synchronizer.SyncMode.Returns(SyncMode.Full);
+            _syncServer.AddNewBlock(block, knownNode);
+
+            sealValidator.DidNotReceive().ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>());
+        }
     }
 }

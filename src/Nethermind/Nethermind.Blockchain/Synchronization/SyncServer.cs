@@ -118,6 +118,11 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            if (block.Number < (_blockTree.Head?.Number ?? 0) - 512)
+            {
+                return;
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
 
             if (!_sealValidator.ValidateSeal(block.Header, true))
