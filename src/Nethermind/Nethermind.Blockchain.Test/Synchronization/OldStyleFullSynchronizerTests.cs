@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
     [TestFixture]
     public class OldStyleFullSynchronizerTests
     {
-        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(1000);
+        private readonly TimeSpan _standardTimeoutUnit = TimeSpan.FromMilliseconds(2000);
         
         [SetUp]
         public void Setup()
