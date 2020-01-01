@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
@@ -234,7 +235,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 FastBlocksBatch request = PrepareRequest();
                 if (request != null)
                 {
-                    request.Allocation = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace | (request.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", request.MinNumber);
+                    request.Allocation = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace | (request.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", request.MinNumber, 1000);
                     
                     Interlocked.Increment(ref _pendingRequests);
                     Task task = ExecuteRequest(token, request);
