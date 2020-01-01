@@ -47,17 +47,18 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private async Task ExecuteRequest(CancellationToken token, FastBlocksBatch batch)
         {
             SyncPeerAllocation syncPeerAllocation = batch.Allocation;
-            foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
-            {
-                if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Made {peerInfo} sleep for a while - no min number satisfied");
-                    _syncPeerPool.ReportNoSyncProgress(peerInfo);
-                }
-            }
-
+            
             try
             {
+                foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
+                {
+                    if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Made {peerInfo} sleep for a while - no min number satisfied");
+                        _syncPeerPool.ReportNoSyncProgress(peerInfo);
+                    }
+                }
+                
                 ISyncPeer peer = syncPeerAllocation?.Current?.SyncPeer;
                 if (peer != null)
                 {
