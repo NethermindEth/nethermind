@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 }
             } while (_pendingRequests != 0 || oneMoreTry);
 
-            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeers} useful peers.");
+            if (_logger.IsInfo) _logger.Info($"Finished with {_pendingRequests} pending requests and {_syncPeerPool.UsefulPeerCount} useful peers.");
         }
 
         private StateSyncBatch PrepareRequest()
