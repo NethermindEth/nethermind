@@ -22,7 +22,6 @@ namespace Nethermind.Blockchain.Synchronization
     {
         event EventHandler<SyncModeChangedEventArgs> Changed;
         SyncMode Current { get; }
-        bool IsParallel { get; }
         void Update();
     }
 }

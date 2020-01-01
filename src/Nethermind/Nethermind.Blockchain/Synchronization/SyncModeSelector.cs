@@ -47,8 +47,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         public SyncMode Current { get; private set; }
 
-        public bool IsParallel => Current == SyncMode.FastBlocks || Current == SyncMode.StateNodes;
-
         public void Update()
         {
             if (_syncPeerPool.PeerCount == 0)
