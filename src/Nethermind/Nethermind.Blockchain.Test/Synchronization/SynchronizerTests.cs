@@ -686,7 +686,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterPeerIsAdded(peerA)
                 .BestSuggestedBlockHasNumber(2)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
+                .Wait(1000)
                 .Stop();
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
