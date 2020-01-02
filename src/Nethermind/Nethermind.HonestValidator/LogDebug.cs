@@ -42,10 +42,6 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<int>(LogLevel.Debug,
                 new EventId(6453, nameof(HonestValidatorWorkerExecuteExiting)),
                 "Honest validator worker execute thread exiting [{ThreadId}].");
-        public static readonly Action<ILogger, string, int, Exception?> AttemptingConnectionToNode =
-            LoggerMessage.Define<string, int>(LogLevel.Debug,
-                new EventId(6454, nameof(AttemptingConnectionToNode)),
-                "Attempting connection to node '{NodeUrl}' (index {NodeUrlIndex}).");
         public static readonly Action<ILogger, Slot, string, string, Exception?> RequestingBlock =
             LoggerMessage.Define<Slot, string, string>(LogLevel.Debug,
                 new EventId(6454, nameof(RequestingBlock)),

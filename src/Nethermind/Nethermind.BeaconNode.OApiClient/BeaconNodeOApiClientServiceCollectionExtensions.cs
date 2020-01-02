@@ -16,6 +16,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.BeaconNode.OApiClient.Configuration;
 
 namespace Nethermind.BeaconNode.OApiClient
 {
@@ -23,8 +24,24 @@ namespace Nethermind.BeaconNode.OApiClient
     {
         public static void AddBeaconNodeOapiClient(this IServiceCollection services, IConfiguration configuration)
         {
+            AddConfiguration(services, configuration);
+            
             services.AddHttpClient();
             services.AddSingleton<IBeaconNodeOApiClientFactory, BeaconNodeOApiClientFactory>();
+            services.AddScoped<IBeaconNodeApi, BeaconNodeProxy>();
         }
+        
+        private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
+        {
+            services.Configure<BeaconNodeConnection>(x =>
+            {
+                configuration.Bind("BeaconNodeConnection", section =>
+                {
+                    x.RemoteUrls = section.GetSection(nameof(x.RemoteUrls)).Get<string[]>();
+                    x.ConnectionFailureLoopMillisecondsDelay = section.GetValue<int>("ConnectionFailureLoopMillisecondsDelay", 1000);
+                });
+            });
+        }
+
     }
 }

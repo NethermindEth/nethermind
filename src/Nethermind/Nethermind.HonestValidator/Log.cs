@@ -54,11 +54,6 @@ namespace Nethermind.HonestValidator
                 new EventId(1450, nameof(HonestValidatorWorkerExecuteStarted)),
                 "Honest Validator {ProductTokenVersion} worker started; {Environment} environment [{ThreadId}]");
 
-        public static readonly Action<ILogger, string, int, Exception?> NodeConnectionSuccess =
-            LoggerMessage.Define<string, int>(LogLevel.Warning,
-                new EventId(1451, nameof(NodeConnectionFailed)),
-                "Connected to node '{NodeUrl}' (index {NodeUrlIndex}).");
-
         public static readonly Action<ILogger, string, ulong, Exception?> HonestValidatorWorkerConnected =
             LoggerMessage.Define<string, ulong>(LogLevel.Information,
                 new EventId(1452, nameof(HonestValidatorWorkerConnected)),
@@ -89,16 +84,6 @@ namespace Nethermind.HonestValidator
                 new EventId(4901, nameof(QuickStartClockCreated)),
                 "Quick start clock created with offset {ClockOffset:n0}.");
         
-        public static readonly Action<ILogger, string, Exception?> NodeConnectionFailed =
-            LoggerMessage.Define<string>(LogLevel.Warning,
-                new EventId(4450, nameof(NodeConnectionFailed)),
-                "Connection to '{NodeUrl}' failed. Attempting reconnection.");
-        
-        public static readonly Action<ILogger, int, int, Exception?> AllNodeConnectionsFailing =
-            LoggerMessage.Define<int, int>(LogLevel.Warning,
-                new EventId(4451, nameof(AllNodeConnectionsFailing)),
-                "All node connections failing (configured with {NodeUrlCount} URLs). Waiting {MillisecondsDelay} milliseconds before attempting reconnection.");
-
         // 5bxx error
         
         public static readonly Action<ILogger, Exception?> HonestValidatorWorkerLoopError =
