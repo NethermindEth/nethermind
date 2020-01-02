@@ -66,17 +66,28 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
             MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
 
-            IReleaseSpec oldSpec = mainnet.GetSpec(7280000);
-            IReleaseSpec newSpec = provider.GetSpec(7280000);
-
-            PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            foreach (PropertyInfo propertyInfo in propertyInfos)
+            var blockNumbersToTest = new List<long>
             {
-                object a = propertyInfo.GetValue(oldSpec);
-                object b = propertyInfo.GetValue(newSpec);
-
-                Assert.AreEqual(a, b, propertyInfo.Name);
-            }
+                0,
+                1,
+                MainNetSpecProvider.HomesteadBlockNumber - 1,
+                MainNetSpecProvider.HomesteadBlockNumber,
+                MainNetSpecProvider.TangerineWhistleBlockNumber - 1,
+                MainNetSpecProvider.TangerineWhistleBlockNumber,
+                MainNetSpecProvider.SpuriousDragonBlockNumber - 1,
+                MainNetSpecProvider.SpuriousDragonBlockNumber,
+                MainNetSpecProvider.ByzantiumBlockNumber - 1,
+                MainNetSpecProvider.ByzantiumBlockNumber,
+                MainNetSpecProvider.ConstantinopleFixBlockNumber - 1,
+                MainNetSpecProvider.ConstantinopleFixBlockNumber,
+                MainNetSpecProvider.IstanbulBlockNumber - 1,
+                MainNetSpecProvider.IstanbulBlockNumber,
+                MainNetSpecProvider.MuirGlacierBlockNumber - 1,
+                MainNetSpecProvider.MuirGlacierBlockNumber,
+                100000000, // far in the future
+            };
+            
+            CompareSpecProperties(mainnet, provider, blockNumbersToTest);
             
             Assert.AreEqual(0000000, provider.GetSpec(4369999).DifficultyBombDelay);
             Assert.AreEqual(3000000, provider.GetSpec(4370000).DifficultyBombDelay);
@@ -84,9 +95,25 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(3000000, provider.GetSpec(7279999).DifficultyBombDelay);
             Assert.AreEqual(5000000, provider.GetSpec(7280000).DifficultyBombDelay);
             Assert.AreEqual(5000000, provider.GetSpec(9199999).DifficultyBombDelay);
-            Assert.AreEqual(9000000, provider.GetSpec(92000000).DifficultyBombDelay);
+            Assert.AreEqual(9000000, provider.GetSpec(9200000).DifficultyBombDelay);
         }
-        
+
+        private static void CompareSpecProperties(ISpecProvider oldSpec, ISpecProvider newSpec, IEnumerable<long> blockNumbers)
+        {
+            foreach (long blockNumber in blockNumbers)
+            {
+                PropertyInfo[] propertyInfos = typeof(IReleaseSpec).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+                foreach (PropertyInfo propertyInfo in propertyInfos)
+                {
+                    object a = propertyInfo.GetValue(oldSpec.GetSpec(blockNumber));
+                    object b = propertyInfo.GetValue(newSpec.GetSpec(blockNumber));
+
+                    Assert.AreEqual(a, b, propertyInfo.Name);
+                }
+                Assert.AreEqual(oldSpec.GetSpec(blockNumber).DifficultyBombDelay, newSpec.GetSpec(blockNumber).DifficultyBombDelay);    
+            }
+        }
+
         [Test]
         public void Ropsten_loads_properly()
         {
@@ -94,14 +121,26 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
             ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
             ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
-            MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
+            RopstenSpecProvider ropsten = RopstenSpecProvider.Instance;
             
-            Assert.AreEqual(0000000, provider.GetSpec(1699999).DifficultyBombDelay);
-            Assert.AreEqual(3000000, provider.GetSpec(1700000).DifficultyBombDelay);
-            Assert.AreEqual(3000000, provider.GetSpec(4229999).DifficultyBombDelay);
-            Assert.AreEqual(5000000, provider.GetSpec(4230000).DifficultyBombDelay);
-            Assert.AreEqual(5000000, provider.GetSpec(7117116).DifficultyBombDelay);
-            Assert.AreEqual(9000000, provider.GetSpec(7117117).DifficultyBombDelay);
+            var blockNumbersToTest = new List<long>
+            {
+                0,
+                1,
+                RopstenSpecProvider.SpuriousDragonBlockNumber - 1,
+                RopstenSpecProvider.SpuriousDragonBlockNumber,
+                RopstenSpecProvider.ByzantiumBlockNumber - 1,
+                RopstenSpecProvider.ByzantiumBlockNumber,
+                RopstenSpecProvider.ConstantinopleFixBlockNumber - 1,
+                RopstenSpecProvider.ConstantinopleFixBlockNumber,
+                RopstenSpecProvider.IstanbulBlockNumber - 1,
+                RopstenSpecProvider.IstanbulBlockNumber,
+                RopstenSpecProvider.MuirGlacierBlockNumber - 1,
+                RopstenSpecProvider.MuirGlacierBlockNumber,
+                100000000, // far in the future
+            };
+            
+            CompareSpecProperties(ropsten, provider, blockNumbersToTest);
         }
 
         [Test]
@@ -270,7 +309,6 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(maxCodeSize, provider.GetSpec(maxCodeTransition + 1).MaxCodeSize, "one after");
 
             IReleaseSpec underTest = provider.GetSpec(0L);
-            Assert.AreEqual(Address.Zero, underTest.Registrar);
             Assert.AreEqual(11L, underTest.MinGasLimit);
             Assert.AreEqual(13L, underTest.GasLimitBoundDivisor);
             Assert.AreEqual(17L, underTest.MaximumExtraDataSize);
