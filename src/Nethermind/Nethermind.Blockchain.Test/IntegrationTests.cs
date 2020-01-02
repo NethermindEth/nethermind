@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -43,7 +44,7 @@ namespace Nethermind.Blockchain.Test
     public class IntegrationTests
     {
         [Test]
-        [Explicit("This test is unpredictably failing on Travis and nowhere else")]
+        // [Explicit("This test is unpredictably failing on Travis and nowhere else")]
         public async Task Can_process_mined_blocks()
         {
             int timeMultiplier = 1; // for debugging
@@ -84,7 +85,7 @@ namespace Nethermind.Blockchain.Test
 
             TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
             generator.Start();
-
+            
             /* blockchain processing */
             BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, logManager);
@@ -112,13 +113,14 @@ namespace Nethermind.Blockchain.Test
             stateProvider.Commit(specProvider.GenesisSpec);
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
             chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
-            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")) throw new Exception("Unexpected genesis hash");
+            if (chainSpec.Genesis.Hash != new Keccak("0xafbc3c327d2d18ff2b843e89226ef288fcee379542f854f982e4cfb85916d126")) throw new Exception("Unexpected genesis hash");
 
             /* start processing */
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, txPool, blockchainProcessor, sealer, blockTree, timestamper, NullLogManager.Instance);
+            var transactionSelector = new TransactionSelector(txPool, stateProvider, logManager);
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, stateProvider, timestamper, NullLogManager.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 
             ManualResetEventSlim manualResetEvent = new ManualResetEventSlim(false);
@@ -151,8 +153,6 @@ namespace Nethermind.Blockchain.Test
 
                 if (block.Transactions.Length > 0)
                 {
-                    GethLikeTxTrace trace = tracer.Trace(block.Transactions[0].Hash, GethTraceOptions.Default);
-                    Assert.AreSame(GethLikeTxTrace.QuickFail, trace);
                     Assert.AreNotEqual(previousCount, currentCount, $"receipts at block {i}");
                     totalTx += block.Transactions.Length;
                 }
