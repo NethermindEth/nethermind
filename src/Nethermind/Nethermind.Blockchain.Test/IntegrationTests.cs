@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
         {
             int timeMultiplier = 1; // for debugging
 
-            TimeSpan miningDelay = TimeSpan.FromMilliseconds(1000 * timeMultiplier);
+            TimeSpan miningDelay = TimeSpan.FromMilliseconds(1500 * timeMultiplier);
 
             /* logging & instrumentation */
 //            OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
