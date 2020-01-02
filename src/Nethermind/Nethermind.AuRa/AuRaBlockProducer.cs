@@ -42,7 +42,7 @@ namespace Nethermind.AuRa
         private readonly IAuraConfig _config;
         private readonly Address _nodeAddress;
 
-        public AuRaBlockProducer(ITransactionSelector transactionSelector,
+        public AuRaBlockProducer(IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -52,7 +52,7 @@ namespace Nethermind.AuRa
             IAuRaStepCalculator auRaStepCalculator,
             IAuraConfig config,
             Address nodeAddress) 
-            : base(transactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager, "AuRa")
+            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _config = config ?? throw new ArgumentNullException(nameof(config));

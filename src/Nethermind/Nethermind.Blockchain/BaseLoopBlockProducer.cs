@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
         private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
         
         protected BaseLoopBlockProducer(
-            ITransactionSelector transactionSelector,
+            IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain
             ITimestamper timestamper,
             ILogManager logManager,
             string name) 
-            : base(transactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager)
+            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager)
         {
             _name = name;
         }

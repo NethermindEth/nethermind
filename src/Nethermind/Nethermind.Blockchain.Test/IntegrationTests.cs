@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
 
-            var transactionSelector = new TransactionSelector(txPool, stateProvider, logManager);
+            var transactionSelector = new PendingTransactionSelector(txPool, stateProvider, logManager);
             MinedBlockProducer minedBlockProducer = new MinedBlockProducer(transactionSelector, blockchainProcessor, sealer, blockTree, stateProvider, timestamper, NullLogManager.Instance, difficultyCalculator);
             minedBlockProducer.Start();
 

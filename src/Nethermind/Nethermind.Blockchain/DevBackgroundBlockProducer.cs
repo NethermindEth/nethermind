@@ -40,12 +40,12 @@ namespace Nethermind.Blockchain
         private const int DelayBetweenBlocks = 5_000;
 
         public DevBackgroundBlockProducer(
-            ITransactionSelector transactionSelector,
+            IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            ILogManager logManager) : base(transactionSelector, processor, NullSealEngine.Instance, blockTree, stateProvider, timestamper, logManager, "Dev")
+            ILogManager logManager) : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, stateProvider, timestamper, logManager, "Dev")
         {
         }
 

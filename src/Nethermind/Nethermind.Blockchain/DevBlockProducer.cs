@@ -36,14 +36,14 @@ namespace Nethermind.Blockchain
     {
         private readonly ITxPool _txPool;
 
-        public DevBlockProducer(ITransactionSelector transactionSelector,
+        public DevBlockProducer(IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager, 
             ITxPool txPool) 
-            : base(transactionSelector, processor, NullSealEngine.Instance, blockTree, stateProvider, timestamper, logManager)
+            : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, stateProvider, timestamper, logManager)
         {
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
         }
