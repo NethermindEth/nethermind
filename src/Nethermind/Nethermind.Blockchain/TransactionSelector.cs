@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain
             {
                 if (transaction.SenderAddress == null)
                 {
-                    if (_logger.IsError) _logger.Error("Rejecting null sender pending transaction.");
+                    if (_logger.IsTrace) _logger.Trace("Rejecting null sender pending transaction.");
                     continue;
                 }
                 
