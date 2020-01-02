@@ -77,6 +77,9 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
 
                 Assert.AreEqual(a, b, propertyInfo.Name);
             }
+            
+            Assert.AreEqual(5000000, provider.GetSpec(9199999).DifficultyBombDelay);
+            Assert.AreEqual(9000000, provider.GetSpec(92000000).DifficultyBombDelay);
         }
 
         [Test]
