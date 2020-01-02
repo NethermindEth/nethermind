@@ -14,6 +14,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj" />
       <ProjectReference Include="..\Nethermind.HonestValidator\Nethermind.HonestValidator.csproj" />
     </ItemGroup>
 

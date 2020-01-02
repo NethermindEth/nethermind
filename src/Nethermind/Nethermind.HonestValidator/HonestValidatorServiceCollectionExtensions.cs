@@ -14,15 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Services;
-using System.Net.Http;
 using Nethermind.BeaconNode.Configuration;
 using Nethermind.Core2.Types;
-using Nethermind.HonestValidator.Configuration;
 using Nethermind.HonestValidator.Services;
 
 namespace Nethermind.HonestValidator
@@ -39,8 +36,6 @@ namespace Nethermind.HonestValidator
             services.AddSingleton<ValidatorClient>();
             services.AddSingleton<ClientVersion>();
             
-            services.AddSingleton<IBeaconNodeApi, BeaconNodeProxy>();
-
             services.AddHostedService<HonestValidatorWorker>();
         }
         
@@ -154,14 +149,6 @@ namespace Nethermind.HonestValidator
                         section.GetBytesFromPrefixedHex("DomainVoluntaryExit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT",
                                 () => new byte[4])));
-                });
-            });
-            services.Configure<BeaconNodeConnection>(x =>
-            {
-                configuration.Bind("BeaconNodeConnection", section =>
-                {
-                    x.RemoteUrls = section.GetSection(nameof(x.RemoteUrls)).Get<string[]>();
-                    x.ConnectionFailureLoopMillisecondsDelay = section.GetValue<int>("ConnectionFailureLoopMillisecondsDelay", 1000);
                 });
             });
         }

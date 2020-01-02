@@ -29,7 +29,6 @@ using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Nethermind.HonestValidator.Configuration;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;

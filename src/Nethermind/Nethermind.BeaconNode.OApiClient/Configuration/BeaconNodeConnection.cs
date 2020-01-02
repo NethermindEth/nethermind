@@ -17,7 +17,7 @@
 using System;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.HonestValidator.Configuration
+namespace Nethermind.BeaconNode.OApiClient.Configuration
 {
     public class BeaconNodeConnection
     {

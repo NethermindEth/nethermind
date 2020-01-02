@@ -24,7 +24,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj" />
       <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     </ItemGroup>
 
