@@ -237,6 +237,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HonestValidator.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HonestValidator.Test", "Nethermind.HonestValidator.Test\Nethermind.HonestValidator.Test.csproj", "{57C77261-9769-42DF-BB1B-A2B9EA9C7D92}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Peering", "Nethermind.BeaconNode.Peering\Nethermind.BeaconNode.Peering.csproj", "{B21C602A-DE8A-4089-BF32-231FB55EA936}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -623,6 +625,10 @@ Global
 		{57C77261-9769-42DF-BB1B-A2B9EA9C7D92}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{57C77261-9769-42DF-BB1B-A2B9EA9C7D92}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{57C77261-9769-42DF-BB1B-A2B9EA9C7D92}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B21C602A-DE8A-4089-BF32-231FB55EA936}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B21C602A-DE8A-4089-BF32-231FB55EA936}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B21C602A-DE8A-4089-BF32-231FB55EA936}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B21C602A-DE8A-4089-BF32-231FB55EA936}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -698,6 +704,7 @@ Global
 		{700A5E59-FBDD-422A-AFA4-74474B230589} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 		{9D1BEE84-E3FE-448C-955E-2537E6C1058C} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 		{57C77261-9769-42DF-BB1B-A2B9EA9C7D92} = {89AA52BF-79E6-4281-87B6-E9076DCABB38}
+		{B21C602A-DE8A-4089-BF32-231FB55EA936} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

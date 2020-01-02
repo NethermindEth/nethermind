@@ -22,6 +22,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.MockedStart;
+using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
 
 namespace Nethermind.BeaconNode.Host
@@ -79,6 +80,7 @@ namespace Nethermind.BeaconNode.Host
                 {
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
+                    services.AddBeaconNodePeering(hostContext.Configuration);
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
                     {
