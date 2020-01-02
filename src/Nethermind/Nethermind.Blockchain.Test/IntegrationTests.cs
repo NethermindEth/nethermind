@@ -45,11 +45,12 @@ namespace Nethermind.Blockchain.Test
     {
         [Test]
         // [Explicit("This test is unpredictably failing on Travis and nowhere else")]
+        // It takes dotCover to run it quite long, increased timeouts
         public async Task Can_process_mined_blocks()
         {
             int timeMultiplier = 1; // for debugging
 
-            TimeSpan miningDelay = TimeSpan.FromMilliseconds(50 * timeMultiplier);
+            TimeSpan miningDelay = TimeSpan.FromMilliseconds(1000 * timeMultiplier);
 
             /* logging & instrumentation */
 //            OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
@@ -83,7 +84,7 @@ namespace Nethermind.Blockchain.Test
             TxValidator txValidator = new TxValidator(ChainId.Ropsten);
             BlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, logManager);
 
-            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(txPool, ecdsa, TimeSpan.FromMilliseconds(50 * timeMultiplier), NullLogManager.Instance);
             generator.Start();
             
             /* blockchain processing */
@@ -130,7 +131,7 @@ namespace Nethermind.Blockchain.Test
                 if (args.Block.Number == 6) manualResetEvent.Set();
             };
 
-            manualResetEvent.Wait(miningDelay * 12 * timeMultiplier);
+            manualResetEvent.Wait(miningDelay * 12);
             await minedBlockProducer.StopAsync();
 
             int previousCount = 0;
@@ -138,12 +139,13 @@ namespace Nethermind.Blockchain.Test
             for (int i = 0; i < 6; i++)
             {
                 Block block = blockTree.FindBlock(i, BlockTreeLookupOptions.None);
+                Assert.That(block, Is.Not.Null, $"Block {i} not produced");
                 logger.Info($"Block {i} with {block.Transactions.Length} txs");
 
                 ManualResetEventSlim blockProcessedEvent = new ManualResetEventSlim(false);
                 blockchainProcessor.ProcessingQueueEmpty += (sender, args) => blockProcessedEvent.Set();
                 blockchainProcessor.SuggestBlock(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
-                blockProcessedEvent.Wait(1000);
+                blockProcessedEvent.Wait(miningDelay);
 
                 Tracer tracer = new Tracer(blockchainProcessor, receiptStorage, blockTree, new MemDb());
 
