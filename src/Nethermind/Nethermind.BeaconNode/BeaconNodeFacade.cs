@@ -20,6 +20,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
+using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -36,6 +37,7 @@ namespace Nethermind.BeaconNode
         private readonly ClientVersion _clientVersion;
         private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
+        private readonly INetworkPeering _networkPeering;
         private readonly ValidatorAssignments _validatorAssignments;
         private readonly BlockProducer _blockProducer;
 
@@ -44,6 +46,7 @@ namespace Nethermind.BeaconNode
             ClientVersion clientVersion,
             ForkChoice forkChoice,
             IStoreProvider storeProvider,
+            INetworkPeering networkPeering,
             ValidatorAssignments validatorAssignments,
             BlockProducer blockProducer)
         {
@@ -51,6 +54,7 @@ namespace Nethermind.BeaconNode
             _clientVersion = clientVersion;
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
+            _networkPeering = networkPeering;
             _validatorAssignments = validatorAssignments;
             _blockProducer = blockProducer;
         }
@@ -145,13 +149,22 @@ namespace Nethermind.BeaconNode
             }
 
             IStore store = retrievedStore!;
+
+            bool acceptedLocally = false;
+            try
+            {
+                await _forkChoice.OnBlockAsync(store, signedBlock).ConfigureAwait(false);
+                // TODO: validate as per honest validator spec and return true/false
+                acceptedLocally = true;
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsWarn()) Log.BlockNotAcceptedLocally(_logger, signedBlock, ex);
+            }
             
-            await _forkChoice.OnBlockAsync(store, signedBlock).ConfigureAwait(false);
-
-            // TODO: validate as per honest validator spec and return true/false
-            // TODO: Peer broadcast (even if not valid)
-
-            return true;
+            await _networkPeering.PublishBeaconBlockAsync(signedBlock).ConfigureAwait(false);
+            
+            return acceptedLocally;
         }
 
         private async Task<BeaconState> GetHeadStateAsync()

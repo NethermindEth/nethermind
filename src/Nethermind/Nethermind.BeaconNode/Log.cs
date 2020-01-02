@@ -146,6 +146,10 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<Slot, Slot, Hash32, Slot>(LogLevel.Warning,
                 new EventId(4405, nameof(NoBlocksSinceEth1VotingPeriodDefaulting)),
                 "New block for state slot {StateSlot} is slot {Eth1VotingPeriodSlot} of the Eth1 voting period, but parent root {ParentRoot} is before slot {CheckSlot}, so using the parent's follow distance for start of Eth1 voting period.");
+        public static readonly Action<ILogger, BeaconBlock, Exception?> BlockNotAcceptedLocally =
+            LoggerMessage.Define<BeaconBlock>(LogLevel.Warning,
+                new EventId(4406, nameof(BlockNotAcceptedLocally)),
+                "Block {BeaconBlock} not accepted by local chain (but will still try to publish to peers).");
 
         public static readonly Action<ILogger, ulong, ulong, Exception?> MockedQuickStart =
             LoggerMessage.Define<ulong, ulong>(LogLevel.Warning,

@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.BeaconNode.OApi\Nethermind.BeaconNode.OApi.csproj" />
+    <ProjectReference Include="..\Nethermind.BeaconNode.Peering\Nethermind.BeaconNode.Peering.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
   </ItemGroup>
