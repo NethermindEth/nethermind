@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Test
                 if (args.Block.Number == 6) manualResetEvent.Set();
             };
 
-            manualResetEvent.Wait(miningDelay * 12);
+            manualResetEvent.Wait(miningDelay * 20);
             await minedBlockProducer.StopAsync();
 
             int previousCount = 0;
