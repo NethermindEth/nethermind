@@ -16,33 +16,52 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.Services;
-using System.Net.Http;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Types;
-using Nethermind.HonestValidator.Services;
 
-namespace Nethermind.HonestValidator
+namespace Nethermind.Core2.Configuration
 {
-    public static class HonestValidatorServiceCollectionExtensions
+    public static class ConfigurationServiceCollectionExtensions
     {
-        public static void AddHonestValidator(this IServiceCollection services, IConfiguration configuration)
+        public static void ConfigureBeaconChain(this IServiceCollection services, IConfiguration configuration)
         {
-            AddConfiguration(services, configuration);
-            
-            services.AddSingleton<IClock, SystemClock>();
-            services.AddSingleton<ICryptographyService, CortexCryptographyService>();
-            services.AddSingleton<BeaconChain>();
-            services.AddSingleton<ValidatorClient>();
-            services.AddSingleton<ClientVersion>();
-            
-            services.AddHostedService<HonestValidatorWorker>();
-        }
-        
-        private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
-        {
-            // TODO: Consolidate configuration with beacon node
+            services.AddSingleton<ChainConstants>();
+            services.Configure<MiscellaneousParameters>(x =>
+            {
+                configuration.Bind("BeaconChain:MiscellaneousParameters", section =>
+                {
+                    x.MaximumCommitteesPerSlot = section.GetValue(nameof(x.MaximumCommitteesPerSlot),
+                        () => configuration.GetValue<ulong>("MAX_COMMITTEES_PER_SLOT"));
+                    x.TargetCommitteeSize = section.GetValue(nameof(x.TargetCommitteeSize),
+                        () => configuration.GetValue<ulong>("TARGET_COMMITTEE_SIZE"));
+                    x.MaximumValidatorsPerCommittee = section.GetValue(nameof(x.MaximumValidatorsPerCommittee),
+                        () => configuration.GetValue<ulong>("MAX_VALIDATORS_PER_COMMITTEE"));
+                    x.MinimumPerEpochChurnLimit = section.GetValue(nameof(x.MinimumPerEpochChurnLimit),
+                        () => configuration.GetValue<ulong>("MIN_PER_EPOCH_CHURN_LIMIT"));
+                    x.ChurnLimitQuotient = section.GetValue(nameof(x.ChurnLimitQuotient),
+                        () => configuration.GetValue<ulong>("CHURN_LIMIT_QUOTIENT"));
+                    x.ShuffleRoundCount = section.GetValue(nameof(x.ShuffleRoundCount),
+                        () => configuration.GetValue<int>("SHUFFLE_ROUND_COUNT"));
+                    x.MinimumGenesisActiveValidatorCount = section.GetValue(nameof(x.MinimumGenesisActiveValidatorCount),
+                        () => configuration.GetValue<int>("MIN_GENESIS_ACTIVE_VALIDATOR_COUNT"));
+                    x.MinimumGenesisTime = section.GetValue(nameof(x.MinimumGenesisTime),
+                        () => configuration.GetValue<ulong>("MIN_GENESIS_TIME"));
+                });
+            });
+            services.Configure<GweiValues>(x =>
+            {
+                configuration.Bind("BeaconChain:GweiValues", section =>
+                {
+                    x.MaximumEffectiveBalance = new Gwei(
+                        section.GetValue("MaximumEffectiveBalance",
+                            () => configuration.GetValue<ulong>("MAX_EFFECTIVE_BALANCE")));
+                    x.EjectionBalance = new Gwei(
+                        section.GetValue("EjectionBalance",
+                            () => configuration.GetValue<ulong>("EJECTION_BALANCE")));
+                    x.EffectiveBalanceIncrement = new Gwei(
+                        section.GetValue("EffectiveBalanceIncrement",
+                            () => configuration.GetValue<ulong>("EFFECTIVE_BALANCE_INCREMENT")));
+                });
+            });
             services.Configure<InitialValues>(x =>
             {
                 configuration.Bind("BeaconChain:InitialValues", section =>
@@ -110,6 +129,22 @@ namespace Nethermind.HonestValidator
                         () => configuration.GetValue<ulong>("VALIDATOR_REGISTRY_LIMIT"));
                 });
             });
+            services.Configure<RewardsAndPenalties>(x =>
+            {
+                configuration.Bind("BeaconChain:RewardsAndPenalties", section =>
+                {
+                    x.BaseRewardFactor = section.GetValue(nameof(x.BaseRewardFactor),
+                        () => configuration.GetValue<ulong>("BASE_REWARD_FACTOR"));
+                    x.WhistleblowerRewardQuotient = section.GetValue(nameof(x.WhistleblowerRewardQuotient),
+                        () => configuration.GetValue<ulong>("WHISTLEBLOWER_REWARD_QUOTIENT"));
+                    x.ProposerRewardQuotient = section.GetValue(nameof(x.ProposerRewardQuotient),
+                        () => configuration.GetValue<ulong>("PROPOSER_REWARD_QUOTIENT"));
+                    x.InactivityPenaltyQuotient = section.GetValue(nameof(x.InactivityPenaltyQuotient),
+                        () => configuration.GetValue<ulong>("INACTIVITY_PENALTY_QUOTIENT"));
+                    x.MinimumSlashingPenaltyQuotient = section.GetValue(nameof(x.MinimumSlashingPenaltyQuotient),
+                        () => configuration.GetValue<ulong>("MIN_SLASHING_PENALTY_QUOTIENT"));
+                });
+            });
             services.Configure<MaxOperationsPerBlock>(x =>
             {
                 configuration.Bind("BeaconChain:MaxOperationsPerBlock", section =>
@@ -150,6 +185,20 @@ namespace Nethermind.HonestValidator
                         section.GetBytesFromPrefixedHex("DomainVoluntaryExit",
                             () => configuration.GetBytesFromPrefixedHex("DOMAIN_VOLUNTARY_EXIT",
                                 () => new byte[4])));
+                });
+            });
+            services.Configure<ForkChoiceConfiguration>(x =>
+            {
+                x.SafeSlotsToUpdateJustified = new Slot(
+                    configuration.GetValue<ulong>("ForkChoiceConfiguration:SafeSlotsToUpdateJustified",
+                        () => configuration.GetValue<ulong>("SAFE_SLOTS_TO_UPDATE_JUSTIFIED")));
+            });
+            services.Configure<HonestValidatorConstants>(x =>
+            {
+                configuration.Bind("HonestValidatorConstants", section =>
+                {
+                    x.Eth1FollowDistance = section.GetValue(nameof(x.Eth1FollowDistance),
+                        () => configuration.GetValue<ulong>("ETH1_FOLLOW_DISTANCE"));
                 });
             });
         }

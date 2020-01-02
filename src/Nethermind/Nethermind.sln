@@ -241,6 +241,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.Peeri
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.BeaconNode.OApiClient.Test", "Nethermind.BeaconNode.OApiClient.Test\Nethermind.BeaconNode.OApiClient.Test.csproj", "{CF33828C-5D55-41AF-BE5F-1988E004BF7B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Configuration", "Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj", "{944332CD-7E94-49E4-B1ED-AE7C5A5438F1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -635,6 +637,10 @@ Global
 		{CF33828C-5D55-41AF-BE5F-1988E004BF7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{CF33828C-5D55-41AF-BE5F-1988E004BF7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{CF33828C-5D55-41AF-BE5F-1988E004BF7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{944332CD-7E94-49E4-B1ED-AE7C5A5438F1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{944332CD-7E94-49E4-B1ED-AE7C5A5438F1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{944332CD-7E94-49E4-B1ED-AE7C5A5438F1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{944332CD-7E94-49E4-B1ED-AE7C5A5438F1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -712,6 +718,7 @@ Global
 		{57C77261-9769-42DF-BB1B-A2B9EA9C7D92} = {89AA52BF-79E6-4281-87B6-E9076DCABB38}
 		{B21C602A-DE8A-4089-BF32-231FB55EA936} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 		{CF33828C-5D55-41AF-BE5F-1988E004BF7B} = {89AA52BF-79E6-4281-87B6-E9076DCABB38}
+		{944332CD-7E94-49E4-B1ED-AE7C5A5438F1} = {C18B9986-E399-45EF-B10A-E5E94220A1A9}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

@@ -14,23 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.BeaconNode.Containers;
-using Nethermind.Core2.Types;
-
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.Core2.Configuration
 {
-    public class ChainConstants
+    public class MaxOperationsPerBlock
     {
-        public ulong BaseRewardsPerEpoch { get; } = 4;
-
-        public int DepositContractTreeDepth { get; } = 1 << 5;
-
-        public Epoch FarFutureEpoch { get; } = new Epoch((ulong)1 << 64 - 1);
-
-        public int JustificationBitsLength { get; } = 4;
-
-        public ulong MaximumDepositContracts { get; } = (ulong)1 << (1 << 5);
-
-        public ulong SecondsPerDay { get; } = 24 * 60 * 60;
+        public ulong MaximumAttestations { get; set; }
+        public ulong MaximumAttesterSlashings { get; set; }
+        public ulong MaximumDeposits { get; set; }
+        public ulong MaximumProposerSlashings { get; set; }
+        public ulong MaximumVoluntaryExits { get; set; }
     }
 }

@@ -14,14 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Types;
-
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.Core2.Configuration
 {
-    public class InitialValues
+    public class RewardsAndPenalties
     {
-        public Epoch GenesisEpoch { get; set; }
-
-        public byte BlsWithdrawalPrefix { get; set; }
+        public ulong BaseRewardFactor { get; set; }
+        public ulong InactivityPenaltyQuotient { get; set; }
+        public ulong MinimumSlashingPenaltyQuotient { get; set; }
+        public ulong ProposerRewardQuotient { get; set; }
+        public ulong WhistleblowerRewardQuotient { get; set; }
     }
 }

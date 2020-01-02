@@ -26,6 +26,7 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
+using Nethermind.Core2.Configuration;
 
 namespace Nethermind.HonestValidator.MockedStart
 {

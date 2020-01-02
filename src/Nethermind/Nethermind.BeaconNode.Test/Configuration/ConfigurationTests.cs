@@ -19,7 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Types;
 using Shouldly;
 
@@ -37,7 +37,7 @@ namespace Nethermind.BeaconNode.Tests.Configuration
             var configuration = new ConfigurationBuilder()
                 .AddJsonFile("appsettings.Development.json")
                 .Build();
-            services.AddBeaconNode(configuration);
+            services.ConfigureBeaconChain(configuration);
             var testServiceProvider = services.BuildServiceProvider();
 
             // Act
@@ -114,7 +114,7 @@ namespace Nethermind.BeaconNode.Tests.Configuration
             var configuration = new ConfigurationBuilder()
                 .AddYamlFile("minimal.yaml")
                 .Build();
-            services.AddBeaconNode(configuration);
+            services.ConfigureBeaconChain(configuration);
             var testServiceProvider = services.BuildServiceProvider();
 
             // Act
@@ -192,7 +192,7 @@ namespace Nethermind.BeaconNode.Tests.Configuration
                 .AddYamlFile("testconfigA.yaml")
                 .AddJsonFile("testappsettingsB.json")
                 .Build();
-            services.AddBeaconNode(configuration);
+            services.ConfigureBeaconChain(configuration);
             var testServiceProvider = services.BuildServiceProvider();
 
             // Act

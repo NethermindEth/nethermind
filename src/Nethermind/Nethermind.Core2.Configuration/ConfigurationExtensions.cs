@@ -17,7 +17,7 @@
 using System;
 using Microsoft.Extensions.Configuration;
 
-namespace Nethermind.BeaconNode
+namespace Nethermind.Core2.Configuration
 {
     public static class ConfigurationExtensions
     {
