@@ -28,7 +28,7 @@ namespace Nethermind.BeaconNode.OApiClient
             
             services.AddHttpClient();
             services.AddSingleton<IBeaconNodeOApiClientFactory, BeaconNodeOApiClientFactory>();
-            services.AddScoped<IBeaconNodeApi, BeaconNodeProxy>();
+            services.AddSingleton<IBeaconNodeApi, BeaconNodeProxy>();
         }
         
         private static void AddConfiguration(IServiceCollection services, IConfiguration configuration)
