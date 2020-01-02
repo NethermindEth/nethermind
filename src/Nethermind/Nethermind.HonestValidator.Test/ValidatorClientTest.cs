@@ -54,7 +54,7 @@ namespace Nethermind.HonestValidator.Test
         }
 
         [TestMethod]
-        public async Task BasicSignBlock()
+        public async Task BasicSignBlockFromBeaconNodeProxy()
         {
             // Epoch 0 proposals validators:
             // Slot 0, [56] 0x94f0c853 (attestation slot 4, shard 0) 
@@ -75,7 +75,7 @@ namespace Nethermind.HonestValidator.Test
                     ["QuickStart:NumberOfValidators"] = "1"
                 })
                 .Build();
-            testServiceCollection.AddHonestValidatorQuickStart(configuration);;
+            testServiceCollection.AddHonestValidatorQuickStart(configuration);
             
             IBeaconNodeOApiClient beaconNodeOApiClient = Substitute.For<IBeaconNodeOApiClient>();
 

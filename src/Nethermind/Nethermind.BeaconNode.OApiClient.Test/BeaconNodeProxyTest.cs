@@ -4,19 +4,13 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.OApiClient;
-using Nethermind.BeaconNode.Services;
-using Nethermind.HonestValidator.Services;
 using NSubstitute;
 using NSubstitute.Core;
-using NSubstitute.Core.Arguments;
 using NSubstitute.ExceptionExtensions;
 using Shouldly;
 
-namespace Nethermind.HonestValidator.Test
+namespace Nethermind.BeaconNode.OApiClient.Test
 {
     [TestClass]
     public class BeaconNodeProxyTest

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <TargetFramework>netcoreapp3.0</TargetFramework>
@@ -44,10 +44,9 @@
         <PackageReference Include="NSubstitute" Version="4.2.1" />
         <PackageReference Include="Shouldly" Version="3.0.2" />
     </ItemGroup>
-
+    
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj" />
-        <ProjectReference Include="..\Nethermind.HonestValidator\Nethermind.HonestValidator.csproj" />
     </ItemGroup>
 
 </Project>
