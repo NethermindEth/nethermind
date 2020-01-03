@@ -21,5 +21,7 @@ namespace Nethermind.Core2
         public const int Slot = sizeof(ulong);
         public const int Epoch = sizeof(ulong);
         public const int CommitteeIndex = sizeof(ulong);
+        public const int Gwei = sizeof(ulong);
+        public const int ValidatorIndex = sizeof(ulong);
     }
 }

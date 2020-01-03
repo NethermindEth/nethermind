@@ -32,7 +32,7 @@ namespace Nethermind.Core2.Containers
                                             sizeof(ulong) +
                                             2 * sizeof(uint) +
                                             Time.EpochsPerHistoricalVector * Hash32.SszLength +
-                                            Time.EpochsPerSlashingsVector * Gwei.SszLength +
+                                            Time.EpochsPerSlashingsVector * ByteLength.Gwei +
                                             2 * sizeof(uint) +
                                             1 + // not sure
                                             3 * Checkpoint.SszLength;
@@ -49,7 +49,7 @@ namespace Nethermind.Core2.Containers
             int result = SszDynamicOffset;
             result += Hash32.SszLength * (container.HistoricalRoots?.Length ?? 0);
             result += Validator.SszLength * (container.Validators?.Length ?? 0);
-            result += Gwei.SszLength * (container.Balances?.Length ?? 0);
+            result += ByteLength.Gwei * (container.Balances?.Length ?? 0);
             result += Eth1Data.SszLength * (container.Eth1DataVotes?.Length ?? 0);
 
             result += (container.PreviousEpochAttestations?.Length ?? 0) * sizeof(uint);

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,8 +22,6 @@ namespace Nethermind.Core2.Types
     [DebuggerDisplay("{Number}")]
     public struct ValidatorIndex : IEquatable<ValidatorIndex>, IComparable<ValidatorIndex>
     {
-        public const int SszLength = sizeof(ulong);
-
         public ValidatorIndex(ulong number)
         {
             Number = number;

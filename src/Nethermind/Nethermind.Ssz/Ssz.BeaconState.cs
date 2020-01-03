@@ -67,15 +67,15 @@ namespace Nethermind.Ssz
             Encode(span.Slice(dynamicOffset, length3), container.Validators);
             dynamicOffset += length3;
             offset += VarOffsetSize;
-            int length4 = (container.Balances?.Length ?? 0) * Gwei.SszLength;
+            int length4 = (container.Balances?.Length ?? 0) * ByteLength.Gwei;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length4), container.Balances);
             dynamicOffset += length4;
             offset += VarOffsetSize;
             Encode(span.Slice(offset, Time.EpochsPerHistoricalVector * Hash32.SszLength), container.RandaoMixes);
             offset += Time.EpochsPerHistoricalVector * Hash32.SszLength;
-            Encode(span.Slice(offset, Time.EpochsPerSlashingsVector * Gwei.SszLength), container.Slashings);
-            offset += Time.EpochsPerSlashingsVector * Gwei.SszLength;
+            Encode(span.Slice(offset, Time.EpochsPerSlashingsVector * ByteLength.Gwei), container.Slashings);
+            offset += Time.EpochsPerSlashingsVector * ByteLength.Gwei;
 
             int length5 = (container.PreviousEpochAttestations?.Length ?? 0) * VarOffsetSize;
             if (!(container.PreviousEpochAttestations is null))
@@ -134,8 +134,8 @@ namespace Nethermind.Ssz
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset4);
             beaconState.RandaoMixes = DecodeHashes(span.Slice(offset, Time.EpochsPerHistoricalVector * Hash32.SszLength));
             offset += Time.EpochsPerHistoricalVector * Hash32.SszLength;
-            beaconState.Slashings = DecodeGweis(span.Slice(offset, Time.EpochsPerSlashingsVector * Gwei.SszLength));
-            offset += Time.EpochsPerSlashingsVector * Gwei.SszLength;
+            beaconState.Slashings = DecodeGweis(span.Slice(offset, Time.EpochsPerSlashingsVector * ByteLength.Gwei));
+            offset += Time.EpochsPerSlashingsVector * ByteLength.Gwei;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset5);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset6);
 

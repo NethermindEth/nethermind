@@ -34,7 +34,7 @@ namespace Nethermind.Core2.Containers
             }
             
             return SszDynamicOffset +
-                   (value.AttestingIndices?.Length ?? 0) * ValidatorIndex.SszLength;
+                   (value.AttestingIndices?.Length ?? 0) * ByteLength.ValidatorIndex;
         }
 
         public ValidatorIndex[]? AttestingIndices { get; set; }

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
@@ -49,8 +50,8 @@ namespace Nethermind.Ssz
             }
 
             int offset = 0;
-            Encode(span.Slice(0, ValidatorIndex.SszLength), container.ProposerIndex);
-            offset += ValidatorIndex.SszLength;
+            Encode(span.Slice(0, ByteLength.ValidatorIndex), container.ProposerIndex);
+            offset += ByteLength.ValidatorIndex;
             Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header1);
             offset += BeaconBlockHeader.SszLength;
             Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header2);
