@@ -27,7 +27,7 @@ namespace Nethermind.Core2.Types
             Number = number;
         }
 
-        public static Slot None => new Slot(ulong.MaxValue);
+        public static Slot None => new Slot(ulong.MaxValue - 1);
         
         public static Slot Zero => new Slot(0);
         

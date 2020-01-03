@@ -29,7 +29,7 @@ namespace Nethermind.Core2.Types
         
         public ulong Number { get; }
         
-        public static ValidatorIndex None => new ValidatorIndex(ulong.MaxValue);
+        public static ValidatorIndex None => new ValidatorIndex(ulong.MaxValue - 1);
 
         public static implicit operator ulong(ValidatorIndex validatorIndex) => validatorIndex.Number;
         

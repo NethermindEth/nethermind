@@ -73,15 +73,14 @@ namespace Nethermind.Core2.Types
         {
             return Number.GetHashCode();
         }
-
-        public static uint Epochs { get; set; } = 12;
-
+        
         public override string ToString()
         {
             return Number.ToString();
         }
 
-        public static Epoch None => new Epoch(ulong.MaxValue);
+        // NOTE: ulong.MaxValue is defined as FarFutureEpoch constant, so need a different placeholder for None
+        public static Epoch None => new Epoch(ulong.MaxValue - 1);
 
         public static Epoch Zero => new Epoch(0);
         
