@@ -38,7 +38,6 @@ namespace Nethermind.Clique
 {
     public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     {
-        private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
@@ -46,18 +45,19 @@ namespace Nethermind.Clique
         private readonly ICryptoRandom _cryptoRandom;
         private readonly WiggleRandomizer _wiggle;
 
+        private readonly IPendingTransactionSelector _pendingTransactionSelector;
         private readonly IBlockchainProcessor _processor;
-        private readonly ITxPool _txPool;
-        private ISealer _sealer;
+        private readonly ISealer _sealer;
         private readonly ISnapshotManager _snapshotManager;
-        private ICliqueConfig _config;
-        private Address _address;
-        private ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
+        private readonly ICliqueConfig _config;
+        private readonly Address _address;
+        private readonly ConcurrentDictionary<Address, bool> _proposals = new ConcurrentDictionary<Address, bool>();
 
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        private System.Timers.Timer _timer = new System.Timers.Timer();
+        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        private readonly System.Timers.Timer _timer = new System.Timers.Timer();
 
-        public CliqueBlockProducer(ITxPool txPool,
+        public CliqueBlockProducer(
+            IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor blockchainProcessor,
             IBlockTree blockTree,
             ITimestamper timestamper,
@@ -70,7 +70,7 @@ namespace Nethermind.Clique
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
+            _pendingTransactionSelector = pendingTransactionSelector ?? throw new ArgumentNullException(nameof(pendingTransactionSelector));
             _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -376,59 +376,9 @@ namespace Nethermind.Clique
                 header.Timestamp = new UInt256(_timestamper.EpochSeconds);
             }
 
-            var transactions = _txPool.GetPendingTransactions().OrderBy(t => t.Nonce).ThenByDescending(t => t.GasPrice).ThenBy(t => t.GasLimit); // by nonce in case there are two transactions for the same account
-
-            var selectedTxs = new List<Transaction>();
-            BigInteger gasRemaining = header.GasLimit;
-
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
-
-            int total = 0;
             _stateProvider.StateRoot = parentHeader.StateRoot;
 
-            Dictionary<Address, UInt256> nonces = new Dictionary<Address, UInt256>();
-            foreach (Transaction transaction in transactions)
-            {
-                total++;
-                if (transaction.SenderAddress == null)
-                {
-                    if (_logger.IsError) _logger.Error("Rejecting null sender pending transaction.");
-                    continue;
-                }
-
-                if (transaction.GasPrice < MinGasPriceForMining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
-                    continue;
-                }
-
-                if (transaction.Nonce != _stateProvider.GetNonce(transaction.SenderAddress) && (!nonces.ContainsKey(transaction.SenderAddress) || nonces[transaction.SenderAddress] + 1 != transaction.Nonce))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction based on nonce.");
-                    continue;
-                }
-
-                if (transaction.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
-                    continue;
-                }
-
-                BigInteger requiredBalance = transaction.GasLimit * (BigInteger)transaction.GasPrice + transaction.Value;
-                BigInteger balance = _stateProvider.GetBalance(transaction.SenderAddress);
-                if (requiredBalance > balance)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - insufficient balance - required {requiredBalance}, actual {balance}.");
-                    continue;
-                }
-
-                selectedTxs.Add(transaction);
-                nonces[transaction.SenderAddress] = transaction.Nonce;
-                gasRemaining -= transaction.GasLimit;
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
-
+            var selectedTxs = _pendingTransactionSelector.SelectTransactions(header.GasLimit);
             Block block = new Block(header, selectedTxs, new BlockHeader[0]);
             header.TxRoot = block.CalculateTxRoot();
             block.Author = _address;

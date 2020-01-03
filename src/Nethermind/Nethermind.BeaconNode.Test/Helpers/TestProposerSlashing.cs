@@ -18,13 +18,13 @@ using System;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Hash32 = Nethermind.Core2.Types.Hash32;
 
-namespace Nethermind.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestProposerSlashing
     {

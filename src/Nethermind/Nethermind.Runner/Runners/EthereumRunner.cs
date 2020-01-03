@@ -142,6 +142,7 @@ namespace Nethermind.Runner.Runners
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
         private ITxPool _txPool;
+        private PendingTransactionSelector _pendingTransactionSelector;
         private IReceiptStorage _receiptStorage;
         private IEthereumEcdsa _ethereumEcdsa;
         private IEthSyncPeerPool _syncPeerPool;
@@ -452,7 +453,12 @@ namespace Nethermind.Runner.Runners
                 Timestamper.Default,
                 _ethereumEcdsa,
                 _specProvider,
-                _txPoolConfig, _stateProvider, _logManager);
+                _txPoolConfig, 
+                _stateProvider, 
+                _logManager);
+            
+            _pendingTransactionSelector = new PendingTransactionSelector(_txPool, _stateProvider, _logManager);
+            
             _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
 
             _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
@@ -646,7 +652,7 @@ namespace Nethermind.Runner.Runners
                         CliqueConfig cliqueConfig = new CliqueConfig();
                         cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
                         cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
-                        _blockProducer = new CliqueBlockProducer(_txPool, producerChain.Processor,
+                        _blockProducer = new CliqueBlockProducer(_pendingTransactionSelector, producerChain.Processor,
                             _blockTree, _timestamper, _cryptoRandom, producerChain.ReadOnlyStateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
                         break;
                     }
@@ -655,7 +661,7 @@ namespace Nethermind.Runner.Runners
                     {
                         var producerChain = GetProducerChain();
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, _logManager);
+                        _blockProducer = new DevBlockProducer(_pendingTransactionSelector, producerChain.Processor, _blockTree, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, _txPool);
                         break;
                     }
                     
@@ -664,7 +670,7 @@ namespace Nethermind.Runner.Runners
                         IAuRaValidatorProcessor validator = null;
                         var producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _receiptStorage, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
                         if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
-                        _blockProducer = new AuRaBlockProducer(_txPool, producerChain.Processor, _blockTree, _timestamper, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _nodeKey.Address, _sealer, producerChain.ReadOnlyStateProvider, _configProvider.GetConfig<IAuraConfig>(), _logManager);
+                        _blockProducer = new AuRaBlockProducer(_pendingTransactionSelector, producerChain.Processor, _sealer, _blockTree, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _configProvider.GetConfig<IAuraConfig>(), _nodeKey.Address);
                         validator.SetFinalizationManager(_finalizationManager, true);
                         break;
                     }

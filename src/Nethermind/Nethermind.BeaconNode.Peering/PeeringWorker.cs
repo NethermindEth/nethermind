@@ -14,14 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.BeaconNode.Configuration
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+
+namespace Nethermind.BeaconNode.Peering
 {
-    public class RewardsAndPenalties
+    public class PeeringWorker : BackgroundService
     {
-        public ulong BaseRewardFactor { get; set; }
-        public ulong InactivityPenaltyQuotient { get; set; }
-        public ulong MinimumSlashingPenaltyQuotient { get; set; }
-        public ulong ProposerRewardQuotient { get; set; }
-        public ulong WhistleblowerRewardQuotient { get; set; }
+        protected override Task ExecuteAsync(CancellationToken stoppingToken)
+        {
+            // TODO: Peering worker needs to set up network, discover peers, subscribe to notifications, set up handlers for incoming requests, etc
+            
+            //throw new System.NotImplementedException();
+
+            return Task.CompletedTask;
+        }
     }
 }

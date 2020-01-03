@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Types;
+using System.Threading.Tasks;
+using Nethermind.BeaconNode.Containers;
 
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.BeaconNode.Services
 {
-    public class ForkChoiceConfiguration
+    public interface INetworkPeering
     {
-        public Slot SafeSlotsToUpdateJustified { get; set; }
+        Task PublishBeaconBlockAsync(BeaconBlock beaconBlock);
     }
 }

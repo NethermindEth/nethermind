@@ -276,7 +276,7 @@ InitConfig
    default value: false
 
  WebSocketsEnabled
-   Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'
+   Defines whether the WebSockets service is enabled on node startup at the 'HttpPort' - e.g. ws://localhost:8545/ws/json-rpc
    default value: false
 
 JsonRpcConfig

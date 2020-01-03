@@ -14,16 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Types;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Nethermind.BeaconNode.Services;
 
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.BeaconNode.Peering
 {
-    public class SignatureDomains
+    public static class BeaconNodePeeringServiceCollectionExtensions
     {
-        public DomainType BeaconAttester { get; set; }
-        public DomainType BeaconProposer { get; set; }
-        public DomainType Deposit { get; set; }
-        public DomainType Randao { get; set; }
-        public DomainType VoluntaryExit { get; set; }
+        public static void AddBeaconNodePeering(this IServiceCollection services, IConfiguration configuration)
+        {
+            services.AddScoped<INetworkPeering, NetworkPeering>();
+            services.AddHostedService<PeeringWorker>();
+        }
     }
 }

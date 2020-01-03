@@ -14,14 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.BeaconNode.Configuration
+using Nethermind.Core2.Types;
+
+namespace Nethermind.Core2.Configuration
 {
-    public class MaxOperationsPerBlock
+    public class SignatureDomains
     {
-        public ulong MaximumAttestations { get; set; }
-        public ulong MaximumAttesterSlashings { get; set; }
-        public ulong MaximumDeposits { get; set; }
-        public ulong MaximumProposerSlashings { get; set; }
-        public ulong MaximumVoluntaryExits { get; set; }
+        public DomainType BeaconAttester { get; set; }
+        public DomainType BeaconProposer { get; set; }
+        public DomainType Deposit { get; set; }
+        public DomainType Randao { get; set; }
+        public DomainType VoluntaryExit { get; set; }
     }
 }

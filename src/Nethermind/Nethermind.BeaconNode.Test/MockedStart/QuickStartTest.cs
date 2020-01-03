@@ -29,7 +29,7 @@ using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Crypto;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests.MockedStart
+namespace Nethermind.BeaconNode.Test.MockedStart
 {
     [TestClass]
     public class QuickStartTest

@@ -136,7 +136,8 @@ namespace Nethermind.Clique.Test
                     ProcessGenesis(privateKey);
                 }
 
-                CliqueBlockProducer blockProducer = new CliqueBlockProducer(txPool, minerProcessor, blockTree, _timestamper, new CryptoRandom(), minerStateProvider, snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
+                PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(txPool, stateProvider, nodeLogManager);
+                CliqueBlockProducer blockProducer = new CliqueBlockProducer(pendingTransactionSelector, minerProcessor, blockTree, _timestamper, new CryptoRandom(), minerStateProvider, snapshotManager, cliqueSealer, privateKey.Address, _cliqueConfig, nodeLogManager);
                 blockProducer.Start();
 
                 _producers.Add(privateKey, blockProducer);

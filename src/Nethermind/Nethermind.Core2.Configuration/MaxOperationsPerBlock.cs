@@ -14,14 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using Nethermind.Core2.Types;
-
-namespace Nethermind.HonestValidator.Configuration
+namespace Nethermind.Core2.Configuration
 {
-    public class BeaconNodeConnection
+    public class MaxOperationsPerBlock
     {
-        public string[] RemoteUrls { get; set; } = new string[0];
-        public int ConnectionFailureLoopMillisecondsDelay { get; set; }
+        public ulong MaximumAttestations { get; set; }
+        public ulong MaximumAttesterSlashings { get; set; }
+        public ulong MaximumDeposits { get; set; }
+        public ulong MaximumProposerSlashings { get; set; }
+        public ulong MaximumVoluntaryExits { get; set; }
     }
 }

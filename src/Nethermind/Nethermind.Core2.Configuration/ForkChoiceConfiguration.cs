@@ -16,13 +16,10 @@
 
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.Core2.Configuration
 {
-    public class StateListLengths
+    public class ForkChoiceConfiguration
     {
-        public ulong EpochsPerHistoricalVector { get; set; }
-        public ulong EpochsPerSlashingsVector { get; set; }
-        public ulong HistoricalRootsLimit { get; set; }
-        public ulong ValidatorRegistryLimit { get; set; }
+        public Slot SafeSlotsToUpdateJustified { get; set; }
     }
 }
