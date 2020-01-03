@@ -103,7 +103,7 @@ namespace Nethermind.HonestValidator.MockedStart
             }
 
             Hash32 hash32 = _cryptographyService.Hash(input);
-            Span<byte> hash = hash32.AsSpan();
+            ReadOnlySpan<byte> hash = hash32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
             BigInteger privateKey = value % s_curveOrder;

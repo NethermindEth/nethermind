@@ -153,7 +153,7 @@ namespace Nethermind.BeaconNode
                 byte roundByte = (byte) (currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
                 Hash32 pivotHash = _cryptographyService.Hash(pivotHashInput);
-                Span<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
+                ReadOnlySpan<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
                 ValidatorIndex pivot = BinaryPrimitives.ReadUInt64LittleEndian(pivotBytes) % indexCount;
 
                 ValidatorIndex flip = (pivot + indexCount - index) % indexCount;

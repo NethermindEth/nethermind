@@ -28,23 +28,23 @@ namespace Nethermind.Core2
             return ToHexString(bytes.AsSpan(), withZeroX, false);
         }
         
-        public static string ToHexString(this Span<byte> span)
+        public static string ToHexString(this ReadOnlySpan<byte> span)
         {
             return ToHexString(span, false, false);
         }
 
-        public static string ToHexString(this Span<byte> span, bool withZeroX)
+        public static string ToHexString(this ReadOnlySpan<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false);
         }
         
-        public static string ToHexString(this Span<byte> span, bool withZeroX, bool noLeadingZeros)
+        public static string ToHexString(this ReadOnlySpan<byte> span, bool withZeroX, bool noLeadingZeros)
         {
             return ByteArrayToHexViaLookup32(span, withZeroX, noLeadingZeros);
         }
         
         [DebuggerStepThrough]
-        private static string ByteArrayToHexViaLookup32(Span<byte> span, bool withZeroX, bool skipLeadingZeros)
+        private static string ByteArrayToHexViaLookup32(ReadOnlySpan<byte> span, bool withZeroX, bool skipLeadingZeros)
         {
             int leadingZeros = skipLeadingZeros ? CountLeadingZeros(span) : 0;
             char[] result = new char[span.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
@@ -94,7 +94,7 @@ namespace Nethermind.Core2
             return result;
         }
         
-        private static int CountLeadingZeros(Span<byte> span)
+        private static int CountLeadingZeros(ReadOnlySpan<byte> span)
         {
             int leadingZeros = 0;
             for (int i = 0; i < span.Length; i++)
@@ -120,7 +120,7 @@ namespace Nethermind.Core2
             return leadingZeros;
         }
 
-        public static byte[] Xor(this Span<byte> bytes, Span<byte> otherBytes)
+        public static byte[] Xor(this ReadOnlySpan<byte> bytes, ReadOnlySpan<byte> otherBytes)
         {
             if (bytes.Length != otherBytes.Length)
             {
@@ -203,7 +203,7 @@ namespace Nethermind.Core2
             }
         }
 
-        public static bool AreEqual(Span<byte> a1, Span<byte> a2)
+        public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
         {
             return a1.SequenceEqual(a2);
         }

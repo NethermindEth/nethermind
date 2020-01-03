@@ -47,9 +47,9 @@ namespace Nethermind.Core2.Types
         
         public readonly byte[] Bytes;
         
-        public Span<byte> AsSpan()
+        public ReadOnlySpan<byte> AsSpan()
         {
-            return new Span<byte>(Bytes);
+            return new ReadOnlySpan<byte>(Bytes);
         }
         
         public bool Equals(Hash32 other)
