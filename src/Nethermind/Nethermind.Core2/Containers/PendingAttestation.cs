@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Containers
     {
         public const int SszDynamicOffset = sizeof(uint) +
                                             AttestationData.SszLength +
-                                            Slot.SszLength +
+                                            Core2.SszLength.Slot +
                                             ValidatorIndex.SszLength;
         
         public static int SszLength(PendingAttestation? value)
