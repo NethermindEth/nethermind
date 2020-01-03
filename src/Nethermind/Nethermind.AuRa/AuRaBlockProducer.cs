@@ -36,205 +36,69 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa
 {
-    public class AuRaBlockProducer : IBlockProducer
+    public class AuRaBlockProducer : BaseLoopBlockProducer
     {
-        private static readonly BigInteger MinGasPriceForMining = 1;
-        
-        private readonly IBlockTree _blockTree;
-        private readonly ITimestamper _timestamper;
         private readonly IAuRaStepCalculator _auRaStepCalculator;
-        private readonly Address _nodeAddress;
-        private readonly ISealer _sealer;
-        private readonly IStateProvider _stateProvider;
         private readonly IAuraConfig _config;
-        private readonly ILogger _logger;
+        private readonly Address _nodeAddress;
 
-        private readonly IBlockchainProcessor _processor;
-        private readonly ITxPool _txPool;
-        private Task _producerTask;
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        
-        public AuRaBlockProducer(ITxPool txPool,
-            IBlockchainProcessor blockchainProcessor,
-            IBlockTree blockTree,
-            ITimestamper timestamper,
-            IAuRaStepCalculator auRaStepCalculator,
-            Address nodeAddress,
+        public AuRaBlockProducer(IPendingTransactionSelector pendingTransactionSelector,
+            IBlockchainProcessor processor,
             ISealer sealer,
+            IBlockTree blockTree,
             IStateProvider stateProvider,
+            ITimestamper timestamper,
+            ILogManager logManager,
+            IAuRaStepCalculator auRaStepCalculator,
             IAuraConfig config,
-            ILogManager logManager)
+            Address nodeAddress) 
+            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager, "AuRa")
         {
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
-            _processor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
-            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
-            _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
-            _stateProvider = stateProvider  ?? throw new ArgumentNullException(nameof(stateProvider));
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
         }
 
-        public void Start()
+        protected override async ValueTask BetweenBlocks()
         {
-            _producerTask = Task.Run(ProducerLoop, _cancellationTokenSource.Token).ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("AuRa block producer encountered an exception.", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsDebug) _logger.Debug("AuRa block producer stopped.");
-                }
-                else if (t.IsCompleted)
-                {
-                    if (_logger.IsDebug) _logger.Debug("AuRa block producer complete.");
-                }
-            });
+            var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
+            if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
+            await TaskExt.DelayAtLeast(timeToNextStep);
         }
 
-        private async Task ProducerLoop()
+        protected override Block PrepareBlock(BlockHeader parent)
         {
-            while (!_cancellationTokenSource.IsCancellationRequested)
-            {
-                BlockHeader parentHeader = _blockTree.Head;
-                if (parentHeader == null)
-                {
-                    if (_logger.IsWarn) _logger.Warn($"Preparing new block - parent header is null");
-                }
-                else if (_sealer.CanSeal(parentHeader.Number + 1, parentHeader.Hash))
-                {
-                    ProduceNewBlock(parentHeader);
-                }
-
-                var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
-                if (_logger.IsDebug) _logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
-                await TaskExt.DelayAtLeast(timeToNextStep);
-            }
-        }
-
-        public async Task StopAsync()
-        {
-            _cancellationTokenSource?.Cancel();
-            await (_producerTask ?? Task.CompletedTask);
-        }
-
-        private Block PrepareBlock(BlockHeader parentHeader)
-        {
-            UInt256 timestamp = _timestamper.EpochSeconds;
-
-            BlockHeader header = new BlockHeader(
-                parentHeader.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                _nodeAddress,
-                AuraDifficultyCalculator.CalculateDifficulty(parentHeader.AuRaStep.Value, _auRaStepCalculator.CurrentStep, 0),
-                parentHeader.Number + 1,
-                parentHeader.GasLimit,
-                timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
-                Encoding.UTF8.GetBytes("Nethermind"))
-            {
-                AuRaStep = (long) _auRaStepCalculator.CurrentStep,
-            };
-
-            header.TotalDifficulty = parentHeader.TotalDifficulty + header.Difficulty;
-            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parentHeader.TotalDifficulty} + {header.Difficulty}.");
-
-            var transactions = _txPool.GetPendingTransactions().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account
-
-            var selectedTxs = new List<Transaction>();
-            BigInteger gasRemaining = header.GasLimit;
-
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
-
-            int total = 0;
-            foreach (Transaction transaction in transactions)
-            {
-                total++;
-                if (transaction == null) throw new InvalidOperationException("Block transaction is null");
-
-                if (transaction.GasPrice < MinGasPriceForMining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
-                    continue;
-                }
-
-                if (transaction.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
-                    break;
-                }
-
-                selectedTxs.Add(transaction);
-                gasRemaining -= transaction.GasLimit;
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Collected {selectedTxs.Count} out of {total} pending transactions.");
-
-
-            Block block = new Block(header, selectedTxs, new BlockHeader[0]);
-            header.TxRoot = block.CalculateTxRoot();
+            var block = base.PrepareBlock(parent);
+            block.Header.AuRaStep = _auRaStepCalculator.CurrentStep;
+            block.Beneficiary = _nodeAddress;
             return block;
         }
 
-        private void ProduceNewBlock(BlockHeader parentHeader)
-        {
-            _stateProvider.StateRoot = parentHeader.StateRoot;
-            
-            Block block = PrepareBlock(parentHeader);
-            if (block == null)
-            {
-                if (_logger.IsError) _logger.Error("Failed to prepare block for mining.");
-                return;
-            }
-            
-            if (block.Transactions.Length == 0)
-            {
-                if (_config.ForceSealing)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Force sealing block {block.Number} without transactions.");                    
-                }
-                else
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Skip seal block {block.Number}, no transactions pending.");
-                    return;
-                }
-            }
+        protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) 
+            => AuraDifficultyCalculator.CalculateDifficulty(parent.AuRaStep.Value, _auRaStepCalculator.CurrentStep);
 
-            Block processedBlock = _processor.Process(block, ProcessingOptions.NoValidation | ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullBlockTracer.Instance);
-            if (_logger.IsInfo) _logger.Info($"Mined a DEV block {processedBlock.ToString(Block.Format.FullHashAndNumber)} State Root: {processedBlock.StateRoot}");
-            
-            if (processedBlock == null)
+        protected override bool PreparedBlockCanBeMined(Block block)
+        {
+            if (base.PreparedBlockCanBeMined(block))
             {
-                if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
-                return;
-            }
-            
-            _sealer.SealBlock(processedBlock, _cancellationTokenSource.Token).ContinueWith(t =>
-            {
-                if (t.IsCompletedSuccessfully)
+                if (block.Transactions.Length == 0)
                 {
-                    if (t.Result != null)
+                    if (_config.ForceSealing)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
-                        _blockTree.SuggestBlock(t.Result);
+                        if (Logger.IsDebug) Logger.Debug($"Force sealing block {block.Number} without transactions.");
                     }
                     else
                     {
-                        if (_logger.IsInfo) _logger.Info($"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                        if (Logger.IsDebug) Logger.Debug($"Skip seal block {block.Number}, no transactions pending.");
+                        return false;
                     }
                 }
-                else if (t.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Mining failed", t.Exception);
-                }
-                else if (t.IsCanceled)
-                {
-                    if (_logger.IsInfo) _logger.Info($"Sealing block {processedBlock.Number} cancelled");
-                }
-            }, _cancellationTokenSource.Token);
+
+                return true;
+
+            }
+            
+            return false;
         }
     }
 }
