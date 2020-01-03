@@ -30,18 +30,7 @@ namespace Nethermind.Core2.Configuration
         public static byte[] GetBytesFromPrefixedHex(this IConfiguration configuration, string key)
         {
             var hex = configuration.GetValue<string>(key);
-            if (string.IsNullOrWhiteSpace(hex))
-            {
-                return Array.Empty<byte>();
-            }
-
-            var bytes = new byte[(hex.Length - 2) / 2];
-            var hexIndex = 2;
-            for (var byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
-            {
-                bytes[byteIndex] = Convert.ToByte(hex.Substring(hexIndex, 2), 16);
-                hexIndex += 2;
-            }
+            var bytes = Bytes.FromHexString(hex);
             return bytes;
         }
 
