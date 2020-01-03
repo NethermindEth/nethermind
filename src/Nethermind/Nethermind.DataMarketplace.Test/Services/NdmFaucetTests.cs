@@ -99,6 +99,7 @@ namespace Nethermind.DataMarketplace.Test.Services
         }
 
         [Test]
+        [Retry(3)]
         public async Task request_eth_should_fail_for_empty_host()
         {
             _host = string.Empty;
