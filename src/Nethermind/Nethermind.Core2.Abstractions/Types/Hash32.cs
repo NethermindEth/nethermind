@@ -16,17 +16,14 @@
 
 using System;
 using System.Buffers.Binary;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Core2.Types
 {
-    public unsafe struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
+    public struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
     {
         public const int Length = 32;
-        
-        public const int SszLength = 32;
-        
-        public Hash32(ReadOnlySpan<byte> span)
+
+        public unsafe Hash32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)
             {

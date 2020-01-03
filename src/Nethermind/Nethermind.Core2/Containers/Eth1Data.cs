@@ -43,7 +43,7 @@ namespace Nethermind.Core2.Containers
             }
         }
 
-        public const int SszLength = 2 * Hash32.SszLength + sizeof(ulong);
+        public const int SszLength = 2 * ByteLength.Hash32 + sizeof(ulong);
         
         /// <summary>
         /// Is it Keccak?

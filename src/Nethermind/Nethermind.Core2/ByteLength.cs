@@ -23,5 +23,6 @@ namespace Nethermind.Core2
         public const int CommitteeIndex = sizeof(ulong);
         public const int Gwei = sizeof(ulong);
         public const int ValidatorIndex = sizeof(ulong);
+        public const int Hash32 = Types.Hash32.Length;
     }
 }

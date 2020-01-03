@@ -45,11 +45,11 @@ namespace Nethermind.Ssz
             Encode(span, container.Fork, ref offset);
             Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.LatestBlockHeader);
             offset += BeaconBlockHeader.SszLength;
-            Encode(span.Slice(offset, Time.SlotsPerHistoricalRoot * Hash32.SszLength), container.BlockRoots);
-            offset += Time.SlotsPerHistoricalRoot * Hash32.SszLength;
-            Encode(span.Slice(offset, Time.SlotsPerHistoricalRoot * Hash32.SszLength), container.StateRoots);
-            offset += Time.SlotsPerHistoricalRoot * Hash32.SszLength;
-            int length1 = (container.HistoricalRoots?.Length ?? 0) * Hash32.SszLength;
+            Encode(span.Slice(offset, Time.SlotsPerHistoricalRoot * ByteLength.Hash32), container.BlockRoots);
+            offset += Time.SlotsPerHistoricalRoot * ByteLength.Hash32;
+            Encode(span.Slice(offset, Time.SlotsPerHistoricalRoot * ByteLength.Hash32), container.StateRoots);
+            offset += Time.SlotsPerHistoricalRoot * ByteLength.Hash32;
+            int length1 = (container.HistoricalRoots?.Length ?? 0) * ByteLength.Hash32;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length1), container.HistoricalRoots);
             dynamicOffset += length1;
@@ -72,8 +72,8 @@ namespace Nethermind.Ssz
             Encode(span.Slice(dynamicOffset, length4), container.Balances);
             dynamicOffset += length4;
             offset += VarOffsetSize;
-            Encode(span.Slice(offset, Time.EpochsPerHistoricalVector * Hash32.SszLength), container.RandaoMixes);
-            offset += Time.EpochsPerHistoricalVector * Hash32.SszLength;
+            Encode(span.Slice(offset, Time.EpochsPerHistoricalVector * ByteLength.Hash32), container.RandaoMixes);
+            offset += Time.EpochsPerHistoricalVector * ByteLength.Hash32;
             Encode(span.Slice(offset, Time.EpochsPerSlashingsVector * ByteLength.Gwei), container.Slashings);
             offset += Time.EpochsPerSlashingsVector * ByteLength.Gwei;
 
@@ -121,10 +121,10 @@ namespace Nethermind.Ssz
             beaconState.Fork = DecodeFork(span, ref offset);
             beaconState.LatestBlockHeader = DecodeBeaconBlockHeader(span, ref offset);
 
-            beaconState.BlockRoots = DecodeHashes(span.Slice(offset, Time.SlotsPerHistoricalRoot * Hash32.SszLength)).ToArray();
-            offset += Time.SlotsPerHistoricalRoot * Hash32.SszLength;
-            beaconState.StateRoots = DecodeHashes(span.Slice(offset, Time.SlotsPerHistoricalRoot * Hash32.SszLength)).ToArray();
-            offset += Time.SlotsPerHistoricalRoot * Hash32.SszLength;
+            beaconState.BlockRoots = DecodeHashes(span.Slice(offset, Time.SlotsPerHistoricalRoot * ByteLength.Hash32)).ToArray();
+            offset += Time.SlotsPerHistoricalRoot * ByteLength.Hash32;
+            beaconState.StateRoots = DecodeHashes(span.Slice(offset, Time.SlotsPerHistoricalRoot * ByteLength.Hash32)).ToArray();
+            offset += Time.SlotsPerHistoricalRoot * ByteLength.Hash32;
 
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
             beaconState.Eth1Data = DecodeEth1Data(span, ref offset);
@@ -132,8 +132,8 @@ namespace Nethermind.Ssz
             beaconState.Eth1DepositIndex = DecodeULong(span, ref offset);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset3);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset4);
-            beaconState.RandaoMixes = DecodeHashes(span.Slice(offset, Time.EpochsPerHistoricalVector * Hash32.SszLength));
-            offset += Time.EpochsPerHistoricalVector * Hash32.SszLength;
+            beaconState.RandaoMixes = DecodeHashes(span.Slice(offset, Time.EpochsPerHistoricalVector * ByteLength.Hash32));
+            offset += Time.EpochsPerHistoricalVector * ByteLength.Hash32;
             beaconState.Slashings = DecodeGweis(span.Slice(offset, Time.EpochsPerSlashingsVector * ByteLength.Gwei));
             offset += Time.EpochsPerSlashingsVector * ByteLength.Gwei;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset5);

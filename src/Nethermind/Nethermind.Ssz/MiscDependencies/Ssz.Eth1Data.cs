@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -68,9 +69,9 @@ namespace Nethermind.Ssz
         {
             if (span.Length != Eth1Data.SszLength) ThrowSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             Eth1Data container = new Eth1Data();
-            container.DepositRoot = DecodeSha256(span.Slice(0, Hash32.SszLength));
-            container.DepositCount = DecodeULong(span.Slice(Hash32.SszLength, sizeof(ulong)));
-            container.BlockHash = DecodeSha256(span.Slice(Hash32.SszLength + sizeof(ulong), Hash32.SszLength));
+            container.DepositRoot = DecodeSha256(span.Slice(0, ByteLength.Hash32));
+            container.DepositCount = DecodeULong(span.Slice(ByteLength.Hash32, sizeof(ulong)));
+            container.BlockHash = DecodeSha256(span.Slice(ByteLength.Hash32 + sizeof(ulong), ByteLength.Hash32));
             return container;
         }
 

@@ -26,8 +26,8 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Hash32 value, ref int offset)
         {
-            Encode(span.Slice(offset, Hash32.SszLength), value);
-            offset += Hash32.SszLength;
+            Encode(span.Slice(offset, ByteLength.Hash32), value);
+            offset += ByteLength.Hash32;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -40,15 +40,15 @@ namespace Nethermind.Ssz
         {
             for (int i = 0; i < value.Length; i++)
             {
-                Encode(span.Slice(i * Hash32.SszLength, Hash32.SszLength), value[i]);    
+                Encode(span.Slice(i * ByteLength.Hash32, ByteLength.Hash32), value[i]);    
             }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Hash32 DecodeSha256(Span<byte> span, ref int offset)
         {
-            Hash32 hash32 = DecodeSha256(span.Slice(offset, Hash32.SszLength));
-            offset += Hash32.SszLength;
+            Hash32 hash32 = DecodeSha256(span.Slice(offset, ByteLength.Hash32));
+            offset += ByteLength.Hash32;
             return hash32;
         }
         
@@ -64,11 +64,11 @@ namespace Nethermind.Ssz
                 return Array.Empty<Hash32>();
             }
             
-            int count = span.Length / Hash32.SszLength;
+            int count = span.Length / ByteLength.Hash32;
             Hash32[] result = new Hash32[count];
             for (int i = 0; i < count; i++)
             {
-                Span<byte> current = span.Slice(i * Hash32.SszLength, Hash32.SszLength);
+                Span<byte> current = span.Slice(i * ByteLength.Hash32, ByteLength.Hash32);
                 result[i] = DecodeSha256(current);
             }
 

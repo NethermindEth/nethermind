@@ -25,7 +25,7 @@ namespace Nethermind.Core2.Containers
     {
         public const int ContractTreeDepth = 32;
         
-        public const int SszLengthOfProof = (ContractTreeDepth + 1) * Hash32.SszLength;
+        public const int SszLengthOfProof = (ContractTreeDepth + 1) * ByteLength.Hash32;
         
         public const int SszLength = SszLengthOfProof + DepositData.SszLength;
         

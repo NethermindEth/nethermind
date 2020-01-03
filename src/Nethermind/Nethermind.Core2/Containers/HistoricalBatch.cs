@@ -23,7 +23,7 @@ namespace Nethermind.Core2.Containers
 {
     public class HistoricalBatch
     {
-        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * Hash32.SszLength;
+        public static int SszLength = 2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32;
 
         public Hash32[] BlockRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
         public Hash32[] StateRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
