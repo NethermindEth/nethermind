@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Containers
     public class BeaconState
     {
         public static int SszDynamicOffset = sizeof(ulong) +
-                                            Core2.SszLength.Slot +
+                                            Core2.ByteLength.Slot +
                                             Fork.SszLength +
                                             BeaconBlockHeader.SszLength +
                                             2 * Time.SlotsPerHistoricalRoot * Hash32.SszLength +

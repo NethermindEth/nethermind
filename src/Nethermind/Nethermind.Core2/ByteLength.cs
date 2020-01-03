@@ -16,8 +16,10 @@
 
 namespace Nethermind.Core2
 {
-    public static class SszLength
+    public static class ByteLength
     {
         public const int Slot = sizeof(ulong);
+        public const int Epoch = sizeof(ulong);
+        public const int CommitteeIndex = sizeof(ulong);
     }
 }

@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,20 +22,13 @@ namespace Nethermind.Core2.Types
     [DebuggerDisplay("{Number}")]
     public struct CommitteeIndex : IEquatable<CommitteeIndex>, IComparable<CommitteeIndex>
     {
-        public const int SszLength = sizeof(ulong);
-
         public CommitteeIndex(ulong number)
         {
             Number = number;
         }
         
         public ulong Number { get; }
-        
-        public bool Equals(ValidatorIndex other)
-        {
-            return Number == other.Number;
-        }
-        
+
         public static CommitteeIndex None => new CommitteeIndex(ulong.MaxValue);
 
         public static CommitteeIndex One => new CommitteeIndex(1);
