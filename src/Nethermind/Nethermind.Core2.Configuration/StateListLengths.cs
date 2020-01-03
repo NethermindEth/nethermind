@@ -16,7 +16,7 @@
 
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.Core2.Configuration
 {
     public class StateListLengths
     {

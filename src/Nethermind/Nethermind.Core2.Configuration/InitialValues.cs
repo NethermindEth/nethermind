@@ -14,26 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-namespace Nethermind.BeaconNode.Configuration
+using Nethermind.Core2.Types;
+
+namespace Nethermind.Core2.Configuration
 {
-    public class MiscellaneousParameters
+    public class InitialValues
     {
-        public ulong ChurnLimitQuotient { get; set; }
+        public Epoch GenesisEpoch { get; set; }
 
-        public ulong MaximumCommitteesPerSlot { get; set; }
-
-        public ulong MaximumValidatorsPerCommittee { get; set; }
-
-        public int MinimumGenesisActiveValidatorCount { get; set; }
-
-        public ulong MinimumGenesisTime { get; set; }
-
-        //public Shard ShardCount { get; set; }
-
-        public ulong MinimumPerEpochChurnLimit { get; set; }
-
-        public int ShuffleRoundCount { get; set; }
-
-        public ulong TargetCommitteeSize { get; set; }
+        public byte BlsWithdrawalPrefix { get; set; }
     }
 }

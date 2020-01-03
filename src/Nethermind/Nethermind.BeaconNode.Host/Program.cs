@@ -24,6 +24,7 @@ using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2.Configuration;
 
 namespace Nethermind.BeaconNode.Host
 {
@@ -78,6 +79,7 @@ namespace Nethermind.BeaconNode.Host
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
+                    services.ConfigureBeaconChain(hostContext.Configuration);
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
                     services.AddBeaconNodePeering(hostContext.Configuration);

@@ -19,7 +19,7 @@ using System.Linq;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestCheckpoint
     {

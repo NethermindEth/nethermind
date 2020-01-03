@@ -16,10 +16,14 @@
 
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Configuration
+namespace Nethermind.Core2.Configuration
 {
-    public class ForkChoiceConfiguration
+    public class SignatureDomains
     {
-        public Slot SafeSlotsToUpdateJustified { get; set; }
+        public DomainType BeaconAttester { get; set; }
+        public DomainType BeaconProposer { get; set; }
+        public DomainType Deposit { get; set; }
+        public DomainType Randao { get; set; }
+        public DomainType VoluntaryExit { get; set; }
     }
 }

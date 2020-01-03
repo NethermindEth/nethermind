@@ -174,7 +174,7 @@ namespace Nethermind.HonestValidator.Test
             ICall publishCall =
                 clientReceived.SingleOrDefault(x => x.GetMethodInfo().Name == nameof(beaconNodeOApiClient.Block2Async));
             publishCall.ShouldNotBeNull();
-            BeaconBlock publishedBlock = publishCall.GetArguments()[0] as BeaconBlock;
+            BeaconBlock publishedBlock = (BeaconBlock)publishCall.GetArguments()[0];
             // NOTE: This value not checked separately, just from running the test.
             publishedBlock.Signature.ShouldBe("0xa7c6f0b6097bea4b60639c08d0f1f193f2e1dbfbddf6e4a54d2ecee89835db929ef272fb7c7a4078dddf14ec36cf3bab02eaa5ba1c2e9cb1c2de28450e4d6eb6238281c39f3f6f8083315e374816260c54bfa7b0b2370ab12e692c938ed3b5e0");
 

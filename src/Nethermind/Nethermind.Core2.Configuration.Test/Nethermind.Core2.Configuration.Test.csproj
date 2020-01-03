@@ -12,15 +12,21 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <Content Include="..\Nethermind.HonestValidator.Host\appsettings.json" Link="appsettings.json">
+        <Content Include="..\Nethermind.BeaconNode.Host\appsettings.Development.json" Link="appsettings.Development.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <Content Include="..\Nethermind.HonestValidator.Host\appsettings.Development.json" Link="appsettings.Development.json">
+        <Content Include="..\Nethermind.BeaconNode.Host\appsettings.Production.json" Link="appsettings.Production.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
-        <Content Include="..\Nethermind.HonestValidator.Host\appsettings.Production.json" Link="appsettings.Production.json">
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="..\Nethermind.BeaconNode.Host\configuration\mainnet.yaml" Link="mainnet.yaml">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-        </Content>
+        </None>
+        <None Include="..\Nethermind.BeaconNode.Host\configuration\minimal.yaml" Link="minimal.yaml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
     <ItemGroup>
@@ -39,11 +45,20 @@
         </PackageReference>
         <PackageReference Include="NSubstitute" Version="4.2.1" />
         <PackageReference Include="Shouldly" Version="3.0.2" />
+        <PackageReference Include="NetEscapades.Configuration.Yaml" Version="1.6.0" />
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj" />
-        <ProjectReference Include="..\Nethermind.HonestValidator\Nethermind.HonestValidator.csproj" />
+        <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <None Update="testappsettingsB.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
+        <None Update="testconfigA.yaml">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </None>
     </ItemGroup>
 
 </Project>
