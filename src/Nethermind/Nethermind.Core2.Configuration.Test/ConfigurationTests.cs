@@ -23,7 +23,7 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Types;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests.Configuration
+namespace Nethermind.Core2.Configuration.Test
 {
     [TestClass]
     public class ConfigurationTests

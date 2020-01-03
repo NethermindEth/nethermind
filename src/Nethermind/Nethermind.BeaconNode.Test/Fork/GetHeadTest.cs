@@ -27,11 +27,11 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
-using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2.Types;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests.Fork
+namespace Nethermind.BeaconNode.Test.Fork
 {
     [TestClass]
     public class GetHeadTest

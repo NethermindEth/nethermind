@@ -28,7 +28,7 @@ using Nethermind.Core2.Types;
 using NSubstitute;
 using Hash32 = Nethermind.Core2.Types.Hash32;
 
-namespace Nethermind.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Test
 {
     public static class TestSystem
     {

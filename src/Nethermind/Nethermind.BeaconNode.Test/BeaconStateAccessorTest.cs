@@ -26,13 +26,13 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Storage;
-using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
     public class BeaconStateAccessorTest

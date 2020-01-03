@@ -17,7 +17,7 @@
 using System;
 using Microsoft.Extensions.Options;
 
-namespace Nethermind.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Test
 {
     public static class TestOptionsMonitor
     {

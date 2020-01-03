@@ -23,7 +23,7 @@ using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestGenesis
     {

@@ -21,7 +21,7 @@ using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
     public class BlockProducerTest

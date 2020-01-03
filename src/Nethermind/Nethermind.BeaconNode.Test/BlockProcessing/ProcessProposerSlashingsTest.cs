@@ -19,10 +19,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.BeaconNode.Test.Helpers;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests.BlockProcessing
+namespace Nethermind.BeaconNode.Test.BlockProcessing
 {
     [TestClass]
     public class ProcessProposerSlashingsTest

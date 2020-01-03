@@ -21,7 +21,7 @@ using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestKeys
     {

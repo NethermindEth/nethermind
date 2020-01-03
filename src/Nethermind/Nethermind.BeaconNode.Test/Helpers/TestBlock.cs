@@ -34,7 +34,7 @@ using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 using Hash32 = Nethermind.Core2.Types.Hash32;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
-namespace Nethermind.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestBlock
     {
