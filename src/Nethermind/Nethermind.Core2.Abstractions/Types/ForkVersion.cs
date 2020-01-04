@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,15 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace Nethermind.Core2.Types
 {
     public struct ForkVersion : IEquatable<ForkVersion>
     {
-        public const int SszLength = sizeof(uint);
-
+        public const int Length = sizeof(uint);
+        
         private readonly uint _number;
 
         public ReadOnlySpan<byte> AsSpan()
@@ -68,7 +67,7 @@ namespace Nethermind.Core2.Types
 
         public override string ToString()
         {
-            return BitConverter.ToString(AsSpan().ToArray()).Replace("-", "");
+            return AsSpan().ToHexString(true);
         }
     }
 }

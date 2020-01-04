@@ -84,8 +84,8 @@ namespace Nethermind.HonestValidator.Test
                 Fork = new Fork()
                 {
                     Epoch = 0,
-                    Previous_version = new byte[ForkVersion.SszLength],
-                    Current_version = new byte[ForkVersion.SszLength]
+                    Previous_version = new byte[ForkVersion.Length],
+                    Current_version = new byte[ForkVersion.Length]
                 }
             };
             beaconNodeOApiClient

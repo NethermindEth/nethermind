@@ -14,6 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core2.Types;
+
 namespace Nethermind.Core2
 {
     public static class ByteLength
@@ -23,6 +25,7 @@ namespace Nethermind.Core2
         public const int CommitteeIndexLength = sizeof(ulong);
         public const int GweiLength = sizeof(ulong);
         public const int ValidatorIndexLength = sizeof(ulong);
-        public const int Hash32Length = Types.Hash32.Length;
+        public const int Hash32Length = Hash32.Length;
+        public const int ForkVersionLength = ForkVersion.Length;
     }
 }
