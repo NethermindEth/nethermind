@@ -57,7 +57,7 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Validator_there_and_back()
         {
-            Validator container = new Validator(BlsPublicKey.TestKey1);
+            Validator container = new Validator(SszTest.TestKey1);
             container.Slashed = true;
             container.WithdrawalCredentials = Sha256.OfAnEmptyString;
             container.EffectiveBalance = Gwei.One;
@@ -176,7 +176,7 @@ namespace Nethermind.Ssz.Test
         public void Deposit_data_there_and_back()
         {
             DepositData container = new DepositData();
-            container.PublicKey = BlsPublicKey.TestKey1;
+            container.PublicKey = SszTest.TestKey1;
             container.WithdrawalCredentials = Sha256.OfAnEmptyString;
             container.Amount = Gwei.One;
             container.Signature = BlsSignature.TestSig1;
@@ -294,7 +294,7 @@ namespace Nethermind.Ssz.Test
         public void Deposit_there_and_back()
         {
             DepositData data = new DepositData();
-            data.PublicKey = BlsPublicKey.TestKey1;
+            data.PublicKey = SszTest.TestKey1;
             data.WithdrawalCredentials = Sha256.OfAnEmptyString;
             data.Amount = Gwei.One;
             data.Signature = BlsSignature.TestSig1;
@@ -373,7 +373,7 @@ namespace Nethermind.Ssz.Test
             DepositData depositData = new DepositData();
             depositData.Amount = new Gwei(7);
             depositData.Signature = BlsSignature.TestSig1;
-            depositData.PublicKey = BlsPublicKey.TestKey1;
+            depositData.PublicKey = SszTest.TestKey1;
             depositData.WithdrawalCredentials = Sha256.OfAnEmptyString;
 
             Deposit deposit = new Deposit();

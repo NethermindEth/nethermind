@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Containers
     {
         public const ulong ValidatorRegistryLimit = 1_099_511_627_776;
 
-        public const int SszLength = BlsPublicKey.SszLength + ByteLength.Hash32Length + ByteLength.GweiLength + 1 + 4 * ByteLength.EpochLength;
+        public const int SszLength = ByteLength.BlsPublicKeyLength + ByteLength.Hash32Length + ByteLength.GweiLength + 1 + 4 * ByteLength.EpochLength;
 
         public Validator(BlsPublicKey publicKey)
         {

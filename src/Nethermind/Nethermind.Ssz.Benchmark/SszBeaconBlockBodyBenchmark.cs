@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -45,7 +46,7 @@ namespace Nethermind.Ssz.Benchmarks
             DepositData depositData = new DepositData();
             depositData.Amount = new Gwei(7);
             depositData.Signature = BlsSignature.TestSig1;
-            depositData.PublicKey = BlsPublicKey.TestKey1;
+            depositData.PublicKey = SszTest.TestKey1;
             depositData.WithdrawalCredentials = Sha256.OfAnEmptyString;
             
             Deposit deposit = new Deposit();

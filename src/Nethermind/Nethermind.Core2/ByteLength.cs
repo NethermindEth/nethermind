@@ -28,5 +28,6 @@ namespace Nethermind.Core2
         public const int ValidatorIndexLength = sizeof(ulong);
         public const int Hash32Length = Hash32.Length;
         public const int ForkVersionLength = ForkVersion.Length;
+        public const int BlsPublicKeyLength = BlsPublicKey.Length;
     }
 }

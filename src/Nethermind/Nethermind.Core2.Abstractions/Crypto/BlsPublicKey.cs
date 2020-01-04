@@ -16,7 +16,6 @@
 
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 namespace Nethermind.Core2.Crypto
 {
@@ -24,14 +23,7 @@ namespace Nethermind.Core2.Crypto
     {
         public const int Length = 48;
 
-        public const int SszLength = Length;
-        
         public static BlsPublicKey Empty = new BlsPublicKey(new byte[Length]);
-        
-        public static BlsPublicKey TestKey1 = new BlsPublicKey(
-            "0x000102030405060708090a0b0c0d0e0f" +
-            "101112131415161718191a1b1c1d1e1f" +
-            "202122232425262728292a2b2c2d2e2f");
 
         public BlsPublicKey(string hexString)
             : this(Core2.Bytes.FromHexString(hexString))
@@ -78,11 +70,6 @@ namespace Nethermind.Core2.Crypto
         public override string ToString()
         {
             return Bytes.ToHexString(true);
-        }
-
-        public string ToString(bool with0X)
-        {
-            return Bytes.ToHexString(with0X);
         }
 
         public string ToShortString()
