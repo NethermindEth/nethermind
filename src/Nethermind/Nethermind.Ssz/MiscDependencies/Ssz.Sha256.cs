@@ -17,6 +17,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core2;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz

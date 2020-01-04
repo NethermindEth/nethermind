@@ -18,7 +18,7 @@ using System;
 //using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Types.Hash32;
+using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Containers
 {

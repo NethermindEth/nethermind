@@ -31,7 +31,7 @@ using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
-using Hash32 = Nethermind.Core2.Types.Hash32;
+using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.MockedStart
 {

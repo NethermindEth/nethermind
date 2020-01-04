@@ -17,7 +17,7 @@
 using System;
 using System.Buffers.Binary;
 
-namespace Nethermind.Core2.Types
+namespace Nethermind.Core2.Crypto
 {
     public struct Hash32 : IEquatable<Hash32>, IComparable<Hash32>
     {

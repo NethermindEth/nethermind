@@ -28,6 +28,7 @@ using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 

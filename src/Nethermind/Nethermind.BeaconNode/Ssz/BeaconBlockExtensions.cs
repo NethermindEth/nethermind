@@ -18,6 +18,7 @@ using System.Collections.Generic;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Ssz
