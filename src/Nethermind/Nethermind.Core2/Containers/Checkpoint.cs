@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Containers
     [DebuggerDisplay("{Epoch}_{Root}")]
     public struct Checkpoint
     {
-        public const int SszLength = ByteLength.Hash32 + ByteLength.Epoch; 
+        public const int SszLength = ByteLength.Hash32Length + ByteLength.EpochLength; 
         
         public Checkpoint(Epoch epoch, Hash32 root)
         {

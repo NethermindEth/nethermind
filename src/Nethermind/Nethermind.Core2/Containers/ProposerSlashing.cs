@@ -21,7 +21,7 @@ namespace Nethermind.Core2.Containers
 {
     public class ProposerSlashing
     {
-        public const int SszLength = ByteLength.ValidatorIndex + 2 * BeaconBlockHeader.SszLength;
+        public const int SszLength = ByteLength.ValidatorIndexLength + 2 * BeaconBlockHeader.SszLength;
 
         public ValidatorIndex ProposerIndex { get; set; }
         public BeaconBlockHeader? Header1 { get; set; }

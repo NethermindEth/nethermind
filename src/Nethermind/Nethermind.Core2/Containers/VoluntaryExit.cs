@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Containers
 {
     public class VoluntaryExit
     {
-        public const int SszLength = ByteLength.Epoch + ByteLength.ValidatorIndex + BlsSignature.SszLength;
+        public const int SszLength = ByteLength.EpochLength + ByteLength.ValidatorIndexLength + BlsSignature.SszLength;
 
         /// <summary>
         /// The earliest epoch when voluntary exit can be processed

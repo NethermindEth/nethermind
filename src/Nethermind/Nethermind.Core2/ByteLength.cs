@@ -18,11 +18,11 @@ namespace Nethermind.Core2
 {
     public static class ByteLength
     {
-        public const int Slot = sizeof(ulong);
-        public const int Epoch = sizeof(ulong);
-        public const int CommitteeIndex = sizeof(ulong);
-        public const int Gwei = sizeof(ulong);
-        public const int ValidatorIndex = sizeof(ulong);
-        public const int Hash32 = Types.Hash32.Length;
+        public const int SlotLength = sizeof(ulong);
+        public const int EpochLength = sizeof(ulong);
+        public const int CommitteeIndexLength = sizeof(ulong);
+        public const int GweiLength = sizeof(ulong);
+        public const int ValidatorIndexLength = sizeof(ulong);
+        public const int Hash32Length = Types.Hash32.Length;
     }
 }

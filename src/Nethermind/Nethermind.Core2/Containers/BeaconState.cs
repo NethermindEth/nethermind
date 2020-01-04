@@ -22,17 +22,17 @@ namespace Nethermind.Core2.Containers
     public class BeaconState
     {
         public static int SszDynamicOffset = sizeof(ulong) +
-                                            Core2.ByteLength.Slot +
+                                            Core2.ByteLength.SlotLength +
                                             Fork.SszLength +
                                             BeaconBlockHeader.SszLength +
-                                            2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32 +
+                                            2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length +
                                             sizeof(uint) +
                                             Eth1Data.SszLength +
                                             sizeof(uint) +
                                             sizeof(ulong) +
                                             2 * sizeof(uint) +
-                                            Time.EpochsPerHistoricalVector * ByteLength.Hash32 +
-                                            Time.EpochsPerSlashingsVector * ByteLength.Gwei +
+                                            Time.EpochsPerHistoricalVector * ByteLength.Hash32Length +
+                                            Time.EpochsPerSlashingsVector * ByteLength.GweiLength +
                                             2 * sizeof(uint) +
                                             1 + // not sure
                                             3 * Checkpoint.SszLength;
@@ -47,9 +47,9 @@ namespace Nethermind.Core2.Containers
             }
             
             int result = SszDynamicOffset;
-            result += ByteLength.Hash32 * (container.HistoricalRoots?.Length ?? 0);
+            result += ByteLength.Hash32Length * (container.HistoricalRoots?.Length ?? 0);
             result += Validator.SszLength * (container.Validators?.Length ?? 0);
-            result += ByteLength.Gwei * (container.Balances?.Length ?? 0);
+            result += ByteLength.GweiLength * (container.Balances?.Length ?? 0);
             result += Eth1Data.SszLength * (container.Eth1DataVotes?.Length ?? 0);
 
             result += (container.PreviousEpochAttestations?.Length ?? 0) * sizeof(uint);

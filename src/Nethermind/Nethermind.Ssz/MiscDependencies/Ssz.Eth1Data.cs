@@ -69,9 +69,9 @@ namespace Nethermind.Ssz
         {
             if (span.Length != Eth1Data.SszLength) ThrowSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
             Eth1Data container = new Eth1Data();
-            container.DepositRoot = DecodeSha256(span.Slice(0, ByteLength.Hash32));
-            container.DepositCount = DecodeULong(span.Slice(ByteLength.Hash32, sizeof(ulong)));
-            container.BlockHash = DecodeSha256(span.Slice(ByteLength.Hash32 + sizeof(ulong), ByteLength.Hash32));
+            container.DepositRoot = DecodeSha256(span.Slice(0, ByteLength.Hash32Length));
+            container.DepositCount = DecodeULong(span.Slice(ByteLength.Hash32Length, sizeof(ulong)));
+            container.BlockHash = DecodeSha256(span.Slice(ByteLength.Hash32Length + sizeof(ulong), ByteLength.Hash32Length));
             return container;
         }
 

@@ -20,7 +20,7 @@ namespace Nethermind.Core2.Containers
 {
     public struct Fork
     {
-        public const int SszLength = ForkVersion.SszLength * 2 + ByteLength.Epoch;
+        public const int SszLength = ForkVersion.SszLength * 2 + ByteLength.EpochLength;
 
         public Fork(ForkVersion previousVersion, ForkVersion currentVersion, Epoch epoch)
         {

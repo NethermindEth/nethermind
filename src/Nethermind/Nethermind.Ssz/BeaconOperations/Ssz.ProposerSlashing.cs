@@ -50,8 +50,8 @@ namespace Nethermind.Ssz
             }
 
             int offset = 0;
-            Encode(span.Slice(0, ByteLength.ValidatorIndex), container.ProposerIndex);
-            offset += ByteLength.ValidatorIndex;
+            Encode(span.Slice(0, ByteLength.ValidatorIndexLength), container.ProposerIndex);
+            offset += ByteLength.ValidatorIndexLength;
             Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header1);
             offset += BeaconBlockHeader.SszLength;
             Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header2);
