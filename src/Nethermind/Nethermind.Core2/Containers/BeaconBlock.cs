@@ -22,7 +22,7 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
-        public const int SszDynamicOffset = Core2.ByteLength.SlotLength + 2 * ByteLength.Hash32Length + sizeof(uint) + BlsSignature.SszLength;
+        public const int SszDynamicOffset = Core2.ByteLength.SlotLength + 2 * ByteLength.Hash32Length + sizeof(uint) + ByteLength.BlsSignatureLength;
         
         public static int SszLength(BeaconBlock? container)
         {

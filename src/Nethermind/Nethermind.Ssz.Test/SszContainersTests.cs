@@ -109,7 +109,7 @@ namespace Nethermind.Ssz.Test
             IndexedAttestation container = new IndexedAttestation();
             container.AttestingIndices = new ValidatorIndex[3];
             container.Data = data;
-            container.Signature = BlsSignature.TestSig1;
+            container.Signature = SszTest.TestSig1;
 
             Span<byte> encoded = new byte[IndexedAttestation.SszLength(container)];
             Ssz.Encode(encoded, container);
@@ -179,7 +179,7 @@ namespace Nethermind.Ssz.Test
             container.PublicKey = SszTest.TestKey1;
             container.WithdrawalCredentials = Sha256.OfAnEmptyString;
             container.Amount = Gwei.One;
-            container.Signature = BlsSignature.TestSig1;
+            container.Signature = SszTest.TestSig1;
             Span<byte> encoded = new byte[DepositData.SszLength];
             Ssz.Encode(encoded, container);
             DepositData decoded = Ssz.DecodeDepositData(encoded);
@@ -196,7 +196,7 @@ namespace Nethermind.Ssz.Test
             container.ParentRoot = Sha256.OfAnEmptyString;
             container.BodyRoot = Sha256.OfAnEmptyString;
             container.StateRoot = Sha256.OfAnEmptyString;
-            container.Signature = BlsSignature.TestSig1;
+            container.Signature = SszTest.TestSig1;
             Span<byte> encoded = new byte[BeaconBlockHeader.SszLength];
             Ssz.Encode(encoded, container);
             BeaconBlockHeader decoded = Ssz.DecodeBeaconBlockHeader(encoded);
@@ -213,14 +213,14 @@ namespace Nethermind.Ssz.Test
             header1.ParentRoot = Sha256.OfAnEmptyString;
             header1.BodyRoot = Sha256.OfAnEmptyString;
             header1.StateRoot = Sha256.OfAnEmptyString;
-            header1.Signature = BlsSignature.TestSig1;
+            header1.Signature = SszTest.TestSig1;
 
             BeaconBlockHeader header2 = new BeaconBlockHeader();
             header2.Slot = new Slot(2);
             header2.ParentRoot = Sha256.OfAnEmptyString;
             header2.BodyRoot = Sha256.OfAnEmptyString;
             header2.StateRoot = Sha256.OfAnEmptyString;
-            header2.Signature = BlsSignature.TestSig1;
+            header2.Signature = SszTest.TestSig1;
 
             ProposerSlashing container = new ProposerSlashing();
             container.ProposerIndex = new ValidatorIndex(1);
@@ -248,12 +248,12 @@ namespace Nethermind.Ssz.Test
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.AttestingIndices = new ValidatorIndex[3];
             indexedAttestation1.Data = data;
-            indexedAttestation1.Signature = BlsSignature.TestSig1;
+            indexedAttestation1.Signature = SszTest.TestSig1;
 
             IndexedAttestation indexedAttestation2 = new IndexedAttestation();
             indexedAttestation2.AttestingIndices = new ValidatorIndex[5];
             indexedAttestation2.Data = data;
-            indexedAttestation2.Signature = BlsSignature.TestSig1;
+            indexedAttestation2.Signature = SszTest.TestSig1;
 
             AttesterSlashing container = new AttesterSlashing();
             container.Attestation1 = indexedAttestation1;
@@ -280,7 +280,7 @@ namespace Nethermind.Ssz.Test
             Attestation container = new Attestation();
             container.AggregationBits = new byte[] {1, 2, 3};
             container.Data = data;
-            container.Signature = BlsSignature.TestSig1;
+            container.Signature = SszTest.TestSig1;
 
             Span<byte> encoded = new byte[Attestation.SszLength(container)];
             Ssz.Encode(encoded, container);
@@ -297,7 +297,7 @@ namespace Nethermind.Ssz.Test
             data.PublicKey = SszTest.TestKey1;
             data.WithdrawalCredentials = Sha256.OfAnEmptyString;
             data.Amount = Gwei.One;
-            data.Signature = BlsSignature.TestSig1;
+            data.Signature = SszTest.TestSig1;
 
             Deposit container = new Deposit();
             container.Data = data;
@@ -317,7 +317,7 @@ namespace Nethermind.Ssz.Test
             VoluntaryExit container = new VoluntaryExit();
             container.Epoch = new Epoch(1);
             container.ValidatorIndex = new ValidatorIndex(2);
-            container.Signature = BlsSignature.TestSig1;
+            container.Signature = SszTest.TestSig1;
 
             Span<byte> encoded = new byte[VoluntaryExit.SszLength];
             Ssz.Encode(encoded, container);
@@ -336,7 +336,7 @@ namespace Nethermind.Ssz.Test
             eth1Data.DepositRoot = Sha256.OfAnEmptyString;
 
             BeaconBlockBody container = new BeaconBlockBody();
-            container.RandaoReversal = BlsSignature.TestSig1;
+            container.RandaoReversal = SszTest.TestSig1;
             container.Eth1Data = eth1Data;
             container.Graffiti = new byte[32];
             container.ProposerSlashings = new ProposerSlashing[2];
@@ -367,12 +367,12 @@ namespace Nethermind.Ssz.Test
 
             Attestation attestation = new Attestation();
             attestation.Data = data;
-            attestation.Signature = BlsSignature.TestSig1;
+            attestation.Signature = SszTest.TestSig1;
             attestation.AggregationBits = new byte[5];
 
             DepositData depositData = new DepositData();
             depositData.Amount = new Gwei(7);
-            depositData.Signature = BlsSignature.TestSig1;
+            depositData.Signature = SszTest.TestSig1;
             depositData.PublicKey = SszTest.TestKey1;
             depositData.WithdrawalCredentials = Sha256.OfAnEmptyString;
 
@@ -382,12 +382,12 @@ namespace Nethermind.Ssz.Test
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;
-            indexedAttestation1.Signature = BlsSignature.TestSig1;
+            indexedAttestation1.Signature = SszTest.TestSig1;
             indexedAttestation1.AttestingIndices = new ValidatorIndex[8];
 
             IndexedAttestation indexedAttestation2 = new IndexedAttestation();
             indexedAttestation2.Data = data;
-            indexedAttestation2.Signature = BlsSignature.TestSig1;
+            indexedAttestation2.Signature = SszTest.TestSig1;
             indexedAttestation2.AttestingIndices = new ValidatorIndex[8];
 
             AttesterSlashing slashing = new AttesterSlashing();
@@ -410,7 +410,7 @@ namespace Nethermind.Ssz.Test
             body.AttesterSlashings[0] = slashing;
             body.Eth1Data = eth1Data;
             body.ProposerSlashings = new ProposerSlashing[10];
-            body.RandaoReversal = BlsSignature.TestSig1;
+            body.RandaoReversal = SszTest.TestSig1;
             body.VoluntaryExits = new VoluntaryExit[11];
 
             byte[] encoded = new byte[BeaconBlockBody.SszLength(body)];
@@ -426,7 +426,7 @@ namespace Nethermind.Ssz.Test
             eth1Data.DepositRoot = Sha256.OfAnEmptyString;
 
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
-            beaconBlockBody.RandaoReversal = BlsSignature.TestSig1;
+            beaconBlockBody.RandaoReversal = SszTest.TestSig1;
             beaconBlockBody.Eth1Data = eth1Data;
             beaconBlockBody.Graffiti = new byte[32];
             beaconBlockBody.ProposerSlashings = new ProposerSlashing[2];
@@ -437,7 +437,7 @@ namespace Nethermind.Ssz.Test
 
             BeaconBlock container = new BeaconBlock();
             container.Body = beaconBlockBody;
-            container.Signature = BlsSignature.TestSig1;
+            container.Signature = SszTest.TestSig1;
             container.Slot = new Slot(1);
             container.ParentRoot = Sha256.OfAnEmptyString;
             container.StateRoot = Sha256.OfAnEmptyString;
@@ -463,14 +463,14 @@ namespace Nethermind.Ssz.Test
             eth1Data.DepositRoot = Sha256.OfAnEmptyString;
 
             BeaconBlockHeader beaconBlockHeader = new BeaconBlockHeader();
-            beaconBlockHeader.Signature = BlsSignature.TestSig1;
+            beaconBlockHeader.Signature = SszTest.TestSig1;
             beaconBlockHeader.Slot = new Slot(14);
             beaconBlockHeader.BodyRoot = Sha256.OfAnEmptyString;
             beaconBlockHeader.ParentRoot = Sha256.OfAnEmptyString;
             beaconBlockHeader.StateRoot = Sha256.OfAnEmptyString;
 
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
-            beaconBlockBody.RandaoReversal = BlsSignature.TestSig1;
+            beaconBlockBody.RandaoReversal = SszTest.TestSig1;
             beaconBlockBody.Eth1Data = eth1Data;
             beaconBlockBody.Graffiti = new byte[32];
             beaconBlockBody.ProposerSlashings = new ProposerSlashing[2];
@@ -481,7 +481,7 @@ namespace Nethermind.Ssz.Test
 
             BeaconBlock beaconBlock = new BeaconBlock();
             beaconBlock.Body = beaconBlockBody;
-            beaconBlock.Signature = BlsSignature.TestSig1;
+            beaconBlock.Signature = SszTest.TestSig1;
             beaconBlock.Slot = new Slot(1);
             beaconBlock.ParentRoot = Sha256.OfAnEmptyString;
             beaconBlock.StateRoot = Sha256.OfAnEmptyString;

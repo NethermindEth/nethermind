@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -25,14 +25,12 @@ namespace Nethermind.Core2.Crypto
         {
             Bytes = bytes;
         }
-        
-        public const int SszLength = 96;
+
+        public const int Length = 96;
 
         public byte[] Bytes { get; }
-        
-        public static BlsSignature TestSig1 = new BlsSignature(new byte[SszLength]);
-        
-        public static BlsSignature Empty = new BlsSignature(new byte[SszLength]);
+
+        public static BlsSignature Empty = new BlsSignature(new byte[Length]);
         
         public bool Equals(BlsSignature? other)
         {

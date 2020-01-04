@@ -107,7 +107,7 @@ namespace Nethermind.Core2.Containers
             throw new ArgumentNullException();
         }
 
-        public const int SszDynamicOffset = BlsSignature.SszLength + Eth1Data.SszLength + 32 + 5 * sizeof(uint);
+        public const int SszDynamicOffset = ByteLength.BlsSignatureLength + Eth1Data.SszLength + 32 + 5 * sizeof(uint);
 
         public static int SszLength(BeaconBlockBody? container)
         {

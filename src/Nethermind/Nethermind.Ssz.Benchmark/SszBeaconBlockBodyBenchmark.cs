@@ -40,12 +40,12 @@ namespace Nethermind.Ssz.Benchmarks
             
             Attestation attestation = new Attestation();
             attestation.Data = data;
-            attestation.Signature = BlsSignature.TestSig1;
+            attestation.Signature = SszTest.TestSig1;
             attestation.AggregationBits = new byte[5];
 
             DepositData depositData = new DepositData();
             depositData.Amount = new Gwei(7);
-            depositData.Signature = BlsSignature.TestSig1;
+            depositData.Signature = SszTest.TestSig1;
             depositData.PublicKey = SszTest.TestKey1;
             depositData.WithdrawalCredentials = Sha256.OfAnEmptyString;
             
@@ -55,12 +55,12 @@ namespace Nethermind.Ssz.Benchmarks
             
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.Data = data;
-            indexedAttestation1.Signature = BlsSignature.TestSig1;
+            indexedAttestation1.Signature = SszTest.TestSig1;
             indexedAttestation1.AttestingIndices = new ValidatorIndex[8];
 
             IndexedAttestation indexedAttestation2 = new IndexedAttestation();
             indexedAttestation2.Data = data;
-            indexedAttestation2.Signature = BlsSignature.TestSig1;
+            indexedAttestation2.Signature = SszTest.TestSig1;
             indexedAttestation2.AttestingIndices = new ValidatorIndex[8];
 
             AttesterSlashing slashing = new AttesterSlashing();
@@ -83,7 +83,7 @@ namespace Nethermind.Ssz.Benchmarks
             _body.AttesterSlashings[0] = slashing;
             _body.Eth1Data = eth1Data;
             _body.ProposerSlashings = new ProposerSlashing[10];
-            _body.RandaoReversal = BlsSignature.TestSig1;
+            _body.RandaoReversal = SszTest.TestSig1;
             _body.VoluntaryExits = new VoluntaryExit[11];
 
             _encoded = new byte[BeaconBlockBody.SszLength(_body)];

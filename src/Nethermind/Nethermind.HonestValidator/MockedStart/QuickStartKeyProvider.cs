@@ -81,9 +81,9 @@ namespace Nethermind.HonestValidator.MockedStart
             
             BLS bls = _publicKeyToBls[blsPublicKey];
             
-            Span<byte> destination = stackalloc byte[BlsSignature.SszLength];
+            Span<byte> destination = stackalloc byte[BlsSignature.Length];
             bool success = bls.TrySignHash(hash.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
-            if (!success || bytesWritten != BlsSignature.SszLength)
+            if (!success || bytesWritten != BlsSignature.Length)
             {
                 throw new Exception($"Failure signing hash {hash}, domain {domain} for public key {blsPublicKey}.");
             }
