@@ -34,7 +34,7 @@ namespace Nethermind.Ssz.Test
         public void Fork_there_and_back()
         {
             Fork container = new Fork(new ForkVersion(new byte[] { 0x01, 0x00, 0x00, 0x00 }), new ForkVersion(new byte[] { 0x02, 0x00, 0x00, 0x00 }), new Epoch(3));
-            Span<byte> encoded = new byte[Fork.SszLength];
+            Span<byte> encoded = new byte[ByteLength.ForkLength];
             Ssz.Encode(encoded, container);
             Fork decoded = Ssz.DecodeFork(encoded);
             Assert.AreEqual(container, decoded);

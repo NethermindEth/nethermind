@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -20,8 +20,6 @@ namespace Nethermind.Core2.Containers
 {
     public struct Fork
     {
-        public const int SszLength = ByteLength.ForkVersionLength * 2 + ByteLength.EpochLength;
-
         public Fork(ForkVersion previousVersion, ForkVersion currentVersion, Epoch epoch)
         {
             PreviousVersion = previousVersion;

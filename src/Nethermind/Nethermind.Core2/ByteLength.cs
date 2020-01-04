@@ -30,5 +30,6 @@ namespace Nethermind.Core2
         public const int ForkVersionLength = ForkVersion.Length;
         public const int BlsPublicKeyLength = BlsPublicKey.Length;
         public const int BlsSignatureLength = BlsSignature.Length;
+        public const int ForkLength = ByteLength.ForkVersionLength * 2 + ByteLength.EpochLength;
     }
 }
