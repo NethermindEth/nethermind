@@ -22,30 +22,22 @@ namespace Nethermind.Core2.Types
 {
     public struct DomainType : IEquatable<DomainType>
     {
-        public const int SszLength = sizeof(uint);
+        public const int Length = sizeof(uint);
 
         private readonly uint _number;
 
         public ReadOnlySpan<byte> AsSpan()
         {
-            // Or if we always want little endian internally; need to change both this and constructor
-            // Span<byte> destination = new Span<byte>(new byte[SszLength]);
-            // BinaryPrimitives.WriteUInt32LittleEndian(destination, _number);
-            // NOTE: Using native (i.e. ignoring endianness) is probably better because AsSpan() is zero alloc
-            // (just read-only pointer to memory). The constructor is ByValue single alloc.
             return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref this, 1));
         }
 
         public DomainType(Span<byte> span)
         {
-            if (span.Length != sizeof(uint))
+            if (span.Length != Length)
             {
                 throw new ArgumentOutOfRangeException(nameof(span), span.Length,
-                    $"{nameof(ForkVersion)} must have exactly {sizeof(uint)} bytes");
+                    $"{nameof(ForkVersion)} must have exactly {Length} bytes");
             }
-
-            // Or if we always want little endian internally; need to change both this and AsSpan()
-            // BinaryPrimitives.ReadUInt32LittleEndian(span);
             _number = MemoryMarshal.Cast<byte, uint>(span)[0];
         }
 
@@ -76,7 +68,7 @@ namespace Nethermind.Core2.Types
 
         public override string ToString()
         {
-            return BitConverter.ToString(AsSpan().ToArray()).Replace("-", "");
+            return AsSpan().ToHexString(true);
         }
     }
 }

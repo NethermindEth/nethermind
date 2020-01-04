@@ -248,7 +248,7 @@ namespace Nethermind.HonestValidator
         {
             Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
-            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.SszLength));
+            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
             return new Domain(combined);
         }
     }
