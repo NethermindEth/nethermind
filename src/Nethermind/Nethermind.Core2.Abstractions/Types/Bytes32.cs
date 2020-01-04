@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 
 namespace Nethermind.Core2.Types
@@ -45,7 +46,7 @@ namespace Nethermind.Core2.Types
 
         public static explicit operator Bytes32(ReadOnlySpan<byte> span) => new Bytes32(span);
 
-        public static explicit operator ReadOnlySpan<byte>(Bytes32 hash) => hash.AsSpan();
+        public static explicit operator ReadOnlySpan<byte>(Bytes32 value) => value.AsSpan();
 
         public ReadOnlySpan<byte> AsSpan()
         {
@@ -65,17 +66,12 @@ namespace Nethermind.Core2.Types
 
         public override int GetHashCode()
         {
-            var hash = new HashCode();
-            foreach (var b in _bytes)
-            {
-                hash.Add(b);
-            }
-            return hash.ToHashCode();
+            return BinaryPrimitives.ReadInt32LittleEndian(AsSpan().Slice(0, 4));
         }
 
         public override string ToString()
         {
-            return BitConverter.ToString(_bytes).Replace("-", "");
+            return AsSpan().ToHexString(true);
         }
     }
 }
