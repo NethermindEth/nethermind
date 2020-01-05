@@ -15,12 +15,14 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Diagnostics;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
-    public class Checkpoint : IEquatable<Checkpoint>
+    [DebuggerDisplay("{Epoch}_{Root}")]
+    public struct Checkpoint : IEquatable<Checkpoint>
     {
         public Checkpoint(Epoch epoch, Hash32 root)
         {
@@ -42,13 +44,12 @@ namespace Nethermind.BeaconNode.Containers
 
         public override bool Equals(object? obj)
         {
-            return Equals(obj as Checkpoint);
+            return obj is Checkpoint other && Equals(other);
         }
 
-        public bool Equals(Checkpoint? other)
+        public bool Equals(Checkpoint other)
         {
-            return !(other is null)
-                && Epoch == other.Epoch
+            return Epoch == other.Epoch
                 && Root.Equals(other.Root);
         }
 
@@ -57,14 +58,19 @@ namespace Nethermind.BeaconNode.Containers
             return HashCode.Combine(Epoch, Root);
         }
 
-        public void SetRoot(Hash32 root)
+        public static bool operator ==(Checkpoint a, Checkpoint b)
         {
-            Root = root;
+            return a.Equals(b);
+        }
+
+        public static bool operator !=(Checkpoint a, Checkpoint b)
+        {
+            return !(a == b);
         }
 
         public override string ToString()
         {
-            return $"{Epoch}:{Root.ToString().Substring(0, 12)}";
+            return $"{Epoch}_{Root.ToString().Substring(0, 12)}";
         }
     }
 }

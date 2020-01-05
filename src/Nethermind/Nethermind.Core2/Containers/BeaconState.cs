@@ -36,7 +36,7 @@ namespace Nethermind.Core2.Containers
                                             Time.EpochsPerSlashingsVector * ByteLength.GweiLength +
                                             2 * sizeof(uint) +
                                             1 + // not sure
-                                            3 * Checkpoint.SszLength;
+                                            3 * ByteLength.CheckpointLength;
 
         public const ulong HistoricalRootsLimit = 16_777_216;
         

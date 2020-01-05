@@ -199,11 +199,9 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public bool IsSlashableAttestationData(AttestationData data1, AttestationData data2)
         {
-            bool isSlashable =
-                // Double vote
-                (data1.Target.Epoch == data2.Target.Epoch && !data1.Equals(data2))
-                // Surround vote
-                || (data1.Source.Epoch < data2.Source.Epoch && data2.Target.Epoch < data1.Target.Epoch);
+            bool isDoubleVote = data1.Target.Epoch == data2.Target.Epoch && !data1.Equals(data2);
+            bool isSurroundVote = data1.Source.Epoch < data2.Source.Epoch && data2.Target.Epoch < data1.Target.Epoch;
+            bool isSlashable = isDoubleVote || isSurroundVote;
             return isSlashable;
         }
 

@@ -23,8 +23,12 @@ using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Attestation = Nethermind.BeaconNode.Containers.Attestation;
+using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Test.Helpers

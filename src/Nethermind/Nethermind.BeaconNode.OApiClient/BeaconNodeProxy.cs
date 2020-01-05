@@ -40,7 +40,6 @@ using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
 using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
-using Checkpoint = Nethermind.BeaconNode.Containers.Checkpoint;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 using Fork = Nethermind.Core2.Containers.Fork;

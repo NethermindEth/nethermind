@@ -43,7 +43,7 @@ namespace Nethermind.Core2.Containers
             throw new NotSupportedException();
         }
 
-        public const int SszLength = Core2.ByteLength.SlotLength + ByteLength.CommitteeIndexLength + ByteLength.Hash32Length + 2 * Checkpoint.SszLength; 
+        public const int SszLength = Core2.ByteLength.SlotLength + ByteLength.CommitteeIndexLength + ByteLength.Hash32Length + 2 * ByteLength.CheckpointLength; 
         
         public Slot Slot { get; set; }
         public CommitteeIndex CommitteeIndex { get; set; }

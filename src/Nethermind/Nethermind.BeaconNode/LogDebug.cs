@@ -187,16 +187,16 @@ namespace Nethermind.BeaconNode
             LoggerMessage.Define<BeaconBlock, BeaconState, Hash32>(LogLevel.Debug,
                 new EventId(6200, nameof(AddedBlockToStore)),
                 "Store added block {BeaconBlock} generating state {BeaconState}, with signing root {SigningRoot}");
-        public static readonly Action<ILogger, BeaconNode.Containers.Checkpoint, Exception?> UpdateJustifiedCheckpoint =
-            LoggerMessage.Define<BeaconNode.Containers.Checkpoint>(LogLevel.Debug,
+        public static readonly Action<ILogger, Checkpoint, Exception?> UpdateJustifiedCheckpoint =
+            LoggerMessage.Define<Checkpoint>(LogLevel.Debug,
                 new EventId(6201, nameof(UpdateJustifiedCheckpoint)),
                 "Updated justified checkpoint {JustifiedCheckpoint}");
-        public static readonly Action<ILogger, BeaconNode.Containers.Checkpoint, Exception?> UpdateBestJustifiedCheckpoint =
-            LoggerMessage.Define<BeaconNode.Containers.Checkpoint>(LogLevel.Debug,
+        public static readonly Action<ILogger, Checkpoint, Exception?> UpdateBestJustifiedCheckpoint =
+            LoggerMessage.Define<Checkpoint>(LogLevel.Debug,
                 new EventId(6202, nameof(UpdateBestJustifiedCheckpoint)),
                 "Updated best justified checkpoint {JustifiedCheckpoint}");
-        public static readonly Action<ILogger, BeaconNode.Containers.Checkpoint, Exception?> UpdateFinalizedCheckpoint =
-            LoggerMessage.Define<BeaconNode.Containers.Checkpoint>(LogLevel.Debug,
+        public static readonly Action<ILogger, Checkpoint, Exception?> UpdateFinalizedCheckpoint =
+            LoggerMessage.Define<Checkpoint>(LogLevel.Debug,
                 new EventId(6203, nameof(UpdateFinalizedCheckpoint)),
                 "Updated finalized checkpoint {FinalizedCheckpoint}");
 

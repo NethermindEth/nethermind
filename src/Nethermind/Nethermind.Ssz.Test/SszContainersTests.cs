@@ -46,7 +46,7 @@ namespace Nethermind.Ssz.Test
         public void Checkpoint_there_and_back()
         {
             Checkpoint container = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            Span<byte> encoded = new byte[Checkpoint.SszLength];
+            Span<byte> encoded = new byte[ByteLength.CheckpointLength];
             Ssz.Encode(encoded, container);
             Checkpoint decoded = Ssz.DecodeCheckpoint(encoded);
             Assert.AreEqual(container, decoded);

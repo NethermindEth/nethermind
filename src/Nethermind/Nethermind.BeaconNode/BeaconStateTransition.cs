@@ -35,7 +35,6 @@ using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
 using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Checkpoint = Nethermind.BeaconNode.Containers.Checkpoint;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 using HistoricalBatch = Nethermind.BeaconNode.Containers.HistoricalBatch;

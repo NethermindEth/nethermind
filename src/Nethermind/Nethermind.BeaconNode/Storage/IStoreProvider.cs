@@ -15,9 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Storage
 {

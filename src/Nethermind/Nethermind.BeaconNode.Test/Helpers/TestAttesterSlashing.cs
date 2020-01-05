@@ -19,9 +19,14 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Shouldly;
+using Attestation = Nethermind.BeaconNode.Containers.Attestation;
+using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
+using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {
@@ -34,9 +39,20 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
 
-            var attestation2 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: false);
-
-            attestation2.Data.Target.SetRoot(new Hash32(Enumerable.Repeat((byte)0x01, 32).ToArray()));
+            var targetRoot2 = new Hash32(Enumerable.Repeat((byte) 0x01, 32).ToArray());
+            var attestation2 = new Attestation(
+                attestation1.AggregationBits,
+                new AttestationData(attestation1.Data.Slot,
+                    attestation1.Data.Index,
+                    attestation1.Data.BeaconBlockRoot,
+                    attestation1.Data.Source,
+                    new Checkpoint(
+                        attestation1.Data.Target.Epoch,
+                        targetRoot2
+                        )), 
+                attestation1.CustodyBits,
+                BlsSignature.Empty
+                );
             if (signed2)
             {
                 TestAttestation.SignAttestation(testServiceProvider, state, attestation2);

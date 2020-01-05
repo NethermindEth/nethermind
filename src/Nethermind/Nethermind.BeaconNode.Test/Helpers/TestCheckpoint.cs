@@ -17,6 +17,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
