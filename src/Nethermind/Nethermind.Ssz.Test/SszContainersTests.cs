@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2;
@@ -111,15 +112,16 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
                 new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
-            IndexedAttestation container = new IndexedAttestation();
-            container.AttestingIndices = new ValidatorIndex[3];
-            container.Data = data;
-            container.Signature = SszTest.TestSig1;
+            IndexedAttestation container = new IndexedAttestation(
+                new ValidatorIndex[3],
+                data, 
+                SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[IndexedAttestation.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.IndexedAttestationLength(container)];
             Ssz.Encode(encoded, container);
             IndexedAttestation decoded = Ssz.DecodeIndexedAttestation(encoded);
-            Assert.AreEqual(container, decoded);
+            
+            decoded.ShouldBe(container);
             
             Merkle.Ize(out UInt256 root, container);
         }
@@ -134,16 +136,17 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
                 new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
-            PendingAttestation container = new PendingAttestation();
-            container.AggregationBits = new byte[3];
-            container.Data = data;
-            container.InclusionDelay = new Slot(7);
-            container.ProposerIndex = new ValidatorIndex(13);
+            PendingAttestation container = new PendingAttestation(
+                new BitArray(new byte[3]),
+                data,
+                new Slot(7),
+                new ValidatorIndex(13));
 
-            Span<byte> encoded = new byte[PendingAttestation.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.PendingAttestationLength(container)];
             Ssz.Encode(encoded, container);
             PendingAttestation? decoded = Ssz.DecodePendingAttestation(encoded);
-            Assert.AreEqual(container, decoded);
+            
+            decoded.ShouldBe(container);
             
             Merkle.Ize(out UInt256 root, container);
         }
@@ -250,15 +253,15 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
                 new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
-            IndexedAttestation indexedAttestation1 = new IndexedAttestation();
-            indexedAttestation1.AttestingIndices = new ValidatorIndex[3];
-            indexedAttestation1.Data = data;
-            indexedAttestation1.Signature = SszTest.TestSig1;
+            IndexedAttestation indexedAttestation1 = new IndexedAttestation(
+                new ValidatorIndex[3],
+                data,
+                SszTest.TestSig1);
 
-            IndexedAttestation indexedAttestation2 = new IndexedAttestation();
-            indexedAttestation2.AttestingIndices = new ValidatorIndex[5];
-            indexedAttestation2.Data = data;
-            indexedAttestation2.Signature = SszTest.TestSig1;
+            IndexedAttestation indexedAttestation2 = new IndexedAttestation(
+                new ValidatorIndex[5],
+                data,
+                SszTest.TestSig1);
 
             AttesterSlashing container = new AttesterSlashing();
             container.Attestation1 = indexedAttestation1;
@@ -385,15 +388,15 @@ namespace Nethermind.Ssz.Test
             deposit.Data = depositData;
             deposit.Proof = new Hash32[Deposit.ContractTreeDepth + 1];
 
-            IndexedAttestation indexedAttestation1 = new IndexedAttestation();
-            indexedAttestation1.Data = data;
-            indexedAttestation1.Signature = SszTest.TestSig1;
-            indexedAttestation1.AttestingIndices = new ValidatorIndex[8];
+            IndexedAttestation indexedAttestation1 = new IndexedAttestation(
+                new ValidatorIndex[8],
+                data,
+                SszTest.TestSig1);
 
-            IndexedAttestation indexedAttestation2 = new IndexedAttestation();
-            indexedAttestation2.Data = data;
-            indexedAttestation2.Signature = SszTest.TestSig1;
-            indexedAttestation2.AttestingIndices = new ValidatorIndex[8];
+            IndexedAttestation indexedAttestation2 = new IndexedAttestation(
+                new ValidatorIndex[8],
+                data,
+                SszTest.TestSig1);
 
             AttesterSlashing slashing = new AttesterSlashing();
             slashing.Attestation1 = indexedAttestation1;

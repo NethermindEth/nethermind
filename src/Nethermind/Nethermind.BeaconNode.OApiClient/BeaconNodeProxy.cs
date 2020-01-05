@@ -42,7 +42,6 @@ using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 using Fork = Nethermind.Core2.Containers.Fork;
-using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 using ValidatorDuty = Nethermind.BeaconNode.ValidatorDuty;
 
@@ -344,11 +343,10 @@ namespace Nethermind.BeaconNode.OApiClient
             }
         }
         
-        private static BeaconNode.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApiClient.IndexedAttestation indexedAttestation)
+        private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApiClient.IndexedAttestation indexedAttestation)
         {
-            return new BeaconNode.Containers.IndexedAttestation(
+            return new Core2.Containers.IndexedAttestation(
                 indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong)y)),
-                indexedAttestation.Custody_bit_1_indices.Select(y => new ValidatorIndex((ulong)y)),
                 MapAttestationData(indexedAttestation.Data),
                 new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
             );
@@ -383,13 +381,13 @@ namespace Nethermind.BeaconNode.OApiClient
             );
         }
      
-        private static BeaconNode.OApiClient.IndexedAttestation MapIndexedAttestation(BeaconNode.Containers.IndexedAttestation indexedAttestation)
+        private static BeaconNode.OApiClient.IndexedAttestation MapIndexedAttestation(Core2.Containers.IndexedAttestation indexedAttestation)
         {
             return new BeaconNode.OApiClient.IndexedAttestation()
             {
                 Signature = indexedAttestation.Signature.ToString(),
-                Custody_bit_0_indices = indexedAttestation.CustodyBit0Indices.Select(y => (int)y).ToList(),
-                Custody_bit_1_indices = indexedAttestation.CustodyBit1Indices.Select(y => (int)y).ToList(),
+                Custody_bit_0_indices = indexedAttestation.AttestingIndices.Select(y => (int)y).ToList(),
+                Custody_bit_1_indices = new int[0],
                 Data = MapAttestationData(indexedAttestation.Data)
             };
         }

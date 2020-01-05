@@ -30,7 +30,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 
 namespace Nethermind.BeaconNode
 {
@@ -67,20 +66,10 @@ namespace Nethermind.BeaconNode
         public IndexedAttestation GetIndexedAttestation(BeaconState state, Attestation attestation)
         {
             IEnumerable<ValidatorIndex> attestingIndices = GetAttestingIndices(state, attestation.Data, attestation.AggregationBits);
-            IEnumerable<ValidatorIndex> custodyBit1Indices = GetAttestingIndices(state, attestation.Data, attestation.CustodyBits);
-
-            bool isSubset = custodyBit1Indices.All(x => attestingIndices.Contains(x));
-            if (!isSubset)
-            {
-                throw new Exception("Custody bit indices must be a subset of attesting indices");
-            }
-
-            IEnumerable<ValidatorIndex> custodyBit0Indices = attestingIndices.Except(custodyBit1Indices);
-
-            IOrderedEnumerable<ValidatorIndex> sortedCustodyBit0Indices = custodyBit0Indices.OrderBy(x => x);
-            IOrderedEnumerable<ValidatorIndex> sortedCustodyBit1Indices = custodyBit1Indices.OrderBy(x => x);
-
-            IndexedAttestation indexedAttestation = new IndexedAttestation(sortedCustodyBit0Indices, sortedCustodyBit1Indices, attestation.Data, attestation.Signature);
+            
+            IOrderedEnumerable<ValidatorIndex> sortedAttestingIndices = attestingIndices.OrderBy(x => x);
+            
+            IndexedAttestation indexedAttestation = new IndexedAttestation(sortedAttestingIndices, attestation.Data, attestation.Signature);
             return indexedAttestation;
         }
 

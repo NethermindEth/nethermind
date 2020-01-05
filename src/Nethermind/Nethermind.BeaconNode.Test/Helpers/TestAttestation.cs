@@ -49,13 +49,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }
 
-        public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey, bool custodyBit)
+        public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey)
         {
             var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var message = new AttestationDataAndCustodyBit(attestationData, custodyBit);
-            var messageHash = message.HashTreeRoot();
+            var messageHash = attestationData.HashTreeRoot();
             var domain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, attestationData.Target.Epoch);
             var signature = TestSecurity.BlsSign(messageHash, privateKey, domain);
             return signature;
@@ -103,7 +102,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             foreach (var validatorIndex in participants)
             {
                 var privateKey = privateKeys[(int)(ulong)validatorIndex];
-                var signature = GetAttestationSignature(testServiceProvider, state, attestationData, privateKey, custodyBit: false);
+                var signature = GetAttestationSignature(testServiceProvider, state, attestationData, privateKey);
                 signatures.Add(signature);
             }
 

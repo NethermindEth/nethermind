@@ -31,7 +31,6 @@ using Nethermind.Logging.Microsoft;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 
 namespace Nethermind.BeaconNode
 {

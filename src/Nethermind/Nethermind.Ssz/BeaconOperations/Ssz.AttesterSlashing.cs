@@ -16,6 +16,7 @@
 
 using System;
 using System.Buffers.Binary;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
 namespace Nethermind.Ssz
@@ -35,12 +36,12 @@ namespace Nethermind.Ssz
             }
 
             int dynamicOffset = 2 * VarOffsetSize;
-            int length1 = IndexedAttestation.SszLength(container.Attestation1);
+            int length1 = ByteLength.IndexedAttestationLength(container.Attestation1);
             Encode(span.Slice(0, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length1), container.Attestation1);
 
-            dynamicOffset += IndexedAttestation.SszLength(container.Attestation1);
-            int length2 = IndexedAttestation.SszLength(container.Attestation2);
+            dynamicOffset += ByteLength.IndexedAttestationLength(container.Attestation1);
+            int length2 = ByteLength.IndexedAttestationLength(container.Attestation2);
             Encode(span.Slice(VarOffsetSize, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length2), container.Attestation2);
         }

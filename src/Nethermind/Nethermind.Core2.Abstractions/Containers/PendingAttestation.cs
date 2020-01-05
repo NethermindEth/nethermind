@@ -14,11 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections;
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class PendingAttestation
     {
@@ -51,6 +51,44 @@ namespace Nethermind.BeaconNode.Containers
                 other.InclusionDelay,
                 other.ProposerIndex);
             return clone;
+        }
+        
+        public bool Equals(PendingAttestation other)
+        {
+            if (!Equals(Data, other.Data) ||
+                InclusionDelay != other.InclusionDelay ||
+                ProposerIndex != other.ProposerIndex ||
+                AggregationBits.Length != other.AggregationBits.Length)
+            {
+                return false;
+            }
+
+            for (int index = 0; index < AggregationBits.Length; index++)
+            {
+                if (AggregationBits[index] != other.AggregationBits[index])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is PendingAttestation other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(AggregationBits, Data, InclusionDelay, ProposerIndex);
+        }
+        
+        public override string ToString()
+        {
+            return $"C:{Data.Index} S:{Data.Slot} P:{ProposerIndex}";
         }
     }
 }

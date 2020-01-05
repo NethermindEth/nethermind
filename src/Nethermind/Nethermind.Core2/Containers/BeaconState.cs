@@ -58,7 +58,7 @@ namespace Nethermind.Core2.Containers
             {
                 for (int i = 0; i < container.PreviousEpochAttestations.Length; i++)
                 {
-                    result += PendingAttestation.SszLength(container.PreviousEpochAttestations[i]);
+                    result += ByteLength.PendingAttestationLength(container.PreviousEpochAttestations[i]);
                 }
             }
 
@@ -67,7 +67,7 @@ namespace Nethermind.Core2.Containers
             {
                 for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
                 {
-                    result += PendingAttestation.SszLength(container.CurrentEpochAttestations[i]);
+                    result += ByteLength.PendingAttestationLength(container.CurrentEpochAttestations[i]);
                 }
             }
 

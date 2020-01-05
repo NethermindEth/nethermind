@@ -38,8 +38,6 @@ using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 using HistoricalBatch = Nethermind.BeaconNode.Containers.HistoricalBatch;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
-using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
-using PendingAttestation = Nethermind.BeaconNode.Containers.PendingAttestation;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode
@@ -351,10 +349,7 @@ namespace Nethermind.BeaconNode
             }
 
             bool slashedAny = false;
-            IEnumerable<ValidatorIndex> attestingIndices1 = attestation1.CustodyBit0Indices.Union(attestation1.CustodyBit1Indices);
-            IEnumerable<ValidatorIndex> attestingIndices2 = attestation2.CustodyBit0Indices.Union(attestation2.CustodyBit1Indices);
-
-            IEnumerable<ValidatorIndex> intersection = attestingIndices1.Intersect(attestingIndices2);
+            IEnumerable<ValidatorIndex> intersection = attestation1.AttestingIndices.Intersect(attestation2.AttestingIndices);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             foreach (ValidatorIndex index in intersection.OrderBy(x => x))
             {

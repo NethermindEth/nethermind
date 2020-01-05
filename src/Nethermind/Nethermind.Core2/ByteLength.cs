@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -33,6 +34,37 @@ namespace Nethermind.Core2
         public const int ForkLength = ByteLength.ForkVersionLength * 2 + ByteLength.EpochLength;
         public const int CheckpointLength = ByteLength.Hash32Length + ByteLength.EpochLength;
         public const int ValidatorLength = ByteLength.BlsPublicKeyLength + ByteLength.Hash32Length + ByteLength.GweiLength + 1 + 4 * ByteLength.EpochLength;
-        public const int AttestationDataLength = Core2.ByteLength.SlotLength + ByteLength.CommitteeIndexLength + ByteLength.Hash32Length + 2 * ByteLength.CheckpointLength;
+        public const int AttestationDataLength = ByteLength.SlotLength + ByteLength.CommitteeIndexLength + ByteLength.Hash32Length + 2 * ByteLength.CheckpointLength;
+
+        public const int IndexedAttestationDynamicOffset = sizeof(uint) +
+                                            ByteLength.AttestationDataLength +
+                                            ByteLength.BlsSignatureLength;
+
+        public static int IndexedAttestationLength(IndexedAttestation? value)
+        {
+            if (value is null)
+            {
+                return 0;
+            }
+            
+            return ByteLength.IndexedAttestationDynamicOffset +
+                   (value.AttestingIndices?.Count ?? 0) * ByteLength.ValidatorIndexLength;
+        }
+
+        public const int PendingAttestationDynamicOffset = sizeof(uint) +
+                                                           ByteLength.AttestationDataLength +
+                                                           ByteLength.SlotLength +
+                                                           ByteLength.ValidatorIndexLength;
+
+        public static int PendingAttestationLength(PendingAttestation? value)
+        {
+            if (value == null)
+            {
+                return 0;
+            }
+            
+            // TODO: AggregationBits is a Bitlist, not Bitvector, so needs a sentinel '1' at the end, i.e. byte length is (Len+8)/8
+            return ByteLength.PendingAttestationDynamicOffset + (value.AggregationBits.Length + 7) / 8;
+        }
     }
 }

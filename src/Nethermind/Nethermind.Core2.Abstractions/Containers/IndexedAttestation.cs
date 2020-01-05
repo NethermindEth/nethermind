@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -22,47 +23,43 @@ namespace Nethermind.Core2.Containers
 {
     public class IndexedAttestation
     {
-        public const int SszDynamicOffset = sizeof(uint) +
-                                            ByteLength.AttestationDataLength +
-                                            ByteLength.BlsSignatureLength;
-        
-        public static int SszLength(IndexedAttestation? value)
+        private List<ValidatorIndex> _attestingIndices;
+
+        public IndexedAttestation(
+            IEnumerable<ValidatorIndex> attestingIndices,
+            AttestationData data,
+            BlsSignature signature)
         {
-            if (value is null)
-            {
-                return 0;
-            }
-            
-            return SszDynamicOffset +
-                   (value.AttestingIndices?.Length ?? 0) * ByteLength.ValidatorIndexLength;
+            _attestingIndices = new List<ValidatorIndex>(attestingIndices);
+            Data = data;
+            Signature = signature;
         }
 
-        public ValidatorIndex[]? AttestingIndices { get; set; }
-        public AttestationData? Data { get; set; }
-        public BlsSignature Signature { get; set; } = BlsSignature.Empty;
+        public IReadOnlyList<ValidatorIndex> AttestingIndices => _attestingIndices;
+
+        public AttestationData Data { get; }
+
+        public BlsSignature Signature { get; }
+
+        public override string ToString()
+        {
+            return $"C:{Data.Index} S:{Data.Slot} Sig:{Signature.ToString().Substring(0, 12)}";
+        }
         
         public bool Equals(IndexedAttestation other)
         {
             if (!Equals(Data, other.Data) ||
                 !Equals(Signature, other.Signature) ||
-                (AttestingIndices?.Length ?? 0) != (other.AttestingIndices?.Length ?? 0))
+                AttestingIndices.Count != other.AttestingIndices.Count)
             {
                 return false;
             }
 
-            if (!(AttestingIndices is null))
+            for (int i = 0; i < AttestingIndices.Count; i++)
             {
-                if (other.AttestingIndices is null)
+                if (AttestingIndices[i] != other.AttestingIndices[i])
                 {
                     return false;
-                }
-                
-                for (int i = 0; i < AttestingIndices?.Length; i++)
-                {
-                    if (AttestingIndices[i] != other.AttestingIndices[i])
-                    {
-                        return false;
-                    }
                 }
             }
 
@@ -73,12 +70,21 @@ namespace Nethermind.Core2.Containers
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((IndexedAttestation) obj);
+            return obj is IndexedAttestation other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            throw new NotSupportedException();
+            var hashCode = new HashCode();
+            hashCode.Add(Data);
+            hashCode.Add(Signature);
+            for (int i = 0; i < AttestingIndices.Count; i++)
+            {
+                hashCode.Add(AttestingIndices[i]);
+            }
+
+            return hashCode.ToHashCode();
         }
+        
     }
 }

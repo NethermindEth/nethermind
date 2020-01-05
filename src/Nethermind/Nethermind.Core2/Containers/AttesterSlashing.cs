@@ -31,8 +31,8 @@ namespace Nethermind.Core2.Containers
             }
             
             return 2 * sizeof(uint) +
-                   IndexedAttestation.SszLength(container.Attestation1) +
-                   IndexedAttestation.SszLength(container.Attestation2);
+                   ByteLength.IndexedAttestationLength(container.Attestation1) +
+                   ByteLength.IndexedAttestationLength(container.Attestation2);
         }
         
         public bool Equals(AttesterSlashing other)

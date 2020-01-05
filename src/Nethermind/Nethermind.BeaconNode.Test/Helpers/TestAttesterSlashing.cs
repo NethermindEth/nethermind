@@ -26,7 +26,6 @@ using Shouldly;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {

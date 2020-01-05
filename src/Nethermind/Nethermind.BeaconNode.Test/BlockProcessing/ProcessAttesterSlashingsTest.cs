@@ -79,9 +79,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
                 return;
             }
 
-            var slashedIndices = attesterSlashing.Attestation1.CustodyBit0Indices
-                .Union(attesterSlashing.Attestation1.CustodyBit1Indices)
-                .ToList();
+            var slashedIndices = attesterSlashing.Attestation1.AttestingIndices;
 
             ValidatorIndex proposerIndex = beaconStateAccessor.GetBeaconProposerIndex(state);
             Gwei preProposerBalance = TestState.GetBalance(state, proposerIndex);
