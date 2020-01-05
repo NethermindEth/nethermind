@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Types
 {
     public struct Shard : IEquatable<Shard>
     {

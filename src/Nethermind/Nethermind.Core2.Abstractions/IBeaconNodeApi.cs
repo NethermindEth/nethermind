@@ -22,13 +22,15 @@
 //using Nethermind.Core2.Types;
 //using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2
 {
-    // TODO: This is one of the abstractions we are aiming for; need all the data classes 
-    
     /// <summary>
     /// API specification for the beacon node, which enables a validator to connect and perform its obligations on the Ethereum 2.0 phase 0 beacon chain.
     /// </summary>
@@ -39,11 +41,11 @@ namespace Nethermind.Core2
     {
         Task<string> GetNodeVersionAsync(CancellationToken cancellationToken);
         Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken);
-//        Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken);
-//        Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken);
-//        IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch, CancellationToken cancellationToken);
-//        Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);
-//        Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken);
+        Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken);
+        Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken);
+        IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch, CancellationToken cancellationToken);
+        Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);
+        Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken);
 
         //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
 //        bool PublishAttestation(BeaconBlock block);

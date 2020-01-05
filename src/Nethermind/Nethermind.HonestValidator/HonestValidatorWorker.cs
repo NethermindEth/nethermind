@@ -22,6 +22,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
 

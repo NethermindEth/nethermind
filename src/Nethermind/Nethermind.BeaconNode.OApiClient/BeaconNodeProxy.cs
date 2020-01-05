@@ -104,7 +104,7 @@ namespace Nethermind.BeaconNode.OApiClient
             return fork;
         }
 
-        public async IAsyncEnumerable<BeaconNode.ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
+        public async IAsyncEnumerable<Core2.ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys,
             Epoch epoch, [EnumeratorCancellation] CancellationToken cancellationToken)
         {
             IEnumerable<byte[]> validator_pubkeys = validatorPublicKeys.Select(x => x.Bytes);
@@ -122,7 +122,7 @@ namespace Nethermind.BeaconNode.OApiClient
                 var proposalSlot = value.Block_proposal_slot.HasValue
                     ? new Slot(value.Block_proposal_slot.Value)
                     : Slot.None;
-                var validatorDuty = new BeaconNode.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
+                var validatorDuty = new Core2.ValidatorDuty(validatorPublicKey, new Slot(value.Attestation_slot),
                     new Shard(value.Attestation_shard), proposalSlot);
                 yield return validatorDuty;
             }

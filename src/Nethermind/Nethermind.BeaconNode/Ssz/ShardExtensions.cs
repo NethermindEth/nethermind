@@ -16,6 +16,7 @@
 
 using Cortex.SimpleSerialize;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Ssz
 {
