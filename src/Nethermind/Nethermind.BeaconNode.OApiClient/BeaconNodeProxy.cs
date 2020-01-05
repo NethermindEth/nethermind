@@ -34,8 +34,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.BeaconNode.OApiClient.Configuration;
 using Nethermind.Logging.Microsoft;
-using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
-using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode.OApiClient
 {
@@ -164,15 +162,14 @@ namespace Nethermind.BeaconNode.OApiClient
                         MapIndexedAttestation(x.Attestation_2)
                     )),
                     oapiBeaconBlock.Body.Attestations.Select(x =>
-                        new BeaconNode.Containers.Attestation(
+                        new Core2.Containers.Attestation(
                             new BitArray(x.Aggregation_bits),
                             MapAttestationData(x.Data),
-                            new BitArray(x.Custody_bits),
                             new BlsSignature(x.Signature)
                         )
                     ),
                     oapiBeaconBlock.Body.Deposits.Select(x =>
-                        new BeaconNode.Containers.Deposit(
+                        new Core2.Containers.Deposit(
                             x.Proof.Select(y => new Hash32(y)),
                             new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
@@ -229,7 +226,7 @@ namespace Nethermind.BeaconNode.OApiClient
                     {
                         Signature = x.Signature.Bytes,
                         Aggregation_bits = x.AggregationBits.Cast<byte>().ToArray(),
-                        Custody_bits = x.CustodyBits.Cast<byte>().ToArray(),
+                        Custody_bits = new byte[0],
                         Data = MapAttestationData(x.Data)
                     }).ToList(),
                     Voluntary_exits = block.Body.VoluntaryExits.Select(x => new Voluntary_exits()

@@ -19,6 +19,7 @@ using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 
 namespace Nethermind.BeaconNode.Ssz
 {
@@ -38,7 +39,6 @@ namespace Nethermind.BeaconNode.Ssz
         {
             yield return item.AggregationBits.ToSszBitlist(miscellaneousParameters.MaximumValidatorsPerCommittee);
             yield return item.Data.ToSszContainer();
-            yield return item.CustodyBits.ToSszBitlist(miscellaneousParameters.MaximumValidatorsPerCommittee);
             yield return item.Signature.ToSszBasicVector();
         }
     }

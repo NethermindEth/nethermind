@@ -21,12 +21,10 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
@@ -80,8 +78,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var committeeSize = beaconCommittee.Count;
             var aggregationBits = new BitArray(committeeSize);
-            var custodyBits = new BitArray(committeeSize);
-            var attestation = new Attestation(aggregationBits, attestationData, custodyBits, BlsSignature.Empty);
+            var attestation = new Attestation(aggregationBits, attestationData, BlsSignature.Empty);
 
             FillAggregateAttestation(state, attestation, beaconStateAccessor);
 

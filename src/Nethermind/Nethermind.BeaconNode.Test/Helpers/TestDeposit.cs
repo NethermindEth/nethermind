@@ -26,8 +26,6 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {

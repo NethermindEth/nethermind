@@ -187,7 +187,9 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.FeedBits(container.AggregationBits, (Attestation.MaxValidatorsPerCommittee + 255) / 256);
+            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
+            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
+            merkleizer.FeedBits(aggregationBitsPacked, (ByteLength.MaxValidatorsPerCommittee + 255) / 256);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -202,7 +204,7 @@ namespace Nethermind.Ssz
             }
 
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.Feed(container.AttestingIndices.ToArray(), Attestation.MaxValidatorsPerCommittee);
+            merkleizer.Feed(container.AttestingIndices.ToArray(), ByteLength.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -220,7 +222,7 @@ namespace Nethermind.Ssz
 
             byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
             container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            merkleizer.FeedBits(aggregationBitsPacked, (Attestation.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.FeedBits(aggregationBitsPacked, (ByteLength.MaxValidatorsPerCommittee + 255) / 256);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.InclusionDelay);
             merkleizer.Feed(container.ProposerIndex);

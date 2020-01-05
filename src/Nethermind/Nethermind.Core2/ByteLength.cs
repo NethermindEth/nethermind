@@ -70,6 +70,37 @@ namespace Nethermind.Core2
         public const int Eth1DataLength = 2 * ByteLength.Hash32Length + sizeof(ulong);
         public static int HistoricalBatchLength = 2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length;
         public const int DepositDataLength = ByteLength.BlsPublicKeyLength + ByteLength.Hash32Length + ByteLength.GweiLength + ByteLength.BlsSignatureLength;
-        public const int BeaconBlockHeaderLength = Core2.ByteLength.SlotLength + 3 * ByteLength.Hash32Length + ByteLength.BlsSignatureLength;
+        public const int BeaconBlockHeaderLength = ByteLength.SlotLength + 3 * ByteLength.Hash32Length + ByteLength.BlsSignatureLength;
+        public const int AttestationDynamicOffset = sizeof(uint) + ByteLength.AttestationDataLength + ByteLength.BlsSignatureLength;
+        public static readonly uint MaxValidatorsPerCommittee = 2048;
+
+        public static int AttestationLength(Attestation? container)
+        {
+            if (container == null)
+            {
+                return 0;
+            }
+
+            // TODO: Need to include Bitlist final 1 bit
+            return AttestationDynamicOffset + (container.AggregationBits.Length + 7) / 8;
+        }
+
+        public static int AttesterSlashingLength(AttesterSlashing? container)
+        {
+            if (container is null)
+            {
+                return 0;
+            }
+            
+            return 2 * sizeof(uint) +
+                   ByteLength.IndexedAttestationLength(container.Attestation1) +
+                   ByteLength.IndexedAttestationLength(container.Attestation2);
+        }
+
+        public const int ContractTreeDepth = 32;
+        public const int DepositLengthOfProof = (ContractTreeDepth + 1) * ByteLength.Hash32Length;
+        public const int DepositLength = DepositLengthOfProof + ByteLength.DepositDataLength;
+        public const int ProposerSlashingLength = ByteLength.ValidatorIndexLength + 2 * ByteLength.BeaconBlockHeaderLength;
+        public const int VoluntaryExitLength = ByteLength.EpochLength + ByteLength.ValidatorIndexLength + ByteLength.BlsSignatureLength;
     }
 }

@@ -45,7 +45,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var domain = beaconStateAccessor.GetDomain(state, signatureDomains.VoluntaryExit, voluntaryExit.Epoch);
             var signature = TestSecurity.BlsSign(voluntaryExit.SigningRoot(), privateKey, domain);
-            voluntaryExit.Signature = signature;
+            voluntaryExit.SetSignature(signature);
         }
     }
 }

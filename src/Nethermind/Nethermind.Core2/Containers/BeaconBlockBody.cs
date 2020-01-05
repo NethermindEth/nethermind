@@ -118,16 +118,16 @@ namespace Nethermind.Core2.Containers
 
             int result = SszDynamicOffset;
 
-            result += ProposerSlashing.SszLength * (container.ProposerSlashings?.Length ?? 0);
-            result += Deposit.SszLength * (container.Deposits?.Length ?? 0);
-            result += VoluntaryExit.SszLength * (container.VoluntaryExits?.Length ?? 0);
+            result += ByteLength.ProposerSlashingLength * (container.ProposerSlashings?.Length ?? 0);
+            result += ByteLength.DepositLength * (container.Deposits?.Length ?? 0);
+            result += ByteLength.VoluntaryExitLength * (container.VoluntaryExits?.Length ?? 0);
 
             result += sizeof(uint) * (container.AttesterSlashings?.Length ?? 0);
             if (!(container.AttesterSlashings is null))
             {
                 for (int i = 0; i < container.AttesterSlashings.Length; i++)
                 {
-                    result += AttesterSlashing.SszLength(container.AttesterSlashings[i]);
+                    result += ByteLength.AttesterSlashingLength(container.AttesterSlashings[i]);
                 }
             }
 
@@ -136,7 +136,7 @@ namespace Nethermind.Core2.Containers
             {
                 for (int i = 0; i < container.Attestations.Length; i++)
                 {
-                    result += Attestation.SszLength(container.Attestations[i]);
+                    result += ByteLength.AttestationLength(container.Attestations[i]);
                 }
             }
 

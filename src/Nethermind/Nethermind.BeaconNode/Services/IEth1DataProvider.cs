@@ -19,7 +19,6 @@ using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 
 namespace Nethermind.BeaconNode.Services
 {

@@ -14,10 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Containers;
+using System;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class ProposerSlashing
     {
@@ -38,6 +38,25 @@ namespace Nethermind.BeaconNode.Containers
         public override string ToString()
         {
             return $"P:{ProposerIndex} for B1:({Header1})";
+        }
+        
+        public bool Equals(ProposerSlashing other)
+        {
+            return ProposerIndex == other.ProposerIndex &&
+                   Equals(Header1, other.Header1) &&
+                   Equals(Header2, other.Header2);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is ProposerSlashing other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(ProposerIndex, Header1, Header2);
         }
     }
 }

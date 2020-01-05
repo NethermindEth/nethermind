@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Containers;
+using System;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class AttesterSlashing
     {
@@ -34,6 +34,24 @@ namespace Nethermind.BeaconNode.Containers
         public override string ToString()
         {
             return $"A1:({Attestation1}) A2:({Attestation2})";
+        }
+        
+        public bool Equals(AttesterSlashing other)
+        {
+            return Equals(Attestation1, other.Attestation1) &&
+                   Equals(Attestation2, other.Attestation2);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is AttesterSlashing other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(Attestation1, Attestation2);
         }
     }
 }

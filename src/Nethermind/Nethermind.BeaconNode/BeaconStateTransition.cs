@@ -28,16 +28,10 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
-using Attestation = Nethermind.BeaconNode.Containers.Attestation;
-using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
-using HistoricalBatch = Nethermind.Core2.Containers.HistoricalBatch;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
-using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode
 {
@@ -277,10 +271,6 @@ namespace Nethermind.BeaconNode
             }
 
             IReadOnlyList<ValidatorIndex> committee = _beaconStateAccessor.GetBeaconCommittee(state, data.Slot, data.Index);
-            if (attestation.AggregationBits.Count != attestation.CustodyBits.Count)
-            {
-                throw new Exception($"The attestation aggregation bit length {attestation.AggregationBits.Count} must be the same as the custody bit length {attestation.CustodyBits.Count}.");
-            }
             if (attestation.AggregationBits.Count != committee.Count)
             {
                 throw new Exception($"The attestation aggregation bit (and custody bit) length {attestation.AggregationBits.Count} must be the same as the committee length {committee.Count}.");

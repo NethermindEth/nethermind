@@ -23,8 +23,6 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
-using Attestation = Nethermind.BeaconNode.Containers.Attestation;
-using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Test.Helpers
@@ -49,7 +47,6 @@ namespace Nethermind.BeaconNode.Test.Helpers
                         attestation1.Data.Target.Epoch,
                         targetRoot2
                         )), 
-                attestation1.CustodyBits,
                 BlsSignature.Empty
                 );
             if (signed2)

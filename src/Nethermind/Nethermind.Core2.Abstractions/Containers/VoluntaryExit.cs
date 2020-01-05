@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -22,19 +22,12 @@ namespace Nethermind.Core2.Containers
 {
     public class VoluntaryExit
     {
-        public const int SszLength = ByteLength.EpochLength + ByteLength.ValidatorIndexLength + ByteLength.BlsSignatureLength;
-
         /// <summary>
         /// The earliest epoch when voluntary exit can be processed
         /// </summary>
-        public Epoch Epoch { get; set; }
-        public ValidatorIndex ValidatorIndex { get; set; }
-        public BlsSignature Signature { get; set; }
-
-        public VoluntaryExit()
-        {
-            Signature = BlsSignature.Empty;
-        }
+        public Epoch Epoch { get; }
+        public ValidatorIndex ValidatorIndex { get; }
+        public BlsSignature Signature { get; private set; }
         
         public VoluntaryExit(Epoch epoch, ValidatorIndex validatorIndex, BlsSignature signature)
         {
@@ -52,17 +45,22 @@ namespace Nethermind.Core2.Containers
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((VoluntaryExit) obj);
+            return obj is VoluntaryExit other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            throw new NotImplementedException();
+            return HashCode.Combine(Epoch, ValidatorIndex, Signature);
         }
         
         public override string ToString()
         {
             return $"V:{ValidatorIndex} E:{Epoch}";
+        }
+        
+        public void SetSignature(BlsSignature signature)
+        {
+            Signature = signature;
         }
     }
 }

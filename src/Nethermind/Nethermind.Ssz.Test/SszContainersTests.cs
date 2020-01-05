@@ -233,12 +233,12 @@ namespace Nethermind.Ssz.Test
                 Sha256.OfAnEmptyString,
                 SszTest.TestSig1);
 
-            ProposerSlashing container = new ProposerSlashing();
-            container.ProposerIndex = new ValidatorIndex(1);
-            container.Header1 = header1;
-            container.Header2 = header2;
+            ProposerSlashing container = new ProposerSlashing(
+                new ValidatorIndex(1),
+                header1,
+                header2);
 
-            Span<byte> encoded = new byte[ProposerSlashing.SszLength];
+            Span<byte> encoded = new byte[ByteLength.ProposerSlashingLength];
             Ssz.Encode(encoded, container);
             ProposerSlashing? decoded = Ssz.DecodeProposerSlashing(encoded);
             Assert.AreEqual(container, decoded);
@@ -266,11 +266,9 @@ namespace Nethermind.Ssz.Test
                 data,
                 SszTest.TestSig1);
 
-            AttesterSlashing container = new AttesterSlashing();
-            container.Attestation1 = indexedAttestation1;
-            container.Attestation2 = indexedAttestation2;
+            AttesterSlashing container = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
 
-            Span<byte> encoded = new byte[AttesterSlashing.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.AttesterSlashingLength(container)];
             Ssz.Encode(encoded, container);
             AttesterSlashing? decoded = Ssz.DecodeAttesterSlashing(encoded);
             Assert.AreEqual(container, decoded);
@@ -288,12 +286,12 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
                 new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
-            Attestation container = new Attestation();
-            container.AggregationBits = new byte[] {1, 2, 3};
-            container.Data = data;
-            container.Signature = SszTest.TestSig1;
+            Attestation container = new Attestation(
+                new BitArray(new byte[] {1, 2, 3}),
+                data,
+                SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[Attestation.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.AttestationLength(container)];
             Ssz.Encode(encoded, container);
             Attestation? decoded = Ssz.DecodeAttestation(encoded);
             Assert.AreEqual(container, decoded);
@@ -310,11 +308,11 @@ namespace Nethermind.Ssz.Test
                 Gwei.One,
                 SszTest.TestSig1);
 
-            Deposit container = new Deposit();
-            container.Data = data;
-            container.Proof[7] = Sha256.OfAnEmptyString;
+            Hash32[] proof = Enumerable.Repeat(Hash32.Zero, ByteLength.ContractTreeDepth + 1).ToArray();
+            proof[7] = Sha256.OfAnEmptyString;
+            Deposit container = new Deposit(proof, data);
 
-            Span<byte> encoded = new byte[Deposit.SszLength];
+            Span<byte> encoded = new byte[ByteLength.DepositLength];
             Ssz.Encode(encoded, container);
             Deposit? decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
@@ -325,12 +323,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Voluntary_exit_there_and_back()
         {
-            VoluntaryExit container = new VoluntaryExit();
-            container.Epoch = new Epoch(1);
-            container.ValidatorIndex = new ValidatorIndex(2);
-            container.Signature = SszTest.TestSig1;
+            VoluntaryExit container = new VoluntaryExit(
+                new Epoch(1),
+                new ValidatorIndex(2), 
+                SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[VoluntaryExit.SszLength];
+            Span<byte> encoded = new byte[ByteLength.VoluntaryExitLength];
             Ssz.Encode(encoded, container);
             VoluntaryExit? decoded = Ssz.DecodeVoluntaryExit(encoded);
             Assert.AreEqual(container, decoded);
@@ -376,10 +374,10 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString),
                 new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString));
 
-            Attestation attestation = new Attestation();
-            attestation.Data = data;
-            attestation.Signature = SszTest.TestSig1;
-            attestation.AggregationBits = new byte[5];
+            Attestation attestation = new Attestation(
+                new BitArray(new byte[5]),
+                data,
+                SszTest.TestSig1);
 
             DepositData depositData = new DepositData(
                 SszTest.TestKey1,
@@ -387,9 +385,7 @@ namespace Nethermind.Ssz.Test
                 new Gwei(7),
                 SszTest.TestSig1);
 
-            Deposit deposit = new Deposit();
-            deposit.Data = depositData;
-            deposit.Proof = new Hash32[Deposit.ContractTreeDepth + 1];
+            Deposit deposit = new Deposit(new Hash32[ByteLength.ContractTreeDepth + 1], depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],
@@ -401,9 +397,7 @@ namespace Nethermind.Ssz.Test
                 data,
                 SszTest.TestSig1);
 
-            AttesterSlashing slashing = new AttesterSlashing();
-            slashing.Attestation1 = indexedAttestation1;
-            slashing.Attestation2 = indexedAttestation2;
+            AttesterSlashing slashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
 
             Eth1Data eth1Data = new Eth1Data(
                 Sha256.OfAnEmptyString,

@@ -14,12 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Core2.Containers;
+using System.Linq;
+using System.Runtime.InteropServices.ComTypes;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class Deposit
     {
@@ -38,6 +39,30 @@ namespace Nethermind.BeaconNode.Containers
         public override string ToString()
         {           
             return $"I:{Proof[^1].ToString().Substring(0, 12)} P:{Data.PublicKey.ToString().Substring(0, 12)} A:{Data.Amount}";
+        }
+        
+        public bool Equals(Deposit other)
+        {
+            return Data.Equals(other.Data)
+                && Proof.SequenceEqual(other.Proof);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is Deposit other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            HashCode hashCode = new HashCode();
+            foreach (Hash32 value in Proof)
+            {
+                hashCode.Add(value);
+            }
+            hashCode.Add(Data);
+            return hashCode.ToHashCode();
         }
     }
 }

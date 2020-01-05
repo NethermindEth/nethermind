@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,51 +15,68 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Linq;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
 namespace Nethermind.Core2.Containers
 {
-    public class Deposit
+    public class Attestation
     {
-        public const int ContractTreeDepth = 32;
-        
-        public const int SszLengthOfProof = (ContractTreeDepth + 1) * ByteLength.Hash32Length;
-        
-        public const int SszLength = SszLengthOfProof + ByteLength.DepositDataLength;
-        
-        public Hash32[] Proof = Enumerable.Repeat(Hash32.Zero, ContractTreeDepth + 1).ToArray();
-        public DepositData? Data { get; set; }
-        
-        public bool Equals(Deposit other)
+        public Attestation(BitArray aggregationBits, AttestationData data, BlsSignature signature)
         {
-            if(!Equals(Data, other.Data))
+            AggregationBits = aggregationBits;
+            Data = data;
+            Signature = signature;
+        }
+
+        public BitArray AggregationBits { get; }
+
+        public AttestationData Data { get; }
+
+        public BlsSignature Signature { get; private set; }
+
+        public void SetSignature(BlsSignature signature)
+        {
+            Signature = signature;
+        }
+
+        public override string ToString()
+        {
+            return $"C:{Data.Index} S:{Data.Slot} Sig:{Signature.ToString().Substring(0, 12)}";
+        }
+        
+        public bool Equals(Attestation other)
+        {
+            if (!Equals(Data, other.Data) ||
+                !Equals(Signature, other.Signature) ||
+                AggregationBits.Count != other.AggregationBits.Count)
             {
                 return false;
             }
 
-            for (int i = 0; i < ContractTreeDepth + 1; i++)
+            for (int i = 0; i < AggregationBits.Count; i++)
             {
-                if (Proof[i] != other.Proof[i])
+                if (AggregationBits[i] != other.AggregationBits[i])
                 {
                     return false;
                 }
             }
 
             return true;
+            
         }
 
         public override bool Equals(object? obj)
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((Deposit) obj);
+            return obj is Attestation other && Equals(other);
         }
 
         public override int GetHashCode()
         {
-            throw new NotSupportedException();
+            return HashCode.Combine(AggregationBits, Data, Signature);
         }
     }
 }

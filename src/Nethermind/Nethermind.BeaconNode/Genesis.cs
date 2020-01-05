@@ -26,7 +26,6 @@ using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using DepositData = Nethermind.Core2.Containers.DepositData;
 
 namespace Nethermind.BeaconNode
