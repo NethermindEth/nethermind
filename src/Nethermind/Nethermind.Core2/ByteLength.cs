@@ -68,5 +68,6 @@ namespace Nethermind.Core2
         }
 
         public const int Eth1DataLength = 2 * ByteLength.Hash32Length + sizeof(ulong);
+        public static int HistroicalBatchLength = 2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length;
     }
 }

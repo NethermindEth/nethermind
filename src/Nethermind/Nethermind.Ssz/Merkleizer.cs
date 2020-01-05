@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -464,15 +465,32 @@ namespace Nethermind.Ssz
             Feed(MemoryMarshal.Cast<byte, UInt256>(value.Bytes)[0]);
         }
         
-        public void Feed(Span<Hash32> value)
+//        public void Feed(ReadOnlySpan<Hash32> value)
+//        {
+//            if (value == null)
+//            {
+//                return;
+//            }
+//            
+//            UInt256[] input = new UInt256[value.Length];
+//            for (int i = 0; i < value.Length; i++)
+//            {
+//                UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes ?? Hash32.Zero.Bytes);
+//            }
+//            
+//            Merkle.Ize(out _chunks[^1], input);
+//            Feed(_chunks[^1]);
+//        }
+
+        public void Feed(IReadOnlyList<Hash32> value)
         {
             if (value == null)
             {
                 return;
             }
             
-            UInt256[] input = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] input = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes ?? Hash32.Zero.Bytes);
             }
@@ -480,7 +498,7 @@ namespace Nethermind.Ssz
             Merkle.Ize(out _chunks[^1], input);
             Feed(_chunks[^1]);
         }
-        
+
         private void FeedAtLevel(UInt256 chunk, int level)
         {
             for (int i = level; i < _chunks.Length; i++)

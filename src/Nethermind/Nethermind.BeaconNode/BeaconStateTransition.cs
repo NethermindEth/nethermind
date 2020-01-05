@@ -36,7 +36,7 @@ using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
-using HistoricalBatch = Nethermind.BeaconNode.Containers.HistoricalBatch;
+using HistoricalBatch = Nethermind.Core2.Containers.HistoricalBatch;
 using ILogger = Microsoft.Extensions.Logging.ILogger;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 

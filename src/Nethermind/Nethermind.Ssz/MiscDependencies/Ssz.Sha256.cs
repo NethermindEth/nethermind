@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
@@ -37,9 +38,17 @@ namespace Nethermind.Ssz
             Encode(span, value.Bytes ?? Hash32.Zero.Bytes);
         }
         
-        public static void Encode(Span<byte> span, Span<Hash32> value)
+//        public static void Encode(Span<byte> span, ReadOnlySpan<Hash32> value)
+//        {
+//            for (int i = 0; i < value.Length; i++)
+//            {
+//                Encode(span.Slice(i * ByteLength.Hash32Length, ByteLength.Hash32Length), value[i]);    
+//            }
+//        }
+
+        public static void Encode(Span<byte> span, IReadOnlyList<Hash32> value)
         {
-            for (int i = 0; i < value.Length; i++)
+            for (int i = 0; i < value.Count; i++)
             {
                 Encode(span.Slice(i * ByteLength.Hash32Length, ByteLength.Hash32Length), value[i]);    
             }

@@ -14,11 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class HistoricalBatch
     {
@@ -34,5 +35,34 @@ namespace Nethermind.BeaconNode.Containers
         public IReadOnlyList<Hash32> BlockRoots { get { return _blockRoots; } }
 
         public IReadOnlyList<Hash32> StateRoots { get { return _stateRoots; } }
+        
+        public bool Equals(HistoricalBatch other)
+        {
+            return BlockRoots.SequenceEqual(other.BlockRoots)
+                   && StateRoots.SequenceEqual(other.StateRoots);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is HistoricalBatch other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            HashCode hashCode = new HashCode();
+            foreach (Hash32 value in BlockRoots)
+            {
+                hashCode.Add(value);
+            }
+            foreach (Hash32 value in StateRoots)
+            {
+                hashCode.Add(value);
+            }
+
+            return hashCode.ToHashCode();
+        }
+
     }
 }

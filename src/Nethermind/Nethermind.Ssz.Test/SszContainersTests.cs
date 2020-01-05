@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections;
+using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2;
@@ -169,10 +170,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Historical_batch_there_and_back()
         {
-            HistoricalBatch container = new HistoricalBatch();
-            container.BlockRoots[3] = Sha256.OfAnEmptyString;
-            container.StateRoots[7] = Sha256.OfAnEmptyString;
-            Span<byte> encoded = new byte[HistoricalBatch.SszLength];
+            var blockRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+            var stateRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+            blockRoots[3] = Sha256.OfAnEmptyString;
+            stateRoots[7] = Sha256.OfAnEmptyString;
+            HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
+            Span<byte> encoded = new byte[ByteLength.HistroicalBatchLength];
             Ssz.Encode(encoded, container);
             HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
