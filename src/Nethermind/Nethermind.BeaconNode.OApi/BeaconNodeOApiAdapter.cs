@@ -17,20 +17,15 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
-using BeaconBlock = Nethermind.BeaconNode.OApi.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.OApi.BeaconBlockBody;
-using IndexedAttestation = Nethermind.BeaconNode.OApi.IndexedAttestation;
 
 namespace Nethermind.BeaconNode.OApi
 {
@@ -62,7 +57,7 @@ namespace Nethermind.BeaconNode.OApi
                 new Slot((ulong) beacon_block.Slot),
                 new Hash32(Bytes.FromHexString(beacon_block.Parent_root)),
                 new Hash32(Bytes.FromHexString(beacon_block.State_root)),
-                new Containers.BeaconBlockBody(
+                new Core2.Containers.BeaconBlockBody(
                     new BlsSignature(beacon_block.Body.Randao_reveal),
                     new Eth1Data(
                         new Hash32(beacon_block.Body.Eth1_data.Deposit_root),

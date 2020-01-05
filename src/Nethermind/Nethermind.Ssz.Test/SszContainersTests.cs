@@ -170,8 +170,8 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Historical_batch_there_and_back()
         {
-            var blockRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
-            var stateRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+            Hash32[] blockRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+            Hash32[] stateRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
             blockRoots[3] = Sha256.OfAnEmptyString;
             stateRoots[7] = Sha256.OfAnEmptyString;
             HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
@@ -344,17 +344,18 @@ namespace Nethermind.Ssz.Test
                 1,
                 Sha256.OfAnEmptyString);
 
-            BeaconBlockBody container = new BeaconBlockBody();
-            container.RandaoReversal = SszTest.TestSig1;
-            container.Eth1Data = eth1Data;
-            container.Graffiti = new byte[32];
-            container.ProposerSlashings = new ProposerSlashing[2];
-            container.AttesterSlashings = new AttesterSlashing[3];
-            container.Attestations = new Attestation[4];
-            container.Deposits = new Deposit[5];
-            container.VoluntaryExits = new VoluntaryExit[6];
+            BeaconBlockBody container = new BeaconBlockBody(
+                SszTest.TestSig1,
+                eth1Data,
+                new Bytes32(new byte[32]),
+                new ProposerSlashing[2],
+                new AttesterSlashing[3], 
+                new Attestation[4],
+                new Deposit[5],
+                new VoluntaryExit[6]
+            );
 
-            Span<byte> encoded = new byte[BeaconBlockBody.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.BeaconBlockBodyLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlockBody decoded = Ssz.DecodeBeaconBlockBody(encoded);
             Assert.AreEqual(container, decoded);
@@ -365,8 +366,6 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_block_body_more_detailed()
         {
-            BeaconBlockBody body = new BeaconBlockBody();
-
             AttestationData data = new AttestationData(
                 new Slot(1),
                 new CommitteeIndex(4),
@@ -404,21 +403,32 @@ namespace Nethermind.Ssz.Test
                 9,
                 Sha256.OfAnEmptyString);
 
-            body.Attestations = new Attestation[3];
-            body.Attestations[1] = attestation;
+            Attestation[] attestations = new Attestation[3];
+            attestations[1] = attestation;
 
-            body.Deposits = new Deposit[3];
-            body.Deposits[2] = deposit;
+            Deposit[] deposits = new Deposit[3];
+            deposits[2] = deposit;
 
-            body.Graffiti = new byte[32];
-            body.AttesterSlashings = new AttesterSlashing[3];
-            body.AttesterSlashings[0] = slashing;
-            body.Eth1Data = eth1Data;
-            body.ProposerSlashings = new ProposerSlashing[10];
-            body.RandaoReversal = SszTest.TestSig1;
-            body.VoluntaryExits = new VoluntaryExit[11];
-
-            byte[] encoded = new byte[BeaconBlockBody.SszLength(body)];
+            Bytes32 graffiti = new Bytes32(new byte[32]);
+            
+            AttesterSlashing[] attesterSlashings = new AttesterSlashing[3];
+            attesterSlashings[0] = slashing;
+            
+            ProposerSlashing[] proposerSlashings = new ProposerSlashing[10];
+            VoluntaryExit[] voluntaryExits = new VoluntaryExit[11];
+            
+            BeaconBlockBody body = new BeaconBlockBody(
+                SszTest.TestSig1,
+                eth1Data,
+                graffiti,
+                proposerSlashings,
+                attesterSlashings,
+                attestations,
+                deposits,
+                voluntaryExits
+            );
+            
+            byte[] encoded = new byte[ByteLength.BeaconBlockBodyLength(body)];
             Ssz.Encode(encoded, body);
         }
 
@@ -430,15 +440,16 @@ namespace Nethermind.Ssz.Test
                 1,
                 Sha256.OfAnEmptyString);
 
-            BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
-            beaconBlockBody.RandaoReversal = SszTest.TestSig1;
-            beaconBlockBody.Eth1Data = eth1Data;
-            beaconBlockBody.Graffiti = new byte[32];
-            beaconBlockBody.ProposerSlashings = new ProposerSlashing[2];
-            beaconBlockBody.AttesterSlashings = new AttesterSlashing[3];
-            beaconBlockBody.Attestations = new Attestation[4];
-            beaconBlockBody.Deposits = new Deposit[5];
-            beaconBlockBody.VoluntaryExits = new VoluntaryExit[6];
+            BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
+                SszTest.TestSig1,
+                eth1Data,
+                new Bytes32(new byte[32]),
+                new ProposerSlashing[2],
+                new AttesterSlashing[3], 
+                new Attestation[4],
+                new Deposit[5],
+                new VoluntaryExit[6]
+            );
 
             BeaconBlock container = new BeaconBlock();
             container.Body = beaconBlockBody;
@@ -447,12 +458,12 @@ namespace Nethermind.Ssz.Test
             container.ParentRoot = Sha256.OfAnEmptyString;
             container.StateRoot = Sha256.OfAnEmptyString;
 
-            Span<byte> encoded = new byte[BeaconBlock.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.BeaconBlockLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlock decoded = Ssz.DecodeBeaconBlock(encoded);
             Assert.AreEqual(container, decoded);
 
-            Span<byte> encodedAgain = new byte[BeaconBlock.SszLength(container)];
+            Span<byte> encodedAgain = new byte[ByteLength.BeaconBlockLength(container)];
             Ssz.Encode(encodedAgain, decoded);
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
             
@@ -474,15 +485,16 @@ namespace Nethermind.Ssz.Test
                 Sha256.OfAnEmptyString,
                 SszTest.TestSig1);
 
-            BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
-            beaconBlockBody.RandaoReversal = SszTest.TestSig1;
-            beaconBlockBody.Eth1Data = eth1Data;
-            beaconBlockBody.Graffiti = new byte[32];
-            beaconBlockBody.ProposerSlashings = new ProposerSlashing[2];
-            beaconBlockBody.AttesterSlashings = new AttesterSlashing[3];
-            beaconBlockBody.Attestations = new Attestation[4];
-            beaconBlockBody.Deposits = new Deposit[5];
-            beaconBlockBody.VoluntaryExits = new VoluntaryExit[6];
+            BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
+                SszTest.TestSig1,
+                eth1Data,
+                new Bytes32(new byte[32]),
+                new ProposerSlashing[2],
+                new AttesterSlashing[3], 
+                new Attestation[4],
+                new Deposit[5],
+                new VoluntaryExit[6]
+            );
 
             BeaconBlock beaconBlock = new BeaconBlock();
             beaconBlock.Body = beaconBlockBody;
@@ -513,12 +525,12 @@ namespace Nethermind.Ssz.Test
             container.Eth1DepositIndex = 1234;
             container.LatestBlockHeader = beaconBlockHeader;
 
-            Span<byte> encoded = new byte[BeaconState.SszLength(container)];
+            Span<byte> encoded = new byte[ByteLength.BeaconStateLength(container)];
             Ssz.Encode(encoded, container);
             BeaconState decoded = Ssz.DecodeBeaconState(encoded);
             Assert.AreEqual(container, decoded);
 
-            Span<byte> encodedAgain = new byte[BeaconState.SszLength(decoded)];
+            Span<byte> encodedAgain = new byte[ByteLength.BeaconStateLength(decoded)];
             Ssz.Encode(encodedAgain, decoded);
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
             

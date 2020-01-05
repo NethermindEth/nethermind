@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
 namespace Nethermind.Ssz
@@ -23,12 +24,12 @@ namespace Nethermind.Ssz
     {
         public static void Encode(Span<byte> span, BeaconBlock container)
         {
-            if (span.Length != BeaconBlock.SszLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, BeaconBlock.SszLength(container));
+            if (span.Length != ByteLength.BeaconBlockLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, ByteLength.BeaconBlockLength(container));
             int offset = 0;
             Encode(span, container.Slot, ref offset);
             Encode(span, container.ParentRoot, ref offset);
             Encode(span, container.StateRoot, ref offset);
-            Encode(span, BeaconBlock.SszDynamicOffset, ref offset);
+            Encode(span, ByteLength.BeaconBlockDynamicOffset, ref offset);
             Encode(span, container.Signature, ref offset);
             Encode(span.Slice(offset), container.Body);
         }

@@ -29,9 +29,7 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
 
 namespace Nethermind.BeaconNode
 {

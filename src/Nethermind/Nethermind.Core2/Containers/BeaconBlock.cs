@@ -22,29 +22,12 @@ namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
-        public const int SszDynamicOffset = Core2.ByteLength.SlotLength + 2 * ByteLength.Hash32Length + sizeof(uint) + ByteLength.BlsSignatureLength;
-        
-        public static int SszLength(BeaconBlock? container)
-        {
-            return container is null ? 0 : (SszDynamicOffset + BeaconBlockBody.SszLength(container.Body));
-        }
-        
         public Slot Slot { get; set; }
         public Hash32 ParentRoot { get; set; }
         public Hash32 StateRoot { get; set; }
         public BeaconBlockBody? Body { get; set; }
         public BlsSignature Signature { get; set; } = BlsSignature.Empty;
 
-        public static uint MaxProposerSlashings { get; set; } = 16;
-
-        public static uint MaxAttesterSlashings { get; set; } = 1;
-
-        public static uint MaxAttestations { get; set; } = 128;
-
-        public static uint MaxDeposits { get; set; } = 16;
-        
-        public static uint MaxVoluntaryExits { get; set; } = 16;
-        
         public bool Equals(BeaconBlock other)
         {
             return Slot == other.Slot &&

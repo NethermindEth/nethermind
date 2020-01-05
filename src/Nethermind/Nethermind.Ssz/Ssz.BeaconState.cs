@@ -31,13 +31,13 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != BeaconState.SszLength(container))
+            if (span.Length != ByteLength.BeaconStateLength(container))
             {
-                ThrowTargetLength<BeaconState>(span.Length, BeaconState.SszLength(container));
+                ThrowTargetLength<BeaconState>(span.Length, ByteLength.BeaconStateLength(container));
             }
 
             int offset = 0;
-            int dynamicOffset = BeaconState.SszDynamicOffset;
+            int dynamicOffset = ByteLength.BeaconStateDynamicOffset;
 
             Encode(span.Slice(offset, sizeof(ulong)), container.GenesisTime);
             offset += sizeof(ulong);

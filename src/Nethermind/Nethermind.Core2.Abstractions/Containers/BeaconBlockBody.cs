@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Core2.Containers;
+using System.Linq;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockBody
     {
@@ -86,5 +86,57 @@ namespace Nethermind.BeaconNode.Containers
         /*
         public IList<Transfer> Transfers { get; }
         */
+        
+        public bool Equals(BeaconBlockBody other)
+        {
+            bool basicEquality = Equals(RandaoReveal, other.RandaoReveal) &&
+                                 Equals(Eth1Data, other.Eth1Data) &&
+                                 Graffiti.Equals(other.Graffiti) &&
+                                 ProposerSlashings.Count == other.ProposerSlashings.Count &&
+                                 AttesterSlashings.Count == other.AttesterSlashings.Count &&
+                                 Attestations.Count == other.Attestations.Count &&
+                                 Deposits.Count == other.Deposits.Count &&
+                                 VoluntaryExits.Count == other.VoluntaryExits.Count;
+
+            if (!basicEquality)
+            {
+                return false;
+            }
+
+            if (!AttesterSlashings.SequenceEqual(other.AttesterSlashings))
+            {
+                return false;
+            }
+            if (!ProposerSlashings.SequenceEqual(other.ProposerSlashings))
+            {
+                return false;
+            }
+            if (!Attestations.SequenceEqual(other.Attestations))
+            {
+                return false;
+            }
+            if (!Deposits.SequenceEqual(other.Deposits))
+            {
+                return false;
+            }
+            if (!VoluntaryExits.SequenceEqual(other.VoluntaryExits))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((BeaconBlockBody) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new System.ArgumentNullException();
+        }
     }
 }

@@ -118,14 +118,14 @@ namespace Nethermind.Ssz
             }
 
             Merkleizer merkleizer = new Merkleizer(3);
-            merkleizer.Feed(container.RandaoReversal);
+            merkleizer.Feed(container.RandaoReveal);
             merkleizer.Feed(container.Eth1Data);
             merkleizer.Feed(container.Graffiti);
-            merkleizer.Feed(container.ProposerSlashings, BeaconBlock.MaxProposerSlashings);
-            merkleizer.Feed(container.AttesterSlashings, BeaconBlock.MaxAttesterSlashings);
-            merkleizer.Feed(container.Attestations, BeaconBlock.MaxAttestations);
-            merkleizer.Feed(container.Deposits, BeaconBlock.MaxDeposits);
-            merkleizer.Feed(container.VoluntaryExits, BeaconBlock.MaxVoluntaryExits);
+            merkleizer.Feed(container.ProposerSlashings, ByteLength.MaxProposerSlashings);
+            merkleizer.Feed(container.AttesterSlashings, ByteLength.MaxAttesterSlashings);
+            merkleizer.Feed(container.Attestations, ByteLength.MaxAttestations);
+            merkleizer.Feed(container.Deposits, ByteLength.MaxDeposits);
+            merkleizer.Feed(container.VoluntaryExits, ByteLength.MaxVoluntaryExits);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -144,7 +144,7 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.LatestBlockHeader);
             merkleizer.Feed(container.BlockRoots);
             merkleizer.Feed(container.StateRoots);
-            merkleizer.Feed(container.HistoricalRoots, BeaconState.HistoricalRootsLimit);
+            merkleizer.Feed(container.HistoricalRoots, ByteLength.HistoricalRootsLimit);
             merkleizer.Feed(container.Eth1Data);
             merkleizer.Feed(container.Eth1DataVotes, (uint)Time.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
@@ -152,8 +152,8 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.Balances, SszLimit.ValidatorRegistryLimit);
             merkleizer.Feed(container.RandaoMixes);
             merkleizer.Feed(container.Slashings);
-            merkleizer.Feed(container.PreviousEpochAttestations, BeaconBlock.MaxAttestations * Time.SlotsPerEpoch);
-            merkleizer.Feed(container.CurrentEpochAttestations, BeaconBlock.MaxAttestations * Time.SlotsPerEpoch);
+            merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
+            merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
             merkleizer.Feed(container.JustificationBits);
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);

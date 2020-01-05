@@ -144,7 +144,7 @@ namespace Nethermind.BeaconNode.OApiClient
                 new Slot((ulong) oapiBeaconBlock.Slot),
                 new Hash32(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
                 new Hash32(Bytes.FromHexString(oapiBeaconBlock.State_root)),
-                new BeaconNode.Containers.BeaconBlockBody(
+                new Core2.Containers.BeaconBlockBody(
                     new BlsSignature(oapiBeaconBlock.Body.Randao_reveal),
                     new Eth1Data(
                         new Hash32(oapiBeaconBlock.Body.Eth1_data.Deposit_root),

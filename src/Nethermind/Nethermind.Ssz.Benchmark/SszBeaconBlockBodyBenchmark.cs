@@ -27,7 +27,7 @@ namespace Nethermind.Ssz.Benchmarks
     [MemoryDiagnoser]
     public class SszBeaconBlockBodyBenchmark
     {
-        private BeaconBlockBody _body = new BeaconBlockBody();
+        private BeaconBlockBody _body;
         private byte[] _encoded;
         
         public SszBeaconBlockBodyBenchmark()
@@ -72,21 +72,33 @@ namespace Nethermind.Ssz.Benchmarks
                 9,
                 Sha256.OfAnEmptyString);
             
-            _body.Attestations = new Attestation[3];
-            _body.Attestations[1] = attestation;
+            Attestation[] attestations = new Attestation[3];
+            attestations[1] = attestation;
             
-            _body.Deposits = new Deposit[3];
-            _body.Deposits[2] = deposit;
+            Deposit[] deposits = new Deposit[3];
+            deposits[2] = deposit;
             
-            _body.Graffiti = new byte[32];
-            _body.AttesterSlashings = new AttesterSlashing[3];
-            _body.AttesterSlashings[0] = slashing;
-            _body.Eth1Data = eth1Data;
-            _body.ProposerSlashings = new ProposerSlashing[10];
-            _body.RandaoReversal = SszTest.TestSig1;
-            _body.VoluntaryExits = new VoluntaryExit[11];
+            Bytes32 graffiti = new Bytes32(new byte[32]);
+            
+            AttesterSlashing[] attesterSlashings = new AttesterSlashing[3];
+            attesterSlashings[0] = slashing;
+            
+            ProposerSlashing[] proposerSlashings = new ProposerSlashing[10];
 
-            _encoded = new byte[BeaconBlockBody.SszLength(_body)];
+            BlsSignature randaoReveal = SszTest.TestSig1;
+            
+            VoluntaryExit[] voluntaryExits = new VoluntaryExit[11];
+
+            _body = new BeaconBlockBody(randaoReveal,
+                eth1Data,
+                graffiti,
+                proposerSlashings,
+                attesterSlashings,
+                attestations,
+                deposits,
+                voluntaryExits);
+
+            _encoded = new byte[ByteLength.BeaconBlockBodyLength(_body)];
         }
         
         [Benchmark(Baseline = true)]

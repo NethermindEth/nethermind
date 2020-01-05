@@ -102,5 +102,99 @@ namespace Nethermind.Core2
         public const int DepositLength = DepositLengthOfProof + ByteLength.DepositDataLength;
         public const int ProposerSlashingLength = ByteLength.ValidatorIndexLength + 2 * ByteLength.BeaconBlockHeaderLength;
         public const int VoluntaryExitLength = ByteLength.EpochLength + ByteLength.ValidatorIndexLength + ByteLength.BlsSignatureLength;
+        public const int BeaconBlockBodyDynamicOffset = ByteLength.BlsSignatureLength + ByteLength.Eth1DataLength + 32 + 5 * sizeof(uint);
+
+        public static int BeaconBlockBodyLength(BeaconBlockBody? container)
+        {
+            if (container is null)
+            {
+                return 0;
+            }
+
+            int result = BeaconBlockBodyDynamicOffset;
+
+            result += ByteLength.ProposerSlashingLength * container.ProposerSlashings.Count;
+            result += ByteLength.DepositLength * container.Deposits.Count;
+            result += ByteLength.VoluntaryExitLength * container.VoluntaryExits.Count;
+
+            result += sizeof(uint) * container.AttesterSlashings.Count;
+            for (int i = 0; i < container.AttesterSlashings.Count; i++)
+            {
+                result += ByteLength.AttesterSlashingLength(container.AttesterSlashings[i]);
+            }
+
+            result += sizeof(uint) * container.Attestations.Count;
+            for (int i = 0; i < container.Attestations.Count; i++)
+            {
+                result += ByteLength.AttestationLength(container.Attestations[i]);
+            }
+
+            return result;
+        }
+
+        public const int BeaconBlockDynamicOffset = ByteLength.SlotLength + 2 * ByteLength.Hash32Length + sizeof(uint) + ByteLength.BlsSignatureLength;
+
+        public static int BeaconBlockLength(BeaconBlock? container)
+        {
+            return container is null ? 0 : (BeaconBlockDynamicOffset + ByteLength.BeaconBlockBodyLength(container.Body));
+        }
+
+        public static uint MaxProposerSlashings { get; set; } = 16;
+        public static uint MaxAttesterSlashings { get; set; } = 1;
+        public static uint MaxAttestations { get; set; } = 128;
+        public static uint MaxDeposits { get; set; } = 16;
+        public static uint MaxVoluntaryExits { get; set; } = 16;
+
+        public static int BeaconStateDynamicOffset = sizeof(ulong) +
+                                                     Core2.ByteLength.SlotLength +
+                                                     ByteLength.ForkLength +
+                                                     ByteLength.BeaconBlockHeaderLength +
+                                                     2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length +
+                                                     sizeof(uint) +
+                                                     ByteLength.Eth1DataLength +
+                                                     sizeof(uint) +
+                                                     sizeof(ulong) +
+                                                     2 * sizeof(uint) +
+                                                     Time.EpochsPerHistoricalVector * ByteLength.Hash32Length +
+                                                     Time.EpochsPerSlashingsVector * ByteLength.GweiLength +
+                                                     2 * sizeof(uint) +
+                                                     1 + // not sure
+                                                     3 * ByteLength.CheckpointLength;
+
+        public const ulong HistoricalRootsLimit = 16_777_216;
+
+        public static int BeaconStateLength(BeaconState? container)
+        {
+            if (container is null)
+            {
+                return 0;
+            }
+            
+            int result = BeaconStateDynamicOffset;
+            result += ByteLength.Hash32Length * (container.HistoricalRoots?.Length ?? 0);
+            result += ByteLength.ValidatorLength * (container.Validators?.Length ?? 0);
+            result += ByteLength.GweiLength * (container.Balances?.Length ?? 0);
+            result += ByteLength.Eth1DataLength * (container.Eth1DataVotes?.Length ?? 0);
+
+            result += (container.PreviousEpochAttestations?.Length ?? 0) * sizeof(uint);
+            if (!(container.PreviousEpochAttestations is null))
+            {
+                for (int i = 0; i < container.PreviousEpochAttestations.Length; i++)
+                {
+                    result += ByteLength.PendingAttestationLength(container.PreviousEpochAttestations[i]);
+                }
+            }
+
+            result += (container.CurrentEpochAttestations?.Length ?? 0) * sizeof(uint);
+            if (!(container.CurrentEpochAttestations is null))
+            {
+                for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
+                {
+                    result += ByteLength.PendingAttestationLength(container.CurrentEpochAttestations[i]);
+                }
+            }
+
+            return result;
+        }
     }
 }

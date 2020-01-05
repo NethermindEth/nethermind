@@ -14,9 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Containers
 {
