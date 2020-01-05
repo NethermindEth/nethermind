@@ -21,7 +21,7 @@ namespace Nethermind.Core2.Containers
 {
     public class Attestation
     {
-        public const int SszDynamicOffset = sizeof(uint) + AttestationData.SszLength + ByteLength.BlsSignatureLength; 
+        public const int SszDynamicOffset = sizeof(uint) + ByteLength.AttestationDataLength + ByteLength.BlsSignatureLength; 
         
         public static readonly uint MaxValidatorsPerCommittee = 2048;
         

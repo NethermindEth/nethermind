@@ -23,7 +23,7 @@ namespace Nethermind.Core2.Containers
     public class IndexedAttestation
     {
         public const int SszDynamicOffset = sizeof(uint) +
-                                            AttestationData.SszLength +
+                                            ByteLength.AttestationDataLength +
                                             ByteLength.BlsSignatureLength;
         
         public static int SszLength(IndexedAttestation? value)

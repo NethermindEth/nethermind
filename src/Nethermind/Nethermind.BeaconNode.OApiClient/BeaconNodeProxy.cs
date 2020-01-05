@@ -35,7 +35,6 @@ using Nethermind.Core2.Types;
 using Nethermind.BeaconNode.OApiClient.Configuration;
 using Nethermind.Logging.Microsoft;
 using Attestation = Nethermind.Core2.Containers.Attestation;
-using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
@@ -355,10 +354,10 @@ namespace Nethermind.BeaconNode.OApiClient
             );
         }
 
-        private static BeaconNode.Containers.AttestationData MapAttestationData(BeaconNode.OApiClient.AttestationData attestationData)
+        private static Core2.Containers.AttestationData MapAttestationData(BeaconNode.OApiClient.AttestationData attestationData)
         {
             // NOTE: This mapping isn't right, spec changes (sharding)
-            return new BeaconNode.Containers.AttestationData(
+            return new Core2.Containers.AttestationData(
                 Slot.None,
                 CommitteeIndex.None, 
                 new Hash32(attestationData.Beacon_block_root), 
@@ -395,7 +394,7 @@ namespace Nethermind.BeaconNode.OApiClient
             };
         }
 
-        private static BeaconNode.OApiClient.AttestationData MapAttestationData(BeaconNode.Containers.AttestationData attestationData)
+        private static BeaconNode.OApiClient.AttestationData MapAttestationData(Core2.Containers.AttestationData attestationData)
         {
             // NOTE: This mapping isn't right, spec changes (sharding)
             return new BeaconNode.OApiClient.AttestationData()

@@ -101,7 +101,7 @@ namespace Nethermind.Ssz
 
             Merkleizer merkleizer = new Merkleizer(3);
             merkleizer.Feed(container.Slot);
-            merkleizer.Feed(container.CommitteeIndex);
+            merkleizer.Feed(container.Index);
             merkleizer.Feed(container.BeaconBlockRoot);
             merkleizer.Feed(container.Source);
             merkleizer.Feed(container.Target);

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Containers

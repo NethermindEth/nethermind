@@ -82,19 +82,19 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Attestation_data_there_and_back()
         {
-            AttestationData container = new AttestationData();
-            container.Slot = new Slot(1);
-            container.CommitteeIndex = new CommitteeIndex(2);
-            container.BeaconBlockRoot = Sha256.OfAnEmptyString;
-            container.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            container.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            AttestationData container = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(2),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
-            Span<byte> encoded = new byte[AttestationData.SszLength];
+            Span<byte> encoded = new byte[ByteLength.AttestationDataLength];
             Ssz.Encode(encoded, container);
             AttestationData decoded = Ssz.DecodeAttestationData(encoded);
             Assert.AreEqual(container, decoded);
 
-            Span<byte> encodedAgain = new byte[AttestationData.SszLength];
+            Span<byte> encodedAgain = new byte[ByteLength.AttestationDataLength];
             Ssz.Encode(encodedAgain, decoded);
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
             
@@ -104,12 +104,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Indexed_attestation_there_and_back()
         {
-            AttestationData data = new AttestationData();
-            data.Slot = new Slot(1);
-            data.CommitteeIndex = new CommitteeIndex(2);
-            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
-            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            AttestationData data = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(2),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
             IndexedAttestation container = new IndexedAttestation();
             container.AttestingIndices = new ValidatorIndex[3];
@@ -127,12 +127,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Pending_attestation_there_and_back()
         {
-            AttestationData data = new AttestationData();
-            data.Slot = new Slot(1);
-            data.CommitteeIndex = new CommitteeIndex(2);
-            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
-            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            AttestationData data = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(2),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
             PendingAttestation container = new PendingAttestation();
             container.AggregationBits = new byte[3];
@@ -243,12 +243,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Attester_slashing_there_and_back()
         {
-            AttestationData data = new AttestationData();
-            data.Slot = new Slot(1);
-            data.CommitteeIndex = new CommitteeIndex(2);
-            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
-            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            AttestationData data = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(2),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation();
             indexedAttestation1.AttestingIndices = new ValidatorIndex[3];
@@ -275,12 +275,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Attestation_there_and_back()
         {
-            AttestationData data = new AttestationData();
-            data.Slot = new Slot(1);
-            data.CommitteeIndex = new CommitteeIndex(2);
-            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
-            data.Source = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            data.Target = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
+            AttestationData data = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(2),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
             Attestation container = new Attestation();
             container.AggregationBits = new byte[] {1, 2, 3};
@@ -363,12 +363,12 @@ namespace Nethermind.Ssz.Test
         {
             BeaconBlockBody body = new BeaconBlockBody();
 
-            AttestationData data = new AttestationData();
-            data.Slot = new Slot(1);
-            data.Source = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
-            data.Target = new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString);
-            data.CommitteeIndex = new CommitteeIndex(4);
-            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            AttestationData data = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(4),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString));
 
             Attestation attestation = new Attestation();
             attestation.Data = data;

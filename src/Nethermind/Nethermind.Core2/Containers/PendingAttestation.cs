@@ -23,7 +23,7 @@ namespace Nethermind.Core2.Containers
     public class PendingAttestation
     {
         public const int SszDynamicOffset = sizeof(uint) +
-                                            AttestationData.SszLength +
+                                            ByteLength.AttestationDataLength +
                                             Core2.ByteLength.SlotLength +
                                             ByteLength.ValidatorIndexLength;
         

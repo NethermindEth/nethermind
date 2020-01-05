@@ -24,7 +24,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
 using Attestation = Nethermind.BeaconNode.Containers.Attestation;
-using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
