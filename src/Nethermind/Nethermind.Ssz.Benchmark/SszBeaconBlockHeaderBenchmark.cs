@@ -26,16 +26,17 @@ namespace Nethermind.Ssz.Benchmarks
     [MemoryDiagnoser]
     public class SszBeaconBlockHeaderBenchmark
     {
-        private BeaconBlockHeader _header = new BeaconBlockHeader();
-        private byte[] _encoded = new byte[BeaconBlockHeader.SszLength];
+        private BeaconBlockHeader _header;
+        private byte[] _encoded = new byte[ByteLength.BeaconBlockHeaderLength];
         
         public SszBeaconBlockHeaderBenchmark()
         {
-            _header.Signature = SszTest.TestSig1;
-            _header.Slot = new Slot(1);
-            _header.BodyRoot = Sha256.OfAnEmptySequenceRlp;
-            _header.StateRoot = Sha256.OfAnEmptySequenceRlp;
-            _header.ParentRoot = Sha256.OfAnEmptySequenceRlp;
+            new BeaconBlockHeader(
+                new Slot(1),
+                Sha256.OfAnEmptySequenceRlp,
+                Sha256.OfAnEmptySequenceRlp,
+                Sha256.OfAnEmptySequenceRlp,
+                SszTest.TestSig1);
         }
         
         [Benchmark(Baseline = true)]
