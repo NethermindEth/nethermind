@@ -24,6 +24,7 @@ using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 using Bytes = Nethermind.Core.Extensions.Bytes;
+using Shouldly;
 
 namespace Nethermind.Ssz.Test
 {
@@ -57,19 +58,23 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Validator_there_and_back()
         {
-            Validator container = new Validator(SszTest.TestKey1);
-            container.Slashed = true;
-            container.WithdrawalCredentials = Sha256.OfAnEmptyString;
-            container.EffectiveBalance = Gwei.One;
-            container.ActivationEligibilityEpoch = new Epoch(4);
-            container.ActivationEpoch = new Epoch(5);
-            container.ExitEpoch = new Epoch(6);
-            container.ActivationEligibilityEpoch = new Epoch(7);
+            Validator container = new Validator(
+                SszTest.TestKey1, 
+                Sha256.OfAnEmptyString, 
+                Gwei.One, 
+                true, 
+                new Epoch(4), 
+                new Epoch(5), 
+                new Epoch(6), 
+                new Epoch(7)
+                );
 
-            Span<byte> encoded = new byte[Validator.SszLength];
+            Span<byte> encoded = new byte[ByteLength.ValidatorLength];
             Ssz.Encode(encoded, container);
             Validator decoded = Ssz.DecodeValidator(encoded);
-            Assert.AreEqual(container, decoded);
+            decoded.ShouldBe(container);
+            //Assert.AreEqual(container, decoded);
+            Assert.AreEqual(7, decoded.WithdrawableEpoch.Number);
             
             Merkle.Ize(out UInt256 root, container);
         }

@@ -42,7 +42,6 @@ using ILogger = Microsoft.Extensions.Logging.ILogger;
 using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 using PendingAttestation = Nethermind.BeaconNode.Containers.PendingAttestation;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
-using Validator = Nethermind.BeaconNode.Containers.Validator;
 
 namespace Nethermind.BeaconNode
 {
@@ -474,8 +473,8 @@ namespace Nethermind.BeaconNode
                 Validator newValidator = new Validator(
                     publicKey,
                     deposit.Data.WithdrawalCredentials,
-                    effectiveBalance
-,
+                    effectiveBalance,
+                    false,
                     _chainConstants.FarFutureEpoch,
                     _chainConstants.FarFutureEpoch,
                     _chainConstants.FarFutureEpoch,

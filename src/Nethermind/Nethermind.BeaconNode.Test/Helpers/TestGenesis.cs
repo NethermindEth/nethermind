@@ -19,10 +19,14 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
+using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
+using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {
@@ -40,8 +44,8 @@ namespace Nethermind.BeaconNode.Test.Helpers
             var validator = new Validator(
                 publicKey,
                 withdrawalCredentials,
-                Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance)
-,
+                Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance),
+                false,
                 chainConstants.FarFutureEpoch,
                 chainConstants.FarFutureEpoch,
                 chainConstants.FarFutureEpoch,

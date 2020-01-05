@@ -147,8 +147,8 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.Eth1Data);
             merkleizer.Feed(container.Eth1DataVotes, (uint)Time.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
-            merkleizer.Feed(container.Validators, Validator.ValidatorRegistryLimit);
-            merkleizer.Feed(container.Balances, Validator.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Validators, SszLimit.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Balances, SszLimit.ValidatorRegistryLimit);
             merkleizer.Feed(container.RandaoMixes);
             merkleizer.Feed(container.Slashings);
             merkleizer.Feed(container.PreviousEpochAttestations, BeaconBlock.MaxAttestations * Time.SlotsPerEpoch);
@@ -339,7 +339,7 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.PublicKey);
             merkleizer.Feed(container.WithdrawalCredentials);
             merkleizer.Feed(container.EffectiveBalance);
-            merkleizer.Feed(container.Slashed);
+            merkleizer.Feed(container.IsSlashed);
             merkleizer.Feed(container.ActivationEligibilityEpoch);
             merkleizer.Feed(container.ActivationEpoch);
             merkleizer.Feed(container.ExitEpoch);

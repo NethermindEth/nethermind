@@ -27,6 +27,7 @@ using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
+using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {
@@ -34,13 +35,13 @@ namespace Nethermind.BeaconNode.Test.Helpers
     {
         public static AttesterSlashing GetValidAttesterSlashing(IServiceProvider testServiceProvider, BeaconState state, bool signed1, bool signed2)
         {
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
+            Attestation attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
 
-            var targetRoot2 = new Hash32(Enumerable.Repeat((byte) 0x01, 32).ToArray());
-            var attestation2 = new Attestation(
+            Hash32 targetRoot2 = new Hash32(Enumerable.Repeat((byte) 0x01, 32).ToArray());
+            Attestation attestation2 = new Attestation(
                 attestation1.AggregationBits,
                 new AttestationData(attestation1.Data.Slot,
                     attestation1.Data.Index,
@@ -58,10 +59,10 @@ namespace Nethermind.BeaconNode.Test.Helpers
                 TestAttestation.SignAttestation(testServiceProvider, state, attestation2);
             }
 
-            var indexedAttestation1 = beaconStateAccessor.GetIndexedAttestation(state, attestation1);
-            var indexedAttestation2 = beaconStateAccessor.GetIndexedAttestation(state, attestation2);
+            IndexedAttestation indexedAttestation1 = beaconStateAccessor.GetIndexedAttestation(state, attestation1);
+            IndexedAttestation indexedAttestation2 = beaconStateAccessor.GetIndexedAttestation(state, attestation2);
 
-            var attesterSlashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
+            AttesterSlashing attesterSlashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
             return attesterSlashing;
         }
     }

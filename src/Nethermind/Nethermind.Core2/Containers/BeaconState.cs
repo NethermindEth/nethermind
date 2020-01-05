@@ -49,7 +49,7 @@ namespace Nethermind.Core2.Containers
             
             int result = SszDynamicOffset;
             result += ByteLength.Hash32Length * (container.HistoricalRoots?.Length ?? 0);
-            result += Validator.SszLength * (container.Validators?.Length ?? 0);
+            result += ByteLength.ValidatorLength * (container.Validators?.Length ?? 0);
             result += ByteLength.GweiLength * (container.Balances?.Length ?? 0);
             result += Eth1Data.SszLength * (container.Eth1DataVotes?.Length ?? 0);
 

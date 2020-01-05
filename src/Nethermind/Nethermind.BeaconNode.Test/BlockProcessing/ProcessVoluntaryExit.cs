@@ -24,7 +24,6 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 using Shouldly;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Validator = Nethermind.BeaconNode.Containers.Validator;
 
 namespace Nethermind.BeaconNode.Test.BlockProcessing
 {

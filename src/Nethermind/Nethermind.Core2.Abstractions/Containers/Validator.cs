@@ -14,11 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers.Binary;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class Validator
     {
@@ -26,7 +26,7 @@ namespace Nethermind.BeaconNode.Containers
             BlsPublicKey publicKey,
             Hash32 withdrawalCredentials,
             Gwei effectiveBalance,
-            //bool slashed,
+            bool isSlashed,
             Epoch activationEligibilityEpoch,
             Epoch activationEpoch,
             Epoch exitEpoch,
@@ -35,6 +35,7 @@ namespace Nethermind.BeaconNode.Containers
             PublicKey = publicKey;
             WithdrawalCredentials = withdrawalCredentials;
             EffectiveBalance = effectiveBalance;
+            IsSlashed = isSlashed;
             ActivationEligibilityEpoch = activationEligibilityEpoch;
             ActivationEpoch = activationEpoch;
             ExitEpoch = exitEpoch;
@@ -67,6 +68,7 @@ namespace Nethermind.BeaconNode.Containers
                  other.PublicKey,
                  other.WithdrawalCredentials,
                  other.EffectiveBalance,
+                 other.IsSlashed,
                  other.ActivationEligibilityEpoch,
                  other.ActivationEpoch,
                  other.ExitEpoch,
@@ -86,5 +88,29 @@ namespace Nethermind.BeaconNode.Containers
         public void SetWithdrawableEpoch(Epoch withdrawableEpoch) => WithdrawableEpoch = withdrawableEpoch;
 
         public void SetExitEpoch(Epoch exitEpoch) => ExitEpoch = exitEpoch;
+        
+        public bool Equals(Validator other)
+        {
+            return PublicKey.Equals(other.PublicKey) &&
+                   WithdrawalCredentials.Equals(other.WithdrawalCredentials) &&
+                   EffectiveBalance.Equals(other.EffectiveBalance) &&
+                   IsSlashed == other.IsSlashed &&
+                   ActivationEligibilityEpoch.Equals(other.ActivationEligibilityEpoch) &&
+                   ActivationEpoch.Equals(other.ActivationEpoch) &&
+                   ExitEpoch.Equals(other.ExitEpoch)
+                   && WithdrawableEpoch.Equals(other.WithdrawableEpoch);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((Validator) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return BinaryPrimitives.ReadInt32LittleEndian(PublicKey.Bytes);
+        }
     }
 }

@@ -24,9 +24,13 @@ using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
+using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
+using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
 
 namespace Nethermind.BeaconNode
 {

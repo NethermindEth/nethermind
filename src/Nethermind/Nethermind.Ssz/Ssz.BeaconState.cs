@@ -62,7 +62,7 @@ namespace Nethermind.Ssz
             offset += VarOffsetSize;
             Encode(span.Slice(offset, sizeof(ulong)), container.Eth1DepositIndex);
             offset += sizeof(ulong);
-            int length3 = (container.Validators?.Length ?? 0) * Validator.SszLength;
+            int length3 = (container.Validators?.Length ?? 0) * ByteLength.ValidatorLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length3), container.Validators);
             dynamicOffset += length3;

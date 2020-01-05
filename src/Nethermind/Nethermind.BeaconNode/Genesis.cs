@@ -19,11 +19,17 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
+using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
+using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
+using Deposit = Nethermind.BeaconNode.Containers.Deposit;
+using DepositData = Nethermind.BeaconNode.Containers.DepositData;
+using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 
 namespace Nethermind.BeaconNode
 {

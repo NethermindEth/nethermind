@@ -32,5 +32,6 @@ namespace Nethermind.Core2
         public const int BlsSignatureLength = BlsSignature.Length;
         public const int ForkLength = ByteLength.ForkVersionLength * 2 + ByteLength.EpochLength;
         public const int CheckpointLength = ByteLength.Hash32Length + ByteLength.EpochLength;
+        public const int ValidatorLength = ByteLength.BlsPublicKeyLength + ByteLength.Hash32Length + ByteLength.GweiLength + 1 + 4 * ByteLength.EpochLength;
     }
 }
