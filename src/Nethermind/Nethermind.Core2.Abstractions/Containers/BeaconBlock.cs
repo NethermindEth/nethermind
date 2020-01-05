@@ -14,11 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class BeaconBlock
     {
@@ -58,6 +57,27 @@ namespace Nethermind.BeaconNode.Containers
         public override string ToString()
         {
             return $"S:{Slot} P:{ParentRoot.ToString().Substring(0, 16)} St:{StateRoot.ToString().Substring(0, 16)}";
+        }
+        
+        public bool Equals(BeaconBlock other)
+        {
+            return Slot == other.Slot &&
+                   Equals(ParentRoot, other.ParentRoot) &&
+                   Equals(StateRoot, other.StateRoot) &&
+                   Equals(Body, other.Body) &&
+                   Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj.GetType() == GetType() && Equals((BeaconBlock) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            throw new System.NotSupportedException();
         }
     }
 }

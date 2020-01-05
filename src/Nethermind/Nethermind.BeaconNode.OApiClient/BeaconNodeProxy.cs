@@ -128,7 +128,7 @@ namespace Nethermind.BeaconNode.OApiClient
             }
         }
 
-        public async Task<BeaconNode.Containers.BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
+        public async Task<Core2.Containers.BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken)
         {
             ulong slotValue = (ulong) slot;
             byte[] randaoRevealBytes = randaoReveal.Bytes;
@@ -140,7 +140,7 @@ namespace Nethermind.BeaconNode.OApiClient
             }, cancellationToken).ConfigureAwait(false);
 
             BeaconNode.OApiClient.BeaconBlock oapiBeaconBlock = result!;
-            BeaconNode.Containers.BeaconBlock beaconBlock = new BeaconNode.Containers.BeaconBlock(
+            Core2.Containers.BeaconBlock beaconBlock = new Core2.Containers.BeaconBlock(
                 new Slot((ulong) oapiBeaconBlock.Slot),
                 new Hash32(Bytes.FromHexString(oapiBeaconBlock.Parent_root)),
                 new Hash32(Bytes.FromHexString(oapiBeaconBlock.State_root)),
@@ -193,7 +193,7 @@ namespace Nethermind.BeaconNode.OApiClient
             return beaconBlock;
         }
 
-        public async Task<bool> PublishBlockAsync(BeaconNode.Containers.BeaconBlock block, CancellationToken cancellationToken)
+        public async Task<bool> PublishBlockAsync(Core2.Containers.BeaconBlock block, CancellationToken cancellationToken)
         { 
             BeaconNode.OApiClient.BeaconBlock data = new BeaconNode.OApiClient.BeaconBlock()
             {

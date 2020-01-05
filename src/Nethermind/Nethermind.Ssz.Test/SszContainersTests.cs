@@ -451,12 +451,12 @@ namespace Nethermind.Ssz.Test
                 new VoluntaryExit[6]
             );
 
-            BeaconBlock container = new BeaconBlock();
-            container.Body = beaconBlockBody;
-            container.Signature = SszTest.TestSig1;
-            container.Slot = new Slot(1);
-            container.ParentRoot = Sha256.OfAnEmptyString;
-            container.StateRoot = Sha256.OfAnEmptyString;
+            BeaconBlock container = new BeaconBlock(
+                new Slot(1),
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                beaconBlockBody,
+                SszTest.TestSig1);
 
             Span<byte> encoded = new byte[ByteLength.BeaconBlockLength(container)];
             Ssz.Encode(encoded, container);
@@ -496,12 +496,12 @@ namespace Nethermind.Ssz.Test
                 new VoluntaryExit[6]
             );
 
-            BeaconBlock beaconBlock = new BeaconBlock();
-            beaconBlock.Body = beaconBlockBody;
-            beaconBlock.Signature = SszTest.TestSig1;
-            beaconBlock.Slot = new Slot(1);
-            beaconBlock.ParentRoot = Sha256.OfAnEmptyString;
-            beaconBlock.StateRoot = Sha256.OfAnEmptyString;
+            BeaconBlock beaconBlock = new BeaconBlock(
+                new Slot(1),
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                beaconBlockBody,
+                SszTest.TestSig1);
 
             BeaconState container = new BeaconState();
             container.Balances = new Gwei[3];

@@ -53,7 +53,7 @@ namespace Nethermind.BeaconNode.OApi
                     Bytes.ToHexString(beacon_block.Body.Graffiti),
                     beacon_block.Signature, null);
             
-            Containers.BeaconBlock signedBlock = new Containers.BeaconBlock(
+            Core2.Containers.BeaconBlock signedBlock = new Core2.Containers.BeaconBlock(
                 new Slot((ulong) beacon_block.Slot),
                 new Hash32(Bytes.FromHexString(beacon_block.Parent_root)),
                 new Hash32(Bytes.FromHexString(beacon_block.State_root)),
@@ -126,7 +126,7 @@ namespace Nethermind.BeaconNode.OApi
         {
             if (_logger.IsInfo()) Log.NewBlockRequested(_logger, slot, Bytes.ToHexString(randao_reveal), null);
             
-            Containers.BeaconBlock data =
+            Core2.Containers.BeaconBlock data =
                 await _beaconNode.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal), CancellationToken.None);
             
             OApi.BeaconBlock result = new OApi.BeaconBlock()

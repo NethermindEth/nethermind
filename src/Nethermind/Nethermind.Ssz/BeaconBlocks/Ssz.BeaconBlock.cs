@@ -36,15 +36,15 @@ namespace Nethermind.Ssz
 
         public static BeaconBlock DecodeBeaconBlock(Span<byte> span)
         {
-            BeaconBlock beaconBlock = new BeaconBlock();
-
             int offset = 0;
-            beaconBlock.Slot = DecodeSlot(span, ref offset);
-            beaconBlock.ParentRoot = DecodeSha256(span, ref offset);
-            beaconBlock.StateRoot = DecodeSha256(span, ref offset);
+            var slot = DecodeSlot(span, ref offset);
+            var parentRoot = DecodeSha256(span, ref offset);
+            var stateRoot = DecodeSha256(span, ref offset);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
-            beaconBlock.Signature = DecodeBlsSignature(span, ref offset);
-            beaconBlock.Body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
+            var signature = DecodeBlsSignature(span, ref offset);
+            var body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
+            
+            BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body, signature);
             return beaconBlock;
         }
     }

@@ -31,7 +31,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
-using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Test

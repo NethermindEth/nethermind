@@ -16,6 +16,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
 
 namespace Nethermind.BeaconNode.Services
 {

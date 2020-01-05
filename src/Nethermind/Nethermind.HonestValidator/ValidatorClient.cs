@@ -31,7 +31,6 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
-using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 
 namespace Nethermind.HonestValidator
 {

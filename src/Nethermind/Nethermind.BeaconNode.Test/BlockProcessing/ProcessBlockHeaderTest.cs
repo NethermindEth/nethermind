@@ -17,10 +17,11 @@
 using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 using Shouldly;
+using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Test.BlockProcessing
 {
