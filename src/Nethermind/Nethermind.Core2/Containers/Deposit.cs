@@ -27,7 +27,7 @@ namespace Nethermind.Core2.Containers
         
         public const int SszLengthOfProof = (ContractTreeDepth + 1) * ByteLength.Hash32Length;
         
-        public const int SszLength = SszLengthOfProof + DepositData.SszLength;
+        public const int SszLength = SszLengthOfProof + ByteLength.DepositDataLength;
         
         public Hash32[] Proof = Enumerable.Repeat(Hash32.Zero, ContractTreeDepth + 1).ToArray();
         public DepositData? Data { get; set; }

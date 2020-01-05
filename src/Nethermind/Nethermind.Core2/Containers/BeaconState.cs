@@ -25,7 +25,7 @@ namespace Nethermind.Core2.Containers
         public static int SszDynamicOffset = sizeof(ulong) +
                                             Core2.ByteLength.SlotLength +
                                             ByteLength.ForkLength +
-                                            BeaconBlockHeader.SszLength +
+                                            ByteLength.BeaconBlockHeaderLength +
                                             2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length +
                                             sizeof(uint) +
                                             ByteLength.Eth1DataLength +

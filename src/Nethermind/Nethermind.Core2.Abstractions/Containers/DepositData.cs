@@ -14,11 +14,12 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class DepositData
     {
@@ -51,6 +52,26 @@ namespace Nethermind.BeaconNode.Containers
         public override string ToString()
         {
             return $"P:{PublicKey.ToString().Substring(0, 12)} A:{Amount}";
+        }
+
+        public bool Equals(DepositData other)
+        {
+            return Equals(PublicKey, other.PublicKey) &&
+                   Equals(WithdrawalCredentials, other.WithdrawalCredentials) &&
+                   Amount == other.Amount &&
+                   Equals(Signature, other.Signature);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            return obj is DepositData other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(PublicKey, WithdrawalCredentials, Amount, Signature);
         }
     }
 }

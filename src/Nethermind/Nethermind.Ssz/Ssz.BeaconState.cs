@@ -43,8 +43,8 @@ namespace Nethermind.Ssz
             offset += sizeof(ulong);
             Encode(span, container.Slot, ref offset);
             Encode(span, container.Fork, ref offset);
-            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.LatestBlockHeader);
-            offset += BeaconBlockHeader.SszLength;
+            Encode(span.Slice(offset, ByteLength.BeaconBlockHeaderLength), container.LatestBlockHeader);
+            offset += ByteLength.BeaconBlockHeaderLength;
             Encode(span.Slice(offset, Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length), container.BlockRoots);
             offset += Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length;
             Encode(span.Slice(offset, Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length), container.StateRoots);

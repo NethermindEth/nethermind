@@ -22,15 +22,17 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
+using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.OApi.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.OApi.BeaconBlockBody;
 using IndexedAttestation = Nethermind.BeaconNode.OApi.IndexedAttestation;
+using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode.OApi
 {
@@ -90,7 +92,7 @@ namespace Nethermind.BeaconNode.OApi
                     beacon_block.Body.Deposits.Select(x =>
                         new BeaconNode.Containers.Deposit(
                             x.Proof.Select(y => new Hash32(y)),
-                            new BeaconNode.Containers.DepositData(
+                            new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
                                 new Hash32(x.Data.Withdrawal_credentials),
                                 new Gwei((ulong) x.Data.Amount),

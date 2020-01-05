@@ -52,9 +52,9 @@ namespace Nethermind.Ssz
             int offset = 0;
             Encode(span.Slice(0, ByteLength.ValidatorIndexLength), container.ProposerIndex);
             offset += ByteLength.ValidatorIndexLength;
-            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header1);
-            offset += BeaconBlockHeader.SszLength;
-            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header2);
+            Encode(span.Slice(offset, ByteLength.BeaconBlockHeaderLength), container.Header1);
+            offset += ByteLength.BeaconBlockHeaderLength;
+            Encode(span.Slice(offset, ByteLength.BeaconBlockHeaderLength), container.Header2);
         }
 
         private static byte[] _nullProposerSlashing = new byte[ProposerSlashing.SszLength];

@@ -174,7 +174,7 @@ namespace Nethermind.BeaconNode.OApiClient
                     oapiBeaconBlock.Body.Deposits.Select(x =>
                         new BeaconNode.Containers.Deposit(
                             x.Proof.Select(y => new Hash32(y)),
-                            new BeaconNode.Containers.DepositData(
+                            new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
                                 new Hash32(x.Data.Withdrawal_credentials),
                                 new Gwei((ulong) x.Data.Amount),
@@ -362,9 +362,9 @@ namespace Nethermind.BeaconNode.OApiClient
             );
         }
 
-        private static BeaconNode.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.OApiClient.BeaconBlockHeader value)
+        private static Core2.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.OApiClient.BeaconBlockHeader value)
         {
-            return new BeaconNode.Containers.BeaconBlockHeader(
+            return new Core2.Containers.BeaconBlockHeader(
                 new Slot((ulong)value.Slot),
                 new Hash32(Bytes.FromHexString(value.Parent_root)), 
                 new Hash32(Bytes.FromHexString(value.State_root)), 
@@ -398,7 +398,7 @@ namespace Nethermind.BeaconNode.OApiClient
             };
         }
 
-        private static BeaconNode.OApiClient.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.Containers.BeaconBlockHeader value)
+        private static BeaconNode.OApiClient.BeaconBlockHeader MapBeaconBlockHeader(Core2.Containers.BeaconBlockHeader value)
         {
             return new BeaconNode.OApiClient.BeaconBlockHeader()
             {

@@ -27,7 +27,6 @@ using Attestation = Nethermind.BeaconNode.Containers.Attestation;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
 using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
-using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;

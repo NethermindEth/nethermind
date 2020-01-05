@@ -175,7 +175,7 @@ namespace Nethermind.Ssz.Test
             blockRoots[3] = Sha256.OfAnEmptyString;
             stateRoots[7] = Sha256.OfAnEmptyString;
             HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
-            Span<byte> encoded = new byte[ByteLength.HistroicalBatchLength];
+            Span<byte> encoded = new byte[ByteLength.HistoricalBatchLength];
             Ssz.Encode(encoded, container);
             HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
@@ -186,12 +186,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Deposit_data_there_and_back()
         {
-            DepositData container = new DepositData();
-            container.PublicKey = SszTest.TestKey1;
-            container.WithdrawalCredentials = Sha256.OfAnEmptyString;
-            container.Amount = Gwei.One;
-            container.Signature = SszTest.TestSig1;
-            Span<byte> encoded = new byte[DepositData.SszLength];
+            DepositData container = new DepositData(
+                SszTest.TestKey1,
+                Sha256.OfAnEmptyString,
+                Gwei.One,
+                SszTest.TestSig1);
+            Span<byte> encoded = new byte[ByteLength.DepositDataLength];
             Ssz.Encode(encoded, container);
             DepositData decoded = Ssz.DecodeDepositData(encoded);
             Assert.AreEqual(container, decoded);
@@ -202,13 +202,13 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_block_header_there_and_back()
         {
-            BeaconBlockHeader container = new BeaconBlockHeader();
-            container.Slot = new Slot(1);
-            container.ParentRoot = Sha256.OfAnEmptyString;
-            container.BodyRoot = Sha256.OfAnEmptyString;
-            container.StateRoot = Sha256.OfAnEmptyString;
-            container.Signature = SszTest.TestSig1;
-            Span<byte> encoded = new byte[BeaconBlockHeader.SszLength];
+            BeaconBlockHeader container = new BeaconBlockHeader(
+                new Slot(1),
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                SszTest.TestSig1);
+            Span<byte> encoded = new byte[ByteLength.BeaconBlockHeaderLength];
             Ssz.Encode(encoded, container);
             BeaconBlockHeader decoded = Ssz.DecodeBeaconBlockHeader(encoded);
             Assert.AreEqual(container, decoded);
@@ -219,19 +219,19 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Proposer_slashing_there_and_back()
         {
-            BeaconBlockHeader header1 = new BeaconBlockHeader();
-            header1.Slot = new Slot(1);
-            header1.ParentRoot = Sha256.OfAnEmptyString;
-            header1.BodyRoot = Sha256.OfAnEmptyString;
-            header1.StateRoot = Sha256.OfAnEmptyString;
-            header1.Signature = SszTest.TestSig1;
+            BeaconBlockHeader header1 = new BeaconBlockHeader(
+                new Slot(1),
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                SszTest.TestSig1);
 
-            BeaconBlockHeader header2 = new BeaconBlockHeader();
-            header2.Slot = new Slot(2);
-            header2.ParentRoot = Sha256.OfAnEmptyString;
-            header2.BodyRoot = Sha256.OfAnEmptyString;
-            header2.StateRoot = Sha256.OfAnEmptyString;
-            header2.Signature = SszTest.TestSig1;
+            BeaconBlockHeader header2 = new BeaconBlockHeader(
+                new Slot(2),
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                SszTest.TestSig1);
 
             ProposerSlashing container = new ProposerSlashing();
             container.ProposerIndex = new ValidatorIndex(1);
@@ -304,11 +304,11 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Deposit_there_and_back()
         {
-            DepositData data = new DepositData();
-            data.PublicKey = SszTest.TestKey1;
-            data.WithdrawalCredentials = Sha256.OfAnEmptyString;
-            data.Amount = Gwei.One;
-            data.Signature = SszTest.TestSig1;
+            DepositData data = new DepositData(
+                SszTest.TestKey1,
+                Sha256.OfAnEmptyString,
+                Gwei.One,
+                SszTest.TestSig1);
 
             Deposit container = new Deposit();
             container.Data = data;
@@ -381,11 +381,11 @@ namespace Nethermind.Ssz.Test
             attestation.Signature = SszTest.TestSig1;
             attestation.AggregationBits = new byte[5];
 
-            DepositData depositData = new DepositData();
-            depositData.Amount = new Gwei(7);
-            depositData.Signature = SszTest.TestSig1;
-            depositData.PublicKey = SszTest.TestKey1;
-            depositData.WithdrawalCredentials = Sha256.OfAnEmptyString;
+            DepositData depositData = new DepositData(
+                SszTest.TestKey1,
+                Sha256.OfAnEmptyString,
+                new Gwei(7),
+                SszTest.TestSig1);
 
             Deposit deposit = new Deposit();
             deposit.Data = depositData;
@@ -473,12 +473,12 @@ namespace Nethermind.Ssz.Test
                 1,
                 Sha256.OfAnEmptyString);
 
-            BeaconBlockHeader beaconBlockHeader = new BeaconBlockHeader();
-            beaconBlockHeader.Signature = SszTest.TestSig1;
-            beaconBlockHeader.Slot = new Slot(14);
-            beaconBlockHeader.BodyRoot = Sha256.OfAnEmptyString;
-            beaconBlockHeader.ParentRoot = Sha256.OfAnEmptyString;
-            beaconBlockHeader.StateRoot = Sha256.OfAnEmptyString;
+            BeaconBlockHeader beaconBlockHeader = new BeaconBlockHeader(
+                new Slot(14),
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                Sha256.OfAnEmptyString,
+                SszTest.TestSig1);
 
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
             beaconBlockBody.RandaoReversal = SszTest.TestSig1;

@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-//using System.Reflection.Metadata.Ecma335;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+//using System.Reflection.Metadata.Ecma335;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class BeaconBlockHeader : IEquatable<BeaconBlockHeader>
     {

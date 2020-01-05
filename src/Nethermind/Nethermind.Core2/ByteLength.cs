@@ -68,6 +68,8 @@ namespace Nethermind.Core2
         }
 
         public const int Eth1DataLength = 2 * ByteLength.Hash32Length + sizeof(ulong);
-        public static int HistroicalBatchLength = 2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length;
+        public static int HistoricalBatchLength = 2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length;
+        public const int DepositDataLength = ByteLength.BlsPublicKeyLength + ByteLength.Hash32Length + ByteLength.GweiLength + ByteLength.BlsSignatureLength;
+        public const int BeaconBlockHeaderLength = Core2.ByteLength.SlotLength + 3 * ByteLength.Hash32Length + ByteLength.BlsSignatureLength;
     }
 }
