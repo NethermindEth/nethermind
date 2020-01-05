@@ -28,7 +28,7 @@ namespace Nethermind.Core2.Containers
                                             BeaconBlockHeader.SszLength +
                                             2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length +
                                             sizeof(uint) +
-                                            Eth1Data.SszLength +
+                                            ByteLength.Eth1DataLength +
                                             sizeof(uint) +
                                             sizeof(ulong) +
                                             2 * sizeof(uint) +
@@ -51,7 +51,7 @@ namespace Nethermind.Core2.Containers
             result += ByteLength.Hash32Length * (container.HistoricalRoots?.Length ?? 0);
             result += ByteLength.ValidatorLength * (container.Validators?.Length ?? 0);
             result += ByteLength.GweiLength * (container.Balances?.Length ?? 0);
-            result += Eth1Data.SszLength * (container.Eth1DataVotes?.Length ?? 0);
+            result += ByteLength.Eth1DataLength * (container.Eth1DataVotes?.Length ?? 0);
 
             result += (container.PreviousEpochAttestations?.Length ?? 0) * sizeof(uint);
             if (!(container.PreviousEpochAttestations is null))

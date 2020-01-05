@@ -66,5 +66,7 @@ namespace Nethermind.Core2
             // TODO: AggregationBits is a Bitlist, not Bitvector, so needs a sentinel '1' at the end, i.e. byte length is (Len+8)/8
             return ByteLength.PendingAttestationDynamicOffset + (value.AggregationBits.Length + 7) / 8;
         }
+
+        public const int Eth1DataLength = 2 * ByteLength.Hash32Length + sizeof(ulong);
     }
 }

@@ -34,16 +34,8 @@ using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.BeaconNode.OApiClient.Configuration;
 using Nethermind.Logging.Microsoft;
-using Attestation = Nethermind.Core2.Containers.Attestation;
 using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
-using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
-using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
-using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
-using Fork = Nethermind.Core2.Containers.Fork;
 using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
-using ValidatorDuty = Nethermind.BeaconNode.ValidatorDuty;
 
 namespace Nethermind.BeaconNode.OApiClient
 {

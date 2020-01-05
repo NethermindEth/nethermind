@@ -26,7 +26,6 @@ using Nethermind.Core2.Types;
 using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
 using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {

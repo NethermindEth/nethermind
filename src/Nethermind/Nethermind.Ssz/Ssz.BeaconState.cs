@@ -55,7 +55,7 @@ namespace Nethermind.Ssz
             dynamicOffset += length1;
             offset += VarOffsetSize;
             Encode(span, container.Eth1Data, ref offset);
-            int length2 = (container.Eth1DataVotes?.Length ?? 0) * Eth1Data.SszLength;
+            int length2 = (container.Eth1DataVotes?.Length ?? 0) * ByteLength.Eth1DataLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length2), container.Eth1DataVotes);
             dynamicOffset += length2;

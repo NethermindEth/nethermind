@@ -154,11 +154,11 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Eth1_data_there_and_back()
         {
-            Eth1Data container = new Eth1Data();
-            container.BlockHash = Sha256.OfAnEmptyString;
-            container.DepositCount = 1;
-            container.DepositRoot = Sha256.OfAnEmptyString;
-            Span<byte> encoded = new byte[Eth1Data.SszLength];
+            Eth1Data container = new Eth1Data(
+                Sha256.OfAnEmptyString,
+                1,
+                Sha256.OfAnEmptyString);
+            Span<byte> encoded = new byte[ByteLength.Eth1DataLength];
             Ssz.Encode(encoded, container);
             Eth1Data decoded = Ssz.DecodeEth1Data(encoded);
             Assert.AreEqual(container, decoded);
@@ -338,10 +338,10 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_block_body_there_and_back()
         {
-            Eth1Data eth1Data = new Eth1Data();
-            eth1Data.BlockHash = Sha256.OfAnEmptyString;
-            eth1Data.DepositCount = 1;
-            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            Eth1Data eth1Data = new Eth1Data(
+                Sha256.OfAnEmptyString,
+                1,
+                Sha256.OfAnEmptyString);
 
             BeaconBlockBody container = new BeaconBlockBody();
             container.RandaoReversal = SszTest.TestSig1;
@@ -402,10 +402,10 @@ namespace Nethermind.Ssz.Test
             slashing.Attestation1 = indexedAttestation1;
             slashing.Attestation2 = indexedAttestation2;
 
-            Eth1Data eth1Data = new Eth1Data();
-            eth1Data.BlockHash = Sha256.OfAnEmptyString;
-            eth1Data.DepositCount = 9;
-            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            Eth1Data eth1Data = new Eth1Data(
+                Sha256.OfAnEmptyString,
+                9,
+                Sha256.OfAnEmptyString);
 
             body.Attestations = new Attestation[3];
             body.Attestations[1] = attestation;
@@ -428,10 +428,10 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_block_there_and_back()
         {
-            Eth1Data eth1Data = new Eth1Data();
-            eth1Data.BlockHash = Sha256.OfAnEmptyString;
-            eth1Data.DepositCount = 1;
-            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            Eth1Data eth1Data = new Eth1Data(
+                Sha256.OfAnEmptyString,
+                1,
+                Sha256.OfAnEmptyString);
 
             BeaconBlockBody beaconBlockBody = new BeaconBlockBody();
             beaconBlockBody.RandaoReversal = SszTest.TestSig1;
@@ -465,10 +465,10 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Beacon_state_there_and_back()
         {
-            Eth1Data eth1Data = new Eth1Data();
-            eth1Data.BlockHash = Sha256.OfAnEmptyString;
-            eth1Data.DepositCount = 1;
-            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
+            Eth1Data eth1Data = new Eth1Data(
+                Sha256.OfAnEmptyString,
+                1,
+                Sha256.OfAnEmptyString);
 
             BeaconBlockHeader beaconBlockHeader = new BeaconBlockHeader();
             beaconBlockHeader.Signature = SszTest.TestSig1;

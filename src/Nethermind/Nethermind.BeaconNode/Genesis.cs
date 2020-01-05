@@ -29,7 +29,6 @@ using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Deposit = Nethermind.BeaconNode.Containers.Deposit;
 using DepositData = Nethermind.BeaconNode.Containers.DepositData;
-using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
 
 namespace Nethermind.BeaconNode
 {

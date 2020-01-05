@@ -17,9 +17,8 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Containers
 {
     public class Eth1Data : IEquatable<Eth1Data>
     {
@@ -73,7 +72,7 @@ namespace Nethermind.BeaconNode.Containers
 
         public override int GetHashCode()
         {
-            return HashCode.Combine(BlockHash, DepositCount, DepositRoot);
+            return BlockHash.GetHashCode();
         }
 
         public void SetDepositCount(ulong depositCount)
