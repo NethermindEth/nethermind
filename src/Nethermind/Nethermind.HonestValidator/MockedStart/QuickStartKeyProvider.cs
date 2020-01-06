@@ -35,16 +35,13 @@ namespace Nethermind.HonestValidator.MockedStart
         private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
         
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
-        private readonly ICryptographyService _cryptographyService;
         
         private readonly IDictionary<BlsPublicKey, BLS> _publicKeyToBls = new Dictionary<BlsPublicKey, BLS>();
 
         public QuickStartKeyProvider(
-            IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
-            ICryptographyService cryptographyService)
+            IOptionsMonitor<QuickStartParameters> quickStartParameterOptions)
         {
             _quickStartParameterOptions = quickStartParameterOptions;
-            _cryptographyService = cryptographyService;
         }
 
         public IEnumerable<BlsPublicKey> GetPublicKeys()
@@ -102,7 +99,7 @@ namespace Nethermind.HonestValidator.MockedStart
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            Hash32 hash32 = _cryptographyService.Hash(input);
+            Hash32 hash32 = Sha256.Compute(input);
             ReadOnlySpan<byte> hash = hash32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
