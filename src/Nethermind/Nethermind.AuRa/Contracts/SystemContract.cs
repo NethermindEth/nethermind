@@ -54,35 +54,35 @@ namespace Nethermind.AuRa.Contracts
         
         public void InvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
         {
-            if (transaction != null)
+            bool failure;
+            
+            try
             {
-                bool failure;
-                
-                try
-                {
-                    failure = !TryInvokeTransaction(header, transactionProcessor, transaction, tracer);
-                }
-                catch (Exception e)
-                {
-                    throw new AuRaException($"System call returned an exception '{e.Message}' at block {header.Number}.", e);
-                }
-                
-                if (failure)
-                {
-                    throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
-                }
+                transactionProcessor.Execute(transaction, header, tracer);
+                failure = tracer.StatusCode != StatusCode.Success;
+            }
+            catch (Exception e)
+            {
+                throw new AuRaException($"System call returned an exception '{e.Message}' at block {header.Number}.", e);
+            }
+           
+            if (failure)
+            {
+                throw new AuRaException($"System call returned error '{tracer.Error}' at block {header.Number}.");
             }
         }
 
         public bool TryInvokeTransaction(BlockHeader header, ITransactionProcessor transactionProcessor, Transaction transaction, CallOutputTracer tracer)
         {
-            if (transaction != null)
+            try
             {
                 transactionProcessor.Execute(transaction, header, tracer);
                 return tracer.StatusCode == StatusCode.Success;
             }
-
-            return false;
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         public void EnsureSystemAccount(IStateProvider stateProvider)

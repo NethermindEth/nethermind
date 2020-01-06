@@ -34,7 +34,7 @@ namespace Nethermind.AuRa.Validators
         private readonly ILogger _logger;
         private IAuRaValidatorProcessor _currentValidator;
         private AuRaParameters.Validator _currentValidatorPrototype;
-        private bool _isProducing;
+        private bool _validatorUsedForSealing;
         private long _lastProcessedBlock = 0;
         
         public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, IBlockTree blockTree, ILogManager logManager)
@@ -87,7 +87,10 @@ namespace Nethermind.AuRa.Validators
                 if (TryGetValidator(finalizedBlockHeader.Number, out var validator) && !validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(e.FinalizingBlock.Number, validator);
-                    if (_logger.IsInfo && !_isProducing) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.ToString(BlockHeader.Format.Short)} at block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
+                    if (!_validatorUsedForSealing)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Applying chainspec validator change signalled at block {finalizedBlockHeader.ToString(BlockHeader.Format.Short)} at block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
+                    }
                 }
             }
         }
@@ -102,7 +105,8 @@ namespace Nethermind.AuRa.Validators
             {
                 if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
                 {
-                    if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key)
+                    var validatorWasAlreadyFinalized = _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
+                    if (validatorWasAlreadyFinalized || validatorInfo.Value.ValidatorType.CanChangeImmediately())
                     {
                         SetCurrentValidator(validatorInfo);
                     }
@@ -162,7 +166,7 @@ namespace Nethermind.AuRa.Validators
             }
 
             _blockFinalizationManager = finalizationManager;
-            _isProducing = forProducing;
+            _validatorUsedForSealing = forProducing;
             
             if (_blockFinalizationManager != null)
             {
@@ -178,20 +182,20 @@ namespace Nethermind.AuRa.Validators
             SetCurrentValidator(validatorInfo.Key, validatorInfo.Value);
         }
         
-        private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)
+        private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
         {
-            if (validator != _currentValidatorPrototype)
+            if (validatorPrototype != _currentValidatorPrototype)
             {
                 _currentValidator?.SetFinalizationManager(null);
-                _currentValidator = CreateValidator(finalizedAtBlockNumber, validator);
-                _currentValidator.SetFinalizationManager(_blockFinalizationManager, _isProducing);
-                _currentValidatorPrototype = validator;
+                _currentValidator = CreateValidator(finalizedAtBlockNumber, validatorPrototype);
+                _currentValidator.SetFinalizationManager(_blockFinalizationManager, _validatorUsedForSealing);
+                _currentValidatorPrototype = validatorPrototype;
             }
         }
 
-        private IAuRaValidatorProcessor CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)
+        private IAuRaValidatorProcessor CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validatorPrototype)
         {
-            return _validatorFactory.CreateValidatorProcessor(validator, finalizedAtBlockNumber + 1);
+            return _validatorFactory.CreateValidatorProcessor(validatorPrototype, finalizedAtBlockNumber + 1);
         }
     }
 }

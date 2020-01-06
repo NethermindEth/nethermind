@@ -64,7 +64,7 @@ namespace Nethermind.AuRa
             await base.ProducerLoopStep();
             var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
             if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
-            await TaskExt.DelayAtLeast(timeToNextStep);
+            await TaskExt.DelayAtLeast(timeToNextStep, CancellationTokenSource.Token);
 
         }
         

@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain
         protected override async ValueTask ProducerLoopStep()
         {
             await base.ProducerLoopStep();
-            await Task.Delay(DelayBetweenBlocks);
+            await Task.Delay(DelayBetweenBlocks, CancellationTokenSource.Token);
         }
     }
 }
