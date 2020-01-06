@@ -15,10 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Containers;
 
-namespace Nethermind.BeaconNode.Services
+namespace Nethermind.Core2
 {
     public interface INetworkPeering
     {

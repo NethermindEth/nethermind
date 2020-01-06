@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
 namespace Nethermind.BeaconNode.Peering
