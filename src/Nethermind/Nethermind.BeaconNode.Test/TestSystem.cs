@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Xml.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -24,6 +25,7 @@ using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
 using NSubstitute;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
@@ -50,7 +52,11 @@ namespace Nethermind.BeaconNode.Test
             services.ConfigureBeaconChain(configuration);
             services.AddBeaconNode(configuration);
 
-            if (!useBls)
+            if (useBls)
+            {
+                services.AddCryptographyService(configuration);
+            }
+            else
             {
                 // NOTE: Can't mock ByRef Span<T>
                 var testCryptographyService = new TestCryptographyService();

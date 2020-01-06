@@ -16,26 +16,15 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.Services;
-using System.Net.Http;
 using Nethermind.Core2;
-using Nethermind.Core2.Configuration;
-using Nethermind.Core2.Types;
-using Nethermind.HonestValidator.Services;
 
-namespace Nethermind.HonestValidator
+namespace Nethermind.Core2.Cryptography
 {
-    public static class HonestValidatorServiceCollectionExtensions
+    public static class CryptographyServiceCollectionExtensions
     {
-        public static void AddHonestValidator(this IServiceCollection services, IConfiguration configuration)
+        public static void AddCryptographyService(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<IClock, SystemClock>();
-            services.AddSingleton<BeaconChain>();
-            services.AddSingleton<ValidatorClient>();
-            services.AddSingleton<ClientVersion>();
-            
-            services.AddHostedService<HonestValidatorWorker>();
+            services.AddSingleton<ICryptographyService, CortexCryptographyService>();
         }
     }
 }

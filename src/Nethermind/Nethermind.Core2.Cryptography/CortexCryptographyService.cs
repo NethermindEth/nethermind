@@ -19,12 +19,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography;
 using Cortex.Cryptography;
-using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
-namespace Nethermind.BeaconNode.Services
+namespace Nethermind.Core2.Cryptography
 {
     /// <summary>
     /// Implementation of ICryptographyService that uses the Cortex BLS nuget package
