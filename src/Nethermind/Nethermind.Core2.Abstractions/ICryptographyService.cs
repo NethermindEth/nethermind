@@ -14,32 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
-using Cortex.SimpleSerialize;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2
 {
-    public static class AttestationDataAndCustodyBitExtensions
+    public interface ICryptographyService
     {
-        public static Hash32 HashTreeRoot(this AttestationDataAndCustodyBit item)
-        {
-            var tree = new SszTree(item.ToSszContainer());
-            return new Hash32(tree.HashTreeRoot());
-        }
+        BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys);
 
-        public static SszContainer ToSszContainer(this AttestationDataAndCustodyBit item)
-        {
-            return new SszContainer(GetValues(item));
-        }
+        bool BlsVerify(BlsPublicKey publicKey, Hash32 signingRoot, BlsSignature signature, Domain domain);
 
-        private static IEnumerable<SszElement> GetValues(AttestationDataAndCustodyBit item)
-        {
-            yield return item.Data.ToSszContainer();
-            // Challengeable bit (SSZ-bool, 1 byte) for the custody of crosslink data
-            yield return item.CustodyBit.ToSszBasicElement();
-        }
+        bool BlsVerifyMultiple(IEnumerable<BlsPublicKey> publicKeys, IEnumerable<Hash32> messageHashes, BlsSignature signature, Domain domain);
+
+        Hash32 Hash(Hash32 a, Hash32 b);
+
+        Hash32 Hash(ReadOnlySpan<byte> bytes);
     }
 }

@@ -17,7 +17,7 @@
 using System;
 using System.Runtime.InteropServices;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2.Types
 {
     public struct Domain : IEquatable<Domain>
     {

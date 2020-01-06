@@ -19,6 +19,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode;
 using Nethermind.BeaconNode.Services;
 using System.Net.Http;
+using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Services;

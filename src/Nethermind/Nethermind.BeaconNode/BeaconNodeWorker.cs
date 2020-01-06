@@ -24,6 +24,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2;
 using Nethermind.Logging.Microsoft;
 
 namespace Nethermind.BeaconNode

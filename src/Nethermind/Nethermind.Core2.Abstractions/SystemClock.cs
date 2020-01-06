@@ -14,19 +14,17 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
+using System;
 
-namespace Nethermind.BeaconNode.Services
+namespace Nethermind.Core2
 {
-    public interface IEth1DataProvider
+    /// <summary>
+    /// Default implementation of IClock that just forwards calls to the system clock.
+    /// </summary>
+    public class SystemClock : IClock
     {
-        // NOTE: Eth1Data.Deposit root is the deposit root of the contract
-        Task<ulong> GetDistanceAsync(Hash32 eth1BlockHash);
-        Task<Eth1Data> GetEth1DataAsync(ulong distance);
-        IAsyncEnumerable<Deposit> GetDepositsAsync(Hash32 eth1BlockHash, ulong startIndex, ulong maximum);
+        public DateTimeOffset Now() => DateTimeOffset.Now;
+
+        public DateTimeOffset UtcNow() => DateTimeOffset.UtcNow;
     }
 }

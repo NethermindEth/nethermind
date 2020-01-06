@@ -24,6 +24,7 @@ using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Services;

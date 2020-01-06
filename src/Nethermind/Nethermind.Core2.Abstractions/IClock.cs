@@ -14,21 +14,13 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core2.Containers;
+using System;
 
-namespace Nethermind.BeaconNode.Containers
+namespace Nethermind.Core2
 {
-    public class AttestationDataAndCustodyBit
+    public interface IClock
     {
-        public AttestationDataAndCustodyBit(AttestationData data, bool custodyBit)
-        {
-            Data = data;
-            CustodyBit = custodyBit;
-        }
-
-        /// <summary>Gets a challengable bit (SSZ-bool, 1 byte) for the custody of crosslink data</summary>
-        public bool CustodyBit { get; }
-
-        public AttestationData Data { get; }
+        DateTimeOffset Now();
+        DateTimeOffset UtcNow();
     }
 }
