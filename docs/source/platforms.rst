@@ -9,7 +9,6 @@ Supported Platforms
  - macOS `Details <https://docs.microsoft.com/en-us/dotnet/core/install/dependencies?tabs=netcore31&pivots=os-macos/>`_
     - High Sierra (10.13+)
  - Linux `Details <https://docs.microsoft.com/en-us/dotnet/core/install/dependencies?tabs=netcore31&pivots=os-linux/>`_
-    - **(versions 1.2.0 to 1.3.6 of Nethermind do not work properly with non-Ubuntu and non-Alpine Linux distros - fix is on the way)**
     - Red Hat Enterprise Linux	6, 7, 8	x64 (not tested by us)
     - CentOS	7+	x64 (not tested by us)
     - Oracle Linux	7+	x64 (not tested by us)
@@ -20,6 +19,6 @@ Supported Platforms
     - openSUSE	15+	x64 (not tested by us)
     - SUSE Enterprise Linux (SLES)	12 SP2+	x64 (not tested by us)
     - Alpine Linux	3.10+	x64, ARM64
-    - Raspberry PI4 (ARM64) (under construction - a docker image may already be available while you read it)
+    - Raspberry PI4 (ARM64)
  
  - other systems/versions may work
