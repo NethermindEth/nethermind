@@ -10,18 +10,18 @@
 #pragma warning disable 1573 // Disable "CS1573 Parameter '...' has no matching param tag in the XML comment for ...
 #pragma warning disable 1591 // Disable "CS1591 Missing XML comment for publicly visible type or member ..."
 
-namespace Nethermind.BeaconNode.ApiClient
+namespace Nethermind.BeaconNode.OApiClient
 {
     using System = global::System;
     
     [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.6.0 (NJsonSchema v10.0.28.0 (Newtonsoft.Json v11.0.0.0))")]
-    public partial class BeaconNodeClient 
+    public partial class BeaconNodeOApiClient 
     {
         private string _baseUrl = "";
         private System.Net.Http.HttpClient _httpClient;
         private System.Lazy<Newtonsoft.Json.JsonSerializerSettings> _settings;
     
-        public BeaconNodeClient(string baseUrl, System.Net.Http.HttpClient httpClient)
+        public BeaconNodeOApiClient(string baseUrl, System.Net.Http.HttpClient httpClient)
         {
             BaseUrl = baseUrl; 
             _httpClient = httpClient; 
@@ -271,6 +271,97 @@ namespace Nethermind.BeaconNode.ApiClient
             }
         }
     
+        /// <summary>Get validator details.</summary>
+        /// <returns>Success response</returns>
+        /// <exception cref="ApiException">A server side error occurred.</exception>
+        public System.Threading.Tasks.Task<Validator> ValidatorAsync(byte[] pubkey)
+        {
+            return ValidatorAsync(pubkey, System.Threading.CancellationToken.None);
+        }
+    
+        /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
+        /// <summary>Get validator details.</summary>
+        /// <returns>Success response</returns>
+        /// <exception cref="ApiException">A server side error occurred.</exception>
+        public async System.Threading.Tasks.Task<Validator> ValidatorAsync(byte[] pubkey, System.Threading.CancellationToken cancellationToken)
+        {
+            if (pubkey == null)
+                throw new System.ArgumentNullException("pubkey");
+    
+            var urlBuilder_ = new System.Text.StringBuilder();
+            urlBuilder_.Append(BaseUrl != null ? BaseUrl.TrimEnd('/') : "").Append("/validator/{pubkey}");
+            urlBuilder_.Replace("{pubkey}", System.Uri.EscapeDataString(ConvertToString(pubkey, System.Globalization.CultureInfo.InvariantCulture)));
+    
+            var client_ = _httpClient;
+            try
+            {
+                using (var request_ = new System.Net.Http.HttpRequestMessage())
+                {
+                    request_.Method = new System.Net.Http.HttpMethod("GET");
+                    request_.Headers.Accept.Add(System.Net.Http.Headers.MediaTypeWithQualityHeaderValue.Parse("application/json"));
+    
+                    PrepareRequest(client_, request_, urlBuilder_);
+                    var url_ = urlBuilder_.ToString();
+                    request_.RequestUri = new System.Uri(url_, System.UriKind.RelativeOrAbsolute);
+                    PrepareRequest(client_, request_, url_);
+    
+                    var response_ = await client_.SendAsync(request_, System.Net.Http.HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        var headers_ = System.Linq.Enumerable.ToDictionary(response_.Headers, h_ => h_.Key, h_ => h_.Value);
+                        if (response_.Content != null && response_.Content.Headers != null)
+                        {
+                            foreach (var item_ in response_.Content.Headers)
+                                headers_[item_.Key] = item_.Value;
+                        }
+    
+                        ProcessResponse(client_, response_);
+    
+                        var status_ = ((int)response_.StatusCode).ToString();
+                        if (status_ == "200") 
+                        {
+                            var objectResponse_ = await ReadObjectResponseAsync<Validator>(response_, headers_).ConfigureAwait(false);
+                            return objectResponse_.Object;
+                        }
+                        else
+                        if (status_ == "400") 
+                        {
+                            string responseText_ = ( response_.Content == null ) ? string.Empty : await response_.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            throw new ApiException("Invalid request syntax.", (int)response_.StatusCode, responseText_, headers_, null);
+                        }
+                        else
+                        if (status_ == "404") 
+                        {
+                            string responseText_ = ( response_.Content == null ) ? string.Empty : await response_.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            throw new ApiException("Validator not found in registry", (int)response_.StatusCode, responseText_, headers_, null);
+                        }
+                        else
+                        if (status_ == "500") 
+                        {
+                            string responseText_ = ( response_.Content == null ) ? string.Empty : await response_.Content.ReadAsStringAsync().ConfigureAwait(false);
+                            throw new ApiException("Beacon node internal error.", (int)response_.StatusCode, responseText_, headers_, null);
+                        }
+                        else
+                        if (status_ != "200" && status_ != "204")
+                        {
+                            var responseData_ = response_.Content == null ? null : await response_.Content.ReadAsStringAsync().ConfigureAwait(false); 
+                            throw new ApiException("The HTTP status code of the response was not expected (" + (int)response_.StatusCode + ").", (int)response_.StatusCode, responseData_, headers_, null);
+                        }
+            
+                        return default(Validator);
+                    }
+                    finally
+                    {
+                        if (response_ != null)
+                            response_.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+            }
+        }
+    
         /// <summary>Get validator duties for the requested validators.</summary>
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
@@ -476,35 +567,32 @@ namespace Nethermind.BeaconNode.ApiClient
         }
     
         /// <summary>Publish a signed block.</summary>
-        /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
+        /// <param name="body">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public System.Threading.Tasks.Task Block2Async(BeaconBlock beacon_block)
+        public System.Threading.Tasks.Task Block2Async(BeaconBlock body)
         {
-            return Block2Async(beacon_block, System.Threading.CancellationToken.None);
+            return Block2Async(body, System.Threading.CancellationToken.None);
         }
     
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>Publish a signed block.</summary>
-        /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
+        /// <param name="body">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public async System.Threading.Tasks.Task Block2Async(BeaconBlock beacon_block, System.Threading.CancellationToken cancellationToken)
+        public async System.Threading.Tasks.Task Block2Async(BeaconBlock body, System.Threading.CancellationToken cancellationToken)
         {
-            if (beacon_block == null)
-                throw new System.ArgumentNullException("beacon_block");
-    
             var urlBuilder_ = new System.Text.StringBuilder();
-            urlBuilder_.Append(BaseUrl != null ? BaseUrl.TrimEnd('/') : "").Append("/validator/block?");
-            urlBuilder_.Append(System.Uri.EscapeDataString("beacon_block") + "=").Append(System.Uri.EscapeDataString(ConvertToString(beacon_block, System.Globalization.CultureInfo.InvariantCulture))).Append("&");
-            urlBuilder_.Length--;
+            urlBuilder_.Append(BaseUrl != null ? BaseUrl.TrimEnd('/') : "").Append("/validator/block");
     
             var client_ = _httpClient;
             try
             {
                 using (var request_ = new System.Net.Http.HttpRequestMessage())
                 {
-                    request_.Content = new System.Net.Http.StringContent(string.Empty, System.Text.Encoding.UTF8, "application/json");
+                    var content_ = new System.Net.Http.StringContent(Newtonsoft.Json.JsonConvert.SerializeObject(body, _settings.Value));
+                    content_.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/json");
+                    request_.Content = content_;
                     request_.Method = new System.Net.Http.HttpMethod("POST");
     
                     PrepareRequest(client_, request_, urlBuilder_);
@@ -573,12 +661,12 @@ namespace Nethermind.BeaconNode.ApiClient
     
         /// <summary>Produce an attestation, without signature.</summary>
         /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
-        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `IndexedAttestation`.</param>
+        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `Attestation`.</param>
         /// <param name="slot">The slot for which the attestation should be proposed.</param>
         /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
         /// <returns>Success response</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public System.Threading.Tasks.Task<IndexedAttestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
+        public System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard)
         {
             return AttestationAsync(validator_pubkey, poc_bit, slot, shard, System.Threading.CancellationToken.None);
         }
@@ -586,12 +674,12 @@ namespace Nethermind.BeaconNode.ApiClient
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>Produce an attestation, without signature.</summary>
         /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
-        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `IndexedAttestation`.</param>
+        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `Attestation`.</param>
         /// <param name="slot">The slot for which the attestation should be proposed.</param>
         /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
         /// <returns>Success response</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public async System.Threading.Tasks.Task<IndexedAttestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard, System.Threading.CancellationToken cancellationToken)
+        public async System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard, System.Threading.CancellationToken cancellationToken)
         {
             if (validator_pubkey == null)
                 throw new System.ArgumentNullException("validator_pubkey");
@@ -641,7 +729,7 @@ namespace Nethermind.BeaconNode.ApiClient
                         var status_ = ((int)response_.StatusCode).ToString();
                         if (status_ == "200") 
                         {
-                            var objectResponse_ = await ReadObjectResponseAsync<IndexedAttestation>(response_, headers_).ConfigureAwait(false);
+                            var objectResponse_ = await ReadObjectResponseAsync<Attestation>(response_, headers_).ConfigureAwait(false);
                             return objectResponse_.Object;
                         }
                         else
@@ -669,7 +757,7 @@ namespace Nethermind.BeaconNode.ApiClient
                             throw new ApiException("The HTTP status code of the response was not expected (" + (int)response_.StatusCode + ").", (int)response_.StatusCode, responseData_, headers_, null);
                         }
             
-                        return default(IndexedAttestation);
+                        return default(Attestation);
                     }
                     finally
                     {
@@ -684,35 +772,32 @@ namespace Nethermind.BeaconNode.ApiClient
         }
     
         /// <summary>Publish a signed attestation.</summary>
-        /// <param name="attestation">An `IndexedAttestation` structure, as originally provided by the beacon node, but now with the signature field completed.</param>
+        /// <param name="body">An `Attestation` structure, as originally provided by the beacon node, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public System.Threading.Tasks.Task Attestation2Async(IndexedAttestation attestation)
+        public System.Threading.Tasks.Task Attestation2Async(Attestation body)
         {
-            return Attestation2Async(attestation, System.Threading.CancellationToken.None);
+            return Attestation2Async(body, System.Threading.CancellationToken.None);
         }
     
         /// <param name="cancellationToken">A cancellation token that can be used by other objects or threads to receive notice of cancellation.</param>
         /// <summary>Publish a signed attestation.</summary>
-        /// <param name="attestation">An `IndexedAttestation` structure, as originally provided by the beacon node, but now with the signature field completed.</param>
+        /// <param name="body">An `Attestation` structure, as originally provided by the beacon node, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         /// <exception cref="ApiException">A server side error occurred.</exception>
-        public async System.Threading.Tasks.Task Attestation2Async(IndexedAttestation attestation, System.Threading.CancellationToken cancellationToken)
+        public async System.Threading.Tasks.Task Attestation2Async(Attestation body, System.Threading.CancellationToken cancellationToken)
         {
-            if (attestation == null)
-                throw new System.ArgumentNullException("attestation");
-    
             var urlBuilder_ = new System.Text.StringBuilder();
-            urlBuilder_.Append(BaseUrl != null ? BaseUrl.TrimEnd('/') : "").Append("/validator/attestation?");
-            urlBuilder_.Append(System.Uri.EscapeDataString("attestation") + "=").Append(System.Uri.EscapeDataString(ConvertToString(attestation, System.Globalization.CultureInfo.InvariantCulture))).Append("&");
-            urlBuilder_.Length--;
+            urlBuilder_.Append(BaseUrl != null ? BaseUrl.TrimEnd('/') : "").Append("/validator/attestation");
     
             var client_ = _httpClient;
             try
             {
                 using (var request_ = new System.Net.Http.HttpRequestMessage())
                 {
-                    request_.Content = new System.Net.Http.StringContent(string.Empty, System.Text.Encoding.UTF8, "application/json");
+                    var content_ = new System.Net.Http.StringContent(Newtonsoft.Json.JsonConvert.SerializeObject(body, _settings.Value));
+                    content_.Headers.ContentType = System.Net.Http.Headers.MediaTypeHeaderValue.Parse("application/json");
+                    request_.Content = content_;
                     request_.Method = new System.Net.Http.HttpMethod("POST");
     
                     PrepareRequest(client_, request_, urlBuilder_);
@@ -873,13 +958,13 @@ namespace Nethermind.BeaconNode.ApiClient
     }
     
     [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.6.0 (NJsonSchema v10.0.28.0 (Newtonsoft.Json v11.0.0.0))")]
-    public partial class BeaconNodeClient 
+    public partial class BeaconNodeOApiClient 
     {
         private string _baseUrl = "";
         private System.Net.Http.HttpClient _httpClient;
         private System.Lazy<Newtonsoft.Json.JsonSerializerSettings> _settings;
     
-        public BeaconNodeClient(string baseUrl, System.Net.Http.HttpClient httpClient)
+        public BeaconNodeOApiClient(string baseUrl, System.Net.Http.HttpClient httpClient)
         {
             BaseUrl = baseUrl; 
             _httpClient = httpClient; 
@@ -1104,6 +1189,54 @@ namespace Nethermind.BeaconNode.ApiClient
     }
     
     [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "10.0.28.0 (Newtonsoft.Json v11.0.0.0)")]
+    public partial class Validator 
+    {
+        [Newtonsoft.Json.JsonProperty("validator_pubkey", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]{96}$")]
+        public byte[] Validator_pubkey { get; set; }
+    
+        /// <summary>Hash of withdrawal credentials</summary>
+        [Newtonsoft.Json.JsonProperty("withdrawal_credentials", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]{64}$")]
+        public string Withdrawal_credentials { get; set; }
+    
+        /// <summary>Balance at stake in Gwei.</summary>
+        [Newtonsoft.Json.JsonProperty("effective_balance", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Effective_balance { get; set; }
+    
+        /// <summary>Was validator slashed (not longer active).</summary>
+        [Newtonsoft.Json.JsonProperty("slashed", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool Slashed { get; set; }
+    
+        /// <summary>When criteria for activation were met.</summary>
+        [Newtonsoft.Json.JsonProperty("activation_eligibility_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Activation_eligibility_epoch { get; set; }
+    
+        /// <summary>Epoch when validator activated. 'FAR_FUTURE_EPOCH' if not activated</summary>
+        [Newtonsoft.Json.JsonProperty("activation_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Activation_epoch { get; set; }
+    
+        /// <summary>Epoch when validator exited. 'FAR_FUTURE_EPOCH' if not exited.</summary>
+        [Newtonsoft.Json.JsonProperty("exit_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Exit_epoch { get; set; }
+    
+        /// <summary>When validator can withdraw or transfer funds. 'FAR_FUTURE_EPOCH' if not defined</summary>
+        [Newtonsoft.Json.JsonProperty("withdrawable_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Withdrawable_epoch { get; set; }
+    
+        private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
+    
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties; }
+            set { _additionalProperties = value; }
+        }
+    
+    
+    }
+    
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "10.0.28.0 (Newtonsoft.Json v11.0.0.0)")]
     public partial class SyncingStatus 
     {
         /// <summary>The slot at which syncing started (will only be reset after the sync reached its head)</summary>
@@ -1268,6 +1401,40 @@ namespace Nethermind.BeaconNode.ApiClient
         /// <summary>Fork epoch number.</summary>
         [Newtonsoft.Json.JsonProperty("epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public int Epoch { get; set; }
+    
+        private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
+    
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties; }
+            set { _additionalProperties = value; }
+        }
+    
+    
+    }
+    
+    /// <summary>The [`Attestation`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#attestation) object from the Eth2.0 spec.</summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "10.0.28.0 (Newtonsoft.Json v11.0.0.0)")]
+    public partial class Attestation 
+    {
+        /// <summary>Attester aggregation bitfield.</summary>
+        [Newtonsoft.Json.JsonProperty("aggregation_bitfield", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]+$")]
+        public byte[] Aggregation_bitfield { get; set; }
+    
+        /// <summary>Custody bitfield.</summary>
+        [Newtonsoft.Json.JsonProperty("custody_bitfield", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]+$")]
+        public byte[] Custody_bitfield { get; set; }
+    
+        /// <summary>BLS aggregate signature.</summary>
+        [Newtonsoft.Json.JsonProperty("signature", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]{192}$")]
+        public byte[] Signature { get; set; }
+    
+        [Newtonsoft.Json.JsonProperty("data", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public AttestationData Data { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     

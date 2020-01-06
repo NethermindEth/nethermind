@@ -2,12 +2,20 @@
 
 This is the Beacon Node host for Ethereum 2.0 for the .NET Core Nethermind project.
 
+Note that the Eth 2.0 impelmentation is only an alpha version and still in initial development.
+
 ## Getting started
 
 ### Pre-requisites
 
 * .NET Core 3.0 development tools
 * On Linux and OSX, you also need GMP installed (big number library)
+
+Enable trust of the ASP.NET Core development certificate (you can ignore in a browser, but the validator client will reject the connection). On Windows or Max, dotnet will take care of this; on Linux you will need to follow distribution specific instructions (see .NET Core guidance).
+
+```
+dotnet dev-certs https --trust
+```
 
 ### Compile and run the Beacon Node
 
@@ -25,16 +33,40 @@ dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:Gene
 
 ### Test it works
 
-Run, as above, then open a browser to ```https://localhost:5001/node/version``` and it should respond with the name and version.
+Run, as above, then open a browser to ```https://localhost:8230/node/version``` and it should respond with the name and version.
 
 Other GET queries:
 
-* genesis time: ```https://localhost:5001/node/genesis_time```
-* fork: ```https://localhost:5001/node/fork```
-* validator duties: ```https://localhost:5001/validator/duties?validator_pubkeys=0xa1c76af1545d7901214bb6be06be5d9e458f8e989c19373a920f0018327c83982f6a2ac138260b8def732cb366411ddc&validator_pubkeys=0x94f0c8535601596eb2165adb28ebe495891a3e4ea77ef501e7790cccb281827d377a5a8d4c200e3595d3f38f8633b480&validator_pubkeys=0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e&epoch=0```
-* get an unsigned block: ```https://localhost:5001/validator/block?slot=1&randao_reveal=0xa3426b6391a29c88f2280428d5fdae9e20f4c75a8d38d0714e3aa5b9e55594dbd555c4bc685191e83d39158c3be9744d06adc34b21d2885998a206e3b3fd435eab424cf1c01b8fd562deb411348a601e83d7332d8774d1fd3bf8b88d7a33c67c```
+* genesis time: ```https://localhost:8230/node/genesis_time```
+* fork: ```https://localhost:8230/node/fork```
+* validator duties: ```https://localhost:8230/validator/duties?validator_pubkeys=0xa1c76af1545d7901214bb6be06be5d9e458f8e989c19373a920f0018327c83982f6a2ac138260b8def732cb366411ddc&validator_pubkeys=0x94f0c8535601596eb2165adb28ebe495891a3e4ea77ef501e7790cccb281827d377a5a8d4c200e3595d3f38f8633b480&validator_pubkeys=0x81283b7a20e1ca460ebd9bbd77005d557370cabb1f9a44f530c4c4c66230f675f8df8b4c2818851aa7d77a80ca5a4a5e&epoch=0```
+* get an unsigned block: ```https://localhost:8230/validator/block?slot=1&randao_reveal=0xa3426b6391a29c88f2280428d5fdae9e20f4c75a8d38d0714e3aa5b9e55594dbd555c4bc685191e83d39158c3be9744d06adc34b21d2885998a206e3b3fd435eab424cf1c01b8fd562deb411348a601e83d7332d8774d1fd3bf8b88d7a33c67c```
 
 Note: With QuickStart validator count 64, validators index 20, with public key 0xa1c76af1..., is the validator for slot 1. The corresponding randao signature for fork 0x00000000, at epoch 0, that must be used is 0xa3426b63... (other values will fail validation).
+
+### Test the Honest Validator
+
+Using the quick start clock, you want to synchronise the clock offset of the node and validator. The following will set genesis to occur at the next full minute. 
+
+First, build both the required hosts:
+
+```
+dotnet build src/Nethermind/Nethermind.BeaconNode.Host
+dotnet build src/Nethermind/Nethermind.HonestValidator.Host
+```
+
+Then run the node in one shell:
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ClockOffset $offset
+```
+
+And the validator host in a separate shell (which connects to the node):
+
+```
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
+```
+
 
 ### Optional requirements
 

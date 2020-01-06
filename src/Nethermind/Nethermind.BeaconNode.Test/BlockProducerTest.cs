@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Configuration;
@@ -8,7 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
@@ -20,7 +21,7 @@ using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
 
-namespace Nethermind.BeaconNode.Tests
+namespace Nethermind.BeaconNode.Test
 {
     [TestClass]
     public class BlockProducerTest
@@ -39,7 +40,7 @@ namespace Nethermind.BeaconNode.Tests
                     ["QuickStart:GenesisTime"] = $"{genesisTime}"
                 })
                 .Build();
-            testServiceCollection.AddQuickStart(configuration);
+            testServiceCollection.AddBeaconNodeQuickStart(configuration);
             testServiceCollection.AddSingleton<IHostEnvironment>(Substitute.For<IHostEnvironment>());
             ServiceProvider testServiceProvider = testServiceCollection.BuildServiceProvider();
 
@@ -47,7 +48,7 @@ namespace Nethermind.BeaconNode.Tests
             await quickStart.InitializeNodeAsync();
             
             IBeaconNodeApi beaconNode = testServiceProvider.GetService<IBeaconNodeApi>();
-            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync();
+            Core2.Containers.Fork fork = await beaconNode.GetNodeForkAsync(CancellationToken.None);
             fork.CurrentVersion.ShouldBe(new ForkVersion());
 
             // Act
@@ -72,7 +73,7 @@ namespace Nethermind.BeaconNode.Tests
             Hash32 expectedEth1DataDepositRoot = new Hash32(Bytes.FromHexString("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"));
             newBlock.Body.Eth1Data.DepositRoot.ShouldBe(expectedEth1DataDepositRoot);
             
-            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0x9c7d3e5180f95175691511fd56f8a610299f0b5a682b6fe178230493d74f6d13"));
+            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0xba7192e86b77d51c5e7835ece9c572f01b7fc720300acac8d98b4db42eb94321"));
             newBlock.StateRoot.ShouldBe(expectedStateRoot);
             
             newBlock.Signature.ShouldBe(new BlsSignature(new byte[96])); // signature should be empty

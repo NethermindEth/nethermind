@@ -29,6 +29,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -290,7 +291,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 SyncPeerPool = new EthSyncPeerPool(BlockTree, stats, syncConfig, 25, _logManager);
 
                 NodeDataFeed feed = new NodeDataFeed(codeDb, stateDb, _logManager);
-                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, NullDataConsumer.Instance,  _logManager);
+                NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(SyncPeerPool, feed, NullDataConsumer.Instance, _logManager);
                 Synchronizer = new Synchronizer(
                     MainNetSpecProvider.Instance,
                     BlockTree,
@@ -303,7 +304,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                     stats,
                     _logManager);
 
-                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, syncConfig, _logManager);
+                SyncServer = new SyncServer(stateDb, codeDb, BlockTree, NullReceiptStorage.Instance, TestBlockValidator.AlwaysValid, TestSealValidator.AlwaysValid, SyncPeerPool, Synchronizer, syncConfig, _logManager);
                 SyncPeerPool.Start();
 
                 Synchronizer.Start();
@@ -335,24 +336,39 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return this;
             }
 
-            public SyncingContext HeaderIs(BlockHeader header)
+            private const int dynamicTimeout = 5000;
+
+            public SyncingContext BestSuggestedHeaderIs(BlockHeader header)
             {
                 _logger.Info($"ASSERTING THAT HEADER IS {header.Number} (WHEN ACTUALLY IS {_blockHeader?.Number})");
+
+                int waitTimeSoFar = 0;
+                _blockHeader = BlockTree.BestSuggestedHeader;
+                while (header != _blockHeader && waitTimeSoFar <= dynamicTimeout)
+                {
+                    Thread.Sleep(100);
+                    waitTimeSoFar += 100;
+                    _blockHeader = BlockTree.BestSuggestedHeader;
+                }
+
                 Assert.AreSame(header, _blockHeader, "header");
                 return this;
             }
 
-            public SyncingContext HeaderIs(BlockHeader header, out bool isSuccess)
-            {
-                _logger.Info($"ASSERTING THAT HEADER IS {header.Number} (WHEN ACTUALLY IS {_blockHeader?.Number})");
-                isSuccess = ReferenceEquals(header, _blockHeader);
-                return this;
-            }
-
-            public SyncingContext BlockHasNumber(long number)
+            public SyncingContext BestSuggestedBlockHasNumber(long number)
             {
                 _logger.Info($"ASSERTING THAT NUMBER IS {number}");
-                Assert.AreEqual(number, _blockHeader.Number, "block number");
+
+                int waitTimeSoFar = 0;
+                _blockHeader = BlockTree.BestSuggestedHeader;
+                while (number != _blockHeader?.Number && waitTimeSoFar <= dynamicTimeout)
+                {
+                    Thread.Sleep(100);
+                    waitTimeSoFar += 100;
+                    _blockHeader = BlockTree.BestSuggestedHeader;
+                }
+
+                Assert.AreEqual(number, _blockHeader?.Number, "block number");
                 return this;
             }
 
@@ -510,8 +526,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
         [Test]
@@ -526,8 +541,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterPeerIsAdded(peerA)
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(2))
-                .Wait()
-                .BestSuggested.BlockHasNumber(1).Stop();
+                .BestSuggestedBlockHasNumber(1).Stop();
         }
 
         [Test]
@@ -542,8 +556,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(2))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
         [Test]
@@ -562,8 +575,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerB.AddBlocksUpTo(6))
                 .AfterNewBlockMessage(peerB.HeadBlock, peerB)
-                .Wait()
-                .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
         [Test]
@@ -583,8 +595,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerB.AddBlocksUpTo(6))
                 .AfterHintBlockMessage(peerB.HeadBlock, peerB)
-                .Wait()
-                .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
         [Test]
@@ -600,8 +611,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(2))
                 .AfterHintBlockMessage(peerA.HeadBlock, peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
         [Test]
@@ -617,8 +627,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(8))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Wait().Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Wait().Stop();
 
             Console.WriteLine("why?");
         }
@@ -638,11 +647,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerA.AddBlocksUpTo(16))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_sync_when_best_peer_is_timing_out()
         {
             SyncPeerMock peerA = new SyncPeerMock("A");
@@ -656,11 +664,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterPeerIsAdded(badPeer)
                 .Wait()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
-                .BestSuggested.BlockHasNumber(1).Stop();
+                .BestSuggestedBlockHasNumber(1).Stop();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_inform_connecting_peer_about_the_alternative_branch_with_same_difficulty()
         {
             if (_synchronizerType == SynchronizerType.Fast)
@@ -677,10 +684,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .BestSuggestedBlockHasNumber(2)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
-                .BestSuggested.BlockHasNumber(2).Stop();
+                .Wait(1000)
+                .Stop();
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
             Assert.AreEqual(peerB.ReceivedBlocks.Peek().Hash, peerA.HeadBlock.Hash);
@@ -699,7 +706,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .WaitAMoment()
                 .WaitAMoment()
                 .PeerCountIs(1)
-                .BestSuggested.BlockHasNumber(1).Stop();
+                .BestSuggestedBlockHasNumber(1).Stop();
         }
 
         [Test]
@@ -749,11 +756,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait(2000)
-                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .BestSuggestedHeaderIs(peerA.HeadHeader)
                 .AfterPeerIsAdded(peerB)
-                .Wait(2000)
-                .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
         [Test, Retry(3)]
@@ -768,11 +773,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .BestSuggestedHeaderIs(peerA.HeadHeader)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
-                .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
         [Test]
@@ -793,7 +796,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .Wait()
                 .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
                 .AfterHintBlockMessage(peerB.HeadBlock, peerB)
-                .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
         [Test]
@@ -814,7 +817,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
                 .AfterNewBlockMessage(peerB.HeadBlock, peerB)
                 .Wait()
-                .BestSuggested.HeaderIs(peerB.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 
         [Test]
@@ -829,11 +832,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .BestSuggestedHeaderIs(peerA.HeadHeader)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
         [Test]
@@ -848,11 +849,9 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait(2000)
-                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .BestSuggestedHeaderIs(peerA.HeadHeader)
                 .AfterPeerIsAdded(peerB)
-                .Wait(2000)
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
         [Test, Ignore("travis")]
@@ -864,8 +863,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait(2000)
-                .BestSuggested.HeaderIs(peerA.HeadHeader).Stop();
+                .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
         }
 
         [Test]
@@ -877,8 +875,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait(2000)
-                .BestSuggested.HeaderIs(peerA.HeadHeader)
+                .BestSuggestedHeaderIs(peerA.HeadHeader)
                 .Stop();
         }
 

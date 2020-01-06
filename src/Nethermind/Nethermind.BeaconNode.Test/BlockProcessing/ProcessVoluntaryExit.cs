@@ -18,15 +18,15 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nethermind.BeaconNode.Configuration;
-using Nethermind.BeaconNode.Tests.Helpers;
+using Nethermind.Core2.Configuration;
+using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 using Shouldly;
 using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 using Validator = Nethermind.BeaconNode.Containers.Validator;
 
-namespace Nethermind.BeaconNode.Tests.BlockProcessing
+namespace Nethermind.BeaconNode.Test.BlockProcessing
 {
     [TestClass]
     public class ProcessVoluntaryExit

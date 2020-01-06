@@ -77,6 +77,31 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
 
                 Assert.AreEqual(a, b, propertyInfo.Name);
             }
+            
+            Assert.AreEqual(0000000, provider.GetSpec(4369999).DifficultyBombDelay);
+            Assert.AreEqual(3000000, provider.GetSpec(4370000).DifficultyBombDelay);
+            Assert.AreEqual(3000000, provider.GetSpec(7279999).DifficultyBombDelay);
+            Assert.AreEqual(3000000, provider.GetSpec(7279999).DifficultyBombDelay);
+            Assert.AreEqual(5000000, provider.GetSpec(7280000).DifficultyBombDelay);
+            Assert.AreEqual(5000000, provider.GetSpec(9199999).DifficultyBombDelay);
+            Assert.AreEqual(9000000, provider.GetSpec(92000000).DifficultyBombDelay);
+        }
+        
+        [Test]
+        public void Ropsten_loads_properly()
+        {
+            ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
+            string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../Chains/ropsten.json");
+            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(chainSpec);
+            MainNetSpecProvider mainnet = MainNetSpecProvider.Instance;
+            
+            Assert.AreEqual(0000000, provider.GetSpec(1699999).DifficultyBombDelay);
+            Assert.AreEqual(3000000, provider.GetSpec(1700000).DifficultyBombDelay);
+            Assert.AreEqual(3000000, provider.GetSpec(4229999).DifficultyBombDelay);
+            Assert.AreEqual(5000000, provider.GetSpec(4230000).DifficultyBombDelay);
+            Assert.AreEqual(5000000, provider.GetSpec(7117116).DifficultyBombDelay);
+            Assert.AreEqual(9000000, provider.GetSpec(7117117).DifficultyBombDelay);
         }
 
         [Test]

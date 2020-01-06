@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -33,6 +34,7 @@ namespace Nethermind.Blockchain.Synchronization
         private readonly ILogger _logger;
         private readonly IEthSyncPeerPool _pool;
         private readonly IReceiptStorage _receiptStorage;
+        private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
@@ -41,7 +43,7 @@ namespace Nethermind.Blockchain.Synchronization
         private object _dummyValue = new object();
         private LruCache<Keccak, object> _recentlySuggested = new LruCache<Keccak, object>(8);
 
-        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
+        public SyncServer(ISnapshotableDb stateDb, ISnapshotableDb codeDb, IBlockTree blockTree, IReceiptStorage receiptStorage, IBlockValidator blockValidator, ISealValidator sealValidator, IEthSyncPeerPool pool, ISynchronizer synchronizer, ISyncConfig syncConfig, ILogManager logManager)
         {
             _synchronizer = synchronizer ?? throw new ArgumentNullException(nameof(synchronizer));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
@@ -51,6 +53,7 @@ namespace Nethermind.Blockchain.Synchronization
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
@@ -115,10 +118,19 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
+            if (block.Number < (_blockTree.Head?.Number ?? 0) - 512)
+            {
+                return;
+            }
+
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
 
-            if (!_sealValidator.ValidateSeal(block.Header)) throw new EthSynchronizationException("Peer sent a block with an invalid seal");
-
+            if (!_sealValidator.ValidateSeal(block.Header, true))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");
+                throw new EthSynchronizationException("Peer sent a block with an invalid seal");
+            }
+            
             if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
                 if (_logger.IsInfo)
@@ -131,8 +143,22 @@ namespace Nethermind.Blockchain.Synchronization
 
                 if (_synchronizer.SyncMode == SyncMode.Full)
                 {
-                    AddBlockResult result = _blockTree.SuggestBlock(block);
-                    if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
+                    AddBlockResult result = AddBlockResult.UnknownParent;
+                    bool isKnownParent = _blockTree.IsKnownBlock(block.Number - 1, block.ParentHash);
+                    if (isKnownParent)
+                    {
+
+                        if (!_blockValidator.ValidateSuggestedBlock(block))
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent an invalid block");
+                            throw new EthSynchronizationException("Peer sent an invalid block");
+                        }
+
+                        result = _blockTree.SuggestBlock(block, true);
+                        if (_logger.IsTrace) _logger.Trace($"{block.Hash} ({block.Number}) adding result is {result}");
+                    }
+
+                    
                     if (result == AddBlockResult.UnknownParent) _synchronizer.RequestSynchronization(SyncTriggerType.Reorganization);
                 }
             }
@@ -222,7 +248,17 @@ namespace Nethermind.Blockchain.Synchronization
 
         public Keccak FindHash(long number)
         {
-            return _blockTree.FindHash(number);
+            try
+            {
+                Keccak hash = _blockTree.FindHash(number);
+                return hash;
+            }
+            catch (Exception e)
+            {
+                _logger.Warn("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
+            }
+
+            return null;
         }
 
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]

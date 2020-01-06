@@ -43,7 +43,7 @@ namespace Nethermind.Clique
             // Retrieve the snapshot needed to validate this header and cache it
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
-            header.Author = header.Author ?? _snapshotManager.GetBlockSealer(header);
+            header.Author ??= _snapshotManager.GetBlockSealer(header);
             Address signer = header.Author;
             if (!snapshot.Signers.ContainsKey(signer))
             {
@@ -141,9 +141,9 @@ namespace Nethermind.Clique
             return ValidateCascadingFields(parent, header);
         }
 
-        public bool ValidateSeal(BlockHeader header)
+        public bool ValidateSeal(BlockHeader header, bool force)
         {
-            header.Author = header.Author ?? _snapshotManager.GetBlockSealer(header);
+            header.Author ??= _snapshotManager.GetBlockSealer(header);
             return header.Author != null;
         }
 
@@ -173,8 +173,12 @@ namespace Nethermind.Clique
 
                 int extraSuffix = header.ExtraData.Length - Clique.ExtraSealLength;
                 for (int i = 0; i < extraSuffix - Clique.ExtraVanityLength; i++)
+                {
                     if (header.ExtraData[Clique.ExtraVanityLength + i] != signersBytes[i])
+                    {
                         return false;
+                    }
+                }
             }
 
             return true;

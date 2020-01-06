@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.BeaconNode.Services;
 
-namespace Nethermind.BeaconNode.Tests.Helpers
+namespace Nethermind.BeaconNode.Test.Helpers
 {
     public class FastTestClock : IClock
     {

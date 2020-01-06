@@ -17,19 +17,14 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
-using System.Numerics;
-using System.Reflection.Metadata;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization.SyncLimits;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.HashLib;
 using Nethermind.Logging;
 using Nethermind.Mining;
 
@@ -399,7 +394,7 @@ namespace Nethermind.Blockchain.Synchronization
 
                 try
                 {
-                    if (!_sealValidator.ValidateSeal(headers[i]))
+                    if (!_sealValidator.ValidateSeal(headers[i], false))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the seals is invalid");
                         throw new EthSynchronizationException("Peer sent a block with an invalid seal");

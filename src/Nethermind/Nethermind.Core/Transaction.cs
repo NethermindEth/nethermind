@@ -27,7 +27,7 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        private readonly bool _isSystem = false;
+        private readonly bool _isSystem;
 
         public Transaction() { }
 

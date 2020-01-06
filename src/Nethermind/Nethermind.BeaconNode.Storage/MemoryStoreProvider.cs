@@ -18,7 +18,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
 

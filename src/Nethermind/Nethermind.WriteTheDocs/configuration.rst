@@ -276,7 +276,7 @@ InitConfig
    default value: false
 
  WebSocketsEnabled
-   Defines whether the WebSockets service is enabled on node startup at the 'HttpPort'
+   Defines whether the WebSockets service is enabled on node startup at the 'HttpPort' - e.g. ws://localhost:8545/ws/json-rpc
    default value: false
 
 JsonRpcConfig
@@ -421,6 +421,10 @@ NetworkConfig
 
 SyncConfig
 ^^^^^^^^^^
+
+ BeamSyncEnabled
+   Beam Sync - only for DEBUG / DEV - not working in prod yet.
+   default value: false
 
  DownloadBodiesInFastSync
    If set to 'true' then the block bodies will be downloaded in the Fast Sync mode.
@@ -635,6 +639,7 @@ Sample configuration (mainnet)
               "TrustedPeers" : null
         },
         "Sync": {
+              "BeamSyncEnabled" : false,
               "DownloadBodiesInFastSync" : true,
               "DownloadReceiptsInFastSync" : true,
               "FastBlocks" : false,

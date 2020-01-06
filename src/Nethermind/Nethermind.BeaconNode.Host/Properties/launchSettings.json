@@ -1,8 +1,8 @@
 {
   "profiles": {
-    "Cortex.BeaconNode": {
+    "Nethermind.BeaconNode.Host": {
       "commandName": "Project",
-      "commandLineArgs": "--QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 3",
+      "commandLineArgs": "--QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64",
       "environmentVariables": {
         "DOTNET_ENVIRONMENT": "Development"
       }

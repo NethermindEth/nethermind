@@ -62,7 +62,7 @@ namespace Nethermind.Mining
             return true;
         }
 
-        public bool ValidateSeal(BlockHeader header)
+        public bool ValidateSeal(BlockHeader header, bool force)
         {
             return true;
         }

@@ -1,0 +1,33 @@
+name: Publish ARM32 Image to Docker Registry
+
+on:
+  push:
+    tags:
+    - '*'
+
+jobs:
+  arm64_building:
+    runs-on: ubuntu-18.04
+    name: Build on ARM32
+    steps:
+    - uses: actions/checkout@v2
+    - name: Unshallow fetching
+      run: git fetch --unshallow
+    - uses: uraimo/run-on-arch-action@v1.0.5
+      with:
+        architecture: armv7
+        distribution: ubuntu18.04
+        run: |
+          uname -a
+          apt-get update && apt-get install docker.io -y
+          mv Dockerfile_arm32 Dockerfile
+    - name: Publish to Docker
+      uses: elgohr/Publish-Docker-Github-Action@master
+      env:
+        GIT_COMMIT: $(git log -1 --format=%h)
+      with:
+        name: nethermind/nethermind:arm32
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+        build-args: GIT_COMMIT
+        dockerfile: Dockerfile

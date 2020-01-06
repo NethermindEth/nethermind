@@ -100,8 +100,6 @@ namespace Nethermind.Blockchain.Synchronization
 
         public void Start()
         {
-            AllocateBlocksSync();
-
             // Task.Run may cause trouble - make sure to test it well if planning to uncomment 
             // _syncLoopTask = Task.Run(RunSyncLoop, _syncLoopCancelTokenSource.Token) 
             _syncLoopTask = Task.Factory.StartNew(
@@ -210,6 +208,12 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
+        public bool IsParallel(SyncMode syncMode)
+        {
+            // parallel modes are the ones that do not use a synchronizer loop but create loops of their own
+            return syncMode == SyncMode.FastBlocks || syncMode == SyncMode.StateNodes;   
+        }
+
         private async Task RunSyncLoop()
         {
             while (true)
@@ -232,7 +236,7 @@ namespace Nethermind.Blockchain.Synchronization
                 
                 if (_blocksSyncAllocation == null)
                 {
-                    AllocateBlocksSync();
+                    await AllocateBlocksSync();
                     if (_syncMode.Current == SyncMode.Headers)
                     {
                         _blocksSyncAllocation.MinBlocksAhead = SyncModeSelector.FullSyncThreshold;
@@ -242,7 +246,7 @@ namespace Nethermind.Blockchain.Synchronization
                         _blocksSyncAllocation.MinBlocksAhead = null;
                     }
                 }
-                else if (_syncMode.IsParallel)
+                else if (IsParallel(_syncMode.Current))
                 {
                     FreeBlocksSyncAllocation();
                 }
@@ -379,12 +383,12 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        private void AllocateBlocksSync()
+        private async Task AllocateBlocksSync()
         {
             if (_blocksSyncAllocation == null)
             {
                 if (_logger.IsDebug) _logger.Debug("Allocating block sync.");
-                _blocksSyncAllocation = _syncPeerPool.Borrow("synchronizer");
+                _blocksSyncAllocation = await _syncPeerPool.BorrowAsync(BorrowOptions.None, "synchronizer");
                 _blocksSyncAllocation.Replaced += AllocationOnReplaced;
                 _blocksSyncAllocation.Cancelled += AllocationOnCancelled;
                 _blocksSyncAllocation.Refreshed += AllocationOnRefreshed;

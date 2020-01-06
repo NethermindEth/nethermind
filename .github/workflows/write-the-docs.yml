@@ -38,6 +38,7 @@ jobs:
         committer-email: noreply@github.com
         branch: docs-update
         branch-suffix: short-commit-hash
+        base: master
     - name: Checking Outputs
       run: |
         echo "Pull Request Number - ${{ env.PULL_REQUEST_NUMBER }}"

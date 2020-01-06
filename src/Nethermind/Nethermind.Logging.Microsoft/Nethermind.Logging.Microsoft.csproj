@@ -1,7 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netcoreapp3.0</TargetFramework>
+        <TargetFramework>netstandard2.1</TargetFramework>
+        <Product>Nethermind Eth2.0 blockchain</Product>
+        <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
+        <Version>0.0.1</Version>
+        <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>

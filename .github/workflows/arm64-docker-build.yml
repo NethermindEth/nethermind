@@ -1,4 +1,4 @@
-name: Publish Arm64 Image to Docker Registry
+name: Publish ARM64 Image to Docker Registry
 
 on:
   push:
@@ -14,7 +14,6 @@ jobs:
     - name: Unshallow fetching
       run: git fetch --unshallow
     - uses: uraimo/run-on-arch-action@v1.0.5
-      id: runcmd
       with:
         architecture: aarch64
         distribution: ubuntu18.04
@@ -27,7 +26,7 @@ jobs:
       env:
         GIT_COMMIT: $(git log -1 --format=%h)
       with:
-        name: nethermindeth/nethermind:arm64
+        name: nethermind/nethermind:arm64
         username: ${{ secrets.DOCKER_USERNAME }}
         password: ${{ secrets.DOCKER_PASSWORD }}
         build-args: GIT_COMMIT

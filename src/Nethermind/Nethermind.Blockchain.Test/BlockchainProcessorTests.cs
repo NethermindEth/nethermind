@@ -450,7 +450,7 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block5D10).BecomesNewHead();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Can_reorganize_to_longer_path()
         {
             When.ProcessingBlocks

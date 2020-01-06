@@ -24,7 +24,6 @@ namespace Nethermind.Mining
 {
     public interface ISealer
     {
-        // TODO: ValueTask?
         Task<Block> SealBlock(Block block, CancellationToken cancellationToken);
         bool CanSeal(long blockNumber, Keccak parentHash);
     }
@@ -32,6 +31,13 @@ namespace Nethermind.Mining
     public interface ISealValidator
     {
         bool ValidateParams(BlockHeader parent, BlockHeader header);
-        bool ValidateSeal(BlockHeader header);
+        
+        /// <summary>
+        /// Validates block header seal.
+        /// </summary>
+        /// <param name="header">Block header to validate.</param>
+        /// <param name="force">Unless set to <value>true</value> the validator is allowed to optimize validation away in a safe manner.</param>
+        /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
+        bool ValidateSeal(BlockHeader header, bool force);
     }
 }

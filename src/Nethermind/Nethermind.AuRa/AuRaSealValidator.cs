@@ -115,7 +115,7 @@ namespace Nethermind.AuRa
             return true;
         }
 
-        public bool ValidateSeal(BlockHeader header)
+        public bool ValidateSeal(BlockHeader header, bool force)
         {
             if (header.IsGenesis) return true;
 

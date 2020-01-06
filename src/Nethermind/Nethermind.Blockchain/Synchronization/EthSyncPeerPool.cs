@@ -175,7 +175,9 @@ namespace Nethermind.Blockchain.Synchronization
             _isStarted = true;
             StartUpgradeTimer();
 
-            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+            // commenting out in version 1.4.2 to check if this is still needed
+            // feel free to remove this and the handler method if left out for longer
+            // _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         }
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
@@ -187,7 +189,7 @@ namespace Nethermind.Blockchain.Synchronization
                 {
                     continue;
                 }
-
+        
                 if (currentPeer.TotalDifficulty < (e.Block.TotalDifficulty ?? 0))
                 {
                     allocation.Cancel();
@@ -658,8 +660,9 @@ namespace Nethermind.Blockchain.Synchronization
         public async Task<SyncPeerAllocation> BorrowAsync(BorrowOptions borrowOptions, string description, long? minNumber = null, int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
-            ulong startTime = Timestamper.Default.EpochMilliseconds;
+            DateTime startTime = DateTime.UtcNow;
             SyncPeerAllocation allocation = new SyncPeerAllocation(description);
+            _allocations.TryAdd(allocation, null);
             allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number;
 
             if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
@@ -675,50 +678,19 @@ namespace Nethermind.Blockchain.Synchronization
                     allocation.ReplaceCurrent(bestPeer);
                     return allocation;
                 }
-                else
+
+                bool timeoutReached = timeoutMilliseconds == 0
+                                      || (DateTime.UtcNow - startTime).TotalMilliseconds > timeoutMilliseconds;
+                if (timeoutReached)
                 {
-                    if (timeoutMilliseconds == 0)
-                    {
-                        return allocation;
-                    }
-
-                    ulong now = Timestamper.Default.EpochMilliseconds;
-                    if (now - startTime > (ulong) timeoutMilliseconds)
-                    {
-                        return allocation;
-                    }
-
-                    await _signals.WaitOneAsync(10 * tryCount, CancellationToken.None);
+                    return allocation;
                 }
+
+                await _signals.WaitOneAsync(10 * tryCount++, CancellationToken.None);
             }
         }
 
         private ManualResetEvent _signals = new ManualResetEvent(true);
-
-        public SyncPeerAllocation Borrow(string description = "")
-        {
-            return Borrow(BorrowOptions.None, description, null);
-        }
-
-        public SyncPeerAllocation Borrow(BorrowOptions borrowOptions, string description, long? minNumber = null)
-        {
-            SyncPeerAllocation allocation = new SyncPeerAllocation(description);
-            allocation.MinBlocksAhead = minNumber - _blockTree.BestSuggestedHeader?.Number;
-
-            if ((borrowOptions & BorrowOptions.DoNotReplace) == BorrowOptions.DoNotReplace)
-            {
-                allocation.CanBeReplaced = false;
-            }
-
-            PeerInfo bestPeer = SelectBestPeerForAllocation(allocation, "BORROW", (borrowOptions & BorrowOptions.LowPriority) == BorrowOptions.LowPriority);
-            if (bestPeer != null)
-            {
-                allocation.ReplaceCurrent(bestPeer);
-            }
-
-            _allocations.TryAdd(allocation, null);
-            return allocation;
-        }
 
         public void Free(SyncPeerAllocation syncPeerAllocation)
         {

@@ -32,5 +32,5 @@ Build the image
 ::
 
     git clone --recursive https://github.com/NethermindEth/nethermind
-    docker build nethermind -f nethermind/Dockerfile_alpine -t nethermind
+    docker build nethermind -f nethermind/Dockerfile_arm64 -t nethermind
     docker run -it nethermind --help

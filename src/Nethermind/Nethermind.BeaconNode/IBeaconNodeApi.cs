@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -31,14 +32,15 @@ namespace Nethermind.BeaconNode
     /// </remarks>
     public interface IBeaconNodeApi
     {
-        Task<string> GetNodeVersionAsync();
-        Task<ulong> GetGenesisTimeAsync();
-        Task<bool> GetIsSyncingAsync();
-        Task<Fork> GetNodeForkAsync();
-        IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch);
-        Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal);
-//        bool PublishBlock(BeaconBlock block);
-//        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
+        Task<string> GetNodeVersionAsync(CancellationToken cancellationToken);
+        Task<ulong> GetGenesisTimeAsync(CancellationToken cancellationToken);
+        Task<bool> GetIsSyncingAsync(CancellationToken cancellationToken);
+        Task<Fork> GetNodeForkAsync(CancellationToken cancellationToken);
+        IAsyncEnumerable<ValidatorDuty> ValidatorDutiesAsync(IEnumerable<BlsPublicKey> validatorPublicKeys, Epoch epoch, CancellationToken cancellationToken);
+        Task<BeaconBlock> NewBlockAsync(Slot slot, BlsSignature randaoReveal, CancellationToken cancellationToken);
+        Task<bool> PublishBlockAsync(BeaconBlock signedBlock, CancellationToken cancellationToken);
+
+        //        BeaconBlock CreateAttestation(BlsPublicKey validatorPublicKey, bool proofOfCustodyBit, Slot slot, Shard shard);
 //        bool PublishAttestation(BeaconBlock block);
     }
 }

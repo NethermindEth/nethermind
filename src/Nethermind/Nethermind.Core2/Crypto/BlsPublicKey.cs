@@ -92,7 +92,7 @@ namespace Nethermind.Core2.Crypto
             ;
         }
 
-        public static bool operator ==(BlsPublicKey a, BlsPublicKey b)
+        public static bool operator ==(BlsPublicKey? a, BlsPublicKey? b)
         {
             if (ReferenceEquals(a, null))
             {
@@ -107,7 +107,7 @@ namespace Nethermind.Core2.Crypto
             return Core2.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
-        public static bool operator !=(BlsPublicKey a, BlsPublicKey b)
+        public static bool operator !=(BlsPublicKey? a, BlsPublicKey? b)
         {
             return !(a == b);
         }

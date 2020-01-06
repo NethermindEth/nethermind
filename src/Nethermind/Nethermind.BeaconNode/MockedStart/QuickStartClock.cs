@@ -26,9 +26,9 @@ namespace Nethermind.BeaconNode.MockedStart
     {
         private readonly TimeSpan _adjustment;
 
-        public QuickStartClock(ulong startTime)
+        public QuickStartClock(long clockOffset)
         {
-            _adjustment = TimeSpan.FromSeconds((long)startTime - DateTimeOffset.Now.ToUnixTimeSeconds());
+            _adjustment = TimeSpan.FromSeconds(clockOffset);
         }
 
         public DateTimeOffset UtcNow() => DateTimeOffset.Now + _adjustment;

@@ -83,7 +83,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISyncServer>();
             var transactionPool = Substitute.For<ITxPool>();
-            syncManager.FindHash(1920000).Returns(TestItem.KeccakA);
+            syncManager.FindHash(100).Returns(TestItem.KeccakA);
             syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
                 .Returns(headers);
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -99,7 +99,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockNumber = 1920000;
+            msg.StartingBlockNumber = 100;
             msg.MaxHeaders = 5;
             msg.Skip = 1;
             msg.Reverse = 1;
@@ -110,7 +110,46 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
             session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 3));
-            syncManager.Received().FindHash(1920000);
+            syncManager.Received().FindHash(100);
+        }
+        
+        [Test]
+        public void Hardcoded_1920000_works_fine()
+        {
+            var svc = Build.A.SerializationService().WithEth().TestObject;
+            
+            var headers = new BlockHeader[5];
+            headers[0] = Build.A.BlockHeader.TestObject;
+            headers[1] = Build.A.BlockHeader.TestObject;
+            headers[2] = Build.A.BlockHeader.TestObject;
+            
+            var session = Substitute.For<ISession>();
+            var syncManager = Substitute.For<ISyncServer>();
+            var transactionPool = Substitute.For<ITxPool>();
+            Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            syncManager.Head.Returns(genesisBlock.Header);
+            syncManager.Genesis.Returns(genesisBlock.Header);
+            var handler = new Eth62ProtocolHandler(
+                session,
+                svc,
+                new NodeStatsManager(new StatsConfig(), LimboLogs.Instance),
+                syncManager,
+                LimboLogs.Instance,
+                transactionPool);
+            handler.Init();
+            
+            var msg = new GetBlockHeadersMessage();
+            msg.StartingBlockNumber = 1920000;
+            msg.MaxHeaders = 1;
+            msg.Skip = 1;
+            msg.Reverse = 1;
+            
+            var statusMsg = new StatusMessage();
+            statusMsg.GenesisHash = genesisBlock.Hash;
+            
+            handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
+            handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
+            session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 1));
         }
         
         [Test]
@@ -128,7 +167,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             var session = Substitute.For<ISession>();
             var syncManager = Substitute.For<ISyncServer>();
             var transactionPool = Substitute.For<ITxPool>();
-            syncManager.FindHash(1920000).Returns(TestItem.KeccakA);
+            syncManager.FindHash(100).Returns(TestItem.KeccakA);
             syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
                 .Returns(headers);
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
@@ -144,7 +183,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockNumber = 1920000;
+            msg.StartingBlockNumber = 100;
             msg.MaxHeaders = 5;
             msg.Skip = 1;
             msg.Reverse = 1;
@@ -155,7 +194,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));
             session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 5));
-            syncManager.Received().FindHash(1920000);
+            syncManager.Received().FindHash(100);
         }
     }
 }

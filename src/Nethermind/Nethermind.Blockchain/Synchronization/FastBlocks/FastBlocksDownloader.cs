@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
@@ -44,26 +45,22 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        private SemaphoreSlim _semaphore = new SemaphoreSlim(0);
-
-        private int _lastUsefulPeerCount;
-
         private async Task ExecuteRequest(CancellationToken token, FastBlocksBatch batch)
         {
-            SyncPeerAllocation nodeSyncAllocation = _syncPeerPool.Borrow(BorrowOptions.DoNotReplace | (batch.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", batch.MinNumber);
-            foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
-            {
-                if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Made {peerInfo} sleep for a while - no min number satisfied");
-                    _syncPeerPool.ReportNoSyncProgress(peerInfo);
-                }
-            }
-
+            SyncPeerAllocation syncPeerAllocation = batch.Allocation;
+            
             try
             {
-                ISyncPeer peer = nodeSyncAllocation?.Current?.SyncPeer;
-                batch.Allocation = nodeSyncAllocation;
+                foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
+                {
+                    if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
+                    {
+                        if (_logger.IsDebug) _logger.Debug($"Made {peerInfo} sleep for a while - no min number satisfied");
+                        _syncPeerPool.ReportNoSyncProgress(peerInfo);
+                    }
+                }
+                
+                ISyncPeer peer = syncPeerAllocation?.Current?.SyncPeer;
                 if (peer != null)
                 {
                     batch.MarkSent();
@@ -174,14 +171,14 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 Interlocked.Add(ref _downloadedHeaders, result.ItemsSynced);
                 if (result.ItemsSynced == 0 && peer != null)
                 {
-                    _syncPeerPool.ReportNoSyncProgress(nodeSyncAllocation);
+                    _syncPeerPool.ReportNoSyncProgress(syncPeerAllocation);
                 }
             }
             finally
             {
-                if (nodeSyncAllocation != null)
+                if (syncPeerAllocation != null)
                 {
-                    _syncPeerPool.Free(nodeSyncAllocation);
+                    _syncPeerPool.Free(syncPeerAllocation);
                 }
             }
         }
@@ -209,7 +206,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     bool isHashValid = _blockValidator.ValidateHash(header);
-                    bool isSealValid = _sealValidator.ValidateSeal(header);
+                    bool isSealValid = _sealValidator.ValidateSeal(header, false);
                     if (!(isHashValid && isSealValid))
                     {
                         if (_logger.IsTrace) _logger.Trace("One of the blocks is invalid");
@@ -225,43 +222,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
-        private async Task UpdateParallelism()
-        {
-            int newUsefulPeerCount = _syncPeerPool.UsefulPeerCount;
-            int difference = newUsefulPeerCount - _lastUsefulPeerCount;
-            if (difference == 0)
-            {
-                return;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"Headers sync parallelism - {_syncPeerPool.UsefulPeerCount} useful peers out of {_syncPeerPool.PeerCount} in total (pending requests: {_pendingRequests} | remaining: {_semaphore.CurrentCount}).");
-            if (difference > 0)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Releasing semaphore - {_pendingRequests} pending");
-                _semaphore.Release(difference);
-            }
-            else
-            {
-                HashSet<Task<bool>> allSemaphoreTasks = new HashSet<Task<bool>>();
-                for (int i = 0; i < -difference; i++)
-                {
-                    allSemaphoreTasks.Add(_semaphore.WaitAsync(5000));
-                }
-
-                foreach (Task<bool> semaphoreTask in allSemaphoreTasks)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Set semaphore - {_pendingRequests} pending");
-                    if (!await semaphoreTask)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Failed to set semaphore");
-                        newUsefulPeerCount++;
-                    }
-                }
-            }
-
-            _lastUsefulPeerCount = newUsefulPeerCount;
-        }
-
         private async Task KeepSyncing(CancellationToken token)
         {
             int finalizeSignalsCount = 0;
@@ -272,20 +232,11 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     return;
                 }
 
-                await UpdateParallelism();
-                if (_logger.IsTrace) _logger.Trace($"Waiting for semaphore");
-                if (!await _semaphore.WaitAsync(1000, token))
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Failed semaphore wait");
-                    continue;
-                }
-
-                if (_logger.IsTrace) _logger.Trace($"Successful semaphore wait");
-
                 FastBlocksBatch request = PrepareRequest();
                 if (request != null)
                 {
-//                    if (_logger.IsInfo) _logger.Info($"Creating new headers request {request} with current semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
+                    request.Allocation = await _syncPeerPool.BorrowAsync(BorrowOptions.DoNotReplace | (request.Prioritized ? BorrowOptions.None : BorrowOptions.LowPriority), "fast blocks", request.MinNumber, 1000);
+                    
                     Interlocked.Increment(ref _pendingRequests);
                     Task task = ExecuteRequest(token, request);
 #pragma warning disable 4014
@@ -293,20 +244,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 #pragma warning restore 4014
                     {
                         Interlocked.Decrement(ref _pendingRequests);
-                        _semaphore.Release();
-//                        if (_logger.IsInfo) _logger.Info($"Released semaphore - now at semaphore count {_semaphore.CurrentCount} and pending requests {_pendingRequests}");
                     });
                 }
                 else
                 {
                     finalizeSignalsCount++;
                     await Task.Delay(10);
-                    _semaphore.Release();
-                    if (_logger.IsDebug) _logger.Debug($"DIAG: 0 batches created with {_pendingRequests} pending requests.");
+                    if (_logger.IsInfo) _logger.Info($"DIAG: 0 batches created with {_pendingRequests} pending requests.");
                 }
             } while (_pendingRequests != 0 || finalizeSignalsCount < 3 || !_fastBlocksFeed.IsFinished);
 
-            if (_logger.IsInfo) _logger.Info($"Finished download with {_pendingRequests} pending requests and {_lastUsefulPeerCount} useful peers.");
+            if (_logger.IsInfo) _logger.Info($"Finished download with {_pendingRequests} pending requests.");
         }
 
         private FastBlocksBatch PrepareRequest()
@@ -318,7 +266,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         public async Task<long> Sync(CancellationToken token)
         {
-            if (_logger.IsDebug) _logger.Debug($"Sync headers - pending: {_pendingRequests} - semaphore: {_semaphore.CurrentCount}");
+            if (_logger.IsDebug) _logger.Debug($"Sync headers - pending: {_pendingRequests}");
             _fastBlocksFeed.StartNewRound();
             _downloadedHeaders = 0;
             await KeepSyncing(token);

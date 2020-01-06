@@ -11,6 +11,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  
+  <ItemGroup>
     <PackageReference Include="GitVersionTask" Version="5.1.3">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
@@ -19,7 +23,6 @@
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="3.0.1" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc" Version="2.2.0" />
     <PackageReference Include="System.Text.Json" Version="4.6.0" />
   </ItemGroup>
 
@@ -38,5 +41,8 @@
 
   <ItemGroup>
     <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
   </ItemGroup>
 </Project>

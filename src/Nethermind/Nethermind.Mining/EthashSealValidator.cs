@@ -25,52 +25,63 @@ namespace Nethermind.Mining
 {
     public class EthashSealValidator : ISealValidator
     {
-        private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly IEthash _ethash;
+        private IDifficultyCalculator _difficultyCalculator;
+        private ICryptoRandom _cryptoRandom;
+        private IEthash _ethash;
         private ILogger _logger;
-        
-        public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, IEthash ethash)
+
+        private LruCache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048);
+        private const int SealValidationIntervalConstantComponent = 1024;
+        private int sealValidationInterval = SealValidationIntervalConstantComponent;
+
+        public EthashSealValidator(ILogManager logManager, IDifficultyCalculator difficultyCalculator, ICryptoRandom cryptoRandom, IEthash ethash)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            ResetValidationInterval();
         }
-        
-        public bool ValidateSeal(BlockHeader header)
+
+        private void ResetValidationInterval()
         {
-            if (header.Number % 1024 != 0 || header.Number == 0)
+            // more or less at the constant component
+            // prevents attack on all Nethermind nodes at once
+            sealValidationInterval = SealValidationIntervalConstantComponent - 8 + _cryptoRandom.NextInt(16);
+        }
+
+        public bool ValidateSeal(BlockHeader header, bool force)
+        {
+            // genesis block is configured and assumed valid
+            if (header.IsGenesis) return true;
+
+            if (!force && header.Number % sealValidationInterval != 0)
             {
                 return true;
             }
 
-            lock (_sealCache)
+            // the cache will return false both if the seal was invalid and if it has never been checked before
+            if (_sealCache.Get(header.Hash))
             {
-                if (_sealCache.Get(header.Hash))
-                {
-                    return true;
-                }
+                return true;
             }
 
             bool result = _ethash.Validate(header);
-            lock (_sealCache)
-            {
-                _sealCache.Set(header.Hash, result);
-            }
+            _sealCache.Set(header.Hash, result);
 
             return result;
         }
-        
-        private LruCache<Keccak, bool> _sealCache = new LruCache<Keccak, bool>(2048);
-        
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
-        {   
+        {
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
             {
                 _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Full)}) - extra data too long {header.ExtraData.Length}");
                 return false;
             }
-            
+
             UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, header.Timestamp, header.Number, parent.OmmersHash != Keccak.OfAnEmptySequenceRlp);
             bool isDifficultyCorrect = difficulty == header.Difficulty;
             if (!isDifficultyCorrect)
@@ -80,6 +91,6 @@ namespace Nethermind.Mining
             }
 
             return true;
-        }   
+        }
     }
 }

@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
         {
             int timeMultiplier = 1; // for debugging
 
-            TimeSpan miningDelay = TimeSpan.FromMilliseconds(1500 * timeMultiplier);
+            TimeSpan miningDelay = TimeSpan.FromMilliseconds(200 * timeMultiplier);
 
             /* logging & instrumentation */
 //            OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Test
                 if (args.Block.Number == 6) manualResetEvent.Set();
             };
 
-            manualResetEvent.Wait(miningDelay * 20);
+            manualResetEvent.Wait(miningDelay * 100);
             await minedBlockProducer.StopAsync();
 
             int previousCount = 0;

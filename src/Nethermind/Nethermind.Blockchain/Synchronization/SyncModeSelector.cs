@@ -26,6 +26,9 @@ namespace Nethermind.Blockchain.Synchronization
     public class SyncModeSelector : ISyncModeSelector
     {
         public const int FullSyncThreshold = 32;
+        
+        private static TimeSpan StayingOnSyncModeDelay = TimeSpan.FromSeconds(3) - TimeSpan.FromMilliseconds(100);
+        private static DateTime LastNotification = DateTime.UtcNow;
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
@@ -43,8 +46,6 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public SyncMode Current { get; private set; }
-
-        public bool IsParallel => Current == SyncMode.FastBlocks || Current == SyncMode.StateNodes;
 
         public void Update()
         {
@@ -129,11 +130,13 @@ namespace Nethermind.Blockchain.Synchronization
             if (newSyncMode != Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
+                LastNotification = DateTime.UtcNow;
                 ChangeSyncMode(newSyncMode);
             }
-            else
+            else if(DateTime.UtcNow - LastNotification >= StayingOnSyncModeDelay)
             {
                 if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
+                LastNotification = DateTime.UtcNow;
             }
         }
 

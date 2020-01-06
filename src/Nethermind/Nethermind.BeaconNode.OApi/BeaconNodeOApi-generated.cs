@@ -10,7 +10,7 @@
 #pragma warning disable 1573 // Disable "CS1573 Parameter '...' has no matching param tag in the XML comment for ...
 #pragma warning disable 1591 // Disable "CS1591 Missing XML comment for publicly visible type or member ..."
 
-namespace Nethermind.BeaconNode.Api
+namespace Nethermind.BeaconNode.OApi
 {
     using System = global::System;
     
@@ -29,6 +29,10 @@ namespace Nethermind.BeaconNode.Api
         /// <returns>Request successful</returns>
         System.Threading.Tasks.Task<Response2> ForkAsync();
     
+        /// <summary>Get validator details.</summary>
+        /// <returns>Success response</returns>
+        System.Threading.Tasks.Task<Validator> ValidatorAsync(byte[] pubkey);
+    
         /// <summary>Get validator duties for the requested validators.</summary>
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
@@ -41,22 +45,22 @@ namespace Nethermind.BeaconNode.Api
         System.Threading.Tasks.Task<BeaconBlock> BlockAsync(int slot, byte[] randao_reveal);
     
         /// <summary>Publish a signed block.</summary>
-        /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
+        /// <param name="body">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
-        System.Threading.Tasks.Task Block2Async(BeaconBlock beacon_block);
+        System.Threading.Tasks.Task Block2Async(BeaconBlock body);
     
         /// <summary>Produce an attestation, without signature.</summary>
         /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
-        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `IndexedAttestation`.</param>
+        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `Attestation`.</param>
         /// <param name="slot">The slot for which the attestation should be proposed.</param>
         /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
         /// <returns>Success response</returns>
-        System.Threading.Tasks.Task<IndexedAttestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard);
+        System.Threading.Tasks.Task<Attestation> AttestationAsync(byte[] validator_pubkey, int poc_bit, int slot, int shard);
     
         /// <summary>Publish a signed attestation.</summary>
-        /// <param name="attestation">An `IndexedAttestation` structure, as originally provided by the beacon node, but now with the signature field completed.</param>
+        /// <param name="body">An `Attestation` structure, as originally provided by the beacon node, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
-        System.Threading.Tasks.Task Attestation2Async(IndexedAttestation attestation);
+        System.Threading.Tasks.Task Attestation2Async(Attestation body);
     
     }
     
@@ -94,6 +98,14 @@ namespace Nethermind.BeaconNode.Api
             return _implementation.ForkAsync();
         }
     
+        /// <summary>Get validator details.</summary>
+        /// <returns>Success response</returns>
+        [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("validator/{pubkey}")]
+        public System.Threading.Tasks.Task<Validator> Validator(byte[] pubkey)
+        {
+            return _implementation.ValidatorAsync(pubkey);
+        }
+    
         /// <summary>Get validator duties for the requested validators.</summary>
         /// <param name="validator_pubkeys">An array of hex-encoded BLS public keys</param>
         /// <returns>Success response</returns>
@@ -114,39 +126,39 @@ namespace Nethermind.BeaconNode.Api
         }
     
         /// <summary>Publish a signed block.</summary>
-        /// <param name="beacon_block">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed.</param>
+        /// <param name="body">The `BeaconBlock` object, as sent from the beacon node originally, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The block was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         [Microsoft.AspNetCore.Mvc.HttpPost, Microsoft.AspNetCore.Mvc.Route("validator/block")]
-        public System.Threading.Tasks.Task Block2([Microsoft.AspNetCore.Mvc.FromQuery] BeaconBlock beacon_block)
+        public System.Threading.Tasks.Task Block2([Microsoft.AspNetCore.Mvc.FromBody] BeaconBlock body)
         {
-            return _implementation.Block2Async(beacon_block);
+            return _implementation.Block2Async(body);
         }
     
         /// <summary>Produce an attestation, without signature.</summary>
         /// <param name="validator_pubkey">Uniquely identifying which validator this attestation is to be produced for.</param>
-        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `IndexedAttestation`.</param>
+        /// <param name="poc_bit">The proof-of-custody bit that is to be reported by the requesting validator. This bit will be inserted into the appropriate location in the returned `Attestation`.</param>
         /// <param name="slot">The slot for which the attestation should be proposed.</param>
         /// <param name="shard">The shard number for which the attestation is to be proposed.</param>
         /// <returns>Success response</returns>
         [Microsoft.AspNetCore.Mvc.HttpGet, Microsoft.AspNetCore.Mvc.Route("validator/attestation")]
-        public System.Threading.Tasks.Task<IndexedAttestation> Attestation([Microsoft.AspNetCore.Mvc.FromQuery] byte[] validator_pubkey, [Microsoft.AspNetCore.Mvc.FromQuery] int poc_bit, [Microsoft.AspNetCore.Mvc.FromQuery] int slot, [Microsoft.AspNetCore.Mvc.FromQuery] int shard)
+        public System.Threading.Tasks.Task<Attestation> Attestation([Microsoft.AspNetCore.Mvc.FromQuery] byte[] validator_pubkey, [Microsoft.AspNetCore.Mvc.FromQuery] int poc_bit, [Microsoft.AspNetCore.Mvc.FromQuery] int slot, [Microsoft.AspNetCore.Mvc.FromQuery] int shard)
         {
             return _implementation.AttestationAsync(validator_pubkey, poc_bit, slot, shard);
         }
     
         /// <summary>Publish a signed attestation.</summary>
-        /// <param name="attestation">An `IndexedAttestation` structure, as originally provided by the beacon node, but now with the signature field completed.</param>
+        /// <param name="body">An `Attestation` structure, as originally provided by the beacon node, but now with the signature field completed. Must be sent in JSON format in the body of the request.</param>
         /// <returns>The attestation was validated successfully and has been broadcast. It has also been integrated into the beacon node's database.</returns>
         [Microsoft.AspNetCore.Mvc.HttpPost, Microsoft.AspNetCore.Mvc.Route("validator/attestation")]
-        public System.Threading.Tasks.Task Attestation2([Microsoft.AspNetCore.Mvc.FromQuery] IndexedAttestation attestation)
+        public System.Threading.Tasks.Task Attestation2([Microsoft.AspNetCore.Mvc.FromBody] Attestation body)
         {
-            return _implementation.Attestation2Async(attestation);
+            return _implementation.Attestation2Async(body);
         }
     
     }
     
     [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.6.0 (NJsonSchema v10.0.28.0 (Newtonsoft.Json v11.0.0.0))")]
-    public interface IBeaconNodeApiController
+    public interface IBeaconNodeOApiController
     {
         /// <summary>Get the genesis_time parameter from beacon node configuration.</summary>
         /// <returns>Request successful</returns>
@@ -155,11 +167,11 @@ namespace Nethermind.BeaconNode.Api
     }
     
     [System.CodeDom.Compiler.GeneratedCode("NSwag", "13.1.6.0 (NJsonSchema v10.0.28.0 (Newtonsoft.Json v11.0.0.0))")]
-    public partial class BeaconNodeApiController : Microsoft.AspNetCore.Mvc.Controller
+    public partial class BeaconNodeOApiController : Microsoft.AspNetCore.Mvc.Controller
     {
-        private IBeaconNodeApiController _implementation;
+        private IBeaconNodeOApiController _implementation;
     
-        public BeaconNodeApiController(IBeaconNodeApiController implementation)
+        public BeaconNodeOApiController(IBeaconNodeOApiController implementation)
         {
             _implementation = implementation;
         }
@@ -192,6 +204,54 @@ namespace Nethermind.BeaconNode.Api
         /// <summary>The slot in which a validator must propose a block, or `null` if block production is not required.</summary>
         [Newtonsoft.Json.JsonProperty("block_proposal_slot", Required = Newtonsoft.Json.Required.Default, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public int? Block_proposal_slot { get; set; }
+    
+        private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
+    
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties; }
+            set { _additionalProperties = value; }
+        }
+    
+    
+    }
+    
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "10.0.28.0 (Newtonsoft.Json v11.0.0.0)")]
+    public partial class Validator 
+    {
+        [Newtonsoft.Json.JsonProperty("validator_pubkey", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]{96}$")]
+        public byte[] Validator_pubkey { get; set; }
+    
+        /// <summary>Hash of withdrawal credentials</summary>
+        [Newtonsoft.Json.JsonProperty("withdrawal_credentials", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]{64}$")]
+        public string Withdrawal_credentials { get; set; }
+    
+        /// <summary>Balance at stake in Gwei.</summary>
+        [Newtonsoft.Json.JsonProperty("effective_balance", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Effective_balance { get; set; }
+    
+        /// <summary>Was validator slashed (not longer active).</summary>
+        [Newtonsoft.Json.JsonProperty("slashed", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public bool Slashed { get; set; }
+    
+        /// <summary>When criteria for activation were met.</summary>
+        [Newtonsoft.Json.JsonProperty("activation_eligibility_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Activation_eligibility_epoch { get; set; }
+    
+        /// <summary>Epoch when validator activated. 'FAR_FUTURE_EPOCH' if not activated</summary>
+        [Newtonsoft.Json.JsonProperty("activation_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Activation_epoch { get; set; }
+    
+        /// <summary>Epoch when validator exited. 'FAR_FUTURE_EPOCH' if not exited.</summary>
+        [Newtonsoft.Json.JsonProperty("exit_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Exit_epoch { get; set; }
+    
+        /// <summary>When validator can withdraw or transfer funds. 'FAR_FUTURE_EPOCH' if not defined</summary>
+        [Newtonsoft.Json.JsonProperty("withdrawable_epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public int Withdrawable_epoch { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     
@@ -370,6 +430,40 @@ namespace Nethermind.BeaconNode.Api
         /// <summary>Fork epoch number.</summary>
         [Newtonsoft.Json.JsonProperty("epoch", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
         public int Epoch { get; set; }
+    
+        private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
+    
+        [Newtonsoft.Json.JsonExtensionData]
+        public System.Collections.Generic.IDictionary<string, object> AdditionalProperties
+        {
+            get { return _additionalProperties; }
+            set { _additionalProperties = value; }
+        }
+    
+    
+    }
+    
+    /// <summary>The [`Attestation`](https://github.com/ethereum/eth2.0-specs/blob/master/specs/core/0_beacon-chain.md#attestation) object from the Eth2.0 spec.</summary>
+    [System.CodeDom.Compiler.GeneratedCode("NJsonSchema", "10.0.28.0 (Newtonsoft.Json v11.0.0.0)")]
+    public partial class Attestation 
+    {
+        /// <summary>Attester aggregation bitfield.</summary>
+        [Newtonsoft.Json.JsonProperty("aggregation_bitfield", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]+$")]
+        public byte[] Aggregation_bitfield { get; set; }
+    
+        /// <summary>Custody bitfield.</summary>
+        [Newtonsoft.Json.JsonProperty("custody_bitfield", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]+$")]
+        public byte[] Custody_bitfield { get; set; }
+    
+        /// <summary>BLS aggregate signature.</summary>
+        [Newtonsoft.Json.JsonProperty("signature", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        [System.ComponentModel.DataAnnotations.RegularExpression(@"^0x[a-fA-F0-9]{192}$")]
+        public byte[] Signature { get; set; }
+    
+        [Newtonsoft.Json.JsonProperty("data", Required = Newtonsoft.Json.Required.DisallowNull, NullValueHandling = Newtonsoft.Json.NullValueHandling.Ignore)]
+        public AttestationData Data { get; set; }
     
         private System.Collections.Generic.IDictionary<string, object> _additionalProperties = new System.Collections.Generic.Dictionary<string, object>();
     

@@ -1,26 +1,23 @@
-FROM mcr.microsoft.com/dotnet/core/sdk:3.0-stretch-arm64v8 AS build
-RUN git clone https://github.com/NethermindEth/nethermind.git nethermind/ && \
-    cd nethermind/ && \
-    git submodule update --init src/Dirichlet src/rocksdb-sharp && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
-    git describe --tags > out/git-hash
+FROM mcr.microsoft.com/dotnet/core/sdk:3.1-bionic-arm64v8 AS build
 
-FROM mcr.microsoft.com/dotnet/core/aspnet:3.0-stretch-arm64v8
+COPY . .
+
+RUN git submodule update --init src/Dirichlet src/rocksdb-sharp && \
+    dotnet publish src/Nethermind/Nethermind.Runner -c release -o out && \
+    git describe --tags --long > out/git-hash
+
+FROM mcr.microsoft.com/dotnet/core/aspnet:3.1-bionic-arm64v8
 RUN apt-get update && apt-get -y install libsnappy-dev libc6-dev libc6 libzstd1 libgflags-dev libssl1.0.0
 WORKDIR /nethermind
-COPY --from=build /nethermind/out .
-
-ENV ASPNETCORE_ENVIRONMENT docker
-ENV NETHERMIND_CONFIG mainnet
-ENV NETHERMIND_DETACHED_MODE true
+COPY --from=build /out .
 
 ARG GIT_COMMIT=unspecified
 LABEL git_commit=$GIT_COMMIT
 
-RUN ln -s /lib/aarch64-linux-gnu/libzstd.so.1 /lib/aarch64-linux-gnu/libzstd.so.0
-RUN ln -s /lib/aarch64-linux-gnu/libgflags.so /lib/aarch64-linux-gnu/libgflags.so.2
+RUN ln -s /usr/lib/aarch64-linux-gnu/libzstd.so.1 /usr/lib/aarch64-linux-gnu/libzstd.so.0
+RUN ln -s /usr/lib/aarch64-linux-gnu/libgflags.so /usr/lib/aarch64-linux-gnu/libgflags.so.2
 
 COPY arm/lib/librocksdb.so /nethermind/librocksdb.so
 COPY arm/lib/libsecp256k1.so /nethermind/runtimes/linux-x64/native/libsecp256k1.so
 
-ENTRYPOINT ["dotnet", "Nethermind.Runner.dll"]
+ENTRYPOINT ["./Nethermind.Runner"]

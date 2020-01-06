@@ -22,7 +22,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.MockedStart;
+using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2.Configuration;
 
 namespace Nethermind.BeaconNode.Host
 {
@@ -77,13 +79,14 @@ namespace Nethermind.BeaconNode.Host
                 })
                 .ConfigureServices((hostContext, services) =>
                 {
+                    services.ConfigureBeaconChain(hostContext.Configuration);
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
-                    services.AddHostedService<BeaconNodeWorker>();
+                    services.AddBeaconNodePeering(hostContext.Configuration);
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
                     {
-                        services.AddQuickStart(hostContext.Configuration);
+                        services.AddBeaconNodeQuickStart(hostContext.Configuration);
                     }
                 })
                 .ConfigureWebHostDefaults(webBuilder =>

@@ -20,7 +20,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
 
@@ -133,7 +133,7 @@ namespace Nethermind.BeaconNode.Storage
             {
                 throw new ArgumentOutOfRangeException(nameof(signingRoot), signingRoot, "State not found in store.");
             }
-            return new ValueTask<BeaconState?>(state!);
+            return new ValueTask<BeaconState>(state!);
         }
 
         public ValueTask<BeaconState?> GetCheckpointStateAsync(Checkpoint checkpoint, bool throwIfMissing)

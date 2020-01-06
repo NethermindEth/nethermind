@@ -9,7 +9,6 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <RootNamespace>Nethermind.BeaconNode.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,19 +21,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\Nethermind.BeaconNode.Host\configuration\mainnet.yaml" Link="mainnet.yaml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="..\Nethermind.BeaconNode.Host\configuration\minimal.yaml" Link="minimal.yaml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="GitVersionTask" Version="5.1.3">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="3.0.1" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="3.0.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
@@ -50,22 +36,12 @@
     </PackageReference>
     <PackageReference Include="NSubstitute" Version="4.2.1" />
     <PackageReference Include="Shouldly" Version="3.0.2" />
-    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="1.6.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
     <ProjectReference Include="..\Nethermind.BeaconNode.Storage\Nethermind.BeaconNode.Storage.csproj" />
     <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Update="testappsettingsB.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="testconfigA.yaml">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
 </Project>

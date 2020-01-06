@@ -20,7 +20,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Configuration;
+using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
@@ -126,8 +126,7 @@ namespace Nethermind.BeaconNode
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
 
             // Eth 1 Data
-            ulong previousEth1Distance = await GetPreviousEth1Distance(store, state, parentRoot).ConfigureAwait(false);
-            Eth1Data eth1Vote = await GetEth1VoteAsync(state, previousEth1Distance).ConfigureAwait(false);
+            Eth1Data eth1Vote = await GetEth1VoteAsync(state, store, parentRoot).ConfigureAwait(false);
 
             List<Deposit> deposits = new List<Deposit>();
             if (eth1Vote.DepositCount > state.Eth1DepositIndex)
@@ -169,7 +168,9 @@ namespace Nethermind.BeaconNode
             }
             
             // Graffiti
-            Bytes32 graffiti = new Bytes32();
+            var graffitiBytes = new byte[32];
+            graffitiBytes[0] = 0x4e; // 'N'
+            Bytes32 graffiti = new Bytes32(graffitiBytes);
 
             // Build block
             BeaconBlockBody body = new BeaconBlockBody(randaoReveal, eth1Vote, graffiti, proposerSlashings,
@@ -181,6 +182,11 @@ namespace Nethermind.BeaconNode
             block.SetStateRoot(stateRoot);
 
             // Unsigned block
+
+            if (_logger.IsDebug())
+                LogDebug.NewBlockProduced(_logger, block.Slot, block.Body.RandaoReveal.ToString().Substring(0, 10),
+                    block, block.Body.Graffiti.ToString().Substring(0, 10), null);
+            
             return block;
         }
 
@@ -199,6 +205,19 @@ namespace Nethermind.BeaconNode
             Slot eth1VotingPeriodSlot = new Slot(state.Slot % timeParameters.SlotsPerEth1VotingPeriod);
             Slot startOfEth1VotingPeriodSlot = state.Slot - eth1VotingPeriodSlot;
             Hash32 startOfEth1VotingPeriodSigningRoot = await _forkChoice.GetAncestorAsync(store, parentRoot, startOfEth1VotingPeriodSlot);
+
+            if (startOfEth1VotingPeriodSigningRoot == Hash32.Zero)
+            {
+                // Don't have blocks for slot yet
+                // i.e. parent/head < eth1 vote start for new block < slot new block is for
+                // This is supposed to be caught by the tail check, need to get at least sqrt(eth1 vote period) into new cycle
+                // But may not happen in test environment, so use parent's distance (or could use default, i.e. follow distance * 2)
+                if (_logger.IsWarn())
+                    Log.NoBlocksSinceEth1VotingPeriodDefaulting(_logger, state.Slot, eth1VotingPeriodSlot, parentRoot,
+                        startOfEth1VotingPeriodSlot, null);
+                startOfEth1VotingPeriodSigningRoot = parentRoot;
+            }
+
             BeaconState startOfEth1VotingPeriodState =
                 await store.GetBlockStateAsync(startOfEth1VotingPeriodSigningRoot).ConfigureAwait(false);
             Hash32 startOfEth1VotingPeriodBlockHash = startOfEth1VotingPeriodState.Eth1Data.BlockHash;
@@ -206,7 +225,7 @@ namespace Nethermind.BeaconNode
             return distance;
         }
 
-        private async Task<Eth1Data> GetEth1VoteAsync(BeaconState state, ulong previousEth1Distance)
+        private async Task<Eth1Data> GetEth1VoteAsync(BeaconState state, IStore store, Hash32 parentRoot)
         {
             TimeParameters timeParameters = _timeParameterOptions.CurrentValue;
             HonestValidatorConstants honestValidatorConstants = _honestValidatorConstantOptions.CurrentValue;
@@ -218,6 +237,7 @@ namespace Nethermind.BeaconNode
             ulong maximumDistance;
             if (isTailPeriod)
             {
+                ulong previousEth1Distance = await GetPreviousEth1Distance(store, state, parentRoot).ConfigureAwait(false);
                 maximumDistance = previousEth1Distance;
             }
             else
