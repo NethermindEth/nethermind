@@ -73,7 +73,7 @@ namespace Nethermind.BeaconNode.Test
                 chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
                 beaconStateAccessor, beaconStateTransition);
-            MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions, beaconChainUtility);
+            MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
                 miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
                 beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);

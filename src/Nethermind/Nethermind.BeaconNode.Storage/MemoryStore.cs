@@ -20,6 +20,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -30,7 +31,6 @@ namespace Nethermind.BeaconNode.Storage
     // Data Class
     public class MemoryStore : IStore
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
         private readonly Dictionary<Hash32, BeaconBlock> _blocks;
         private readonly Dictionary<Hash32, BeaconState> _blockStates;
         private readonly Dictionary<Checkpoint, BeaconState> _checkpointStates;
@@ -48,8 +48,7 @@ namespace Nethermind.BeaconNode.Storage
             IDictionary<Checkpoint, BeaconState> checkpointStates,
             IDictionary<ValidatorIndex, LatestMessage> latestMessages,
             ILogger<MemoryStore> logger,
-            IOptionsMonitor<TimeParameters> timeParameterOptions,
-            BeaconChainUtility beaconChainUtility)
+            IOptionsMonitor<TimeParameters> timeParameterOptions)
         {
             Time = time;
             GenesisTime = genesisTime;
@@ -62,7 +61,6 @@ namespace Nethermind.BeaconNode.Storage
             _latestMessages = new Dictionary<ValidatorIndex, LatestMessage>(latestMessages);
             _logger = logger;
             _timeParameterOptions = timeParameterOptions;
-            _beaconChainUtility = beaconChainUtility;
         }
 
         public Checkpoint BestJustifiedCheckpoint { get; private set; }

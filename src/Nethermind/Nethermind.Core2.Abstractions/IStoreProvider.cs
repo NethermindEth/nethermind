@@ -19,7 +19,7 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Storage
+namespace Nethermind.Core2
 {
     public interface IStoreProvider
     {

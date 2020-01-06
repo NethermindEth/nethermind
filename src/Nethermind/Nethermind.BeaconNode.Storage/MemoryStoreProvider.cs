@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -27,17 +28,15 @@ namespace Nethermind.BeaconNode.Storage
 {
     public class MemoryStoreProvider : IStoreProvider
     {
-        private readonly BeaconChainUtility _beaconChainUtility;
         private readonly ILoggerFactory _loggerFactory;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
 
         private IStore? _store;
 
-        public MemoryStoreProvider(ILoggerFactory loggerFactory, IOptionsMonitor<TimeParameters> timeParameterOptions, BeaconChainUtility beaconChainUtility)
+        public MemoryStoreProvider(ILoggerFactory loggerFactory, IOptionsMonitor<TimeParameters> timeParameterOptions)
         {
             _loggerFactory = loggerFactory;
             _timeParameterOptions = timeParameterOptions;
-            _beaconChainUtility = beaconChainUtility;
         }
 
         public IStore CreateStore(ulong time,
@@ -52,8 +51,7 @@ namespace Nethermind.BeaconNode.Storage
         {
             _store = new MemoryStore(time, genesisTime, justifiedCheckpoint, finalizedCheckpoint, bestJustifiedCheckpoint, blocks, blockStates, checkpointStates, latestMessages,
                 _loggerFactory.CreateLogger<MemoryStore>(),
-                _timeParameterOptions,
-                _beaconChainUtility);
+                _timeParameterOptions);
             return _store;
         }
 
