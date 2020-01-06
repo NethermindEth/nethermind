@@ -97,6 +97,8 @@ namespace Nethermind.AuRa.Validators
         
         public void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
+            bool ValidatorWasAlreadyFinalized(KeyValuePair<long, AuRaParameters.Validator> validatorInfo) => _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
+
             bool isProducingBlock = options.IsProducingBlock();
             long previousBlockNumber = block.Number - 1;
             bool isNotConsecutive = previousBlockNumber != _lastProcessedBlock;
@@ -105,8 +107,7 @@ namespace Nethermind.AuRa.Validators
             {
                 if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
                 {
-                    var validatorWasAlreadyFinalized = _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key;
-                    if (validatorWasAlreadyFinalized || validatorInfo.Value.ValidatorType.CanChangeImmediately())
+                    if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || ValidatorWasAlreadyFinalized(validatorInfo))
                     {
                         SetCurrentValidator(validatorInfo);
                     }
