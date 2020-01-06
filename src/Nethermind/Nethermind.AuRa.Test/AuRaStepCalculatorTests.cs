@@ -43,7 +43,7 @@ namespace Nethermind.AuRa.Test
         {
             var calculator = new AuRaStepCalculator(stepDuration, new Timestamper());
             await TaskExt.DelayAtLeast(calculator.TimeToNextStep);
-            calculator.TimeToNextStep.Should().BeCloseTo(TimeSpan.FromSeconds(stepDuration), TimeSpan.FromMilliseconds(100));
+            calculator.TimeToNextStep.Should().BeCloseTo(TimeSpan.FromSeconds(stepDuration), TimeSpan.FromMilliseconds(200));
         }
         
         [TestCase(100000060005L, 2)]

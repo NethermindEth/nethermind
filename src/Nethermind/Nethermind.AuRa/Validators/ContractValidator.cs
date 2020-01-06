@@ -18,6 +18,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Nethermind.Abi;
@@ -116,13 +117,16 @@ namespace Nethermind.AuRa.Validators
         {
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
+            var initBlock = InitBlockNumber == block.Number;
+            var loadValidators = _validators == null || isProducingBlock;
             
-            if (_validators == null || isProducingBlock)
+            if (loadValidators)
             {
                 Validators = LoadValidatorsFromContract(block.Header);
+                if(_logger.IsInfo && !_isProducing && isProcessingBlock) _logger.Info($"{(initBlock ? "Initial" : "Current")} contract validators ({Validators.Length}): [{string.Join<Address>(", ", Validators)}].");
             }
-
-            if (InitBlockNumber == block.Number)
+            
+            if (initBlock)
             {
                 InitiateChange(block, Validators.ToArray(), isProcessingBlock, true);
             }
@@ -240,9 +244,7 @@ namespace Nethermind.AuRa.Validators
             {
                 throw new AuRaException("Failed to initialize validators list.");
             }
-            
-            if(_logger.IsInfo && !_isProducing) _logger.Info($"Initial contract {validators.Length} validators: [{string.Join<Address>(", ", validators)}].");
-           
+
             return validators;
         }
 

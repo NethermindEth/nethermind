@@ -68,15 +68,17 @@ namespace Nethermind.Blockchain
             await (_producerTask ?? Task.CompletedTask);
         }
         
-        private async ValueTask ProducerLoop()
+        protected virtual async ValueTask ProducerLoop()
         {
             while (!_cancellationTokenSource.IsCancellationRequested)
             {
-                await TryProduceNewBlock(_cancellationTokenSource.Token);
-                await BetweenBlocks();
+                await ProducerLoopStep();
             }
         }
 
-        protected abstract ValueTask BetweenBlocks();
+        protected virtual async ValueTask ProducerLoopStep()
+        {
+            await TryProduceNewBlock(_cancellationTokenSource.Token);
+        }
     }
 }

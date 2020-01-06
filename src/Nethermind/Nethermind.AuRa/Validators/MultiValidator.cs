@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -32,9 +33,10 @@ namespace Nethermind.AuRa.Validators
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
         private IAuRaValidatorProcessor _currentValidator;
+        private AuRaParameters.Validator _currentValidatorPrototype;
         private bool _isProducing;
         private long _lastProcessedBlock = 0;
-
+        
         public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, IBlockTree blockTree, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
@@ -100,7 +102,7 @@ namespace Nethermind.AuRa.Validators
             {
                 if (TryGetLastValidator(previousBlockNumber, out var validatorInfo))
                 {
-                    if (validatorInfo.Value.ValidatorType.CanChangeImmediately())
+                    if (validatorInfo.Value.ValidatorType.CanChangeImmediately() || _blockFinalizationManager.LastFinalizedBlockLevel >= validatorInfo.Key)
                     {
                         SetCurrentValidator(validatorInfo);
                     }
@@ -178,9 +180,13 @@ namespace Nethermind.AuRa.Validators
         
         private void SetCurrentValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)
         {
-            _currentValidator?.SetFinalizationManager(null);
-            _currentValidator = CreateValidator(finalizedAtBlockNumber, validator);
-            _currentValidator.SetFinalizationManager(_blockFinalizationManager, _isProducing);
+            if (validator != _currentValidatorPrototype)
+            {
+                _currentValidator?.SetFinalizationManager(null);
+                _currentValidator = CreateValidator(finalizedAtBlockNumber, validator);
+                _currentValidator.SetFinalizationManager(_blockFinalizationManager, _isProducing);
+                _currentValidatorPrototype = validator;
+            }
         }
 
         private IAuRaValidatorProcessor CreateValidator(long finalizedAtBlockNumber, AuRaParameters.Validator validator)
