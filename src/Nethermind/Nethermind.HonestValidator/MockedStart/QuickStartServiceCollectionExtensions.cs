@@ -20,7 +20,6 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;

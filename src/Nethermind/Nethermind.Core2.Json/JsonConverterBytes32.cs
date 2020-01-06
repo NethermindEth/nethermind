@@ -17,18 +17,18 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterBlsSignature : JsonConverter<BlsSignature>
+    public class JsonConverterBytes32 : JsonConverter<Bytes32>
     {
-        public override BlsSignature Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Bytes32 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new BlsSignature(reader.GetBytesFromPrefixedHex());
+            return new Bytes32(reader.GetBytesFromPrefixedHex());
         }
 
-        public override void Write(Utf8JsonWriter writer, BlsSignature value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Bytes32 value, JsonSerializerOptions options)
         {
             writer.WritePrefixedHexStringValue(value.AsSpan());
         }

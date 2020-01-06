@@ -21,7 +21,6 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;

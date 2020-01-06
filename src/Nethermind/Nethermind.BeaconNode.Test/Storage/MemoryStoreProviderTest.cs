@@ -155,9 +155,9 @@ namespace Nethermind.BeaconNode.Test.Storage
             
             block1SigningRoot.ShouldBe(block1Root);
             
-            block1.ParentRoot.ToString().ShouldStartWith("0x7f4520eb");
-            block1.StateRoot.ToString().ShouldStartWith("0x134ba7eb");
-            block1SigningRoot.ToString().ShouldStartWith("0xcc21e696");
+            block1.ParentRoot.ToString().ShouldStartWith("0x89e36b63");
+            block1.StateRoot.ToString().ShouldStartWith("0x35c6537a");
+            block1SigningRoot.ToString().ShouldStartWith("0xcdaa0640");
             block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0xaea12492");
         }
     }

@@ -17,20 +17,20 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterBlsPublicKey : JsonConverter<BlsPublicKey>
+    public class JsonConverterCommitteeIndex : JsonConverter<CommitteeIndex>
     {
-        public override BlsPublicKey Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override CommitteeIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new BlsPublicKey(reader.GetBytesFromPrefixedHex());
+            return new CommitteeIndex(reader.GetUInt64());
         }
 
-        public override void Write(Utf8JsonWriter writer, BlsPublicKey value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, CommitteeIndex value, JsonSerializerOptions options)
         {
-            writer.WritePrefixedHexStringValue(value.AsSpan());
+            writer.WriteNumberValue((ulong)value);
         }
     }
 }

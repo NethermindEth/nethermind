@@ -19,18 +19,18 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterByteArrayPrefixedHex : JsonConverter<byte[]>
+    public class JsonConverterShard : JsonConverter<Shard>
     {
-        public override byte[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Shard Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return reader.GetBytesFromPrefixedHex();
+            return new Shard(reader.GetUInt64());
         }
 
-        public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Shard value, JsonSerializerOptions options)
         {
-            writer.WritePrefixedHexStringValue(value);
+            writer.WriteNumberValue((ulong)value);
         }
     }
 }

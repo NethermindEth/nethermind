@@ -17,21 +17,20 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterHash32 : JsonConverter<Hash32>
+    public class JsonConverterEpoch : JsonConverter<Epoch>
     {
-        public override Hash32 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override Epoch Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new Hash32(reader.GetBytesFromPrefixedHex());
+            return new Epoch(reader.GetUInt64());
         }
 
-        public override void Write(Utf8JsonWriter writer, Hash32 value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, Epoch value, JsonSerializerOptions options)
         {
-            writer.WritePrefixedHexStringValue(value.AsSpan());
+            writer.WriteNumberValue((ulong)value);
         }
     }
 }

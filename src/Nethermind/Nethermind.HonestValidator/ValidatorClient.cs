@@ -22,12 +22,11 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
@@ -153,7 +152,7 @@ namespace Nethermind.HonestValidator
             var proposerDomain = ComputeDomain(domainType, forkVersion);
             
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            options.AddCortexContainerConverters();
+            options.ConfigureNethermindCore2();
             string blockJson = System.Text.Json.JsonSerializer.Serialize(block, options);
 
             var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);

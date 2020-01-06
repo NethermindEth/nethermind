@@ -18,12 +18,12 @@ using System;
 using System.Collections;
 using System.Linq;
 using System.Text.Json;
-using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
@@ -530,7 +530,7 @@ namespace Nethermind.Ssz.Test
             );
             
             JsonSerializerOptions options = new JsonSerializerOptions { WriteIndented = true };
-            options.AddCortexContainerConverters();
+            options.ConfigureNethermindCore2();
             TestContext.WriteLine("Original state: {0}", JsonSerializer.Serialize(container, options));
 
             int encodedLength = ByteLength.BeaconStateLength(container);

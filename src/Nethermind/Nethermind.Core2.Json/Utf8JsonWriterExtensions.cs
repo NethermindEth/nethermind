@@ -16,21 +16,16 @@
 
 using System;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterBytes32 : JsonConverter<Bytes32>
+    public static class Utf8JsonWriterExtensions
     {
-        public override Bytes32 Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public static void WritePrefixedHexStringValue(this Utf8JsonWriter writer, ReadOnlySpan<byte> bytes)
         {
-            return new Bytes32(reader.GetBytesFromPrefixedHex());
-        }
-
-        public override void Write(Utf8JsonWriter writer, Bytes32 value, JsonSerializerOptions options)
-        {
-            writer.WritePrefixedHexStringValue(value.AsSpan());
+            // TODO: should add faster version that writes directly to Writer (zero allocation).
+            string hex = bytes.ToHexString(withZeroX: true);
+            writer.WriteStringValue(hex);
         }
     }
 }

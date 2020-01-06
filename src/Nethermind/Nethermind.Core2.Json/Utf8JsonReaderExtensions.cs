@@ -14,23 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterCommitteeIndex : JsonConverter<CommitteeIndex>
+    public static class Utf8JsonReaderExtensions
     {
-        public override CommitteeIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public static byte[] GetBytesFromPrefixedHex(this Utf8JsonReader reader)
         {
-            return new CommitteeIndex(reader.GetUInt64());
-        }
-
-        public override void Write(Utf8JsonWriter writer, CommitteeIndex value, JsonSerializerOptions options)
-        {
-            writer.WriteNumberValue((ulong)value);
+            // TODO: Rather than get the string first, convert directly from reader to bytes (minimal allocation)
+            string hex = reader.GetString();
+            byte[] bytes = Bytes.FromHexString(hex);
+            return bytes;
         }
     }
 }

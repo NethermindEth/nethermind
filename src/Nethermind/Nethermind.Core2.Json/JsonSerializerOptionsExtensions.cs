@@ -16,12 +16,16 @@
 
 using System.Text.Json;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
     public static class JsonSerializerOptionsExtensions
     {
-        public static void AddCortexContainerConverters(this JsonSerializerOptions options)
+        public static void ConfigureNethermindCore2(this JsonSerializerOptions options)
         {
+            options.PropertyNamingPolicy = new JsonNamingPolicySnakeCase();
+            
+            options.Converters.Add(new JsonConverterByteArrayPrefixedHex());
+
             options.Converters.Add(new JsonConverterBlsPublicKey());
             options.Converters.Add(new JsonConverterBlsSignature());
             options.Converters.Add(new JsonConverterBytes32());

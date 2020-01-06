@@ -17,20 +17,20 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core2.Types;
+using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterValidatorIndex : JsonConverter<ValidatorIndex>
+    public class JsonConverterBlsSignature : JsonConverter<BlsSignature>
     {
-        public override ValidatorIndex Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override BlsSignature Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new ValidatorIndex(reader.GetUInt64());
+            return new BlsSignature(reader.GetBytesFromPrefixedHex());
         }
 
-        public override void Write(Utf8JsonWriter writer, ValidatorIndex value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, BlsSignature value, JsonSerializerOptions options)
         {
-            writer.WriteNumberValue((ulong)value);
+            writer.WritePrefixedHexStringValue(value.AsSpan());
         }
     }
 }

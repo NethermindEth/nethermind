@@ -17,20 +17,19 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Containers.Json
+namespace Nethermind.Core2.Json
 {
-    public class JsonConverterSlot : JsonConverter<Slot>
+    public class JsonConverterByteArrayPrefixedHex : JsonConverter<byte[]>
     {
-        public override Slot Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+        public override byte[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
-            return new Slot(reader.GetUInt64());
+            return reader.GetBytesFromPrefixedHex();
         }
 
-        public override void Write(Utf8JsonWriter writer, Slot value, JsonSerializerOptions options)
+        public override void Write(Utf8JsonWriter writer, byte[] value, JsonSerializerOptions options)
         {
-            writer.WriteNumberValue(value);
+            writer.WritePrefixedHexStringValue(value);
         }
     }
 }

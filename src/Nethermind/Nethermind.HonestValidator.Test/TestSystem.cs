@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.OApiClient;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Configuration;
