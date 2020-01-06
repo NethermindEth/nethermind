@@ -144,17 +144,20 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.LatestBlockHeader);
             merkleizer.Feed(container.BlockRoots);
             merkleizer.Feed(container.StateRoots);
-            merkleizer.Feed(container.HistoricalRoots, ByteLength.HistoricalRootsLimit);
+            merkleizer.Feed(container.HistoricalRoots.ToArray(), ByteLength.HistoricalRootsLimit);
             merkleizer.Feed(container.Eth1Data);
-            merkleizer.Feed(container.Eth1DataVotes, (uint)Time.SlotsPerEth1VotingPeriod);
+            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Time.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
             merkleizer.Feed(container.Validators, SszLimit.ValidatorRegistryLimit);
-            merkleizer.Feed(container.Balances, SszLimit.ValidatorRegistryLimit);
-            merkleizer.Feed(container.RandaoMixes);
-            merkleizer.Feed(container.Slashings);
+            merkleizer.Feed(container.Balances.ToArray().ToArray());
             merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
             merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
-            merkleizer.Feed(container.JustificationBits);
+
+            // TODO: Add ending bit 1 to Bitlist
+            byte[] justificationBitsPacked = new byte[(container.JustificationBits.Length + 7) / 8];
+            container.JustificationBits.CopyTo(justificationBitsPacked, 0);
+            merkleizer.Feed(justificationBitsPacked);
+            
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);
             merkleizer.Feed(container.FinalizedCheckpoint);

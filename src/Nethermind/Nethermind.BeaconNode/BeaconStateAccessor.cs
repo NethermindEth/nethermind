@@ -22,13 +22,10 @@ using System.IO;
 using System.Linq;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode
 {

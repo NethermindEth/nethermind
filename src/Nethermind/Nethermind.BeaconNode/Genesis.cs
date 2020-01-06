@@ -24,8 +24,6 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using DepositData = Nethermind.Core2.Containers.DepositData;
 
 namespace Nethermind.BeaconNode
 {

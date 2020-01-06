@@ -20,7 +20,6 @@ using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode
 {

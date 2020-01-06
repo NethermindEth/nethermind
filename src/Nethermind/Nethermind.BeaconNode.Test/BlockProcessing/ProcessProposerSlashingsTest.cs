@@ -21,7 +21,6 @@ using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2.Containers;
 using Shouldly;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
 
 namespace Nethermind.BeaconNode.Test.BlockProcessing
 {

@@ -171,24 +171,24 @@ namespace Nethermind.Core2
             }
             
             int result = BeaconStateDynamicOffset;
-            result += ByteLength.Hash32Length * (container.HistoricalRoots?.Length ?? 0);
-            result += ByteLength.ValidatorLength * (container.Validators?.Length ?? 0);
-            result += ByteLength.GweiLength * (container.Balances?.Length ?? 0);
-            result += ByteLength.Eth1DataLength * (container.Eth1DataVotes?.Length ?? 0);
+            result += ByteLength.Hash32Length * (container.HistoricalRoots?.Count ?? 0);
+            result += ByteLength.ValidatorLength * (container.Validators?.Count ?? 0);
+            result += ByteLength.GweiLength * (container.Balances?.Count ?? 0);
+            result += ByteLength.Eth1DataLength * (container.Eth1DataVotes?.Count ?? 0);
 
-            result += (container.PreviousEpochAttestations?.Length ?? 0) * sizeof(uint);
+            result += (container.PreviousEpochAttestations?.Count ?? 0) * sizeof(uint);
             if (!(container.PreviousEpochAttestations is null))
             {
-                for (int i = 0; i < container.PreviousEpochAttestations.Length; i++)
+                for (int i = 0; i < container.PreviousEpochAttestations.Count; i++)
                 {
                     result += ByteLength.PendingAttestationLength(container.PreviousEpochAttestations[i]);
                 }
             }
 
-            result += (container.CurrentEpochAttestations?.Length ?? 0) * sizeof(uint);
+            result += (container.CurrentEpochAttestations?.Count ?? 0) * sizeof(uint);
             if (!(container.CurrentEpochAttestations is null))
             {
-                for (int i = 0; i < container.CurrentEpochAttestations.Length; i++)
+                for (int i = 0; i < container.CurrentEpochAttestations.Count; i++)
                 {
                     result += ByteLength.PendingAttestationLength(container.CurrentEpochAttestations[i]);
                 }

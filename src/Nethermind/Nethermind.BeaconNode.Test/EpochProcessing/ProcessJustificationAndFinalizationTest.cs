@@ -26,8 +26,6 @@ using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Shouldly;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-
 namespace Nethermind.BeaconNode.Test.EpochProcessing
 {
     [TestClass]
