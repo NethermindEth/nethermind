@@ -64,6 +64,20 @@ namespace Nethermind.Ssz
             value.Length = vectorLength;
             return value;
         }
-
+        
+        public static BitArray DecodeBitlist(ReadOnlySpan<byte> span)
+        {
+            BitArray value = new BitArray(span.ToArray());
+            int length = value.Length - 1;
+            int lastByte = span[span.Length - 1];
+            int mask = 0x80;
+            while ((lastByte & mask) == 0 && mask > 0)
+            {
+                length--;
+                mask = mask >> 1;
+            }
+            value.Length = length;
+            return value;
+        }
     }
 }

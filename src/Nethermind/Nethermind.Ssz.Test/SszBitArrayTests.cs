@@ -75,7 +75,21 @@ namespace Nethermind.Ssz.Test
             byteString.ShouldBe(expectedByteString);
             //hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
-        
+
+        [TestCaseSource(nameof(GetBitlistData))]
+        public void BitlistDecode(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
+        {
+            // Arrange
+            var encoded = Bytes.FromHexString(expectedByteString);
+
+            // Act
+            BitArray decoded = Ssz.DecodeBitlist(encoded);
+
+            // Assert
+            BitArray expected = new BitArray(value);
+            decoded.ShouldBe(expected);
+        }
+
         public static IEnumerable<object[]> GetBitvectorData()
         {
             yield return new object[] {
