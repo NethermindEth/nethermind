@@ -15,20 +15,23 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.MockedStart
+namespace Nethermind.Core2.Configuration.MockedStart
 {
-    public class QuickStartParameters
+    /// <summary>
+    /// Clock that runs at normal pace, but starting at the specified unix time.
+    /// </summary>
+    public class QuickStartClock : IClock
     {
-        public Hash32 Eth1BlockHash { get; set; } = Hash32.Zero;
-        public ulong Eth1Timestamp { get; set; }
-        public ulong GenesisTime { get; set; }
-        public bool UseSystemClock { get; set; }
-        public ulong ValidatorCount { get; set; }
-        public long ClockOffset { get; set; }
-        public ulong ValidatorStartIndex { get; set; }
-        public ulong NumberOfValidators { get; set; }
+        private readonly TimeSpan _adjustment;
+
+        public QuickStartClock(long clockOffset)
+        {
+            _adjustment = TimeSpan.FromSeconds(clockOffset);
+        }
+
+        public DateTimeOffset Now() => DateTimeOffset.Now + _adjustment;
+
+        public DateTimeOffset UtcNow() => DateTimeOffset.UtcNow + _adjustment;
     }
 }

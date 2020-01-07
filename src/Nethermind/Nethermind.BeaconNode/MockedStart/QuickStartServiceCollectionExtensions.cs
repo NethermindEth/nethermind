@@ -24,6 +24,7 @@ using Nethermind.Core2;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Configuration.MockedStart;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.MockedStart
