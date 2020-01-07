@@ -91,7 +91,6 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
                 ReleaseSpec releaseSpec = new ReleaseSpec();
                 releaseSpec.MaximumUncleCount = (_chainSpec.AuRa?.MaximumUncleCountTransition ?? long.MaxValue) >= releaseStartBlock ? _chainSpec.AuRa?.MaximumUncleCount ?? 2 : 2; 
                 releaseSpec.IsTimeAdjustmentPostOlympic = true; // TODO: this is Duration, review
-                releaseSpec.Registrar = _chainSpec.Parameters.Registrar;
                 releaseSpec.MaximumExtraDataSize = _chainSpec.Parameters.MaximumExtraDataSize;
                 releaseSpec.MinGasLimit = _chainSpec.Parameters.MinGasLimit;
                 releaseSpec.GasLimitBoundDivisor = _chainSpec.Parameters.GasLimitBoundDivisor;

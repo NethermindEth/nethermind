@@ -27,7 +27,6 @@ namespace Nethermind.Core.Specs
         long MaxCodeSize { get; }
         long MinGasLimit { get; }
         long GasLimitBoundDivisor { get; }
-        Address Registrar { get; }
         UInt256 BlockReward { get; }
         long DifficultyBombDelay { get; }
         long DifficultyBoundDivisor { get; }
