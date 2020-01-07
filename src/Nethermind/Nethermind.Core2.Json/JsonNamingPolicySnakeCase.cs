@@ -24,34 +24,51 @@ namespace Nethermind.Core2.Json
     {
         public override string ConvertName(string name)
         {
-            if (name == null)
+            if (string.IsNullOrEmpty(name))
             {
-                throw new ArgumentNullException(nameof(name));
+                return name;
             }
 
-            var result = new StringBuilder();
-            for (var i = 0; i < name.Length; i++)
+            int convertedLength = name.Length;
+            if (name.Length > 1)
             {
-                var c = name[i];
-                if (i == 0)
+                for (var index = 1; index < name.Length; index++)
                 {
-                    result.Append(char.ToLower(c));
-                }
-                else
-                {
-                    if (char.IsUpper(c))
+                    if (char.IsUpper(name[index]))
                     {
-                        result.Append('_');
-                        result.Append(char.ToLower(c));
+                        convertedLength++;
+                    }
+                }
+            }
+
+            string context = name;
+            
+            string converted = string.Create(convertedLength, context, (chars, state) =>
+            {
+                int position = 0;
+                for (var sourceIndex = 0; sourceIndex < state.Length; sourceIndex++)
+                {
+                    char c = state[sourceIndex];
+                    if (sourceIndex == 0)
+                    {
+                        chars[position++] = char.ToLowerInvariant(c);
                     }
                     else
                     {
-                        result.Append(c);
+                        if (char.IsUpper(c))
+                        {
+                            chars[position++] = '_';
+                            chars[position++] = char.ToLowerInvariant(c);
+                        }
+                        else
+                        {
+                            chars[position++] = c;
+                        }
                     }
                 }
-            }
+            });
 
-            return result.ToString();
+            return converted;
         }
     }
 }

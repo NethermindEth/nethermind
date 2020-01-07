@@ -23,6 +23,17 @@ namespace Nethermind.Core2.Crypto
     {
         public const int Length = 32;
 
+        public Hash32(string hex)
+        {
+            byte[] bytes = Nethermind.Core2.Bytes.FromHexString(hex);
+            if (bytes.Length != Length)
+            {
+                throw new ArgumentOutOfRangeException(nameof(hex), bytes.Length, $"{nameof(Hash32)} must have exactly {Length} bytes");
+            }
+
+            Bytes = bytes;
+        }
+        
         public unsafe Hash32(ReadOnlySpan<byte> span)
         {
             if (span.Length != Length)
