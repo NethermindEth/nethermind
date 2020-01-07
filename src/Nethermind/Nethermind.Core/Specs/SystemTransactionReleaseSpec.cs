@@ -35,8 +35,6 @@ namespace Nethermind.Core.Specs
 
         public long GasLimitBoundDivisor => _spec.GasLimitBoundDivisor;
 
-        public Address Registrar => _spec.Registrar;
-
         public UInt256 BlockReward => _spec.BlockReward;
 
         public long DifficultyBombDelay => _spec.DifficultyBombDelay;

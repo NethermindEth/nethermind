@@ -46,7 +46,7 @@ namespace Nethermind.AuRa.Validators
             SetFinalizationManagerInternal(finalizationManager, forProducing);
         }
 
-        protected virtual void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forProducing) { }
+        protected virtual void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forSealing) { }
 
         public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
         {
