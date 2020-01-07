@@ -48,13 +48,17 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg", true)]
         [TestCase("mainnet_archive.cfg", false)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol.cfg", false)]
+        [TestCase("sokol.cfg", true)]
+        [TestCase("sokol_archive.cfg", false)]
+        [TestCase("sokol_validator.cfg", true)]
+        [TestCase("sokol_fastsync.cfg", true)]        
         [TestCase("poacore.cfg", true)]
         [TestCase("poacore_archive.cfg", false)]
         [TestCase("xdai.cfg", true)]
         [TestCase("xdai_archive.cfg", false)]
         [TestCase("spaceneth.cfg", false)]
-        [TestCase("volta.cfg", false)]
+        [TestCase("volta.cfg", true)]
+        [TestCase("volta_archive.cfg", false)]
         public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -72,12 +76,16 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("sokol.cfg", false)]
+        [TestCase("sokol_archive.cfg", false)]
+        [TestCase("sokol_validator.cfg", false)]
+        [TestCase("sokol_fastsync.cfg", false)]
         [TestCase("poacore.cfg", false)]
-        [TestCase("poacore_archive.cfg", true)]
+        [TestCase("poacore_archive.cfg", false)]
         [TestCase("xdai.cfg", false)]
-        [TestCase("xdai_archive.cfg", true)]
+        [TestCase("xdai_archive.cfg", false)]
         [TestCase("spaceneth.cfg", true)]
         [TestCase("volta.cfg", false)]
+        [TestCase("volta_archive.cfg", false)]
         public void Geth_limits_configs_are_correct(string configFile, bool useGethLimitsInFastSync)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -94,7 +102,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
         [TestCase("mainnet.cfg", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
         [TestCase("sokol.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        [TestCase("sokol_archive.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        [TestCase("sokol_validator.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        [TestCase("sokol_fastsync.cfg", "0x5b28c1bfd3a15230c9a46b399cd0f9a6920d432e85381cc6a140b06e8410112f")]
+        [TestCase("poacore.cfg", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
+        [TestCase("poacore_archive.cfg", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
+        [TestCase("xdai.cfg", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
+        [TestCase("xdai_archive.cfg", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
         [TestCase("volta.cfg", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
+        [TestCase("volta_archive.cfg", "0xebd8b413ca7b7f84a8dd20d17519ce2b01954c74d94a0a739a3e416abe0e43e5")]
         public void Genesis_hash_is_correct(string configFile, string genesisHash)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -110,10 +126,17 @@ namespace Nethermind.Runner.Test
         [TestCase("goerli.cfg")]
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
-        [TestCase("sokol.cfg")]
-        [TestCase("poacore.cfg")]
         [TestCase("spaceneth.cfg", true)]
+        [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg", true)]
+        [TestCase("sokol_fastsync.cfg")]
+        [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Mining_defaults_are_correct(string configFile, bool defaultValue = false)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -130,11 +153,18 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
         [TestCase("spaceneth.cfg")]
         [TestCase("ndm_consumer_goerli.cfg")]
         [TestCase("ndm_consumer_local.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Required_config_files_exist(string configFile)
         {
             var configPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "configs", configFile);
@@ -150,8 +180,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Eth_stats_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -168,8 +205,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Grpc_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -205,8 +249,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Ndm_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -223,8 +274,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Metrics_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -241,8 +299,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Network_defaults_are_correct(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -263,8 +328,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Json_default_are_correct(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -283,8 +355,15 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg")]
         [TestCase("mainnet.cfg")]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_validator.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg")]
+        [TestCase("poacore_archive.cfg")]
+        [TestCase("xdai.cfg")]
+        [TestCase("xdai_archive.cfg")]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Kafka_disabled_by_default(string configFile)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
@@ -301,8 +380,14 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("sokol.cfg")]
+        [TestCase("sokol_archive.cfg")]
+        [TestCase("sokol_fastsync.cfg")]
         [TestCase("poacore.cfg", true)]
+        [TestCase("poacore_archive.cfg", true)]
+        [TestCase("xdai.cfg", true)]
+        [TestCase("xdai_archive.cfg", true)]
         [TestCase("volta.cfg")]
+        [TestCase("volta_archive.cfg")]
         public void Basic_configs_are_as_expected(string configFile, bool isProduction = false)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
