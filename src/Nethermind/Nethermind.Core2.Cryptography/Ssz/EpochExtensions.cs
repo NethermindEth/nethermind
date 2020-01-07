@@ -15,13 +15,20 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Cortex.SimpleSerialize;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class CommitteeIndexExtensions
+    public static class EpochExtensions
     {
-        public static SszElement ToSszBasicElement(this CommitteeIndex item)
+        public static Hash32 HashTreeRoot(this Epoch item)
+        {
+            var tree = new SszTree(item.ToSszBasicElement());
+            return new Hash32(tree.HashTreeRoot());
+        }
+
+        public static SszElement ToSszBasicElement(this Epoch item)
         {
             return new SszBasicElement((ulong)item);
         }

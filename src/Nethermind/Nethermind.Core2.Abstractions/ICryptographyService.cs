@@ -38,8 +38,11 @@ namespace Nethermind.Core2
         Hash32 HashTreeRoot(AttestationData attestationData);
         Hash32 HashTreeRoot(BeaconBlock beaconBlock);
         Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody);
-        Hash32 HashTreeRoot(Epoch epoch);
         Hash32 HashTreeRoot(BeaconState beaconState);
+        Hash32 HashTreeRoot(DepositData depositData);
+        Hash32 HashTreeRoot(IList<DepositData> depositData);
+        Hash32 HashTreeRoot(Epoch epoch);
+        Hash32 HashTreeRoot(HistoricalBatch historicalBatch);
 
         Hash32 SigningRoot(BeaconBlock beaconBlock);
         Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader);

@@ -14,16 +14,28 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
+using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class ForkVersionExtensions
+    public static class GweiExtensions
     {
-        public static SszElement ToSszBasicVector(this ForkVersion item)
+        public static SszElement ToSszBasicElement(this Gwei item)
         {
-            return new SszBasicVector(item.AsSpan());
+            return new SszBasicElement((ulong)item);
+        }
+
+        public static SszBasicList ToSszBasicList(this IEnumerable<Gwei> list, ulong limit)
+        {
+            return new SszBasicList(list.Select(x => (ulong)x).ToArray(), limit);
+        }
+
+        public static SszElement ToSszBasicVector(this IEnumerable<Gwei> vector)
+        {
+            return new SszBasicVector(vector.Select(x => (ulong)x).ToArray());
         }
     }
 }

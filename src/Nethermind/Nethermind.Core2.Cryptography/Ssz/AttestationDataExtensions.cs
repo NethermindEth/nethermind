@@ -15,40 +15,34 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class VoluntaryExitExtensions
+    public static class AttestationDataExtensions
     {
-        public static Hash32 SigningRoot(this VoluntaryExit item)
+        public static Hash32 HashTreeRoot(this AttestationData item)
         {
-            var tree = new SszTree(new SszContainer(GetValues(item, true)));
+            var tree = new SszTree(item.ToSszContainer());
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszContainer ToSszContainer(this VoluntaryExit item)
+        public static SszContainer ToSszContainer(this AttestationData item)
         {
-            return new SszContainer(GetValues(item, false));
+            return new SszContainer(GetValues(item));
         }
 
-        public static SszList ToSszList(this IEnumerable<VoluntaryExit> list, ulong limit)
+        private static IEnumerable<SszElement> GetValues(AttestationData item)
         {
-            return new SszList(list.Select(x => x.ToSszContainer()), limit);
-        }
-
-        private static IEnumerable<SszElement> GetValues(VoluntaryExit item, bool forSigning)
-        {
-            yield return item.Epoch.ToSszBasicElement();
-            yield return item.ValidatorIndex.ToSszBasicElement();
-            if (!forSigning)
-            {
-                yield return item.Signature.ToSszBasicVector();
-            }
+            yield return item.Slot.ToSszBasicElement();
+            yield return item.Index.ToSszBasicElement();
+            // LMD GHOST vote
+            yield return item.BeaconBlockRoot.ToSszBasicVector();
+            // FFG vote
+            yield return item.Source.ToSszContainer();
+            yield return item.Target.ToSszContainer();
         }
     }
 }

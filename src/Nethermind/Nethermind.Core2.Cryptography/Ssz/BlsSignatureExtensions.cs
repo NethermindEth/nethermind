@@ -14,29 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class Hash32Extensions
+    public static class BlsSignatureExtensions
     {
-        public static SszBasicVector ToSszBasicVector(this Hash32 item)
+        public static SszElement ToSszBasicVector(this BlsSignature item)
         {
             return new SszBasicVector(item.AsSpan());
-        }
-
-        public static SszList ToSszList(this IEnumerable<Hash32> list, ulong limit)
-        {
-            return new SszList(list.Select(x => x.ToSszBasicVector()), limit);
-        }
-
-        public static SszVector ToSszVector(this IEnumerable<Hash32> vector)
-        {
-            return new SszVector(vector.Select(x => x.ToSszBasicVector()));
         }
     }
 }

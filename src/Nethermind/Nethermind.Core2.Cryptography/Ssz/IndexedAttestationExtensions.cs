@@ -18,19 +18,20 @@ using System.Collections.Generic;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Containers;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class CheckpointExtensions
+    public static class IndexedAttestationExtensions
     {
-        public static SszContainer ToSszContainer(this Checkpoint item)
+        public static SszContainer ToSszContainer(this IndexedAttestation item, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item));
+            return new SszContainer(GetValues(item, maximumValidatorsPerCommittee));
         }
 
-        private static IEnumerable<SszElement> GetValues(Checkpoint item)
+        private static IEnumerable<SszElement> GetValues(IndexedAttestation item, ulong maximumValidatorsPerCommittee)
         {
-            yield return item.Epoch.ToSszBasicElement();
-            yield return item.Root.ToSszBasicVector();
+            yield return item.AttestingIndices.ToSszBasicList(maximumValidatorsPerCommittee);
+            yield return item.Data.ToSszContainer();
+            yield return item.Signature.ToSszBasicVector();
         }
     }
 }

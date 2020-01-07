@@ -15,13 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class BlsSignatureExtensions
+    public static class ForkVersionExtensions
     {
-        public static SszElement ToSszBasicVector(this BlsSignature item)
+        public static SszElement ToSszBasicVector(this ForkVersion item)
         {
             return new SszBasicVector(item.AsSpan());
         }

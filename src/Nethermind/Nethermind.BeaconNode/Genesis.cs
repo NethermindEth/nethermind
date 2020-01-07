@@ -19,7 +19,6 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -91,7 +90,7 @@ namespace Nethermind.BeaconNode
             foreach (Deposit deposit in deposits)
             {
                 depositDataList.Add(deposit.Data);
-                Hash32 depositRoot = depositDataList.HashTreeRoot(_chainConstants.MaximumDepositContracts);
+                Hash32 depositRoot = _cryptographyService.HashTreeRoot(depositDataList);
                 state.Eth1Data.SetDepositRoot(depositRoot);
                 _beaconStateTransition.ProcessDeposit(state, deposit);
             }

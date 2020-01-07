@@ -14,30 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Linq;
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class DepositExtensions
+    public static class Bytes32Extensions
     {
-        public static SszContainer ToSszContainer(this Deposit item)
+        public static SszElement ToSszBasicVector(this Bytes32 item)
         {
-            return new SszContainer(GetValues(item));
-        }
-
-        public static SszList ToSszList(this IEnumerable<Deposit> list, ulong limit)
-        {
-            return new SszList(list.Select(x => x.ToSszContainer()), limit);
-        }
-
-        private static IEnumerable<SszElement> GetValues(Deposit item)
-        {
-            // TODO: vector of byte arrays
-            //yield return new SszVector(item.Proof.AsSpan());
-            yield return item.Data.ToSszContainer();
+            return new SszBasicVector(item.AsSpan());
         }
     }
 }

@@ -22,7 +22,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -39,6 +38,7 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<HonestValidatorConstants> _honestValidatorConstantOptions;
+        private readonly ICryptographyService _cryptographyService;
         private readonly BeaconStateTransition _beaconStateTransition;
         private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
@@ -51,6 +51,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<StateListLengths> stateListLengthOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<HonestValidatorConstants> honestValidatorConstantOptions,
+            ICryptographyService cryptographyService,
             BeaconStateTransition beaconStateTransition,
             ForkChoice forkChoice, 
             IStoreProvider storeProvider,
@@ -63,6 +64,7 @@ namespace Nethermind.BeaconNode
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _honestValidatorConstantOptions = honestValidatorConstantOptions;
+            _cryptographyService = cryptographyService;
             _beaconStateTransition = beaconStateTransition;
             _forkChoice = forkChoice;
             _storeProvider = storeProvider;
@@ -184,8 +186,7 @@ namespace Nethermind.BeaconNode
         {
             _beaconStateTransition.ProcessSlots(state, block.Slot);
             _beaconStateTransition.ProcessBlock(state, block, validateStateRoot: false);
-            Hash32 stateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
-                _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            Hash32 stateRoot = _cryptographyService.HashTreeRoot(state);
             return stateRoot;
         }
         

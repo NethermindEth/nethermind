@@ -15,34 +15,29 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Containers;
-using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class AttestationDataExtensions
+    public static class DepositExtensions
     {
-        public static Hash32 HashTreeRoot(this AttestationData item)
-        {
-            var tree = new SszTree(item.ToSszContainer());
-            return new Hash32(tree.HashTreeRoot());
-        }
-
-        public static SszContainer ToSszContainer(this AttestationData item)
+        public static SszContainer ToSszContainer(this Deposit item)
         {
             return new SszContainer(GetValues(item));
         }
 
-        private static IEnumerable<SszElement> GetValues(AttestationData item)
+        public static SszList ToSszList(this IEnumerable<Deposit> list, ulong limit)
         {
-            yield return item.Slot.ToSszBasicElement();
-            yield return item.Index.ToSszBasicElement();
-            // LMD GHOST vote
-            yield return item.BeaconBlockRoot.ToSszBasicVector();
-            // FFG vote
-            yield return item.Source.ToSszContainer();
-            yield return item.Target.ToSszContainer();
+            return new SszList(list.Select(x => ToSszContainer(x)), limit);
+        }
+
+        private static IEnumerable<SszElement> GetValues(Deposit item)
+        {
+            // TODO: vector of byte arrays
+            //yield return new SszVector(item.Proof.AsSpan());
+            yield return item.Data.ToSszContainer();
         }
     }
 }

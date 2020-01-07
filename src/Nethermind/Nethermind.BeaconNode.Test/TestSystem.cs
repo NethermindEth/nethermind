@@ -20,6 +20,7 @@ using System.Xml.Serialization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
@@ -59,9 +60,7 @@ namespace Nethermind.BeaconNode.Test
             }
             else
             {
-                // NOTE: Can't mock ByRef Span<T>
-                var testCryptographyService = new TestCryptographyService();
-                services.AddSingleton<ICryptographyService>(testCryptographyService);
+                services.AddSingleton<ICryptographyService, TestCryptographyService>();
             }
 
             if (useStore)
@@ -84,7 +83,16 @@ namespace Nethermind.BeaconNode.Test
 
         public class TestCryptographyService : ICryptographyService
         {
-            ICryptographyService _cryptographyService = new CortexCryptographyService();
+            private readonly ICryptographyService _cryptographyService;
+
+            public TestCryptographyService(ChainConstants chainConstants,
+                IOptionsMonitor<MiscellaneousParameters> miscellaneousParameterOptions,
+                IOptionsMonitor<TimeParameters> timeParameterOptions,
+                IOptionsMonitor<StateListLengths> stateListLengthOptions,
+                IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions)
+            {
+                _cryptographyService = new CortexCryptographyService(chainConstants, miscellaneousParameterOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions);
+            }
 
             public BlsPublicKey BlsAggregatePublicKeys(IEnumerable<BlsPublicKey> publicKeys)
             {
@@ -126,12 +134,27 @@ namespace Nethermind.BeaconNode.Test
                 throw new NotImplementedException();
             }
 
+            public Hash32 HashTreeRoot(IList<DepositData> depositData)
+            {
+                throw new NotImplementedException();
+            }
+
             public Hash32 HashTreeRoot(Epoch epoch)
             {
                 throw new NotImplementedException();
             }
 
+            public Hash32 HashTreeRoot(HistoricalBatch historicalBatch)
+            {
+                throw new NotImplementedException();
+            }
+
             public Hash32 HashTreeRoot(BeaconState beaconState)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 HashTreeRoot(DepositData depositData)
             {
                 throw new NotImplementedException();
             }

@@ -17,11 +17,11 @@
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class ShardExtensions
+    public static class SlotExtensions
     {
-        public static SszElement ToSszBasicElement(this Shard item)
+        public static SszElement ToSszBasicElement(this Slot item)
         {
             return new SszBasicElement((ulong)item);
         }

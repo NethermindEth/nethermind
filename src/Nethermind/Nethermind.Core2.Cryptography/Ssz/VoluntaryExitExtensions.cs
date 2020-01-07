@@ -17,28 +17,37 @@
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class AttestationExtensions
+    public static class VoluntaryExitExtensions
     {
-        public static SszContainer ToSszContainer(this Attestation item, ulong maximumValidatorsPerCommittee)
+        public static Hash32 SigningRoot(this VoluntaryExit item)
         {
-            return new SszContainer(GetValues(item, maximumValidatorsPerCommittee));
+            var tree = new SszTree(new SszContainer(GetValues(item, true)));
+            return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszList ToSszList(this IEnumerable<Attestation> list, ulong limit, ulong maximumValidatorsPerCommittee)
+        public static SszContainer ToSszContainer(this VoluntaryExit item)
         {
-            return new SszList(list.Select(x => x.ToSszContainer(maximumValidatorsPerCommittee)), limit);
+            return new SszContainer(GetValues(item, false));
         }
 
-        private static IEnumerable<SszElement> GetValues(Attestation item, ulong maximumValidatorsPerCommittee)
+        public static SszList ToSszList(this IEnumerable<VoluntaryExit> list, ulong limit)
         {
-            yield return item.AggregationBits.ToSszBitlist(maximumValidatorsPerCommittee);
-            yield return item.Data.ToSszContainer();
-            yield return item.Signature.ToSszBasicVector();
+            return new SszList(list.Select(x => ToSszContainer(x)), limit);
+        }
+
+        private static IEnumerable<SszElement> GetValues(VoluntaryExit item, bool forSigning)
+        {
+            yield return item.Epoch.ToSszBasicElement();
+            yield return item.ValidatorIndex.ToSszBasicElement();
+            if (!forSigning)
+            {
+                yield return item.Signature.ToSszBasicVector();
+            }
         }
     }
 }

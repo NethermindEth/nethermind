@@ -18,27 +18,37 @@ using System.Collections.Generic;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class HistoricalBatchExtensions
+    public static class BeaconBlockHeaderExtensions
     {
-        public static Hash32 HashTreeRoot(this HistoricalBatch item)
+        public static Hash32 SigningRoot(this BeaconBlockHeader item)
         {
-            var tree = new SszTree(item.ToSszContainer());
+            var tree = new SszTree(new SszContainer(GetValues(item, true)));
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszContainer ToSszContainer(this HistoricalBatch item)
+        public static SszContainer ToSszContainer(this BeaconBlockHeader item)
         {
-            return new SszContainer(GetValues(item));
+            return new SszContainer(GetValues(item, false));
         }
 
-        private static IEnumerable<SszElement> GetValues(HistoricalBatch item)
+        private static IEnumerable<SszElement> GetValues(BeaconBlockHeader item, bool forSigning)
         {
-            yield return item.BlockRoots.ToSszVector();
-            yield return item.StateRoots.ToSszVector();
+            //slot: Slot
+            yield return new SszBasicElement((ulong)item.Slot);
+            //parent_root: Hash
+            yield return item.ParentRoot.ToSszBasicVector();
+            //state_root: Hash
+            yield return item.StateRoot.ToSszBasicVector();
+            //body_root: Hash
+            yield return item.BodyRoot.ToSszBasicVector();
+            if (!forSigning)
+            {
+                //signature: BLSSignature
+                yield return item.Signature.ToSszBasicVector();
+            }
         }
     }
 }

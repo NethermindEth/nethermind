@@ -14,30 +14,16 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using System.Linq;
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class ProposerSlashingExtensions
+    public static class ShardExtensions
     {
-        public static SszContainer ToSszContainer(this ProposerSlashing item)
+        public static SszElement ToSszBasicElement(this Shard item)
         {
-            return new SszContainer(GetValues(item));
-        }
-
-        public static SszList ToSszList(this IEnumerable<ProposerSlashing> list, ulong limit)
-        {
-            return new SszList(list.Select(x => x.ToSszContainer()), limit);
-        }
-
-        private static IEnumerable<SszElement> GetValues(ProposerSlashing item)
-        {
-            yield return item.ProposerIndex.ToSszBasicElement();
-            yield return item.Header1.ToSszContainer();
-            yield return item.Header2.ToSszContainer();
+            return new SszBasicElement((ulong)item);
         }
     }
 }

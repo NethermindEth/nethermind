@@ -17,27 +17,25 @@
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class BeaconStateExtensions
     {
-        public static Hash32 HashTreeRoot(this BeaconState item, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static Hash32 HashTreeRoot(this BeaconState item, ulong historicalRootsLimit, ulong slotsPerEth1VotingPeriod, ulong validatorRegistryLimit, ulong maximumAttestationsPerEpoch, ulong maximumValidatorsPerCommittee)
         {
-            var tree = new SszTree(item.ToSszContainer(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock));
+            var tree = new SszTree(item.ToSszContainer(historicalRootsLimit, slotsPerEth1VotingPeriod, validatorRegistryLimit, maximumAttestationsPerEpoch, maximumValidatorsPerCommittee));
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszContainer ToSszContainer(this BeaconState item, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static SszContainer ToSszContainer(this BeaconState item, ulong historicalRootsLimit, ulong slotsPerEth1VotingPeriod, ulong validatorRegistryLimit, ulong maximumAttestationsPerEpoch, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item, miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock));
+            return new SszContainer(GetValues(item, historicalRootsLimit, slotsPerEth1VotingPeriod, validatorRegistryLimit, maximumAttestationsPerEpoch, maximumValidatorsPerCommittee));
         }
 
-        private static IEnumerable<SszElement> GetValues(BeaconState item, MiscellaneousParameters miscellaneousParameters, TimeParameters timeParameters, StateListLengths stateListLengths, MaxOperationsPerBlock maxOperationsPerBlock)
+        private static IEnumerable<SszElement> GetValues(BeaconState item, ulong historicalRootsLimit, ulong slotsPerEth1VotingPeriod, ulong validatorRegistryLimit, ulong maximumAttestationsPerEpoch, ulong maximumValidatorsPerCommittee)
         {
             //# Versioning
             yield return item.GenesisTime.ToSszBasicElement();
@@ -48,16 +46,16 @@ namespace Nethermind.BeaconNode.Ssz
             yield return item.LatestBlockHeader.ToSszContainer();
             yield return item.BlockRoots.ToSszVector();
             yield return item.StateRoots.ToSszVector();
-            yield return item.HistoricalRoots.ToSszList(stateListLengths.HistoricalRootsLimit);
+            yield return item.HistoricalRoots.ToSszList(historicalRootsLimit);
 
             //# Eth1
             yield return item.Eth1Data.ToSszContainer();
-            yield return new SszList(item.Eth1DataVotes.Select(x => x.ToSszContainer()), (ulong)timeParameters.SlotsPerEth1VotingPeriod);
+            yield return new SszList(item.Eth1DataVotes.Select(x => Eth1DataExtensions.ToSszContainer(x)), slotsPerEth1VotingPeriod);
             yield return item.Eth1DepositIndex.ToSszBasicElement();
 
             //# Registry
-            yield return new SszList(item.Validators.Select(x => x.ToSszContainer()), stateListLengths.ValidatorRegistryLimit);
-            yield return item.Balances.ToSszBasicList(stateListLengths.ValidatorRegistryLimit);
+            yield return new SszList(item.Validators.Select(x => ValidatorExtensions.ToSszContainer(x)), validatorRegistryLimit);
+            yield return item.Balances.ToSszBasicList(validatorRegistryLimit);
 
             //# Randomness
             //yield return item.StartShard.ToSszBasicElement();
@@ -68,8 +66,8 @@ namespace Nethermind.BeaconNode.Ssz
             yield return item.Slashings.ToSszBasicVector();
 
             //# Attestations
-            yield return item.PreviousEpochAttestations.ToSszList(maxOperationsPerBlock.MaximumAttestations * (ulong)timeParameters.SlotsPerEpoch, miscellaneousParameters);
-            yield return item.CurrentEpochAttestations.ToSszList(maxOperationsPerBlock.MaximumAttestations * (ulong)timeParameters.SlotsPerEpoch, miscellaneousParameters);
+            yield return item.PreviousEpochAttestations.ToSszList(maximumAttestationsPerEpoch, maximumValidatorsPerCommittee);
+            yield return item.CurrentEpochAttestations.ToSszList(maximumAttestationsPerEpoch, maximumValidatorsPerCommittee);
 
             //# Crosslinks
             //# Previous epoch snapshot

@@ -17,13 +17,13 @@
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class Bytes32Extensions
+    public static class CommitteeIndexExtensions
     {
-        public static SszElement ToSszBasicVector(this Bytes32 item)
+        public static SszElement ToSszBasicElement(this CommitteeIndex item)
         {
-            return new SszBasicVector(item.AsSpan());
+            return new SszBasicElement((ulong)item);
         }
     }
 }

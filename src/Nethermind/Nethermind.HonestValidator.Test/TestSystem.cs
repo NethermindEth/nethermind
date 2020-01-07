@@ -23,6 +23,7 @@ using Nethermind.BeaconNode.OApiClient;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
@@ -49,6 +50,7 @@ namespace Nethermind.HonestValidator.Test
             services.ConfigureBeaconChain(configuration);
             services.AddHonestValidator(configuration);
             services.AddBeaconNodeOapiClient(configuration);
+            services.AddCryptographyService(configuration);
             
             return services;
         }

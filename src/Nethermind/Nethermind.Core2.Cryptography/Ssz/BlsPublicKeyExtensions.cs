@@ -15,15 +15,15 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Types;
+using Nethermind.Core2.Crypto;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class SlotExtensions
+    public static class BlsPublicKeyExtensions
     {
-        public static SszElement ToSszBasicElement(this Slot item)
+        public static SszElement ToSszBasicVector(this BlsPublicKey item)
         {
-            return new SszBasicElement((ulong)item);
+            return new SszBasicVector(item.AsSpan());
         }
     }
 }

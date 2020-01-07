@@ -22,7 +22,6 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -371,7 +370,7 @@ namespace Nethermind.BeaconNode
                 throw new ArgumentOutOfRangeException("block.Slot", block.Slot, $"Block slot must match state slot {state.Slot}.");
             }
             // Verify that the parent matches
-            Hash32 latestBlockSigningRoot = state.LatestBlockHeader.SigningRoot();
+            Hash32 latestBlockSigningRoot = _cryptographyService.SigningRoot(state.LatestBlockHeader);
             if (block.ParentRoot != latestBlockSigningRoot)
             {
                 throw new ArgumentOutOfRangeException("block.ParentRoot", block.ParentRoot, $"Block parent root must match latest block header root {latestBlockSigningRoot}.");
@@ -418,7 +417,7 @@ namespace Nethermind.BeaconNode
 
             // Verify the Merkle branch
             bool isValid = _beaconChainUtility.IsValidMerkleBranch(
-                deposit.Data.HashTreeRoot(),
+                _cryptographyService.HashTreeRoot(deposit.Data),
                 deposit.Proof,
                 _chainConstants.DepositContractTreeDepth + 1, // Add 1 for the 'List' length mix-in
                 state.Eth1DepositIndex,
@@ -548,7 +547,7 @@ namespace Nethermind.BeaconNode
             if ((ulong)nextEpoch % divisor == 0)
             {
                 HistoricalBatch historicalBatch = new HistoricalBatch(state.BlockRoots.ToArray(), state.StateRoots.ToArray());
-                Hash32 historicalRoot = historicalBatch.HashTreeRoot();
+                Hash32 historicalRoot = _cryptographyService.HashTreeRoot(historicalBatch);
                 state.AddHistoricalRoot(historicalRoot);
             }
 
@@ -832,7 +831,7 @@ namespace Nethermind.BeaconNode
                 state.LatestBlockHeader.SetStateRoot(previousStateRoot);
             }
             // Cache block root
-            Hash32 previousBlockRoot = state.LatestBlockHeader.SigningRoot();
+            Hash32 previousBlockRoot = _cryptographyService.SigningRoot(state.LatestBlockHeader);
             state.SetBlockRoot(previousRootIndex, previousBlockRoot);
         }
 

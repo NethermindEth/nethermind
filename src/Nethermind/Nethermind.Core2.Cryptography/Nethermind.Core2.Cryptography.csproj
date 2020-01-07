@@ -11,12 +11,15 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
+        <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Cortex.Cryptography.Bls" Version="0.4.0" />
+        <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="3.0.1" />
     </ItemGroup>
-
+    
 </Project>

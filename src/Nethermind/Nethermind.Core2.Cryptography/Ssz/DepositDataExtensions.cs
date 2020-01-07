@@ -19,9 +19,8 @@ using System.Linq;
 using Cortex.SimpleSerialize;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
-using Nethermind.Core2.Types;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
     public static class DepositDataExtensions
     {
@@ -50,7 +49,7 @@ namespace Nethermind.BeaconNode.Ssz
 
         public static SszList ToSszList(this IEnumerable<DepositData> list, ulong limit)
         {
-            return new SszList(list.Select(x => x.ToSszContainer()), limit);
+            return new SszList(list.Select(x => ToSszContainer(x)), limit);
         }
 
         private static IEnumerable<SszElement> GetValues(DepositData item, bool forSigning)

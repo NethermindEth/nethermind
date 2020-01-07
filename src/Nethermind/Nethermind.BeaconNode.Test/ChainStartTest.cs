@@ -24,6 +24,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography;
@@ -58,7 +59,8 @@ namespace Nethermind.BeaconNode.Test
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
             });
 
-            CortexCryptographyService cryptographyService = new CortexCryptographyService();
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
+            
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
                 miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
                 cryptographyService);

@@ -19,7 +19,7 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -58,13 +58,14 @@ namespace Nethermind.BeaconNode.Test.Helpers
             var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
             var stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
             var maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
 
             var depositRoot = new Hash32(Enumerable.Repeat((byte)0x42, 32).ToArray());
             var state = new BeaconState(
                 0,
                 numberOfValidators,
                 new Eth1Data(numberOfValidators, depositRoot),
-                new BeaconBlockHeader((new BeaconBlockBody()).HashTreeRoot(miscellaneousParameters, maxOperationsPerBlock)),
+                new BeaconBlockHeader(cryptographyService.HashTreeRoot(new BeaconBlockBody())),
                 timeParameters.SlotsPerHistoricalRoot,
                 stateListLengths.EpochsPerHistoricalVector,
                 stateListLengths.EpochsPerSlashingsVector,

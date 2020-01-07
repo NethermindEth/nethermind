@@ -18,7 +18,7 @@ using System;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -75,10 +75,11 @@ namespace Nethermind.BeaconNode.Test.Helpers
             StateListLengths stateListLengths = testServiceProvider.GetService<IOptions<StateListLengths>>().Value;
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             BeaconStateTransition beaconStateTransition = testServiceProvider.GetService<BeaconStateTransition>();
 
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
-            Hash32 stateRoot = state.HashTreeRoot(miscellaneousParameters, timeParameters, stateListLengths, maxOperationsPerBlock);
+            Hash32 stateRoot = cryptographyService.HashTreeRoot(state);
             block.SetStateRoot(stateRoot);
             TestBlock.SignBlock(testServiceProvider, state, block, ValidatorIndex.None);
         }

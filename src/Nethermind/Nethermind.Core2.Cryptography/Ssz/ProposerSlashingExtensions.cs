@@ -17,27 +17,27 @@
 using System.Collections.Generic;
 using System.Linq;
 using Cortex.SimpleSerialize;
-using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 
-namespace Nethermind.BeaconNode.Ssz
+namespace Nethermind.Core2.Cryptography.Ssz
 {
-    public static class AttesterSlashingExtensions
+    public static class ProposerSlashingExtensions
     {
-        public static SszContainer ToSszContainer(this AttesterSlashing item, ulong maximumValidatorsPerCommittee)
+        public static SszContainer ToSszContainer(this ProposerSlashing item)
         {
-            return new SszContainer(GetValues(item, maximumValidatorsPerCommittee));
+            return new SszContainer(GetValues(item));
         }
 
-        public static SszList ToSszList(this IEnumerable<AttesterSlashing> list, ulong limit, ulong maximumValidatorsPerCommittee)
+        public static SszList ToSszList(this IEnumerable<ProposerSlashing> list, ulong limit)
         {
-            return new SszList(list.Select(x => x.ToSszContainer(maximumValidatorsPerCommittee)), limit);
+            return new SszList(list.Select(x => ToSszContainer(x)), limit);
         }
 
-        private static IEnumerable<SszElement> GetValues(AttesterSlashing item, ulong maximumValidatorsPerCommittee)
+        private static IEnumerable<SszElement> GetValues(ProposerSlashing item)
         {
-            yield return item.Attestation1.ToSszContainer(maximumValidatorsPerCommittee);
-            yield return item.Attestation2.ToSszContainer(maximumValidatorsPerCommittee);
+            yield return item.ProposerIndex.ToSszBasicElement();
+            yield return item.Header1.ToSszContainer();
+            yield return item.Header2.ToSszContainer();
         }
     }
 }
