@@ -17,6 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.HashLib.Extensions;
@@ -251,6 +252,14 @@ namespace Nethermind.HashLib
             uint[] result = TransformFinalUInts();
             Initialize();
             return result;
+        }
+
+        public virtual void ComputeUIntsToUint(Span<uint> data, Span<uint> output)
+        {
+            Initialize();
+            TransformBytes(MemoryMarshal.AsBytes(data));
+            TransformFinalUInts(output);
+            Initialize();
         }
 
         public void TransformObject(object a_data)
@@ -566,6 +575,11 @@ namespace Nethermind.HashLib
         public abstract HashResult TransformFinal();
 
         public virtual uint[] TransformFinalUInts()
+        {
+            throw new NotSupportedException();
+        }
+        
+        public virtual void TransformFinalUInts(Span<uint> output)
         {
             throw new NotSupportedException();
         }
