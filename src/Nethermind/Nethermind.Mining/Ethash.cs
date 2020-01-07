@@ -341,7 +341,7 @@ namespace Nethermind.Mining
                 for (uint j = 0; j < hashesInMix; j++)
                 {
                     uint[] item = dataSet.CalcDataSetItem(p + j);
-                    item.AsSpan().CopyTo(newData.Slice((int)(j * item.Length)));
+                    item.CopyTo(newData.Slice((int)(j * item.Length)));
                 }
 
                 Fnv(mixInts, newData);
