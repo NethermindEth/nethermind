@@ -97,6 +97,16 @@ namespace Nethermind.Core.Crypto
             return _hash.ComputeBytesToUint(input);
         }
 
+        public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
+        {
+            if (_hash == null)
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
+            _hash.ComputeUIntsToUint(input, output);
+        }
+
         public static uint[] ComputeUIntsToUInts(uint[] input)
         {
             if (input == null || input.Length == 0)
