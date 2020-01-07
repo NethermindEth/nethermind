@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -156,7 +157,7 @@ namespace Nethermind.Mining
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
             BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
-            Keccak headerHashed = GetTruncatedHash(header);
+            ValueKeccak headerHashed = GetTruncatedHash(header);
 
             // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
             byte[] mixHash;
@@ -195,7 +196,7 @@ namespace Nethermind.Mining
 
         internal static uint GetUInt(byte[] bytes, uint offset)
         {
-            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int) offset * 4);
+            return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
         }
 
         public bool Validate(BlockHeader header)
@@ -203,7 +204,7 @@ namespace Nethermind.Mining
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet cache = GetOrAddCache(epoch);
             ulong fullSize = GetDataSize(epoch);
-            Keccak headerHashed = GetTruncatedHash(header);
+            ValueKeccak headerHashed = GetTruncatedHash(header);
             (byte[] _, byte[] result) = Hashimoto(fullSize, cache, headerHashed, header.MixHash, header.Nonce);
 
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
@@ -292,23 +293,38 @@ namespace Nethermind.Mining
 
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
 
-        private static Keccak GetTruncatedHash(BlockHeader header)
+        private static ValueKeccak GetTruncatedHash(BlockHeader header)
         {
-            Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Keccak headerHashed = Keccak.Compute(encoded); // sic! Keccak here not Keccak512
-            return headerHashed;
+            var length = _headerDecoder.GetLength(header, RlpBehaviors.ForSealing);
+            var array = ArrayPool<byte>.Shared.Rent(length);
+            try
+            {
+                var ms = new MemoryStream(array);
+                _headerDecoder.Encode(ms, header, RlpBehaviors.ForSealing);
+                ValueKeccak headerHashed = ValueKeccak.Compute(array.AsSpan(0, (int)ms.Position)); // sic! Keccak here not Keccak512
+                return headerHashed;
+            }
+            finally
+            {
+                if (array != null)
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
+            }
         }
 
-        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, in ValueKeccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
-            uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
+            uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
             const uint hashesInMix = MixBytes / HashBytes;
 
-            byte[] nonceBytes = new byte[8];
-            BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, nonce);
+            const int keccakSize = 32;
+            Span<byte> concatenated = stackalloc byte[keccakSize + 8];
+            headerHash.BytesAsSpan.CopyTo(concatenated);
+            BinaryPrimitives.WriteUInt64LittleEndian(concatenated.Slice(keccakSize), nonce);
 
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes; // this tests fine
+            byte[] headerAndNonceHashed = Keccak512.Compute(concatenated).Bytes; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 
             for (int i = 0; i < hashesInMix; i++)
@@ -321,7 +337,7 @@ namespace Nethermind.Mining
             for (uint i = 0; i < Accesses; i++)
             {
                 uint p = Fnv(i ^ firstOfHeaderAndNonce, mixInts[i % wordsInMix]) % (hashesInFull / hashesInMix) * hashesInMix; // since we take 'hashesInMix' consecutive blocks we want only starting indices of such blocks
-                
+
                 for (uint j = 0; j < hashesInMix; j++)
                 {
                     uint[] item = dataSet.CalcDataSetItem(p + j);
