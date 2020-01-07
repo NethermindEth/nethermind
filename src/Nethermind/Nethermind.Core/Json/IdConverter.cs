@@ -31,10 +31,10 @@ namespace Nethermind.Core.Json
                     writer.WriteValue(typedValue);
                     break;
                 case long typedValue:
-                    writer.WriteValue(typedValue.ToString());
+                    writer.WriteValue(typedValue);
                     break;
                 case BigInteger typedValue:
-                    writer.WriteValue(typedValue.ToString());
+                    writer.WriteValue(typedValue);
                     break;
                 case string typedValue:
                     writer.WriteValue(typedValue);

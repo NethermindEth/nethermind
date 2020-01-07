@@ -63,5 +63,12 @@ namespace Nethermind.JsonRpc.Test
             JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
             Assert.AreEqual(67,result.Response.Id);
         }
+        
+        [Test]
+        public async Task Can_process_long()
+        {
+            JsonRpcResult result = await _jsonRpcProcessor.ProcessAsync("{\"id\":9223372036854775807,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
+            Assert.AreEqual(long.MaxValue,result.Response.Id);
+        }
     }
 }
