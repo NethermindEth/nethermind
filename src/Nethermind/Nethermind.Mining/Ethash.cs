@@ -317,14 +317,15 @@ namespace Nethermind.Mining
             }
 
             uint firstOfHeaderAndNonce = GetUInt(headerAndNonceHashed, 0);
+            Span<uint> newData = stackalloc uint[(int)wordsInMix];
             for (uint i = 0; i < Accesses; i++)
             {
                 uint p = Fnv(i ^ firstOfHeaderAndNonce, mixInts[i % wordsInMix]) % (hashesInFull / hashesInMix) * hashesInMix; // since we take 'hashesInMix' consecutive blocks we want only starting indices of such blocks
-                uint[] newData = new uint[wordsInMix];
+                
                 for (uint j = 0; j < hashesInMix; j++)
                 {
                     uint[] item = dataSet.CalcDataSetItem(p + j);
-                    Buffer.BlockCopy(item, 0, newData, (int) (j * item.Length * 4), item.Length * 4);
+                    item.AsSpan().CopyTo(newData.Slice((int)(j * item.Length)));
                 }
 
                 Fnv(mixInts, newData);
