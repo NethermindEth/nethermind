@@ -28,7 +28,7 @@ namespace Nethermind.Ssz.Test
     public class SszBitArrayTests
     {
         [TestCaseSource(nameof(GetBitvectorData))]
-        public void BitvectorSerialize(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void BitvectorEncode(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var input = new BitArray(value);
@@ -44,8 +44,23 @@ namespace Nethermind.Ssz.Test
             //hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
 
+        [TestCaseSource(nameof(GetBitvectorData))]
+        public void BitvectorDecode(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
+        {
+            // Arrange
+            var encoded = Bytes.FromHexString(expectedByteString);
+            var vectorLength = value.Length;
+
+            // Act
+            BitArray decoded = Ssz.DecodeBitvector(encoded, vectorLength);
+
+            // Assert
+            BitArray expected = new BitArray(value);
+            decoded.ShouldBe(expected);
+        }
+
         [TestCaseSource(nameof(GetBitlistData))]
-        public void BitlistSerialize(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void BitlistEncode(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var input = new BitArray(value);
