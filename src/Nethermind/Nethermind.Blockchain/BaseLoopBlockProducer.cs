@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain
     {
         private readonly string _name;
         private Task _producerTask;
-        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        protected readonly CancellationTokenSource CancellationTokenSource = new CancellationTokenSource();
         
         protected BaseLoopBlockProducer(
             IPendingTransactionSelector pendingTransactionSelector,
@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
 
         public override void Start()
         {
-            _producerTask = Task.Run(ProducerLoop, _cancellationTokenSource.Token).ContinueWith(t =>
+            _producerTask = Task.Run(ProducerLoop, CancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -64,19 +64,21 @@ namespace Nethermind.Blockchain
         
         public override async Task StopAsync()
         {
-            _cancellationTokenSource?.Cancel();
+            CancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
         
-        private async ValueTask ProducerLoop()
+        protected virtual async ValueTask ProducerLoop()
         {
-            while (!_cancellationTokenSource.IsCancellationRequested)
+            while (!CancellationTokenSource.IsCancellationRequested)
             {
-                await TryProduceNewBlock(_cancellationTokenSource.Token);
-                await BetweenBlocks();
+                await ProducerLoopStep();
             }
         }
 
-        protected abstract ValueTask BetweenBlocks();
+        protected virtual async ValueTask ProducerLoopStep()
+        {
+            await TryProduceNewBlock(CancellationTokenSource.Token);
+        }
     }
 }

@@ -60,7 +60,7 @@ namespace Nethermind.Core
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
         public UInt256 Timestamp { get; set; }
-        public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).DateTime;
+        public DateTime TimestampDate => DateTimeOffset.FromUnixTimeSeconds((long) Timestamp).LocalDateTime;
         public byte[] ExtraData { get; set; }
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
