@@ -378,7 +378,7 @@ namespace Nethermind.BeaconNode
             }
 
             // Save current block as the new latest block
-            Hash32 bodyRoot = block.Body.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            Hash32 bodyRoot = _cryptographyService.HashTreeRoot(block.Body);
             BeaconBlockHeader newBlockHeader = new BeaconBlockHeader(block.Slot,
                 block.ParentRoot,
                 Hash32.Zero, // `state_root` is zeroed and overwritten in the next `process_slot` call
@@ -398,8 +398,7 @@ namespace Nethermind.BeaconNode
             // Verify proposer signature
             if (validateStateRoot)
             {
-                Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue,
-                    _maxOperationsPerBlockOptions.CurrentValue);
+                Hash32 signingRoot = _cryptographyService.SigningRoot(block);
                 Domain domain = _beaconStateAccessor.GetDomain(state,
                     _signatureDomainOptions.CurrentValue.BeaconProposer, Epoch.None);
                 bool validSignature =
@@ -442,8 +441,9 @@ namespace Nethermind.BeaconNode
                 // Note: The deposit contract does not check signatures.
                 // Note: Deposits are valid across forks, thus the deposit domain is retrieved directly from 'computer_domain'.
 
+                Hash32 signingRoot = _cryptographyService.SigningRoot(deposit.Data);
                 Domain domain = _beaconChainUtility.ComputeDomain(_signatureDomainOptions.CurrentValue.Deposit);
-                if (!_cryptographyService.BlsVerify(publicKey, deposit.Data.SigningRoot(), deposit.Data.Signature, domain))
+                if (!_cryptographyService.BlsVerify(publicKey, signingRoot, deposit.Data.Signature, domain))
                 {
                     return;
                 }
@@ -686,7 +686,7 @@ namespace Nethermind.BeaconNode
             Epoch slashingEpoch = _beaconChainUtility.ComputeEpochAtSlot(proposerSlashing.Header1.Slot);
             Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.BeaconProposer, slashingEpoch);
 
-            Hash32 signingRoot1 = proposerSlashing.Header1.SigningRoot();
+            Hash32 signingRoot1 = _cryptographyService.SigningRoot(proposerSlashing.Header1);
             BlsSignature signature1 = proposerSlashing.Header1.Signature;
             bool header1Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot1, signature1, domain);
             if (!header1Valid)
@@ -694,7 +694,7 @@ namespace Nethermind.BeaconNode
                 throw new Exception("Proposer slashing header 1 signature is not valid.");
             }
 
-            Hash32 signingRoot2 = proposerSlashing.Header2.SigningRoot();
+            Hash32 signingRoot2 = _cryptographyService.SigningRoot(proposerSlashing.Header2);
             BlsSignature signature2 = proposerSlashing.Header2.Signature;
             bool header2Valid = _cryptographyService.BlsVerify(proposer.PublicKey, signingRoot2, signature2, domain);
             if (!header2Valid)
@@ -712,7 +712,7 @@ namespace Nethermind.BeaconNode
             // Verify RANDAO reveal
             ValidatorIndex beaconProposerIndex = _beaconStateAccessor.GetBeaconProposerIndex(state);
             Validator proposer = state.Validators[(int)beaconProposerIndex];
-            Hash32 epochRoot = epoch.HashTreeRoot();
+            Hash32 epochRoot = _cryptographyService.HashTreeRoot(epoch);
             Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.Randao, Epoch.None);
             bool validRandaoReveal = _cryptographyService.BlsVerify(proposer.PublicKey, epochRoot, body.RandaoReveal, domain);
             if (!validRandaoReveal)
@@ -823,8 +823,7 @@ namespace Nethermind.BeaconNode
         {
             if(_logger.IsDebug()) LogDebug.ProcessSlot(_logger, state.Slot, state, null);
             // Cache state root
-            Hash32 previousStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue,
-                _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            Hash32 previousStateRoot = _cryptographyService.HashTreeRoot(state);
             Slot previousRootIndex = (Slot)(state.Slot % _timeParameterOptions.CurrentValue.SlotsPerHistoricalRoot);
             state.SetStateRoot(previousRootIndex, previousStateRoot);
             // Cache latest block header state root
@@ -896,7 +895,7 @@ namespace Nethermind.BeaconNode
 
             //# Verify signature
             Domain domain = _beaconStateAccessor.GetDomain(state, _signatureDomainOptions.CurrentValue.VoluntaryExit, exit.Epoch);
-            Hash32 signingRoot = exit.SigningRoot();
+            Hash32 signingRoot = _cryptographyService.SigningRoot(exit);
             bool validSignature = _cryptographyService.BlsVerify(validator.PublicKey, signingRoot, exit.Signature, domain);
             if (!validSignature)
             {
@@ -922,7 +921,7 @@ namespace Nethermind.BeaconNode
                 //options.AddCortexContainerConverters();
                 //var debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
 
-                Hash32 checkStateRoot = state.HashTreeRoot(_miscellaneousParameterOptions.CurrentValue, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+                Hash32 checkStateRoot = _cryptographyService.HashTreeRoot(state);
                 if (block.StateRoot != checkStateRoot)
                 {
                     throw new Exception($"Mismatch between calculated state root {checkStateRoot} and block state root {block.StateRoot}.");
@@ -930,7 +929,7 @@ namespace Nethermind.BeaconNode
 
                 if (_logger.IsInfo())
                 {
-                    Hash32 blockSigningRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+                    Hash32 blockSigningRoot = _cryptographyService.SigningRoot(block);
                     Log.ValidatedStateTransition(_logger, checkStateRoot, state, blockSigningRoot, block, null);
                 }
             }

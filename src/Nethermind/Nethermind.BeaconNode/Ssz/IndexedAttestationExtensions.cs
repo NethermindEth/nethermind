@@ -23,14 +23,14 @@ namespace Nethermind.BeaconNode.Ssz
 {
     public static class IndexedAttestationExtensions
     {
-        public static SszContainer ToSszContainer(this IndexedAttestation item, MiscellaneousParameters miscellaneousParameters)
+        public static SszContainer ToSszContainer(this IndexedAttestation item, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item, miscellaneousParameters));
+            return new SszContainer(GetValues(item, maximumValidatorsPerCommittee));
         }
 
-        private static IEnumerable<SszElement> GetValues(IndexedAttestation item, MiscellaneousParameters miscellaneousParameters)
+        private static IEnumerable<SszElement> GetValues(IndexedAttestation item, ulong maximumValidatorsPerCommittee)
         {
-            yield return item.AttestingIndices.ToSszBasicList(miscellaneousParameters.MaximumValidatorsPerCommittee);
+            yield return item.AttestingIndices.ToSszBasicList(maximumValidatorsPerCommittee);
             yield return item.Data.ToSszContainer();
             yield return item.Signature.ToSszBasicVector();
         }

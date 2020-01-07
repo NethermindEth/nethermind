@@ -25,28 +25,28 @@ namespace Nethermind.BeaconNode.Ssz
 {
     public static class BeaconBlockBodyExtensions
     {
-        public static Hash32 HashTreeRoot(this BeaconBlockBody item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static Hash32 HashTreeRoot(this BeaconBlockBody item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
-            var tree = new SszTree(item.ToSszContainer(miscellaneousParameters, maxOperationsPerBlock));
+            var tree = new SszTree(item.ToSszContainer(maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee));
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszContainer ToSszContainer(this BeaconBlockBody item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static SszContainer ToSszContainer(this BeaconBlockBody item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item, miscellaneousParameters, maxOperationsPerBlock));
+            return new SszContainer(GetValues(item, maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee));
         }
 
-        private static IEnumerable<SszElement> GetValues(BeaconBlockBody item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock)
+        private static IEnumerable<SszElement> GetValues(BeaconBlockBody item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
             yield return item.RandaoReveal.ToSszBasicVector();
             yield return item.Eth1Data.ToSszContainer();
             yield return item.Graffiti.ToSszBasicVector();
             // Operations
-            yield return item.ProposerSlashings.ToSszList(maxOperationsPerBlock.MaximumProposerSlashings);
-            yield return item.AttesterSlashings.ToSszList(maxOperationsPerBlock.MaximumAttesterSlashings, miscellaneousParameters);
-            yield return item.Attestations.ToSszList(maxOperationsPerBlock.MaximumAttestations, miscellaneousParameters);
-            yield return item.Deposits.ToSszList(maxOperationsPerBlock.MaximumDeposits);
-            yield return item.VoluntaryExits.ToSszList(maxOperationsPerBlock.MaximumVoluntaryExits);
+            yield return item.ProposerSlashings.ToSszList(maximumProposerSlashings);
+            yield return item.AttesterSlashings.ToSszList(maximumAttesterSlashings, maximumValidatorsPerCommittee);
+            yield return item.Attestations.ToSszList(maximumAttestations, maximumValidatorsPerCommittee);
+            yield return item.Deposits.ToSszList(maximumDeposits);
+            yield return item.VoluntaryExits.ToSszList(maximumVoluntaryExits);
             //yield return item.Transfers.ToSszList(MAX_TRANSFERS);
         }
     }

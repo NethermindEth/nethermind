@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Hash32 = Nethermind.Core2.Crypto.Hash32;
@@ -33,5 +34,16 @@ namespace Nethermind.Core2
         Hash32 Hash(Hash32 a, Hash32 b);
 
         Hash32 Hash(ReadOnlySpan<byte> bytes);
+
+        Hash32 HashTreeRoot(AttestationData attestationData);
+        Hash32 HashTreeRoot(BeaconBlock beaconBlock);
+        Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody);
+        Hash32 HashTreeRoot(Epoch epoch);
+        Hash32 HashTreeRoot(BeaconState beaconState);
+
+        Hash32 SigningRoot(BeaconBlock beaconBlock);
+        Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader);
+        Hash32 SigningRoot(DepositData depositData);
+        Hash32 SigningRoot(VoluntaryExit voluntaryExit);
     }
 }

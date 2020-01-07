@@ -41,6 +41,7 @@ namespace Nethermind.BeaconNode
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<MiscellaneousParameters> _miscellaneousParameterOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
+        private readonly ICryptographyService _cryptographyService;
         private readonly IOptionsMonitor<StateListLengths> _stateListLengthOptions;
         private readonly IStoreProvider _storeProvider;
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
@@ -54,6 +55,7 @@ namespace Nethermind.BeaconNode
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<ForkChoiceConfiguration> forkChoiceConfigurationOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
+            ICryptographyService cryptographyService,
             BeaconChainUtility beaconChainUtility,
             BeaconStateAccessor beaconStateAccessor,
             BeaconStateTransition beaconStateTransition,
@@ -67,6 +69,7 @@ namespace Nethermind.BeaconNode
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _forkChoiceConfigurationOptions = forkChoiceConfigurationOptions;
             _signatureDomainOptions = signatureDomainOptions;
+            _cryptographyService = cryptographyService;
             _beaconChainUtility = beaconChainUtility;
             _beaconStateAccessor = beaconStateAccessor;
             _beaconStateTransition = beaconStateTransition;
@@ -112,9 +115,11 @@ namespace Nethermind.BeaconNode
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
 
-            Hash32 stateRoot = genesisState.HashTreeRoot(miscellaneousParameters, _timeParameterOptions.CurrentValue, _stateListLengthOptions.CurrentValue, maxOperationsPerBlock);
+            Hash32 stateRoot = _cryptographyService.HashTreeRoot(genesisState);
             BeaconBlock genesisBlock = new BeaconBlock(stateRoot);
-            Hash32 root = genesisBlock.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+            
+            Hash32 root = _cryptographyService.SigningRoot(genesisBlock);
+
             Checkpoint justifiedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
             Checkpoint finalizedCheckpoint = new Checkpoint(_initialValueOptions.CurrentValue.GenesisEpoch, root);
 
@@ -299,7 +304,10 @@ namespace Nethermind.BeaconNode
 
         public async Task OnBlockAsync(IStore store, BeaconBlock block)
         {
-            Hash32 signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
+            MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
+
+            Hash32 signingRoot = _cryptographyService.SigningRoot(block);
             
             if (_logger.IsInfo()) Log.OnBlock(_logger, signingRoot, block, null);
             

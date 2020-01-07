@@ -24,19 +24,19 @@ namespace Nethermind.BeaconNode.Ssz
 {
     public static class AttestationExtensions
     {
-        public static SszContainer ToSszContainer(this Attestation item, MiscellaneousParameters miscellaneousParameters)
+        public static SszContainer ToSszContainer(this Attestation item, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item, miscellaneousParameters));
+            return new SszContainer(GetValues(item, maximumValidatorsPerCommittee));
         }
 
-        public static SszList ToSszList(this IEnumerable<Attestation> list, ulong limit, MiscellaneousParameters miscellaneousParameters)
+        public static SszList ToSszList(this IEnumerable<Attestation> list, ulong limit, ulong maximumValidatorsPerCommittee)
         {
-            return new SszList(list.Select(x => x.ToSszContainer(miscellaneousParameters)), limit);
+            return new SszList(list.Select(x => x.ToSszContainer(maximumValidatorsPerCommittee)), limit);
         }
 
-        private static IEnumerable<SszElement> GetValues(Attestation item, MiscellaneousParameters miscellaneousParameters)
+        private static IEnumerable<SszElement> GetValues(Attestation item, ulong maximumValidatorsPerCommittee)
         {
-            yield return item.AggregationBits.ToSszBitlist(miscellaneousParameters.MaximumValidatorsPerCommittee);
+            yield return item.AggregationBits.ToSszBitlist(maximumValidatorsPerCommittee);
             yield return item.Data.ToSszContainer();
             yield return item.Signature.ToSszBasicVector();
         }

@@ -246,7 +246,7 @@ namespace Nethermind.BeaconNode
             // Verify aggregate signature
             IEnumerable<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
             BlsPublicKey aggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(publicKeys);
-            Hash32 messageHash = indexedAttestation.Data.HashTreeRoot();
+            Hash32 messageHash = _cryptographyService.HashTreeRoot(indexedAttestation.Data);
             BlsSignature signature = indexedAttestation.Signature;
 
             bool isValid = _cryptographyService.BlsVerify(aggregatePublicKey, messageHash, signature, domain);

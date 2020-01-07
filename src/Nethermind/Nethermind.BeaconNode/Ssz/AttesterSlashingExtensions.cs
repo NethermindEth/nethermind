@@ -24,20 +24,20 @@ namespace Nethermind.BeaconNode.Ssz
 {
     public static class AttesterSlashingExtensions
     {
-        public static SszContainer ToSszContainer(this AttesterSlashing item, MiscellaneousParameters miscellaneousParameters)
+        public static SszContainer ToSszContainer(this AttesterSlashing item, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item, miscellaneousParameters));
+            return new SszContainer(GetValues(item, maximumValidatorsPerCommittee));
         }
 
-        public static SszList ToSszList(this IEnumerable<AttesterSlashing> list, ulong limit, MiscellaneousParameters miscellaneousParameters)
+        public static SszList ToSszList(this IEnumerable<AttesterSlashing> list, ulong limit, ulong maximumValidatorsPerCommittee)
         {
-            return new SszList(list.Select(x => x.ToSszContainer(miscellaneousParameters)), limit);
+            return new SszList(list.Select(x => x.ToSszContainer(maximumValidatorsPerCommittee)), limit);
         }
 
-        private static IEnumerable<SszElement> GetValues(AttesterSlashing item, MiscellaneousParameters miscellaneousParameters)
+        private static IEnumerable<SszElement> GetValues(AttesterSlashing item, ulong maximumValidatorsPerCommittee)
         {
-            yield return item.Attestation1.ToSszContainer(miscellaneousParameters);
-            yield return item.Attestation2.ToSszContainer(miscellaneousParameters);
+            yield return item.Attestation1.ToSszContainer(maximumValidatorsPerCommittee);
+            yield return item.Attestation2.ToSszContainer(maximumValidatorsPerCommittee);
         }
     }
 }

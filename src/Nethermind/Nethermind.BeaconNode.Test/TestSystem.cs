@@ -24,6 +24,7 @@ using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography;
 using Nethermind.Core2.Types;
@@ -108,6 +109,52 @@ namespace Nethermind.BeaconNode.Test
             public Hash32 Hash(ReadOnlySpan<byte> bytes)
             {
                 return _cryptographyService.Hash(bytes);
+            }
+
+            public Hash32 HashTreeRoot(AttestationData attestationData)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 HashTreeRoot(BeaconBlock beaconBlock)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 HashTreeRoot(BeaconBlockBody beaconBlockBody)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 HashTreeRoot(Epoch epoch)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 HashTreeRoot(BeaconState beaconState)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 SigningRoot(BeaconBlock beaconBlock)
+            {
+                throw new NotImplementedException();
+            }
+
+
+            public Hash32 SigningRoot(BeaconBlockHeader beaconBlockHeader)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 SigningRoot(DepositData depositData)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Hash32 SigningRoot(VoluntaryExit voluntaryExit)
+            {
+                throw new NotImplementedException();
             }
         }
 

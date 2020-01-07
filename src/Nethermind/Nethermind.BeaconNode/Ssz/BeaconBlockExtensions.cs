@@ -25,29 +25,29 @@ namespace Nethermind.BeaconNode.Ssz
 {
     public static class BeaconBlockExtensions
     {
-        public static Hash32 HashTreeRoot(this BeaconBlock item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static Hash32 HashTreeRoot(this BeaconBlock item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
-            var tree = new SszTree(item.ToSszContainer(miscellaneousParameters, maxOperationsPerBlock));
+            var tree = new SszTree(item.ToSszContainer(maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee));
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static Hash32 SigningRoot(this BeaconBlock item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static Hash32 SigningRoot(this BeaconBlock item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
-            var tree = new SszTree(new SszContainer(GetValues(item, miscellaneousParameters, maxOperationsPerBlock, true)));
+            var tree = new SszTree(new SszContainer(GetValues(item, maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee, true)));
             return new Hash32(tree.HashTreeRoot());
         }
 
-        public static SszContainer ToSszContainer(this BeaconBlock item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock)
+        public static SszContainer ToSszContainer(this BeaconBlock item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee)
         {
-            return new SszContainer(GetValues(item, miscellaneousParameters, maxOperationsPerBlock, false));
+            return new SszContainer(GetValues(item, maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee, false));
         }
 
-        private static IEnumerable<SszElement> GetValues(BeaconBlock item, MiscellaneousParameters miscellaneousParameters, MaxOperationsPerBlock maxOperationsPerBlock, bool forSigning)
+        private static IEnumerable<SszElement> GetValues(BeaconBlock item, ulong maximumProposerSlashings, ulong maximumAttesterSlashings, ulong maximumAttestations, ulong maximumDeposits, ulong maximumVoluntaryExits, ulong maximumValidatorsPerCommittee, bool forSigning)
         {
             yield return item.Slot.ToSszBasicElement();
             yield return item.ParentRoot.ToSszBasicVector();
             yield return item.StateRoot.ToSszBasicVector();
-            yield return item.Body.ToSszContainer(miscellaneousParameters, maxOperationsPerBlock);
+            yield return item.Body.ToSszContainer(maximumProposerSlashings, maximumAttesterSlashings, maximumAttestations, maximumDeposits, maximumVoluntaryExits, maximumValidatorsPerCommittee);
             if (!forSigning)
             {
                 //signature: BLSSignature
