@@ -146,12 +146,12 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.StateRoots);
             merkleizer.Feed(container.HistoricalRoots.ToArray(), ByteLength.HistoricalRootsLimit);
             merkleizer.Feed(container.Eth1Data);
-            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Time.SlotsPerEth1VotingPeriod);
+            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)ByteLength.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
-            merkleizer.Feed(container.Validators, SszLimit.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Validators, ByteLength.ValidatorRegistryLimit);
             merkleizer.Feed(container.Balances.ToArray().ToArray());
-            merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
-            merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
+            merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * ByteLength.SlotsPerEpoch);
+            merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * ByteLength.SlotsPerEpoch);
             merkleizer.FeedBitvector(container.JustificationBits);
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);

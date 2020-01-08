@@ -172,8 +172,8 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Historical_batch_there_and_back()
         {
-            Hash32[] blockRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
-            Hash32[] stateRoots = Enumerable.Repeat(Hash32.Zero, Time.SlotsPerHistoricalRoot).ToArray();
+            Hash32[] blockRoots = Enumerable.Repeat(Hash32.Zero, ByteLength.SlotsPerHistoricalRoot).ToArray();
+            Hash32[] stateRoots = Enumerable.Repeat(Hash32.Zero, ByteLength.SlotsPerHistoricalRoot).ToArray();
             blockRoots[3] = Sha256.OfAnEmptyString;
             stateRoots[7] = Sha256.OfAnEmptyString;
             HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
@@ -511,16 +511,16 @@ namespace Nethermind.Ssz.Test
                 new Fork(new ForkVersion(new byte[] {0x05, 0x00, 0x00, 0x00}),
                     new ForkVersion(new byte[] {0x07, 0x00, 0x00, 0x00}), new Epoch(3)),
                 beaconBlockHeader,
-                new Hash32[Time.SlotsPerHistoricalRoot],
-                new Hash32[Time.SlotsPerHistoricalRoot],
+                new Hash32[ByteLength.SlotsPerHistoricalRoot],
+                new Hash32[ByteLength.SlotsPerHistoricalRoot],
                 new Hash32[13],
                 eth1Data,
                 new Eth1Data[2],
                 1234,
                 new Validator[7],
                 new Gwei[3],
-                new Hash32[Time.EpochsPerHistoricalVector],
-                new Gwei[Time.EpochsPerSlashingsVector],
+                new Hash32[ByteLength.EpochsPerHistoricalVector],
+                new Gwei[ByteLength.EpochsPerSlashingsVector],
                 new PendingAttestation[1],
                 new PendingAttestation[11],
                 new BitArray(new byte[] {0x09}),

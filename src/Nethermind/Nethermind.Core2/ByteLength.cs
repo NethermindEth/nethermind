@@ -22,6 +22,13 @@ namespace Nethermind.Core2
 {
     public static class ByteLength
     {
+        public const ulong ValidatorRegistryLimit = 1_099_511_627_776;
+        public const uint SlotsPerEpoch = 32;
+        public static int SlotsPerEth1VotingPeriod = 1024;
+        public static int SlotsPerHistoricalRoot = 8192;
+        public static int EpochsPerHistoricalVector = 65536;
+        public static int EpochsPerSlashingsVector = 8192;
+
         public const int JustificationBitsLength = 4;
         
         public const int SlotLength = sizeof(ulong);
@@ -69,7 +76,7 @@ namespace Nethermind.Core2
         }
 
         public const int Eth1DataLength = 2 * ByteLength.Hash32Length + sizeof(ulong);
-        public static int HistoricalBatchLength = 2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length;
+        public static int HistoricalBatchLength = 2 * SlotsPerHistoricalRoot * ByteLength.Hash32Length;
         public const int DepositDataLength = ByteLength.BlsPublicKeyLength + ByteLength.Hash32Length + ByteLength.GweiLength + ByteLength.BlsSignatureLength;
         public const int BeaconBlockHeaderLength = ByteLength.SlotLength + 3 * ByteLength.Hash32Length + ByteLength.BlsSignatureLength;
         public const int AttestationDynamicOffset = sizeof(uint) + ByteLength.AttestationDataLength + ByteLength.BlsSignatureLength;
@@ -146,17 +153,17 @@ namespace Nethermind.Core2
         public static uint MaxVoluntaryExits { get; set; } = 16;
 
         public static int BeaconStateDynamicOffset = sizeof(ulong) +
-                                                     Core2.ByteLength.SlotLength +
+                                                     ByteLength.SlotLength +
                                                      ByteLength.ForkLength +
                                                      ByteLength.BeaconBlockHeaderLength +
-                                                     2 * Time.SlotsPerHistoricalRoot * ByteLength.Hash32Length +
+                                                     2 * SlotsPerHistoricalRoot * ByteLength.Hash32Length +
                                                      sizeof(uint) +
                                                      ByteLength.Eth1DataLength +
                                                      sizeof(uint) +
                                                      sizeof(ulong) +
                                                      2 * sizeof(uint) +
-                                                     Time.EpochsPerHistoricalVector * ByteLength.Hash32Length +
-                                                     Time.EpochsPerSlashingsVector * ByteLength.GweiLength +
+                                                     EpochsPerHistoricalVector * ByteLength.Hash32Length +
+                                                     EpochsPerSlashingsVector * ByteLength.GweiLength +
                                                      2 * sizeof(uint) +
                                                      ((ByteLength.JustificationBitsLength + 7) / 8) +
                                                      3 * ByteLength.CheckpointLength;
