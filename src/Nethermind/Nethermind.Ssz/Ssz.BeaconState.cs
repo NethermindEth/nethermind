@@ -99,14 +99,7 @@ namespace Nethermind.Ssz
             Encode(span.Slice(dynamicOffset, length6), container.CurrentEpochAttestations.ToArray());
             dynamicOffset += length6;
             offset += VarOffsetSize;
-
-            // TODO: Add ending bit 1 to Bitlist
-            // TODO: Take full length (not just 1)
-            byte[] justificationBitsPacked = new byte[(container.JustificationBits.Length + 7) / 8];
-            container.JustificationBits.CopyTo(justificationBitsPacked, 0);
-            Encode(span.Slice(offset, 1), justificationBitsPacked[0]);
-            
-            offset += 1;
+            Encode(span, container.JustificationBits, ref offset);
             Encode(span, container.PreviousJustifiedCheckpoint, ref offset);
             Encode(span, container.CurrentJustifiedCheckpoint, ref offset);
             Encode(span, container.FinalizedCheckpoint, ref offset);
@@ -138,12 +131,11 @@ namespace Nethermind.Ssz
             offset += Time.EpochsPerSlashingsVector * ByteLength.GweiLength;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset5);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset6);
-
-            // how many justification bits?
-            // TODO: Need to decode as Bitlist... offsets give us the length in bytes, then we find the last 1 bit
-            var justificationBits = new BitArray(DecodeByte(span.Slice(offset, 1)));
-            offset += 1;
-
+            
+            var justificationBitsByteLength = (ByteLength.JustificationBitsLength + 7) / 8;
+            BitArray justificationBits = DecodeBitvector(span.Slice(offset, justificationBitsByteLength), ByteLength.JustificationBitsLength);
+            offset += justificationBitsByteLength;
+            
             var previousJustifiedCheckpoint = DecodeCheckpoint(span, ref offset);
             var currentJustifiedCheckpoint = DecodeCheckpoint(span, ref offset);
             var finalizedCheckpoint = DecodeCheckpoint(span, ref offset);

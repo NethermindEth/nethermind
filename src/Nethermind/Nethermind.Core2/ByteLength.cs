@@ -22,6 +22,8 @@ namespace Nethermind.Core2
 {
     public static class ByteLength
     {
+        public const int JustificationBitsLength = 4;
+        
         public const int SlotLength = sizeof(ulong);
         public const int EpochLength = sizeof(ulong);
         public const int CommitteeIndexLength = sizeof(ulong);
@@ -63,8 +65,7 @@ namespace Nethermind.Core2
                 return 0;
             }
             
-            // TODO: AggregationBits is a Bitlist, not Bitvector, so needs a sentinel '1' at the end, i.e. byte length is (Len+8)/8
-            return ByteLength.PendingAttestationDynamicOffset + (value.AggregationBits.Length + 7) / 8;
+            return ByteLength.PendingAttestationDynamicOffset + (value.AggregationBits.Length + 8) / 8;
         }
 
         public const int Eth1DataLength = 2 * ByteLength.Hash32Length + sizeof(ulong);
@@ -81,8 +82,7 @@ namespace Nethermind.Core2
                 return 0;
             }
 
-            // TODO: Need to include Bitlist final 1 bit
-            return AttestationDynamicOffset + (container.AggregationBits.Length + 7) / 8;
+            return AttestationDynamicOffset + (container.AggregationBits.Length + 8) / 8;
         }
 
         public static int AttesterSlashingLength(AttesterSlashing? container)
@@ -158,7 +158,7 @@ namespace Nethermind.Core2
                                                      Time.EpochsPerHistoricalVector * ByteLength.Hash32Length +
                                                      Time.EpochsPerSlashingsVector * ByteLength.GweiLength +
                                                      2 * sizeof(uint) +
-                                                     1 + // not sure
+                                                     ((ByteLength.JustificationBitsLength + 7) / 8) +
                                                      3 * ByteLength.CheckpointLength;
 
         public const ulong HistoricalRootsLimit = 16_777_216;

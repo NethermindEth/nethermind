@@ -152,12 +152,7 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.Balances.ToArray().ToArray());
             merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
             merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
-
-            // TODO: Add ending bit 1 to Bitlist
-            byte[] justificationBitsPacked = new byte[(container.JustificationBits.Length + 7) / 8];
-            container.JustificationBits.CopyTo(justificationBitsPacked, 0);
-            merkleizer.Feed(justificationBitsPacked);
-            
+            merkleizer.FeedBitvector(container.JustificationBits);
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);
             merkleizer.Feed(container.FinalizedCheckpoint);
@@ -190,9 +185,7 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
-            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            merkleizer.FeedBits(aggregationBitsPacked, (ByteLength.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.FeedBitlist(container.AggregationBits, ByteLength.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -222,10 +215,7 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-
-            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
-            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            merkleizer.FeedBits(aggregationBitsPacked, (ByteLength.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.FeedBitlist(container.AggregationBits, ByteLength.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.InclusionDelay);
             merkleizer.Feed(container.ProposerIndex);

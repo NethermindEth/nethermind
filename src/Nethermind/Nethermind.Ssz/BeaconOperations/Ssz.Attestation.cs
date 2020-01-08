@@ -31,12 +31,7 @@ namespace Nethermind.Ssz
             if (container is null) return;
             int offset = 0;
             int dynamicOffset = ByteLength.AttestationDynamicOffset;
-            
-            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
-            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            // TODO: Add the Bitlist length-delimiting bit
-            Encode(span, aggregationBitsPacked, ref offset, ref dynamicOffset);
-
+            Encode(span, container.AggregationBits, ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
             Encode(span, container.Signature, ref offset);
         }
@@ -97,9 +92,8 @@ namespace Nethermind.Ssz
             BlsSignature signature = DecodeBlsSignature(span, ref offset);
 
             // var part
-            byte[] aggregationBitsPacked = span.Slice(dynamicOffset1, span.Length - dynamicOffset1).ToArray();
-            BitArray aggregationBits = new BitArray(aggregationBitsPacked);
-
+            BitArray aggregationBits = DecodeBitlist(span.Slice(dynamicOffset1, span.Length - dynamicOffset1));
+            
             Attestation container = new Attestation(aggregationBits, data, signature);
 
             return container;
