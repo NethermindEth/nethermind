@@ -22,10 +22,10 @@ namespace Nethermind.JsonRpc.Modules.Admin
     public interface IAdminModule : IModule
     {
         [JsonRpcMethod(Description = "", IsImplemented = true)]
-        Task<ResultWrapper<string>> admin_addPeer(string enode);
+        Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false);
         
         [JsonRpcMethod(Description = "", IsImplemented = true)]
-        Task<ResultWrapper<string>> admin_removePeer(string enode);
+        Task<ResultWrapper<string>> admin_removePeer(string enode, bool removeFromStaticNodes = false);
         
         [JsonRpcMethod(Description = "", IsImplemented = true)]
         ResultWrapper<PeerInfo[]> admin_peers();

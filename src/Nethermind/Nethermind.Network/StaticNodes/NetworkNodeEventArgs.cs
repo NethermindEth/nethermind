@@ -22,12 +22,10 @@ namespace Nethermind.Network.StaticNodes
     public class NetworkNodeEventArgs : EventArgs
     {
         public NetworkNode Node { get; }
-        public bool NodeIsStatic { get; }
 
-        public NetworkNodeEventArgs(NetworkNode node, bool nodeIsStatic = true)
+        public NetworkNodeEventArgs(NetworkNode node)
         {
             Node = node;
-            NodeIsStatic = nodeIsStatic;
         }
     }
 }

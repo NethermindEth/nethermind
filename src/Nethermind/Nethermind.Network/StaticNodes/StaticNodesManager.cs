@@ -29,8 +29,9 @@ namespace Nethermind.Network.StaticNodes
 {
     public class StaticNodesManager : IStaticNodesManager
     {
-        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =  new ConcurrentDictionary<PublicKey, NetworkNode>();
-        
+        private ConcurrentDictionary<PublicKey, NetworkNode> _nodes =
+            new ConcurrentDictionary<PublicKey, NetworkNode>();
+
         private readonly string _staticNodesPath;
         private readonly ILogger _logger;
 
@@ -42,7 +43,7 @@ namespace Nethermind.Network.StaticNodes
 
         public IEnumerable<NetworkNode> Nodes => _nodes.Values;
         public event EventHandler<NetworkNodeEventArgs> NodeAdded;
-        public event EventHandler<RemoveNetworkNodeEventArgs> NodeRemoved;
+        public event EventHandler<NetworkNodeEventArgs> NodeRemoved;
 
         public async Task InitAsync()
         {
@@ -69,7 +70,6 @@ namespace Nethermind.Network.StaticNodes
         public async Task<bool> AddAsync(string enode, bool updateFile = true)
         {
             var node = new NetworkNode(enode);
-
             if (!_nodes.TryAdd(node.NodeId, node))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
@@ -89,23 +89,20 @@ namespace Nethermind.Network.StaticNodes
         public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
         {
             var node = new NetworkNode(enode);
-            var removed = _nodes.TryRemove(node.NodeId, out _);
-            if (!removed && _logger.IsDebug)
+            if (!_nodes.TryRemove(node.NodeId, out _))
             {
-                _logger.Debug($"Static node already was not found: {enode}");
-            }
-            else
-            {
-                if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
-                if (updateFile)
-                {
-                    await SaveFileAsync();
-                }
+                if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");
+                return false;
             }
 
-            var args = new RemoveNetworkNodeEventArgs(node, removed);
-            NodeRemoved?.Invoke(this, args);
-            return args.Removed;
+            if (_logger.IsInfo) _logger.Info($"Static node was removed: {enode}");
+            NodeRemoved?.Invoke(this, new NetworkNodeEventArgs(node));
+            if (updateFile)
+            {
+                await SaveFileAsync();
+            }
+
+            return true;
         }
 
         private Task SaveFileAsync()
