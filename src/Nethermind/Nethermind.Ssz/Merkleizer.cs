@@ -126,6 +126,20 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
 
+        public void FeedBitlist(BitArray bitArray, ulong maximumBitlistLength)
+        {
+            // chunk count
+            ulong chunkCount = (maximumBitlistLength + 255) / 256;
+            
+            // bitfield_bytes
+            byte[] bytes = new byte[(bitArray.Length + 7) / 8];
+            bitArray.CopyTo(bytes, 0);
+            
+            Merkle.Ize(out _chunks[^1], bytes, chunkCount);
+            Merkle.MixIn(ref _chunks[^1], bitArray.Length);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(BlsPublicKey? value)
         {
             if (value is null)

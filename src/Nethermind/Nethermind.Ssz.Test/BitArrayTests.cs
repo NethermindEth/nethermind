@@ -106,6 +106,21 @@ namespace Nethermind.Ssz.Test
             decoded.ShouldBe(expected);
         }
 
+        [TestCaseSource(nameof(GetBitlistData))]
+        public void BitlistMerkleize(bool[] value, ulong maximumBitlistLength, string expectedByteString, byte[] expectedHashTreeRoot)
+        {
+            // Arrange
+            var input = new BitArray(value);
+
+            // Act
+            var hashTreeRoot = new byte[32];
+            Merkle.IzeBitlist(out UInt256 root, input, maximumBitlistLength);
+            root.ToLittleEndian(hashTreeRoot);
+
+            // Assert
+            hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
+        }
+
         public static IEnumerable<object[]> GetBitvectorData()
         {
             yield return new object[] {

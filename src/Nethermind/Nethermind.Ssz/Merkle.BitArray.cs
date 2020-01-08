@@ -33,5 +33,13 @@ namespace Nethermind.Ssz
             merkleizer.FeedBitvector(value);
             merkleizer.CalculateRoot(out root);
         }
+        
+        public static void IzeBitlist(out UInt256 root, BitArray value, ulong maximumBitlistLength)
+        {
+            Merkleizer merkleizer = new Merkleizer(0);
+            merkleizer.FeedBitlist(value, maximumBitlistLength);
+            merkleizer.CalculateRoot(out root);
+        }
+
     }
 }
