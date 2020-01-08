@@ -63,8 +63,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.IsNull(response.Result, "result");
         }
 
-        [Test]
-        public void Get_chain_level()
+        [TestCase("1")]
+        [TestCase("0x1")]
+        public void Get_chain_level(string parameter)
         {
             IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             debugBridge.GetLevelInfo(1).Returns(
@@ -77,9 +78,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 }));
 
             DebugModule module = new DebugModule(NullLogManager.Instance, debugBridge);
-            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getChainLevel", "0x1");
-
-            Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
+            JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getChainLevel", parameter);
+            JsonRpcErrorResponse errorResponse = response as JsonRpcErrorResponse;
+            Assert.Null(errorResponse, errorResponse?.Error.Message);
             ChainLevelForRpc chainLevel = response.Result as ChainLevelForRpc;
             Assert.NotNull(chainLevel);
             Assert.AreEqual(true, chainLevel.HasBlockOnMainChain);

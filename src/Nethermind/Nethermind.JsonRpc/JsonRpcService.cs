@@ -28,6 +28,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using JsonSerializer = Newtonsoft.Json.JsonSerializer;
 
 namespace Nethermind.JsonRpc
@@ -198,9 +199,9 @@ namespace Nethermind.JsonRpc
             Result result = resultWrapper.GetResult();
             if (result == null)
             {
-                if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");   
+                if (_logger.IsError) _logger.Error($"Error during method: {methodName} execution: no result");
             }
-            
+
             if (result.ResultType == ResultType.Failure)
             {
                 return GetErrorResponse(resultWrapper.GetErrorType(), resultWrapper.GetResult().Error, request.Id, methodName, resultWrapper.GetData());
@@ -216,9 +217,14 @@ namespace Nethermind.JsonRpc
                 var executionParameters = new List<object>();
                 for (var i = 0; i < providedParameters.Length; i++)
                 {
-                    var providedParameter = providedParameters[i];
-                    var expectedParameter = expectedParameters[i];
-                    var paramType = expectedParameter.ParameterType;
+                    string providedParameter = providedParameters[i];
+                    ParameterInfo expectedParameter = expectedParameters[i];
+                    Type paramType = expectedParameter.ParameterType;
+                    if (paramType.IsByRef)
+                    {
+                        paramType = paramType.GetElementType();
+                    }
+                    
                     if (string.IsNullOrWhiteSpace(providedParameter))
                     {
                         executionParameters.Add(Type.Missing);
