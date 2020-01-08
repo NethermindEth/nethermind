@@ -1468,6 +1468,16 @@ namespace Nethermind.Blockchain.Test
         }
         
         [Test]
+        public void Does_not_delete_outside_of_the_slice()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.DeleteChainSlice(2, 2);
+            Assert.NotNull(blockTree.FindBlock(1, BlockTreeLookupOptions.None));
+            Assert.NotNull(blockTree.FindHeader(1, BlockTreeLookupOptions.None));
+            Assert.NotNull(blockTree.FindLevel(1));
+        }
+        
+        [Test]
         public void Can_delete_one_block()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
