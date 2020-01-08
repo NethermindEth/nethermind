@@ -132,6 +132,8 @@ namespace Nethermind.Blockchain
 
         Task FixFastSyncGaps(CancellationToken cancellationToken);
         
+        ChainLevelInfo FindLevel(long number);
+        
         Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
         
         BlockHeader FindHeader(Keccak blockHash, BlockTreeLookupOptions options);

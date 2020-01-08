@@ -1422,6 +1422,32 @@ namespace Nethermind.Blockchain.Test
 
             txPoolMock.Received().AddTransaction(t1, 1);
         }
+        
+        [Test]
+        public void Can_find_genesis_level()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            ChainLevelInfo info = blockTree.FindLevel(0);
+            Assert.True(info.HasBlockOnMainChain);
+            Assert.AreEqual(1, info.BlockInfos.Length);
+        }
+        
+        [Test]
+        public void Can_find_some_level()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            ChainLevelInfo info = blockTree.FindLevel(1);
+            Assert.True(info.HasBlockOnMainChain);
+            Assert.AreEqual(1, info.BlockInfos.Length);
+        }
+        
+        [Test]
+        public void Cannot_find_future_level()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            ChainLevelInfo info = blockTree.FindLevel(1000);
+            Assert.IsNull(info);
+        }
 
         static object[] SourceOfBSearchTestCases =
         {

@@ -1227,6 +1227,11 @@ namespace Nethermind.Blockchain
             return number == 0L || Head == null || number > Head.Number - CacheSize && number <= Head.Number + 1;
         }
 
+        public ChainLevelInfo FindLevel(long number)
+        {
+            return _chainLevelInfoRepository.LoadLevel(number);
+        }
+
         public Block FindBlock(Keccak blockHash, BlockTreeLookupOptions options)
         {
             if (blockHash == null || blockHash == Keccak.Zero)

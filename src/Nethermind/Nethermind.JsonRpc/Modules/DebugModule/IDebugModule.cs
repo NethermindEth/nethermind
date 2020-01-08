@@ -24,6 +24,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
     [RpcModule(ModuleType.Debug)]
     public interface IDebugModule : IModule
     {
+        [JsonRpcMethod(Description = "Retrieves a representation of tree branches on a given chain level (Nethermind specific).", IsReadOnly = true)]
+        ResultWrapper<ChainLevelForRpc> debug_getChainLevel(long number);
+        
         [JsonRpcMethod(Description = "", IsReadOnly = true)]
         ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null);
         

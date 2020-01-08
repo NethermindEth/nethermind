@@ -52,6 +52,11 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(FixFastSyncGaps)} calls");
         }
 
+        public ChainLevelInfo FindLevel(long number)
+        {
+            return _wrapped.FindLevel(number);
+        }
+
         public AddBlockResult Insert(Block block)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
