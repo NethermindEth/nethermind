@@ -16,12 +16,19 @@
 
 using System.Collections.Generic;
 using Cortex.SimpleSerialize;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.BeaconNode.Ssz
 {
     public static class AttestationDataExtensions
     {
+        public static Hash32 HashTreeRoot(this AttestationData item)
+        {
+            var tree = new SszTree(item.ToSszContainer());
+            return new Hash32(tree.HashTreeRoot());
+        }
+
         public static SszContainer ToSszContainer(this AttestationData item)
         {
             return new SszContainer(GetValues(item));

@@ -17,6 +17,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -37,7 +38,7 @@ namespace Nethermind.Ssz
             
             for (int i = 0; i < value.Length; i++)
             {
-                Encode(span.Slice(i * Gwei.SszLength, Gwei.SszLength), value[i].Amount);    
+                Encode(span.Slice(i * ByteLength.GweiLength, ByteLength.GweiLength), value[i].Amount);    
             }
         }
         
@@ -45,7 +46,7 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, Gwei value, ref int offset)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(offset), value.Amount);
-            offset += Gwei.SszLength;
+            offset += ByteLength.GweiLength;
         }
         
         public static Gwei DecodeGwei(Span<byte> span)
@@ -57,7 +58,7 @@ namespace Nethermind.Ssz
         private static Gwei DecodeGwei(Span<byte> span, ref int offset)
         {
             Gwei gwei = new Gwei(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
-            offset += Gwei.SszLength;
+            offset += ByteLength.GweiLength;
             return gwei;
         }
         
@@ -68,11 +69,11 @@ namespace Nethermind.Ssz
                 return Array.Empty<Gwei>();
             }
             
-            int count = span.Length / Gwei.SszLength;
+            int count = span.Length / ByteLength.GweiLength;
             Gwei[] result = new Gwei[count];
             for (int i = 0; i < count; i++)
             {
-                Span<byte> current = span.Slice(i * Gwei.SszLength, Gwei.SszLength);
+                Span<byte> current = span.Slice(i * ByteLength.GweiLength, ByteLength.GweiLength);
                 result[i] = DecodeGwei(current);
             }
 

@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
@@ -28,7 +31,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != DepositData.SszLength) ThrowTargetLength<DepositData>(span.Length, DepositData.SszLength);
+            if (span.Length != ByteLength.DepositDataLength) ThrowTargetLength<DepositData>(span.Length, ByteLength.DepositDataLength);
             int offset = 0;
             Encode(span, container.PublicKey, ref offset);
             Encode(span, container.WithdrawalCredentials, ref offset);
@@ -38,13 +41,13 @@ namespace Nethermind.Ssz
 
         public static DepositData DecodeDepositData(Span<byte> span)
         {
-            if (span.Length != DepositData.SszLength) ThrowSourceLength<DepositData>(span.Length, DepositData.SszLength);
+            if (span.Length != ByteLength.DepositDataLength) ThrowSourceLength<DepositData>(span.Length, ByteLength.DepositDataLength);
             int offset = 0;
-            DepositData container = new DepositData();
-            container.PublicKey = DecodeBlsPublicKey(span, ref offset);
-            container.WithdrawalCredentials = DecodeSha256(span, ref offset);
-            container.Amount = DecodeGwei(span, ref offset);
-            container.Signature = DecodeBlsSignature(span, ref offset);
+            BlsPublicKey publicKey = DecodeBlsPublicKey(span, ref offset);
+            Hash32 withdrawalCredentials = DecodeSha256(span, ref offset);
+            Gwei amount = DecodeGwei(span, ref offset);
+            BlsSignature signature = DecodeBlsSignature(span, ref offset);
+            DepositData container = new DepositData(publicKey, withdrawalCredentials, amount, signature);
             return container;
         }
     }

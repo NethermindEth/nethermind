@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Ssz
 {
@@ -23,22 +26,22 @@ namespace Nethermind.Ssz
     {
         public static void Encode(Span<byte> span, HistoricalBatch container)
         {
-            if (span.Length != HistoricalBatch.SszLength)
+            if (span.Length != ByteLength.HistoricalBatchLength)
             {
-                ThrowTargetLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
+                ThrowTargetLength<HistoricalBatch>(span.Length, ByteLength.HistoricalBatchLength);
             }
 
-            Encode(span.Slice(0, HistoricalBatch.SszLength / 2), container.BlockRoots);
-            Encode(span.Slice(HistoricalBatch.SszLength / 2), container.StateRoots);
+            Encode(span.Slice(0, ByteLength.HistoricalBatchLength / 2), container.BlockRoots);
+            Encode(span.Slice(ByteLength.HistoricalBatchLength / 2), container.StateRoots);
         }
 
         public static HistoricalBatch? DecodeHistoricalBatch(Span<byte> span)
         {
-            if (span.Length != HistoricalBatch.SszLength) ThrowSourceLength<HistoricalBatch>(span.Length, HistoricalBatch.SszLength);
+            if (span.Length != ByteLength.HistoricalBatchLength) ThrowSourceLength<HistoricalBatch>(span.Length, ByteLength.HistoricalBatchLength);
 
-            HistoricalBatch container = new HistoricalBatch();
-            container.BlockRoots = DecodeHashes(span.Slice(0, HistoricalBatch.SszLength / 2));
-            container.StateRoots = DecodeHashes(span.Slice(HistoricalBatch.SszLength / 2));
+            Hash32[] blockRoots = DecodeHashes(span.Slice(0, ByteLength.HistoricalBatchLength / 2));
+            Hash32[] stateRoots = DecodeHashes(span.Slice(ByteLength.HistoricalBatchLength / 2));
+            HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
             return container;
         }
     }

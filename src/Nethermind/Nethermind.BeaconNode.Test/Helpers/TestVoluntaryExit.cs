@@ -22,8 +22,6 @@ using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-
 namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestVoluntaryExit
@@ -45,7 +43,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var domain = beaconStateAccessor.GetDomain(state, signatureDomains.VoluntaryExit, voluntaryExit.Epoch);
             var signature = TestSecurity.BlsSign(voluntaryExit.SigningRoot(), privateKey, domain);
-            voluntaryExit.Signature = signature;
+            voluntaryExit.SetSignature(signature);
         }
     }
 }

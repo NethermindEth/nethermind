@@ -19,12 +19,8 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Services;
-using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Types.Hash32;
 
 namespace Nethermind.BeaconNode.OApiClient.Test
 {

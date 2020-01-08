@@ -25,12 +25,12 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.OApiClient;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.MockedStart;
 using Nethermind.HonestValidator.Services;
@@ -84,8 +84,8 @@ namespace Nethermind.HonestValidator.Test
                 Fork = new Fork()
                 {
                     Epoch = 0,
-                    Previous_version = new byte[ForkVersion.SszLength],
-                    Current_version = new byte[ForkVersion.SszLength]
+                    Previous_version = new byte[ForkVersion.Length],
+                    Current_version = new byte[ForkVersion.Length]
                 }
             };
             beaconNodeOApiClient
@@ -148,8 +148,7 @@ namespace Nethermind.HonestValidator.Test
                 .Returns(beaconBlock);
             
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            options.AddCortexContainerConverters();
-            options.Converters.Add(new JsonConverterByteArrayPrefixedHex());
+            options.ConfigureNethermindCore2();
             string originalBlock = System.Text.Json.JsonSerializer.Serialize(beaconBlock, options);
             TestContext.WriteLine("Original block: {0}", originalBlock);
 

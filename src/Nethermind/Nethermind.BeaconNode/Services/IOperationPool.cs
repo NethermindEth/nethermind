@@ -16,9 +16,6 @@
 
 using System.Collections.Generic;
 using Nethermind.Core2.Containers;
-using Attestation = Nethermind.BeaconNode.Containers.Attestation;
-using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
-using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
 
 namespace Nethermind.BeaconNode.Services
 {

@@ -19,32 +19,43 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-
+using Shouldly;
 namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestAttesterSlashing
     {
         public static AttesterSlashing GetValidAttesterSlashing(IServiceProvider testServiceProvider, BeaconState state, bool signed1, bool signed2)
         {
-            var timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
-            var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
+            TimeParameters timeParameters = testServiceProvider.GetService<IOptions<TimeParameters>>().Value;
+            BeaconStateAccessor beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
+            Attestation attestation1 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed1);
 
-            var attestation2 = TestAttestation.GetValidAttestation(testServiceProvider, state, Slot.None, CommitteeIndex.None, signed: false);
-
-            attestation2.Data.Target.SetRoot(new Hash32(Enumerable.Repeat((byte)0x01, 32).ToArray()));
+            Hash32 targetRoot2 = new Hash32(Enumerable.Repeat((byte) 0x01, 32).ToArray());
+            Attestation attestation2 = new Attestation(
+                attestation1.AggregationBits,
+                new AttestationData(attestation1.Data.Slot,
+                    attestation1.Data.Index,
+                    attestation1.Data.BeaconBlockRoot,
+                    attestation1.Data.Source,
+                    new Checkpoint(
+                        attestation1.Data.Target.Epoch,
+                        targetRoot2
+                        )), 
+                BlsSignature.Empty
+                );
             if (signed2)
             {
                 TestAttestation.SignAttestation(testServiceProvider, state, attestation2);
             }
 
-            var indexedAttestation1 = beaconStateAccessor.GetIndexedAttestation(state, attestation1);
-            var indexedAttestation2 = beaconStateAccessor.GetIndexedAttestation(state, attestation2);
+            IndexedAttestation indexedAttestation1 = beaconStateAccessor.GetIndexedAttestation(state, attestation1);
+            IndexedAttestation indexedAttestation2 = beaconStateAccessor.GetIndexedAttestation(state, attestation2);
 
-            var attesterSlashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
+            AttesterSlashing attesterSlashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
             return attesterSlashing;
         }
     }

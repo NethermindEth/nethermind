@@ -16,7 +16,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -26,14 +28,14 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Checkpoint value, ref int offset)
         {
-            Encode(span.Slice(offset, Checkpoint.SszLength), value);
-            offset += Checkpoint.SszLength;
+            Encode(span.Slice(offset, ByteLength.CheckpointLength), value);
+            offset += ByteLength.CheckpointLength;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, Checkpoint container)
         {
-            if (span.Length != Checkpoint.SszLength) ThrowTargetLength<Checkpoint>(span.Length, Checkpoint.SszLength);
+            if (span.Length != ByteLength.CheckpointLength) ThrowTargetLength<Checkpoint>(span.Length, ByteLength.CheckpointLength);
             int offset = 0;
             Encode(span, container.Epoch, ref offset);
             Encode(span, container.Root, ref offset);
@@ -42,14 +44,14 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Checkpoint DecodeCheckpoint(Span<byte> span, ref int offset)
         {
-            Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, Checkpoint.SszLength));
-            offset += Checkpoint.SszLength;
+            Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, ByteLength.CheckpointLength));
+            offset += ByteLength.CheckpointLength;
             return checkpoint;
         }
         
         public static Checkpoint DecodeCheckpoint(Span<byte> span)
         {
-            if (span.Length != Checkpoint.SszLength) ThrowSourceLength<Checkpoint>(span.Length, Checkpoint.SszLength);
+            if (span.Length != ByteLength.CheckpointLength) ThrowSourceLength<Checkpoint>(span.Length, ByteLength.CheckpointLength);
             int offset = 0;
             Epoch epoch = DecodeEpoch(span, ref offset);
             Hash32 root = DecodeSha256(span, ref offset);

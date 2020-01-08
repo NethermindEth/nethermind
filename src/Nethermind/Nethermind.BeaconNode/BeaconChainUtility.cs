@@ -21,9 +21,9 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
@@ -84,7 +84,7 @@ namespace Nethermind.BeaconNode
         {
             Span<byte> combined = stackalloc byte[Domain.Length];
             domainType.AsSpan().CopyTo(combined);
-            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.SszLength));
+            forkVersion.AsSpan().CopyTo(combined.Slice(DomainType.Length));
             return new Domain(combined);
         }
 
@@ -153,7 +153,7 @@ namespace Nethermind.BeaconNode
                 byte roundByte = (byte) (currentRound & 0xFF);
                 pivotHashInput[32] = roundByte;
                 Hash32 pivotHash = _cryptographyService.Hash(pivotHashInput);
-                Span<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
+                ReadOnlySpan<byte> pivotBytes = pivotHash.AsSpan().Slice(0, 8);
                 ValidatorIndex pivot = BinaryPrimitives.ReadUInt64LittleEndian(pivotBytes) % indexCount;
 
                 ValidatorIndex flip = (pivot + indexCount - index) % indexCount;
@@ -199,11 +199,9 @@ namespace Nethermind.BeaconNode
         /// </summary>
         public bool IsSlashableAttestationData(AttestationData data1, AttestationData data2)
         {
-            bool isSlashable =
-                // Double vote
-                (data1.Target.Epoch == data2.Target.Epoch && !data1.Equals(data2))
-                // Surround vote
-                || (data1.Source.Epoch < data2.Source.Epoch && data2.Target.Epoch < data1.Target.Epoch);
+            bool isDoubleVote = data1.Target.Epoch == data2.Target.Epoch && !data1.Equals(data2);
+            bool isSurroundVote = data1.Source.Epoch < data2.Source.Epoch && data2.Target.Epoch < data1.Target.Epoch;
+            bool isSlashable = isDoubleVote || isSurroundVote;
             return isSlashable;
         }
 
@@ -223,38 +221,21 @@ namespace Nethermind.BeaconNode
         public bool IsValidIndexedAttestation(BeaconState state, IndexedAttestation indexedAttestation, Domain domain)
         {
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
-            IList<ValidatorIndex> bit0Indices = indexedAttestation.CustodyBit0Indices;
-            IList<ValidatorIndex> bit1Indices = indexedAttestation.CustodyBit1Indices;
-
-            // Verify no index has custody bit equal to 1 [to be removed in phase 1]
-            if (bit1Indices.Count != 0) // [to be removed in phase 1]
-            {
-                if (_logger.IsWarn()) Log.InvalidIndexedAttestationBit1(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, bit1Indices.Count(), null);
-                return false; //[to be removed in phase 1]
-            }
+            IReadOnlyList<ValidatorIndex> attestingIndices = indexedAttestation.AttestingIndices;
 
             // Verify max number of indices
-            int totalIndices = bit0Indices.Count + bit1Indices.Count;
-            if ((ulong) totalIndices > miscellaneousParameters.MaximumValidatorsPerCommittee)
+            if ((ulong) attestingIndices.Count > miscellaneousParameters.MaximumValidatorsPerCommittee)
             {
-                if (_logger.IsWarn()) Log.InvalidIndexedAttestationTooMany(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, totalIndices, miscellaneousParameters.MaximumValidatorsPerCommittee, null);
-                return false;
-            }
-
-            // Verify index sets are disjoint
-            IEnumerable<ValidatorIndex> intersect = bit0Indices.Intersect(bit1Indices);
-            if (intersect.Count() != 0)
-            {
-                if (_logger.IsWarn()) Log.InvalidIndexedAttestationIntersection(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, intersect.Count(), null);
+                if (_logger.IsWarn()) Log.InvalidIndexedAttestationTooMany(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, attestingIndices.Count, miscellaneousParameters.MaximumValidatorsPerCommittee, null);
                 return false;
             }
 
             // Verify indices are sorted
-            if (bit0Indices.Count() > 1)
+            if (attestingIndices.Count() > 1)
             {
-                for (int index = 0; index < bit0Indices.Count() - 1; index++)
+                for (int index = 0; index < attestingIndices.Count() - 1; index++)
                 {
-                    if (!(bit0Indices[index] < bit0Indices[index + 1]))
+                    if (!(attestingIndices[index] < attestingIndices[index + 1]))
                     {
                         if (_logger.IsWarn()) Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, 0, index, null);
                         return false;
@@ -262,34 +243,13 @@ namespace Nethermind.BeaconNode
                 }
             }
 
-            if (bit1Indices.Count() > 1)
-            {
-                for (int index = 0; index < bit1Indices.Count() - 1; index++)
-                {
-                    if (!(bit1Indices[index] < bit1Indices[index + 1]))
-                    {
-                        if (_logger.IsWarn()) Log.InvalidIndexedAttestationNotSorted(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, 1, index, null);
-                        return false;
-                    }
-                }
-            }
-
             // Verify aggregate signature
-            IEnumerable<BlsPublicKey> bit0PublicKeys = bit0Indices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
-            BlsPublicKey bit0AggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(bit0PublicKeys);
-            IEnumerable<BlsPublicKey> bit1PublicKeys = bit1Indices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
-            BlsPublicKey bit1AggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(bit1PublicKeys);
-            BlsPublicKey[] publicKeys = new[] {bit0AggregatePublicKey, bit1AggregatePublicKey};
-
-            AttestationDataAndCustodyBit attestationDataAndCustodyBit0 = new AttestationDataAndCustodyBit(indexedAttestation.Data, false);
-            Hash32 messageHashBit0 = attestationDataAndCustodyBit0.HashTreeRoot();
-            AttestationDataAndCustodyBit attestationDataAndCustodyBit1 = new AttestationDataAndCustodyBit(indexedAttestation.Data, true);
-            Hash32 messageHashBit1 = attestationDataAndCustodyBit1.HashTreeRoot();
-            Hash32[] messageHashes = new[] {messageHashBit0, messageHashBit1};
-
+            IEnumerable<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
+            BlsPublicKey aggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(publicKeys);
+            Hash32 messageHash = indexedAttestation.Data.HashTreeRoot();
             BlsSignature signature = indexedAttestation.Signature;
 
-            bool isValid = _cryptographyService.BlsVerifyMultiple(publicKeys, messageHashes, signature, domain);
+            bool isValid = _cryptographyService.BlsVerify(aggregatePublicKey, messageHash, signature, domain);
             if (!isValid)
             {
                 if (_logger.IsWarn()) Log.InvalidIndexedAttestationSignature(_logger, indexedAttestation.Data.Index, indexedAttestation.Data.Slot, null);

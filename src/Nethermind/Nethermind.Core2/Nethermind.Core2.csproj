@@ -7,7 +7,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
       <ProjectReference Include="..\Nethermind.HashLib\Nethermind.HashLib.csproj" />
     </ItemGroup>
-
 </Project>

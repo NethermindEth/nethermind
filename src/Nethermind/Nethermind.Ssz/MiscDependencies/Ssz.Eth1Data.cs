@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -25,8 +26,8 @@ namespace Nethermind.Ssz
     {
         private static Eth1Data DecodeEth1Data(Span<byte> span, ref int offset)
         {
-            Eth1Data eth1Data = DecodeEth1Data(span.Slice(offset, Eth1Data.SszLength));
-            offset += Eth1Data.SszLength;
+            Eth1Data eth1Data = DecodeEth1Data(span.Slice(offset, ByteLength.Eth1DataLength));
+            offset += ByteLength.Eth1DataLength;
             return eth1Data;
         }
         
@@ -37,26 +38,26 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != Eth1Data.SszLength * containers.Length)
+            if (span.Length != ByteLength.Eth1DataLength * containers.Length)
             {
-                ThrowTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
+                ThrowTargetLength<Eth1Data>(span.Length, ByteLength.Eth1DataLength);
             }
 
             for (int i = 0; i < containers.Length; i++)
             {
-                Encode(span.Slice(i * Eth1Data.SszLength, Eth1Data.SszLength), containers[i]);
+                Encode(span.Slice(i * ByteLength.Eth1DataLength, ByteLength.Eth1DataLength), containers[i]);
             }
         }
         
         private static void Encode(Span<byte> span, Eth1Data? value, ref int offset)
         {
-            Encode(span.Slice(offset, Eth1Data.SszLength), value);
-            offset += Eth1Data.SszLength;
+            Encode(span.Slice(offset, ByteLength.Eth1DataLength), value);
+            offset += ByteLength.Eth1DataLength;
         }
 
         public static void Encode(Span<byte> span, Eth1Data? container)
         {
-            if (span.Length != Eth1Data.SszLength) ThrowTargetLength<Eth1Data>(span.Length, Eth1Data.SszLength);
+            if (span.Length != ByteLength.Eth1DataLength) ThrowTargetLength<Eth1Data>(span.Length, ByteLength.Eth1DataLength);
             if (container == null) return;
             int offset = 0;
             Encode(span, container.DepositRoot, ref offset);
@@ -66,18 +67,18 @@ namespace Nethermind.Ssz
 
         public static Eth1Data DecodeEth1Data(Span<byte> span)
         {
-            if (span.Length != Eth1Data.SszLength) ThrowSourceLength<Eth1Data>(span.Length, Eth1Data.SszLength);
-            Eth1Data container = new Eth1Data();
-            container.DepositRoot = DecodeSha256(span.Slice(0, Hash32.SszLength));
-            container.DepositCount = DecodeULong(span.Slice(Hash32.SszLength, sizeof(ulong)));
-            container.BlockHash = DecodeSha256(span.Slice(Hash32.SszLength + sizeof(ulong), Hash32.SszLength));
+            if (span.Length != ByteLength.Eth1DataLength) ThrowSourceLength<Eth1Data>(span.Length, ByteLength.Eth1DataLength);
+            Hash32 depositRoot = DecodeSha256(span.Slice(0, ByteLength.Hash32Length));
+            ulong depositCount = DecodeULong(span.Slice(ByteLength.Hash32Length, sizeof(ulong)));
+            Hash32 blockHash = DecodeSha256(span.Slice(ByteLength.Hash32Length + sizeof(ulong), ByteLength.Hash32Length));
+            Eth1Data container = new Eth1Data(depositRoot, depositCount, blockHash);
             return container;
         }
 
         public static Eth1Data[] DecodeEth1Datas(Span<byte> span)
         {
-            if (span.Length % Eth1Data.SszLength != 0) ThrowInvalidSourceArrayLength<Eth1Data>(span.Length, Eth1Data.SszLength);
-            int count = span.Length / Eth1Data.SszLength;
+            if (span.Length % ByteLength.Eth1DataLength != 0) ThrowInvalidSourceArrayLength<Eth1Data>(span.Length, ByteLength.Eth1DataLength);
+            int count = span.Length / ByteLength.Eth1DataLength;
             Eth1Data[] containers = new Eth1Data[count];
             int offset = 0;
             for (int i = 0; i < count; i++)

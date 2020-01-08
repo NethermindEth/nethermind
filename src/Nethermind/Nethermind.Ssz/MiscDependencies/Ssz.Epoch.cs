@@ -17,6 +17,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
@@ -33,7 +34,7 @@ namespace Nethermind.Ssz
         private static Epoch DecodeEpoch(Span<byte> span, ref int offset)
         {
             Epoch epoch = new Epoch(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
-            offset += Epoch.SszLength;
+            offset += ByteLength.EpochLength;
             return epoch;
         }
         
@@ -46,7 +47,7 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, Epoch value, ref int offset)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(offset), value.Number);
-            offset += Epoch.SszLength;
+            offset += ByteLength.EpochLength;
         }
     }
 }

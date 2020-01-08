@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
@@ -24,7 +25,7 @@ namespace Nethermind.Ssz
     {
         private static void Encode(Span<byte> span, ProposerSlashing?[]? containers, ref int offset, ref int dynamicOffset)
         {
-            int length = (containers?.Length ?? 0) * ProposerSlashing.SszLength;
+            int length = (containers?.Length ?? 0) * ByteLength.ProposerSlashingLength;
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length), containers);
             dynamicOffset += length;
@@ -38,9 +39,9 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != ProposerSlashing.SszLength)
+            if (span.Length != ByteLength.ProposerSlashingLength)
             {
-                ThrowTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+                ThrowTargetLength<ProposerSlashing>(span.Length, ByteLength.ProposerSlashingLength);
             }
 
             if (container == null)
@@ -49,24 +50,24 @@ namespace Nethermind.Ssz
             }
 
             int offset = 0;
-            Encode(span.Slice(0, ValidatorIndex.SszLength), container.ProposerIndex);
-            offset += ValidatorIndex.SszLength;
-            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header1);
-            offset += BeaconBlockHeader.SszLength;
-            Encode(span.Slice(offset, BeaconBlockHeader.SszLength), container.Header2);
+            Encode(span.Slice(0, ByteLength.ValidatorIndexLength), container.ProposerIndex);
+            offset += ByteLength.ValidatorIndexLength;
+            Encode(span.Slice(offset, ByteLength.BeaconBlockHeaderLength), container.Header1);
+            offset += ByteLength.BeaconBlockHeaderLength;
+            Encode(span.Slice(offset, ByteLength.BeaconBlockHeaderLength), container.Header2);
         }
 
-        private static byte[] _nullProposerSlashing = new byte[ProposerSlashing.SszLength];
+        private static byte[] _nullProposerSlashing = new byte[ByteLength.ProposerSlashingLength];
 
         public static ProposerSlashing? DecodeProposerSlashing(Span<byte> span)
         {
-            if (span.Length != ProposerSlashing.SszLength) ThrowSourceLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+            if (span.Length != ByteLength.ProposerSlashingLength) ThrowSourceLength<ProposerSlashing>(span.Length, ByteLength.ProposerSlashingLength);
             if (span.SequenceEqual(_nullProposerSlashing)) return null;
             int offset = 0;
-            ProposerSlashing container = new ProposerSlashing();
-            container.ProposerIndex = DecodeValidatorIndex(span, ref offset);
-            container.Header1 = DecodeBeaconBlockHeader(span, ref offset);
-            container.Header2 = DecodeBeaconBlockHeader(span, ref offset);
+            ValidatorIndex proposerIndex = DecodeValidatorIndex(span, ref offset);
+            BeaconBlockHeader header1 = DecodeBeaconBlockHeader(span, ref offset);
+            BeaconBlockHeader header2 = DecodeBeaconBlockHeader(span, ref offset);
+            ProposerSlashing container = new ProposerSlashing(proposerIndex, header1, header2);
             return container;
         }
 
@@ -77,29 +78,29 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != ProposerSlashing.SszLength * containers.Length)
+            if (span.Length != ByteLength.ProposerSlashingLength * containers.Length)
             {
-                ThrowTargetLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+                ThrowTargetLength<ProposerSlashing>(span.Length, ByteLength.ProposerSlashingLength);
             }
 
             for (int i = 0; i < containers.Length; i++)
             {
-                Encode(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength), containers[i]);
+                Encode(span.Slice(i * ByteLength.ProposerSlashingLength, ByteLength.ProposerSlashingLength), containers[i]);
             }
         }
 
         public static ProposerSlashing?[] DecodeProposerSlashings(Span<byte> span)
         {
-            if (span.Length % ProposerSlashing.SszLength != 0)
+            if (span.Length % ByteLength.ProposerSlashingLength != 0)
             {
-                ThrowInvalidSourceArrayLength<ProposerSlashing>(span.Length, ProposerSlashing.SszLength);
+                ThrowInvalidSourceArrayLength<ProposerSlashing>(span.Length, ByteLength.ProposerSlashingLength);
             }
 
-            int count = span.Length / ProposerSlashing.SszLength;
+            int count = span.Length / ByteLength.ProposerSlashingLength;
             ProposerSlashing?[] containers = new ProposerSlashing[count];
             for (int i = 0; i < count; i++)
             {
-                containers[i] = DecodeProposerSlashing(span.Slice(i * ProposerSlashing.SszLength, ProposerSlashing.SszLength));
+                containers[i] = DecodeProposerSlashing(span.Slice(i * ByteLength.ProposerSlashingLength, ByteLength.ProposerSlashingLength));
             }
 
             return containers;

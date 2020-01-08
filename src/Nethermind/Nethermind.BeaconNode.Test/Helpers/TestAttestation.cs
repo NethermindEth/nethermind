@@ -21,11 +21,11 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Hash32 = Nethermind.Core2.Types.Hash32;
+using Hash32 = Nethermind.Core2.Crypto.Hash32;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {
@@ -46,13 +46,12 @@ namespace Nethermind.BeaconNode.Test.Helpers
             beaconStateTransition.StateTransition(state, block, validateStateRoot: false);
         }
 
-        public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey, bool custodyBit)
+        public static BlsSignature GetAttestationSignature(IServiceProvider testServiceProvider, BeaconState state, AttestationData attestationData, byte[] privateKey)
         {
             var signatureDomains = testServiceProvider.GetService<IOptions<SignatureDomains>>().Value;
             var beaconStateAccessor = testServiceProvider.GetService<BeaconStateAccessor>();
 
-            var message = new AttestationDataAndCustodyBit(attestationData, custodyBit);
-            var messageHash = message.HashTreeRoot();
+            var messageHash = attestationData.HashTreeRoot();
             var domain = beaconStateAccessor.GetDomain(state, signatureDomains.BeaconAttester, attestationData.Target.Epoch);
             var signature = TestSecurity.BlsSign(messageHash, privateKey, domain);
             return signature;
@@ -78,8 +77,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
 
             var committeeSize = beaconCommittee.Count;
             var aggregationBits = new BitArray(committeeSize);
-            var custodyBits = new BitArray(committeeSize);
-            var attestation = new Attestation(aggregationBits, attestationData, custodyBits, BlsSignature.Empty);
+            var attestation = new Attestation(aggregationBits, attestationData, BlsSignature.Empty);
 
             FillAggregateAttestation(state, attestation, beaconStateAccessor);
 
@@ -100,7 +98,7 @@ namespace Nethermind.BeaconNode.Test.Helpers
             foreach (var validatorIndex in participants)
             {
                 var privateKey = privateKeys[(int)(ulong)validatorIndex];
-                var signature = GetAttestationSignature(testServiceProvider, state, attestationData, privateKey, custodyBit: false);
+                var signature = GetAttestationSignature(testServiceProvider, state, attestationData, privateKey);
                 signatures.Add(signature);
             }
 

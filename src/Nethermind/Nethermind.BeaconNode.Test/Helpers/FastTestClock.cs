@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Test.Helpers
 {
@@ -32,6 +33,11 @@ namespace Nethermind.BeaconNode.Test.Helpers
         }
 
         public ManualResetEvent CompleteWaitHandle { get; }
+
+        public DateTimeOffset Now()
+        {
+            throw new NotImplementedException();
+        }
 
         public DateTimeOffset UtcNow()
         {
