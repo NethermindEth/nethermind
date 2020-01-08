@@ -33,8 +33,10 @@ namespace Nethermind.Core
             }
             string date = DateTime.Now.ToString("yyyyMMdd");
             string gitTag = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-hash")).Trim().Replace("g", "") : string.Empty;
+            string gitBranch = File.Exists(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-branch")) ? File.ReadAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "git-branch")).Trim().Replace("/", "-") : string.Empty;
 
-            Description = $"Nethermind/v{gitTag}-{date}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+
+            Description = $"Nethermind/v{gitTag}-{date}/{gitBranch}/{RuntimeInformation.OSArchitecture}-{osDescription}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
         }
         
         public static string Version { get; }
