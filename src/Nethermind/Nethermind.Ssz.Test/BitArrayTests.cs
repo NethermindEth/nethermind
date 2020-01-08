@@ -19,13 +19,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core2;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 using Shouldly;
 
 namespace Nethermind.Ssz.Test
 {
     [TestFixture]
-    public class SszBitArrayTests
+    public class BitArrayTests
     {
         [TestCaseSource(nameof(GetBitvectorData))]
         public void BitvectorEncode(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
@@ -57,6 +58,21 @@ namespace Nethermind.Ssz.Test
             // Assert
             BitArray expected = new BitArray(value);
             decoded.ShouldBe(expected);
+        }
+
+        [TestCaseSource(nameof(GetBitvectorData))]
+        public void BitvectorMerkleize(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
+        {
+            // Arrange
+            var input = new BitArray(value);
+
+            // Act
+            var hashTreeRoot = new byte[32];
+            Merkle.IzeBitvector(out UInt256 root, input);
+            root.ToLittleEndian(hashTreeRoot);
+
+            // Assert
+            hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
