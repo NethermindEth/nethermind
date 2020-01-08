@@ -151,5 +151,6 @@ namespace Nethermind.Blockchain
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
+        void DeleteChainSlice(in long startNumber, in long endNumber);
     }
 }

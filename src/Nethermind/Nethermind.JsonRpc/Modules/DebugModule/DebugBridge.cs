@@ -73,6 +73,11 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _blockTree.FindLevel(number);
         }
         
+        public void DeleteChainSlice(long startNumber, long endNumber)
+        {
+            _blockTree.DeleteChainSlice(startNumber, endNumber);
+        }
+        
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default);

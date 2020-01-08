@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain
         private const int CacheSize = 64;
         private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(CacheSize);
         private readonly LruCache<Keccak, BlockHeader> _headerCache = new LruCache<Keccak, BlockHeader>(CacheSize);
-        
+
         private const int BestKnownSearchLimit = 256_000_000;
         public const int DbLoadBatchSize = 4000;
 
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain
         private readonly ITxPool _txPool;
         private readonly ISyncConfig _syncConfig;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        
+
         internal static Keccak DeletePointerAddressInDb = new Keccak(new BitArray(32 * 8, true).ToBytes());
         internal static Keccak HeadAddressInDb = Keccak.Zero;
 
@@ -430,7 +430,7 @@ namespace Nethermind.Blockchain
             BlockInfo blockInfo = new BlockInfo(header.Hash, header.TotalDifficulty ?? 0);
             ChainLevelInfo chainLevel = new ChainLevelInfo(false, blockInfo);
             _chainLevelInfoRepository.PersistLevel(header.Number, chainLevel);
-            
+
             if (header.Number < (LowestInsertedHeader?.Number ?? long.MaxValue))
             {
                 LowestInsertedHeader = header;
@@ -795,7 +795,7 @@ namespace Nethermind.Blockchain
             var invalidBlocksWithThisNumber = _invalidBlocks.Get(invalidBlock.Number) ?? new HashSet<Keccak>();
             invalidBlocksWithThisNumber.Add(invalidBlock.Hash);
             _invalidBlocks.Set(invalidBlock.Number, invalidBlocksWithThisNumber);
-                
+
             BestSuggestedHeader = Head;
             BestSuggestedBody = Head == null ? null : FindBlock(Head.Hash, BlockTreeLookupOptions.None);
 
@@ -862,8 +862,8 @@ namespace Nethermind.Blockchain
                     else
                     {
                         _chainLevelInfoRepository.PersistLevel(currentNumber, currentLevel, batch);
-                    }                    
-                    
+                    }
+
 
                     if (_logger.IsInfo) _logger.Info($"Deleting invalid block {currentHash} at level {currentNumber}");
                     _blockCache.Delete(currentHash);
@@ -1149,6 +1149,7 @@ namespace Nethermind.Blockchain
                     {
                         blockInfos[^1] = blockInfo;
                     }
+
                     level.BlockInfos = blockInfos;
                 }
                 else
@@ -1166,7 +1167,7 @@ namespace Nethermind.Blockchain
                     level.HasBlockOnMainChain = true;
                 }
 
-                _chainLevelInfoRepository.PersistLevel(number, level, batch);                
+                _chainLevelInfoRepository.PersistLevel(number, level, batch);
             }
         }
 
@@ -1274,7 +1275,8 @@ namespace Nethermind.Blockchain
 
                 if (requiresCanonical)
                 {
-                    bool isMain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;;
+                    bool isMain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
+                    ;
                     block = isMain ? block : null;
                 }
             }
@@ -1328,6 +1330,71 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockEventArgs> NewHeadBlock;
 
+        public void DeleteChainSlice(in long startNumber, in long endNumber)
+        {
+            if (endNumber - startNumber < 0)
+            {
+                throw new InvalidOperationException($"Start number must be equal or greater end number.");
+            }
+            
+            if (endNumber - startNumber > 1000)
+            {
+                throw new InvalidOperationException($"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).");
+            }
+            
+            if (endNumber < BestKnownNumber)
+            {
+                throw new InvalidOperationException("End number has to be at least equal to the best known number when deleting a slice");
+            }
+
+            if (startNumber < 1)
+            {
+                throw new InvalidOperationException("Start number must be strictly greater than 0");
+            }
+
+            Block newHeadBlock = null;
+            
+            // we are running these checks before all the deletes
+            if (Head.Number >= startNumber)
+            {
+                // greater than zero so will not fail
+                ChainLevelInfo chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber - 1);
+
+                // there may be no canonical block marked on this level - then we just hack to genesis
+                Keccak newHeadHash = chainLevelInfo.HasBlockOnMainChain ? chainLevelInfo.BlockInfos[0].BlockHash : Genesis.Hash;
+                newHeadBlock = FindBlock(newHeadHash, BlockTreeLookupOptions.None);
+            }
+
+            using (_chainLevelInfoRepository.StartBatch())
+            {
+                for (long i = endNumber; i >= startNumber; i--)
+                {
+                    ChainLevelInfo chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber);
+                    if (chainLevelInfo == null)
+                    {
+                        continue;
+                    }
+                    
+                    _chainLevelInfoRepository.Delete(startNumber);
+
+                    foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
+                    {
+                        Keccak blockHash = blockInfo.BlockHash;
+                        _blockInfoDb.Delete(blockHash);
+                        _blockDb.Delete(blockHash);
+                        _headerDb.Delete(blockHash);
+                    }
+
+                    _chainLevelInfoRepository.Delete(startNumber);
+                }
+            }
+
+            if (newHeadBlock != null)
+            {
+                UpdateHeadBlock(newHeadBlock);
+            }
+        }
+
         public async Task FixFastSyncGaps(CancellationToken cancellationToken)
         {
             try
@@ -1344,7 +1411,7 @@ namespace Nethermind.Blockchain
                 {
                     return;
                 }
-                
+
                 long? gapStart = null;
                 long? gapEnd = null;
 
