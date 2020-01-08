@@ -52,6 +52,11 @@ namespace Nethermind.Blockchain
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(FixFastSyncGaps)} calls");
         }
 
+        public ChainLevelInfo FindLevel(long number)
+        {
+            return _wrapped.FindLevel(number);
+        }
+
         public AddBlockResult Insert(Block block)
         {
             throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
@@ -143,6 +148,11 @@ namespace Nethermind.Blockchain
         {
             add { }
             remove { }
+        }
+
+        public void DeleteChainSlice(in long startNumber, in long endNumber)
+        {
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(DeleteChainSlice)} calls");
         }
 
         public void UpdateMainChain(Block[] processedBlocks)

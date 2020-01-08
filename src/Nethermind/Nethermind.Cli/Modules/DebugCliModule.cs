@@ -24,6 +24,12 @@ namespace Nethermind.Cli.Modules
     [CliModule("debug")]
     public class DebugCliModule : CliModuleBase
     {
+        [CliFunction("debug", "getChainlevel")]
+        public JsValue GetChainLevel(long number)
+        {
+            return NodeManager.PostJint("debug_getChainLevel", number).Result;
+        }
+        
         [CliFunction("debug", "traceBlock")]
         public JsValue TraceBlock(string rlp, object options)
         {
