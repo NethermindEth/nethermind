@@ -27,7 +27,7 @@ namespace Nethermind.Ssz.Benchmarks
     public class SszBeaconBlockHeaderBenchmark
     {
         private BeaconBlockHeader _header;
-        private byte[] _encoded = new byte[ByteLength.BeaconBlockHeaderLength];
+        private byte[] _encoded = new byte[Ssz.BeaconBlockHeaderLength];
         
         public SszBeaconBlockHeaderBenchmark()
         {

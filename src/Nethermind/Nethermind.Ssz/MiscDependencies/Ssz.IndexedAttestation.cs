@@ -33,13 +33,13 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != ByteLength.IndexedAttestationLength(container))
+            if (span.Length != Ssz.IndexedAttestationLength(container))
             {
-                ThrowTargetLength<IndexedAttestation>(span.Length, ByteLength.IndexedAttestationLength(container));
+                ThrowTargetLength<IndexedAttestation>(span.Length, Ssz.IndexedAttestationLength(container));
             }
 
             int offset = 0;
-            int dynamicOffset = ByteLength.IndexedAttestationDynamicOffset;
+            int dynamicOffset = Ssz.IndexedAttestationDynamicOffset;
             Encode(span, container.AttestingIndices.ToArray(), ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
             Encode(span, container.Signature, ref offset);

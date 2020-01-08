@@ -33,7 +33,7 @@ namespace Nethermind.Ssz
             }
             
             int offset = 0;
-            int dynamicOffset = ByteLength.BeaconBlockBodyDynamicOffset;
+            int dynamicOffset = Ssz.BeaconBlockBodyDynamicOffset;
             Encode(span, container.RandaoReveal, ref offset);
             Encode(span, container.Eth1Data, ref offset);
             Encode(span, container.Graffiti.AsSpan().ToArray(), ref offset);

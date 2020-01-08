@@ -31,7 +31,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != ByteLength.DepositDataLength) ThrowTargetLength<DepositData>(span.Length, ByteLength.DepositDataLength);
+            if (span.Length != Ssz.DepositDataLength) ThrowTargetLength<DepositData>(span.Length, Ssz.DepositDataLength);
             int offset = 0;
             Encode(span, container.PublicKey, ref offset);
             Encode(span, container.WithdrawalCredentials, ref offset);
@@ -41,7 +41,7 @@ namespace Nethermind.Ssz
 
         public static DepositData DecodeDepositData(Span<byte> span)
         {
-            if (span.Length != ByteLength.DepositDataLength) ThrowSourceLength<DepositData>(span.Length, ByteLength.DepositDataLength);
+            if (span.Length != Ssz.DepositDataLength) ThrowSourceLength<DepositData>(span.Length, Ssz.DepositDataLength);
             int offset = 0;
             BlsPublicKey publicKey = DecodeBlsPublicKey(span, ref offset);
             Hash32 withdrawalCredentials = DecodeSha256(span, ref offset);

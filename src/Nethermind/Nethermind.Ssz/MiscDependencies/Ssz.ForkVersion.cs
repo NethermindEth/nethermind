@@ -33,8 +33,8 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static ForkVersion DecodeForkVersion(Span<byte> span, ref int offset)
         {
-            ForkVersion forkVersion = new ForkVersion(span.Slice(offset, ByteLength.ForkVersionLength));
-            offset += ByteLength.ForkVersionLength;
+            ForkVersion forkVersion = new ForkVersion(span.Slice(offset, Ssz.ForkVersionLength));
+            offset += Ssz.ForkVersionLength;
             return forkVersion;
         }
         
@@ -42,13 +42,13 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, ForkVersion value, ref int offset)
         {
             // FIXME: ForkVersion can be created by marshalling a span onto it, with no guarantee the underlying architecture is little endian.
-            value.AsSpan().CopyTo(span.Slice(offset, ByteLength.ForkVersionLength));
-            offset += ByteLength.ForkVersionLength;
+            value.AsSpan().CopyTo(span.Slice(offset, Ssz.ForkVersionLength));
+            offset += Ssz.ForkVersionLength;
         }
         
         public static ForkVersion DecodeForkVersion(Span<byte> span)
         {
-            return new ForkVersion(span.Slice(0, ByteLength.ForkVersionLength));
+            return new ForkVersion(span.Slice(0, Ssz.ForkVersionLength));
         }
     }
 }

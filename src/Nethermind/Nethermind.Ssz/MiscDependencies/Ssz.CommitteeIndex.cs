@@ -37,8 +37,8 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static CommitteeIndex DecodeCommitteeIndex(Span<byte> span, ref int offset)
         {
-            CommitteeIndex committeeIndex = new CommitteeIndex(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, ByteLength.CommitteeIndexLength)));BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, ByteLength.CommitteeIndexLength));
-            offset += ByteLength.CommitteeIndexLength;
+            CommitteeIndex committeeIndex = new CommitteeIndex(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, Ssz.CommitteeIndexLength)));BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset, Ssz.CommitteeIndexLength));
+            offset += Ssz.CommitteeIndexLength;
             return committeeIndex;
         }
         
@@ -46,7 +46,7 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, CommitteeIndex value, ref int offset)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(offset), value.Number);
-            offset += ByteLength.CommitteeIndexLength;
+            offset += Ssz.CommitteeIndexLength;
         }
 
     }

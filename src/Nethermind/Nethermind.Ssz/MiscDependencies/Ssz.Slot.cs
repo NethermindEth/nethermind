@@ -38,7 +38,7 @@ namespace Nethermind.Ssz
         private static Slot DecodeSlot(Span<byte> span, ref int offset)
         {
             Slot slot = new Slot(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
-            offset += ByteLength.SlotLength;
+            offset += Ssz.SlotLength;
             return slot;
         }
         
@@ -46,7 +46,7 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, Slot value, ref int offset)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(offset), value.Number);
-            offset += ByteLength.SlotLength;
+            offset += Ssz.SlotLength;
         }
     }
 }

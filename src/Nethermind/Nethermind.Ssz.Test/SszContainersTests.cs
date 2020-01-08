@@ -39,7 +39,7 @@ namespace Nethermind.Ssz.Test
         public void Fork_there_and_back()
         {
             Fork container = new Fork(new ForkVersion(new byte[] { 0x01, 0x00, 0x00, 0x00 }), new ForkVersion(new byte[] { 0x02, 0x00, 0x00, 0x00 }), new Epoch(3));
-            Span<byte> encoded = new byte[ByteLength.ForkLength];
+            Span<byte> encoded = new byte[Ssz.ForkLength];
             Ssz.Encode(encoded, container);
             Fork decoded = Ssz.DecodeFork(encoded);
             Assert.AreEqual(container, decoded);
@@ -51,7 +51,7 @@ namespace Nethermind.Ssz.Test
         public void Checkpoint_there_and_back()
         {
             Checkpoint container = new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString);
-            Span<byte> encoded = new byte[ByteLength.CheckpointLength];
+            Span<byte> encoded = new byte[Ssz.CheckpointLength];
             Ssz.Encode(encoded, container);
             Checkpoint decoded = Ssz.DecodeCheckpoint(encoded);
             Assert.AreEqual(container, decoded);
@@ -73,7 +73,7 @@ namespace Nethermind.Ssz.Test
                 new Epoch(7)
                 );
 
-            Span<byte> encoded = new byte[ByteLength.ValidatorLength];
+            Span<byte> encoded = new byte[Ssz.ValidatorLength];
             Ssz.Encode(encoded, container);
             Validator decoded = Ssz.DecodeValidator(encoded);
             decoded.ShouldBe(container);
@@ -93,12 +93,12 @@ namespace Nethermind.Ssz.Test
                 new Checkpoint(new Epoch(1), Sha256.OfAnEmptyString),
                 new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString));
 
-            Span<byte> encoded = new byte[ByteLength.AttestationDataLength];
+            Span<byte> encoded = new byte[Ssz.AttestationDataLength];
             Ssz.Encode(encoded, container);
             AttestationData decoded = Ssz.DecodeAttestationData(encoded);
             Assert.AreEqual(container, decoded);
 
-            Span<byte> encodedAgain = new byte[ByteLength.AttestationDataLength];
+            Span<byte> encodedAgain = new byte[Ssz.AttestationDataLength];
             Ssz.Encode(encodedAgain, decoded);
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
             
@@ -120,7 +120,7 @@ namespace Nethermind.Ssz.Test
                 data, 
                 SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[ByteLength.IndexedAttestationLength(container)];
+            Span<byte> encoded = new byte[Ssz.IndexedAttestationLength(container)];
             Ssz.Encode(encoded, container);
             IndexedAttestation decoded = Ssz.DecodeIndexedAttestation(encoded);
             
@@ -145,7 +145,7 @@ namespace Nethermind.Ssz.Test
                 new Slot(7),
                 new ValidatorIndex(13));
 
-            Span<byte> encoded = new byte[ByteLength.PendingAttestationLength(container)];
+            Span<byte> encoded = new byte[Ssz.PendingAttestationLength(container)];
             Ssz.Encode(encoded, container);
             PendingAttestation? decoded = Ssz.DecodePendingAttestation(encoded);
             
@@ -161,7 +161,7 @@ namespace Nethermind.Ssz.Test
                 Sha256.OfAnEmptyString,
                 1,
                 Sha256.OfAnEmptyString);
-            Span<byte> encoded = new byte[ByteLength.Eth1DataLength];
+            Span<byte> encoded = new byte[Ssz.Eth1DataLength];
             Ssz.Encode(encoded, container);
             Eth1Data decoded = Ssz.DecodeEth1Data(encoded);
             Assert.AreEqual(container, decoded);
@@ -172,12 +172,12 @@ namespace Nethermind.Ssz.Test
         [Test]
         public void Historical_batch_there_and_back()
         {
-            Hash32[] blockRoots = Enumerable.Repeat(Hash32.Zero, ByteLength.SlotsPerHistoricalRoot).ToArray();
-            Hash32[] stateRoots = Enumerable.Repeat(Hash32.Zero, ByteLength.SlotsPerHistoricalRoot).ToArray();
+            Hash32[] blockRoots = Enumerable.Repeat(Hash32.Zero, Ssz.SlotsPerHistoricalRoot).ToArray();
+            Hash32[] stateRoots = Enumerable.Repeat(Hash32.Zero, Ssz.SlotsPerHistoricalRoot).ToArray();
             blockRoots[3] = Sha256.OfAnEmptyString;
             stateRoots[7] = Sha256.OfAnEmptyString;
             HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
-            Span<byte> encoded = new byte[ByteLength.HistoricalBatchLength];
+            Span<byte> encoded = new byte[Ssz.HistoricalBatchLength];
             Ssz.Encode(encoded, container);
             HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
@@ -193,7 +193,7 @@ namespace Nethermind.Ssz.Test
                 Sha256.OfAnEmptyString,
                 Gwei.One,
                 SszTest.TestSig1);
-            Span<byte> encoded = new byte[ByteLength.DepositDataLength];
+            Span<byte> encoded = new byte[Ssz.DepositDataLength];
             Ssz.Encode(encoded, container);
             DepositData decoded = Ssz.DecodeDepositData(encoded);
             Assert.AreEqual(container, decoded);
@@ -210,7 +210,7 @@ namespace Nethermind.Ssz.Test
                 Sha256.OfAnEmptyString,
                 Sha256.OfAnEmptyString,
                 SszTest.TestSig1);
-            Span<byte> encoded = new byte[ByteLength.BeaconBlockHeaderLength];
+            Span<byte> encoded = new byte[Ssz.BeaconBlockHeaderLength];
             Ssz.Encode(encoded, container);
             BeaconBlockHeader decoded = Ssz.DecodeBeaconBlockHeader(encoded);
             Assert.AreEqual(container, decoded);
@@ -240,7 +240,7 @@ namespace Nethermind.Ssz.Test
                 header1,
                 header2);
 
-            Span<byte> encoded = new byte[ByteLength.ProposerSlashingLength];
+            Span<byte> encoded = new byte[Ssz.ProposerSlashingLength];
             Ssz.Encode(encoded, container);
             ProposerSlashing? decoded = Ssz.DecodeProposerSlashing(encoded);
             Assert.AreEqual(container, decoded);
@@ -270,7 +270,7 @@ namespace Nethermind.Ssz.Test
 
             AttesterSlashing container = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
 
-            Span<byte> encoded = new byte[ByteLength.AttesterSlashingLength(container)];
+            Span<byte> encoded = new byte[Ssz.AttesterSlashingLength(container)];
             Ssz.Encode(encoded, container);
             AttesterSlashing? decoded = Ssz.DecodeAttesterSlashing(encoded);
             Assert.AreEqual(container, decoded);
@@ -293,7 +293,7 @@ namespace Nethermind.Ssz.Test
                 data,
                 SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[ByteLength.AttestationLength(container)];
+            Span<byte> encoded = new byte[Ssz.AttestationLength(container)];
             Ssz.Encode(encoded, container);
             Attestation? decoded = Ssz.DecodeAttestation(encoded);
             Assert.AreEqual(container, decoded);
@@ -310,11 +310,11 @@ namespace Nethermind.Ssz.Test
                 Gwei.One,
                 SszTest.TestSig1);
 
-            Hash32[] proof = Enumerable.Repeat(Hash32.Zero, ByteLength.ContractTreeDepth + 1).ToArray();
+            Hash32[] proof = Enumerable.Repeat(Hash32.Zero, Ssz.ContractTreeDepth + 1).ToArray();
             proof[7] = Sha256.OfAnEmptyString;
             Deposit container = new Deposit(proof, data);
 
-            Span<byte> encoded = new byte[ByteLength.DepositLength];
+            Span<byte> encoded = new byte[Ssz.DepositLength];
             Ssz.Encode(encoded, container);
             Deposit? decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
@@ -330,7 +330,7 @@ namespace Nethermind.Ssz.Test
                 new ValidatorIndex(2), 
                 SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[ByteLength.VoluntaryExitLength];
+            Span<byte> encoded = new byte[Ssz.VoluntaryExitLength];
             Ssz.Encode(encoded, container);
             VoluntaryExit? decoded = Ssz.DecodeVoluntaryExit(encoded);
             Assert.AreEqual(container, decoded);
@@ -357,7 +357,7 @@ namespace Nethermind.Ssz.Test
                 new VoluntaryExit[6]
             );
 
-            Span<byte> encoded = new byte[ByteLength.BeaconBlockBodyLength(container)];
+            Span<byte> encoded = new byte[Ssz.BeaconBlockBodyLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlockBody decoded = Ssz.DecodeBeaconBlockBody(encoded);
             Assert.AreEqual(container, decoded);
@@ -386,7 +386,7 @@ namespace Nethermind.Ssz.Test
                 new Gwei(7),
                 SszTest.TestSig1);
 
-            Deposit deposit = new Deposit(new Hash32[ByteLength.ContractTreeDepth + 1], depositData);
+            Deposit deposit = new Deposit(new Hash32[Ssz.ContractTreeDepth + 1], depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],
@@ -430,7 +430,7 @@ namespace Nethermind.Ssz.Test
                 voluntaryExits
             );
             
-            byte[] encoded = new byte[ByteLength.BeaconBlockBodyLength(body)];
+            byte[] encoded = new byte[Ssz.BeaconBlockBodyLength(body)];
             Ssz.Encode(encoded, body);
         }
 
@@ -460,12 +460,12 @@ namespace Nethermind.Ssz.Test
                 beaconBlockBody,
                 SszTest.TestSig1);
 
-            Span<byte> encoded = new byte[ByteLength.BeaconBlockLength(container)];
+            Span<byte> encoded = new byte[Ssz.BeaconBlockLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlock decoded = Ssz.DecodeBeaconBlock(encoded);
             Assert.AreEqual(container, decoded);
 
-            Span<byte> encodedAgain = new byte[ByteLength.BeaconBlockLength(container)];
+            Span<byte> encodedAgain = new byte[Ssz.BeaconBlockLength(container)];
             Ssz.Encode(encodedAgain, decoded);
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
             
@@ -511,16 +511,16 @@ namespace Nethermind.Ssz.Test
                 new Fork(new ForkVersion(new byte[] {0x05, 0x00, 0x00, 0x00}),
                     new ForkVersion(new byte[] {0x07, 0x00, 0x00, 0x00}), new Epoch(3)),
                 beaconBlockHeader,
-                new Hash32[ByteLength.SlotsPerHistoricalRoot],
-                new Hash32[ByteLength.SlotsPerHistoricalRoot],
+                new Hash32[Ssz.SlotsPerHistoricalRoot],
+                new Hash32[Ssz.SlotsPerHistoricalRoot],
                 new Hash32[13],
                 eth1Data,
                 new Eth1Data[2],
                 1234,
                 new Validator[7],
                 new Gwei[3],
-                new Hash32[ByteLength.EpochsPerHistoricalVector],
-                new Gwei[ByteLength.EpochsPerSlashingsVector],
+                new Hash32[Ssz.EpochsPerHistoricalVector],
+                new Gwei[Ssz.EpochsPerSlashingsVector],
                 new PendingAttestation[1],
                 new PendingAttestation[11],
                 new BitArray(new byte[] {0x09}),
@@ -533,7 +533,7 @@ namespace Nethermind.Ssz.Test
             options.ConfigureNethermindCore2();
             TestContext.WriteLine("Original state: {0}", JsonSerializer.Serialize(container, options));
 
-            int encodedLength = ByteLength.BeaconStateLength(container);
+            int encodedLength = Ssz.BeaconStateLength(container);
             TestContext.WriteLine("Encoded length: {0}", encodedLength);
             Span<byte> encoded = new byte[encodedLength];
             Ssz.Encode(encoded, container);
@@ -543,7 +543,7 @@ namespace Nethermind.Ssz.Test
 
             AssertBeaconStateEqual(container, decoded);
 
-            Span<byte> encodedAgain = new byte[ByteLength.BeaconStateLength(decoded)];
+            Span<byte> encodedAgain = new byte[Ssz.BeaconStateLength(decoded)];
             Ssz.Encode(encodedAgain, decoded);
 
             byte[] encodedArray = encoded.ToArray();

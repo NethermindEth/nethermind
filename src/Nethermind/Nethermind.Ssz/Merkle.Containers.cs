@@ -121,11 +121,11 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.RandaoReveal);
             merkleizer.Feed(container.Eth1Data);
             merkleizer.Feed(container.Graffiti);
-            merkleizer.Feed(container.ProposerSlashings, ByteLength.MaxProposerSlashings);
-            merkleizer.Feed(container.AttesterSlashings, ByteLength.MaxAttesterSlashings);
-            merkleizer.Feed(container.Attestations, ByteLength.MaxAttestations);
-            merkleizer.Feed(container.Deposits, ByteLength.MaxDeposits);
-            merkleizer.Feed(container.VoluntaryExits, ByteLength.MaxVoluntaryExits);
+            merkleizer.Feed(container.ProposerSlashings, Ssz.MaxProposerSlashings);
+            merkleizer.Feed(container.AttesterSlashings, Ssz.MaxAttesterSlashings);
+            merkleizer.Feed(container.Attestations, Ssz.MaxAttestations);
+            merkleizer.Feed(container.Deposits, Ssz.MaxDeposits);
+            merkleizer.Feed(container.VoluntaryExits, Ssz.MaxVoluntaryExits);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -144,14 +144,14 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.LatestBlockHeader);
             merkleizer.Feed(container.BlockRoots);
             merkleizer.Feed(container.StateRoots);
-            merkleizer.Feed(container.HistoricalRoots.ToArray(), ByteLength.HistoricalRootsLimit);
+            merkleizer.Feed(container.HistoricalRoots.ToArray(), Ssz.HistoricalRootsLimit);
             merkleizer.Feed(container.Eth1Data);
-            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)ByteLength.SlotsPerEth1VotingPeriod);
+            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Ssz.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
-            merkleizer.Feed(container.Validators, ByteLength.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Validators, Ssz.ValidatorRegistryLimit);
             merkleizer.Feed(container.Balances.ToArray().ToArray());
-            merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * ByteLength.SlotsPerEpoch);
-            merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * ByteLength.SlotsPerEpoch);
+            merkleizer.Feed(container.PreviousEpochAttestations, Ssz.MaxAttestations * Ssz.SlotsPerEpoch);
+            merkleizer.Feed(container.CurrentEpochAttestations, Ssz.MaxAttestations * Ssz.SlotsPerEpoch);
             merkleizer.FeedBitvector(container.JustificationBits);
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);
@@ -185,7 +185,7 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.FeedBitlist(container.AggregationBits, ByteLength.MaxValidatorsPerCommittee);
+            merkleizer.FeedBitlist(container.AggregationBits, Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -200,7 +200,7 @@ namespace Nethermind.Ssz
             }
 
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.Feed(container.AttestingIndices.ToArray(), ByteLength.MaxValidatorsPerCommittee);
+            merkleizer.Feed(container.AttestingIndices.ToArray(), Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -215,7 +215,7 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.FeedBitlist(container.AggregationBits, ByteLength.MaxValidatorsPerCommittee);
+            merkleizer.FeedBitlist(container.AggregationBits, Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.InclusionDelay);
             merkleizer.Feed(container.ProposerIndex);

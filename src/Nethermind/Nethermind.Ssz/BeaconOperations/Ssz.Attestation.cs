@@ -27,10 +27,10 @@ namespace Nethermind.Ssz
     {
         public static void Encode(Span<byte> span, Attestation? container)
         {
-            if (span.Length != ByteLength.AttestationLength(container)) ThrowTargetLength<Attestation>(span.Length, ByteLength.AttestationLength(container));
+            if (span.Length != Ssz.AttestationLength(container)) ThrowTargetLength<Attestation>(span.Length, Ssz.AttestationLength(container));
             if (container is null) return;
             int offset = 0;
-            int dynamicOffset = ByteLength.AttestationDynamicOffset;
+            int dynamicOffset = Ssz.AttestationDynamicOffset;
             Encode(span, container.AggregationBits, ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
             Encode(span, container.Signature, ref offset);
@@ -47,7 +47,7 @@ namespace Nethermind.Ssz
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
             {
-                int currentLength = ByteLength.AttestationLength(containers[i]);
+                int currentLength = Ssz.AttestationLength(containers[i]);
                 Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
                 Encode(span.Slice(dynamicOffset, currentLength), containers[i]);
                 offset += VarOffsetSize;
@@ -107,7 +107,7 @@ namespace Nethermind.Ssz
             {
                 for (int i = 0; i < attestations.Length; i++)
                 {
-                    length += ByteLength.AttestationLength(attestations[i]);
+                    length += Ssz.AttestationLength(attestations[i]);
                 }
             }
 
