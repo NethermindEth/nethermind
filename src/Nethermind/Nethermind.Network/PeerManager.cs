@@ -29,6 +29,7 @@ using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.StaticNodes;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -54,10 +55,11 @@ namespace Nethermind.Network
         private long _prevActivePeersCount;
         private readonly ManualResetEventSlim _peerUpdateRequested = new ManualResetEventSlim(false);
         private Task _peerUpdateLoopTask;
-        private readonly ConcurrentDictionary<PublicKey, Peer> _staticNodes = new ConcurrentDictionary<PublicKey, Peer>();
+        private readonly ConcurrentDictionary<PublicKey, Peer> _staticNodes =
+            new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _candidatePeers = new ConcurrentDictionary<PublicKey, Peer>();
-        
+
         public PeerManager(
             IRlpxPeer rlpxPeer,
             IDiscoveryApp discoveryApp,
@@ -90,37 +92,14 @@ namespace Nethermind.Network
             _discoveryApp.NodeDiscovered += OnNodeDiscovered;
             _staticNodesManager.NodeAdded += (sender, args) =>
             {
-                if (args.NodeIsStatic)
-                {
-                    _staticNodes.TryAdd(args.Node.NodeId, new Peer(new Node(args.Node.Host, args.Node.Port, true)));
-                }
-
-                if (_candidatePeers.TryAdd(args.Node.NodeId, new Peer(new Node(args.Node.Host, args.Node.Port, true))) && _logger.IsDebug)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Added new {(args.NodeIsStatic ? "static" : string.Empty)} node to peers candidates: {args.Node}");
-                }
+                var peer = CreatePeer(args.Node, true);
+                _staticNodes.TryAdd(args.Node.NodeId, peer);
+                AddPeer(args.Node, peer);
             };
             _staticNodesManager.NodeRemoved += (sender, args) =>
             {
-                if (args.NodeIsStatic)
-                {
-                    _staticNodes.TryRemove(args.Node.NodeId, out _);
-                }
-
-                if (_candidatePeers.TryRemove(args.Node.NodeId, out var peer))
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Removed {(args.NodeIsStatic ? "static" : string.Empty)} node from peers candidates: {args.Node}");
-
-                    if (_activePeers.ContainsKey(args.Node.NodeId))
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"Removed {(args.NodeIsStatic ? "static" : string.Empty)} node from active peers: {args.Node}");
-                        
-                        peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
-                        peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local,"admin_removePeer");
-                    }
-
-                    args.Removed = true;
-                }
+                _staticNodes.TryRemove(args.Node.NodeId, out _);
+                RemovePeer(args.Node, true);
             };
             _rlpxPeer.SessionCreated += (sender, args) =>
             {
@@ -133,6 +112,45 @@ namespace Nethermind.Network
                     ProcessOutgoingConnection(session);
                 }
             };
+        }
+
+        private static Peer CreatePeer(NetworkNode node, bool isStatic)
+        {
+            return new Peer(new Node(node.NodeId, node.Host, node.Port, isStatic));
+        }
+
+        public bool RemovePeer(NetworkNode node) => RemovePeer(node, false);
+
+        private bool RemovePeer(NetworkNode node, bool isStatic)
+        {
+            if (_candidatePeers.TryRemove(node.NodeId, out var peer))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Removed the static node from peers candidates: {node}");
+                if (_activePeers.ContainsKey(node.NodeId))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Removed {(isStatic ? "static" : string.Empty)} node from active peers: {node}");
+
+                    peer.InSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
+                    peer.OutSession?.MarkDisconnected(DisconnectReason.DisconnectRequested, DisconnectType.Local, "admin_removePeer");
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+        
+        public bool AddPeer(NetworkNode node) => AddPeer(node, CreatePeer(node, false));
+
+        private bool AddPeer(NetworkNode node, Peer peer)
+        {
+            if (_candidatePeers.TryAdd(node.NodeId, peer))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Added the new {(peer.Node.IsStatic ? "static" : string.Empty)} node to peers candidates: {node}");
+                return true;
+            }
+
+            return false;
         }
 
         private void LoadPeers()
@@ -210,7 +228,6 @@ namespace Nethermind.Network
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToList().AsReadOnly();
-
         public IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToList().AsReadOnly();
 
         private class CandidateSelection

@@ -17,40 +17,54 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Logging;
+using Nethermind.Core;
 using Nethermind.Network;
 
 namespace Nethermind.JsonRpc.Modules.Admin
 {
     public class AdminModule : IAdminModule
     {
-        private readonly ILogger _logger;
         private readonly IPeerManager _peerManager;
         private readonly IStaticNodesManager _staticNodesManager;
 
-        public AdminModule(ILogManager logManager, IPeerManager peerManager, IStaticNodesManager staticNodesManager)
+        public AdminModule(IPeerManager peerManager, IStaticNodesManager staticNodesManager)
         {
-            _logger = logManager.GetClassLogger();
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
             _staticNodesManager = staticNodesManager ?? throw new ArgumentNullException(nameof(staticNodesManager));
         }
         
-        public async Task<ResultWrapper<string>> admin_addPeer(string enode)
+        public async Task<ResultWrapper<string>> admin_addPeer(string enode, bool addToStaticNodes = false)
         {
-            var added = await _staticNodesManager.AddAsync(enode);
+            bool added;
+            if (addToStaticNodes)
+            {
+                added = await _staticNodesManager.AddAsync(enode);
+            }
+            else
+            {
+                added = _peerManager.AddPeer(new NetworkNode(enode));
+            }
 
             return added
                 ? ResultWrapper<string>.Success(enode)
-                : ResultWrapper<string>.Fail("Static node already exists.");
+                : ResultWrapper<string>.Fail("Failed to add peer.");
         }
 
-        public async Task<ResultWrapper<string>> admin_removePeer(string enode)
+        public async Task<ResultWrapper<string>> admin_removePeer(string enode, bool removeFromStaticNodes = false)
         {
-            var removed = await _staticNodesManager.RemoveAsync(enode);
-
+            bool removed;
+            if (removeFromStaticNodes)
+            {
+                removed = await _staticNodesManager.RemoveAsync(enode);
+            }
+            else
+            {
+                removed = _peerManager.RemovePeer(new NetworkNode(enode));
+            }
+            
             return removed
                 ? ResultWrapper<string>.Success(enode)
-                : ResultWrapper<string>.Fail("Node was not found.");
+                : ResultWrapper<string>.Fail("Failed to remove peer.");
         }
 
         public ResultWrapper<PeerInfo[]> admin_peers()
