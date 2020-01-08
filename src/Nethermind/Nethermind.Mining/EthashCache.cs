@@ -56,24 +56,25 @@ namespace Nethermind.Mining
             }
         }
 
-        public void CalcDataSetItem(uint i, Span<uint> output)
+        public uint[] CalcDataSetItem(uint i)
         {
             uint n = Size / Ethash.HashBytes;
             int r = Ethash.HashBytes / Ethash.WordBytes;
 
-            Span<uint> mixInts = stackalloc uint[Ethash.HashBytes / Ethash.WordBytes];
-            Data[i % n].CopyTo(mixInts);
+            uint[] mixInts = new uint[Ethash.HashBytes / Ethash.WordBytes];
+            Buffer.BlockCopy(Data[i % n], 0, mixInts, 0, Ethash.HashBytes);
 
             mixInts[0] = i ^ mixInts[0];
-            Keccak512.ComputeUIntsToUInts(mixInts, mixInts);
+            mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
 
             for (uint j = 0; j < Ethash.DataSetParents; j++)
             {
-                ulong cacheIndex = Ethash.Fnv(i ^ j, mixInts[(int) (j % r)]);
+                ulong cacheIndex = Ethash.Fnv(i ^ j, mixInts[j % r]);
                 Ethash.Fnv(mixInts, Data[cacheIndex % n]);
             }
 
-            Keccak512.ComputeUIntsToUInts(mixInts, output);
+            mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
+            return mixInts;
         }
 
         private bool isDisposed;

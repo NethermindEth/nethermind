@@ -65,11 +65,6 @@ namespace Nethermind.Core.Crypto
             return InternalCompute(rlp.Bytes);
         }
 
-        public static Keccak512 Compute(Span<byte> input)
-        {
-            return InternalCompute(input);
-        }
-
         public static Keccak512 Compute(byte[] input)
         {
             if (input == null || input.Length == 0)
@@ -97,16 +92,6 @@ namespace Nethermind.Core.Crypto
             return _hash.ComputeBytesToUint(input);
         }
 
-        public static void ComputeUIntsToUInts(Span<uint> input, Span<uint> output)
-        {
-            if (_hash == null)
-            {
-                LazyInitializer.EnsureInitialized(ref _hash, Init);
-            }
-
-            _hash.ComputeUIntsToUint(input, output);
-        }
-
         public static uint[] ComputeUIntsToUInts(uint[] input)
         {
             if (input == null || input.Length == 0)
@@ -127,7 +112,7 @@ namespace Nethermind.Core.Crypto
             return HashFactory.Crypto.SHA3.CreateKeccak512();
         }
         
-        private static Keccak512 InternalCompute(Span<byte> input)
+        private static Keccak512 InternalCompute(byte[] input)
         {
             if (_hash == null)
             {
