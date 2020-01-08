@@ -117,6 +117,17 @@ namespace Nethermind.HashLib
             return result;
         }
 
+        public override void TransformFinalUInts(Span<uint> output)
+        {
+            Finish();
+
+            Debug.Assert(m_buffer.IsEmpty);
+
+            GetResultUints(output);
+
+            Initialize();
+        }
+
         protected void TransformBuffer()
         {
             Debug.Assert(m_buffer.IsFull);
@@ -137,7 +148,11 @@ namespace Nethermind.HashLib
         protected virtual uint[] GetResultUInts()
         {
             throw new NotSupportedException();
+        }
 
+        protected virtual void GetResultUints(Span<uint> result)
+        {
+            throw new NotSupportedException();
         }
     }
 }

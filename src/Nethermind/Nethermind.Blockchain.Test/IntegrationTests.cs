@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Test
     public class IntegrationTests
     {
         [Test]
-        // [Explicit("This test is unpredictably failing on Travis and nowhere else")]
+        [Explicit("This test is unpredictably failing on Travis and nowhere else")]
         // It takes dotCover to run it quite long, increased timeouts
         public async Task Can_process_mined_blocks()
         {
