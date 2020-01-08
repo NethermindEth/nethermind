@@ -17,20 +17,15 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
-using BeaconBlock = Nethermind.BeaconNode.OApi.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.OApi.BeaconBlockBody;
-using IndexedAttestation = Nethermind.BeaconNode.OApi.IndexedAttestation;
 
 namespace Nethermind.BeaconNode.OApi
 {
@@ -58,11 +53,11 @@ namespace Nethermind.BeaconNode.OApi
                     Bytes.ToHexString(beacon_block.Body.Graffiti),
                     beacon_block.Signature, null);
             
-            Containers.BeaconBlock signedBlock = new Containers.BeaconBlock(
+            Core2.Containers.BeaconBlock signedBlock = new Core2.Containers.BeaconBlock(
                 new Slot((ulong) beacon_block.Slot),
                 new Hash32(Bytes.FromHexString(beacon_block.Parent_root)),
                 new Hash32(Bytes.FromHexString(beacon_block.State_root)),
-                new Containers.BeaconBlockBody(
+                new Core2.Containers.BeaconBlockBody(
                     new BlsSignature(beacon_block.Body.Randao_reveal),
                     new Eth1Data(
                         new Hash32(beacon_block.Body.Eth1_data.Deposit_root),
@@ -80,17 +75,16 @@ namespace Nethermind.BeaconNode.OApi
                         MapIndexedAttestation(x.Attestation_2)
                     )),
                     beacon_block.Body.Attestations.Select(x =>
-                        new BeaconNode.Containers.Attestation(
+                        new Core2.Containers.Attestation(
                             new BitArray(x.Aggregation_bits),
                             MapAttestationData(x.Data),
-                            new BitArray(x.Custody_bits),
                             new BlsSignature(x.Signature)
                         )
                     ),
                     beacon_block.Body.Deposits.Select(x =>
-                        new BeaconNode.Containers.Deposit(
+                        new Core2.Containers.Deposit(
                             x.Proof.Select(y => new Hash32(y)),
-                            new BeaconNode.Containers.DepositData(
+                            new DepositData(
                                 new BlsPublicKey(x.Data.Pubkey),
                                 new Hash32(x.Data.Withdrawal_credentials),
                                 new Gwei((ulong) x.Data.Amount),
@@ -132,7 +126,7 @@ namespace Nethermind.BeaconNode.OApi
         {
             if (_logger.IsInfo()) Log.NewBlockRequested(_logger, slot, Bytes.ToHexString(randao_reveal), null);
             
-            Containers.BeaconBlock data =
+            Core2.Containers.BeaconBlock data =
                 await _beaconNode.NewBlockAsync(new Slot(slot), new BlsSignature(randao_reveal), CancellationToken.None);
             
             OApi.BeaconBlock result = new OApi.BeaconBlock()
@@ -166,7 +160,7 @@ namespace Nethermind.BeaconNode.OApi
                     {
                         Signature = x.Signature.Bytes,
                         Aggregation_bits = x.AggregationBits.Cast<byte>().ToArray(),
-                        Custody_bits = x.CustodyBits.Cast<byte>().ToArray(),
+                        Custody_bits = new byte[0],
                         Data = MapAttestationData(x.Data)
                     }).ToList(),
                     Voluntary_exits = data.Body.VoluntaryExits.Select(x => new Voluntary_exits()
@@ -259,20 +253,19 @@ namespace Nethermind.BeaconNode.OApi
             return await _beaconNode.GetNodeVersionAsync(CancellationToken.None);
         }
         
-        private static Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApi.IndexedAttestation indexedAttestation)
+        private static Core2.Containers.IndexedAttestation MapIndexedAttestation(BeaconNode.OApi.IndexedAttestation indexedAttestation)
         {
-            return new Containers.IndexedAttestation(
+            return new Core2.Containers.IndexedAttestation(
                 indexedAttestation.Custody_bit_0_indices.Select(y => new ValidatorIndex((ulong)y)),
-                indexedAttestation.Custody_bit_1_indices.Select(y => new ValidatorIndex((ulong)y)),
                 MapAttestationData(indexedAttestation.Data),
                 new BlsSignature(Bytes.FromHexString(indexedAttestation.Signature))
             );
         }
 
-        private static Containers.AttestationData MapAttestationData(BeaconNode.OApi.AttestationData attestationData)
+        private static Core2.Containers.AttestationData MapAttestationData(BeaconNode.OApi.AttestationData attestationData)
         {
             // NOTE: This mapping isn't right, spec changes (sharding)
-            return new Containers.AttestationData(
+            return new Core2.Containers.AttestationData(
                 Slot.None,
                 CommitteeIndex.None, 
                 new Hash32(attestationData.Beacon_block_root), 
@@ -287,9 +280,9 @@ namespace Nethermind.BeaconNode.OApi
             );
         }
 
-        private static Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.OApi.BeaconBlockHeader value)
+        private static Core2.Containers.BeaconBlockHeader MapBeaconBlockHeader(BeaconNode.OApi.BeaconBlockHeader value)
         {
-            return new Containers.BeaconBlockHeader(
+            return new Core2.Containers.BeaconBlockHeader(
                 new Slot((ulong)value.Slot),
                 new Hash32(Bytes.FromHexString(value.Parent_root)), 
                 new Hash32(Bytes.FromHexString(value.State_root)), 
@@ -298,18 +291,18 @@ namespace Nethermind.BeaconNode.OApi
             );
         }
         
-        private static IndexedAttestation MapIndexedAttestation(Containers.IndexedAttestation indexedAttestation)
+        private static IndexedAttestation MapIndexedAttestation(Core2.Containers.IndexedAttestation indexedAttestation)
         {
             return new IndexedAttestation()
             {
                 Signature = indexedAttestation.Signature.ToString(),
-                Custody_bit_0_indices = indexedAttestation.CustodyBit0Indices.Select(y => (int)y).ToList(),
-                Custody_bit_1_indices = indexedAttestation.CustodyBit1Indices.Select(y => (int)y).ToList(),
+                Custody_bit_0_indices = indexedAttestation.AttestingIndices.Select(y => (int)y).ToList(),
+                Custody_bit_1_indices = new List<int>(),
                 Data = MapAttestationData(indexedAttestation.Data)
             };
         }
 
-        private static AttestationData MapAttestationData(Containers.AttestationData attestationData)
+        private static AttestationData MapAttestationData(Core2.Containers.AttestationData attestationData)
         {
             // NOTE: This mapping isn't right, spec changes (sharding)
             return new AttestationData()
@@ -323,7 +316,7 @@ namespace Nethermind.BeaconNode.OApi
             };
         }
 
-        private static BeaconBlockHeader MapBeaconBlockHeader(Containers.BeaconBlockHeader value)
+        private static BeaconBlockHeader MapBeaconBlockHeader(Core2.Containers.BeaconBlockHeader value)
         {
             return new BeaconBlockHeader()
             {

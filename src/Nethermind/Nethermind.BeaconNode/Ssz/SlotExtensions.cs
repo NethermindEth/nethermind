@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Cortex.SimpleSerialize;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Types;
 
 namespace Nethermind.BeaconNode.Ssz

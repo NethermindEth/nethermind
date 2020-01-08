@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -142,111 +143,111 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
 
-        public void Feed(ProposerSlashing[]? value, ulong maxLength)
+        public void Feed(IReadOnlyList<ProposerSlashing> value, ulong maxLength)
         {
             if (value is null)
             {
                 return;
             }
             
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 Merkle.Ize(out subRoots[i], value[i]);
             }
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
         
-        public void Feed(AttesterSlashing[]? value, ulong maxLength)
+        public void Feed(IReadOnlyList<AttesterSlashing> value, ulong maxLength)
         {
             if (value is null)
             {
                 return;
             }
             
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 Merkle.Ize(out subRoots[i], value[i]);
             }
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
         
-        public void Feed(Validator[]? value, ulong maxLength)
+        public void Feed(IReadOnlyList<Validator> value, ulong maxLength)
         {
             if (value is null)
             {
                 return;
             }
             
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 Merkle.Ize(out subRoots[i], value[i]);
             }
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
 
-        public void Feed(Attestation?[]? value, ulong maxLength)
+        public void Feed(IReadOnlyList<Attestation> value, ulong maxLength)
         {
             if (value is null)
             {
                 return;
             }
             
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 Merkle.Ize(out subRoots[i], value[i]);
             }
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
-            Feed(_chunks[^1]);
-        }
-        
-        public void Feed(PendingAttestation?[]? value, ulong maxLength)
-        {
-            if (value is null)
-            {
-                return;
-            }
-            
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
-            {
-                Merkle.Ize(out subRoots[i], value[i]);
-            }
-
-            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
         
-        public void Feed(VoluntaryExit[]? value, ulong maxLength)
+        public void Feed(IReadOnlyList<PendingAttestation> value, ulong maxLength)
         {
             if (value is null)
             {
                 return;
             }
             
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 Merkle.Ize(out subRoots[i], value[i]);
             }
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(IReadOnlyList<VoluntaryExit> value, ulong maxLength)
+        {
+            if (value is null)
+            {
+                return;
+            }
+            
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
+            {
+                Merkle.Ize(out subRoots[i], value[i]);
+            }
+
+            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
         
@@ -268,21 +269,21 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
-        public void Feed(Deposit?[]? value, uint maxLength)
+        public void Feed(IReadOnlyList<Deposit> value, uint maxLength)
         {
             if (value is null)
             {
                 return;
             }
             
-            UInt256[] subRoots = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 Merkle.Ize(out subRoots[i], value[i]);
             }
 
             Merkle.Ize(out _chunks[^1], subRoots, maxLength);
-            Merkle.MixIn(ref _chunks[^1], value.Length);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
         
@@ -459,20 +460,42 @@ namespace Nethermind.Ssz
             Feed(_chunks[^1]);
         }
         
+        public void Feed(Bytes32 value)
+        {
+            Feed(MemoryMarshal.Cast<byte, UInt256>(value.AsSpan())[0]);
+        }
+
         public void Feed(Hash32 value)
         {
             Feed(MemoryMarshal.Cast<byte, UInt256>(value.Bytes)[0]);
         }
         
-        public void Feed(Span<Hash32> value)
+//        public void Feed(ReadOnlySpan<Hash32> value)
+//        {
+//            if (value == null)
+//            {
+//                return;
+//            }
+//            
+//            UInt256[] input = new UInt256[value.Length];
+//            for (int i = 0; i < value.Length; i++)
+//            {
+//                UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes ?? Hash32.Zero.Bytes);
+//            }
+//            
+//            Merkle.Ize(out _chunks[^1], input);
+//            Feed(_chunks[^1]);
+//        }
+
+        public void Feed(IReadOnlyList<Hash32> value)
         {
             if (value == null)
             {
                 return;
             }
             
-            UInt256[] input = new UInt256[value.Length];
-            for (int i = 0; i < value.Length; i++)
+            UInt256[] input = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
             {
                 UInt256.CreateFromLittleEndian(out input[i], value[i].Bytes ?? Hash32.Zero.Bytes);
             }
@@ -480,7 +503,7 @@ namespace Nethermind.Ssz
             Merkle.Ize(out _chunks[^1], input);
             Feed(_chunks[^1]);
         }
-        
+
         private void FeedAtLevel(UInt256 chunk, int level)
         {
             for (int i = level; i < _chunks.Length; i++)

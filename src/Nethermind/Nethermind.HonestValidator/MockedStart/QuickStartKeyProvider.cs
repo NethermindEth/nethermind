@@ -21,9 +21,9 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Cortex.Cryptography;
 using Microsoft.Extensions.Options;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.HonestValidator.Services;
@@ -35,16 +35,13 @@ namespace Nethermind.HonestValidator.MockedStart
         private static readonly BigInteger s_curveOrder = BigInteger.Parse("52435875175126190479447740508185965837690552500527637822603658699938581184513");
         
         private readonly IOptionsMonitor<QuickStartParameters> _quickStartParameterOptions;
-        private readonly ICryptographyService _cryptographyService;
         
         private readonly IDictionary<BlsPublicKey, BLS> _publicKeyToBls = new Dictionary<BlsPublicKey, BLS>();
 
         public QuickStartKeyProvider(
-            IOptionsMonitor<QuickStartParameters> quickStartParameterOptions,
-            ICryptographyService cryptographyService)
+            IOptionsMonitor<QuickStartParameters> quickStartParameterOptions)
         {
             _quickStartParameterOptions = quickStartParameterOptions;
-            _cryptographyService = cryptographyService;
         }
 
         public IEnumerable<BlsPublicKey> GetPublicKeys()
@@ -81,9 +78,9 @@ namespace Nethermind.HonestValidator.MockedStart
             
             BLS bls = _publicKeyToBls[blsPublicKey];
             
-            Span<byte> destination = stackalloc byte[BlsSignature.SszLength];
+            Span<byte> destination = stackalloc byte[BlsSignature.Length];
             bool success = bls.TrySignHash(hash.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
-            if (!success || bytesWritten != BlsSignature.SszLength)
+            if (!success || bytesWritten != BlsSignature.Length)
             {
                 throw new Exception($"Failure signing hash {hash}, domain {domain} for public key {blsPublicKey}.");
             }
@@ -102,8 +99,8 @@ namespace Nethermind.HonestValidator.MockedStart
                 throw new Exception("Error getting input for quick start private key generation.");
             }
 
-            Hash32 hash32 = _cryptographyService.Hash(input);
-            Span<byte> hash = hash32.AsSpan();
+            Hash32 hash32 = Sha256.Compute(input);
+            ReadOnlySpan<byte> hash = hash32.AsSpan();
             // Mocked start interop specifies to convert the hash as little endian (which is the default for BigInteger)
             BigInteger value = new BigInteger(hash.ToArray(), isUnsigned: true);
             BigInteger privateKey = value % s_curveOrder;

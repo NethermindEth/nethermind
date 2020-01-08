@@ -15,7 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
@@ -23,8 +26,8 @@ namespace Nethermind.Ssz
     {
         private static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span, ref int offset)
         {
-            BeaconBlockHeader beaconBlockHeader = DecodeBeaconBlockHeader(span.Slice(offset, BeaconBlockHeader.SszLength));
-            offset += BeaconBlockHeader.SszLength;
+            BeaconBlockHeader beaconBlockHeader = DecodeBeaconBlockHeader(span.Slice(offset, ByteLength.BeaconBlockHeaderLength));
+            offset += ByteLength.BeaconBlockHeaderLength;
             return beaconBlockHeader;
         }
         
@@ -35,7 +38,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != BeaconBlockHeader.SszLength) ThrowTargetLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
+            if (span.Length != ByteLength.BeaconBlockHeaderLength) ThrowTargetLength<BeaconBlockHeader>(span.Length, ByteLength.BeaconBlockHeaderLength);
             int offset = 0;
             Encode(span, container.Slot, ref offset);
             Encode(span, container.ParentRoot, ref offset);
@@ -46,14 +49,14 @@ namespace Nethermind.Ssz
 
         public static BeaconBlockHeader DecodeBeaconBlockHeader(Span<byte> span)
         {
-            if (span.Length != BeaconBlockHeader.SszLength) ThrowSourceLength<BeaconBlockHeader>(span.Length, BeaconBlockHeader.SszLength);
+            if (span.Length != ByteLength.BeaconBlockHeaderLength) ThrowSourceLength<BeaconBlockHeader>(span.Length, ByteLength.BeaconBlockHeaderLength);
             int offset = 0;
-            BeaconBlockHeader container = new BeaconBlockHeader();
-            container.Slot = DecodeSlot(span, ref offset);
-            container.ParentRoot = DecodeSha256(span, ref offset);
-            container.StateRoot = DecodeSha256(span, ref offset);
-            container.BodyRoot = DecodeSha256(span, ref offset);
-            container.Signature = DecodeBlsSignature(span, ref offset);
+            Slot slot = DecodeSlot(span, ref offset);
+            Hash32 parentRoot = DecodeSha256(span, ref offset);
+            Hash32 stateRoot = DecodeSha256(span, ref offset);
+            Hash32 bodyRoot = DecodeSha256(span, ref offset);
+            BlsSignature signature = DecodeBlsSignature(span, ref offset);
+            BeaconBlockHeader container = new BeaconBlockHeader(slot, parentRoot, stateRoot, bodyRoot, signature);
             return container;
         }
     }

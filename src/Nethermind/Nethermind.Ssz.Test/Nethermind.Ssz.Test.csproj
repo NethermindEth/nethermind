@@ -3,8 +3,11 @@
     <PropertyGroup>
         <TargetFramework>netcoreapp3.0</TargetFramework>
 
+        <Product>Nethermind Eth2.0 blockchain</Product>
+        <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
+        <Version>0.0.1</Version>
+        <LangVersion>latest</LangVersion>
         <IsPackable>false</IsPackable>
-
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
@@ -16,9 +19,12 @@
         <PackageReference Include="nunit" Version="3.12.0" />
         <PackageReference Include="NUnit3TestAdapter" Version="3.13.0" />
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="16.2.0" />
+        <PackageReference Include="Shouldly" Version="3.0.2" />
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Nethermind.BeaconNode.Containers\Nethermind.BeaconNode.Containers.csproj" />
+      <ProjectReference Include="..\Nethermind.Core2.Json\Nethermind.Core2.Json.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
     </ItemGroup>

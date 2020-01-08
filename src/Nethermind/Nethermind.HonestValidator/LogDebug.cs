@@ -46,8 +46,8 @@ namespace Nethermind.HonestValidator
             LoggerMessage.Define<Slot, string, string>(LogLevel.Debug,
                 new EventId(6454, nameof(RequestingBlock)),
                 "Requesting new block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}.");
-        public static readonly Action<ILogger, Slot, string, string, Nethermind.BeaconNode.Containers.BeaconBlock, string, Exception?> PublishingSignedBlock =
-            LoggerMessage.Define<Slot, string, string, Nethermind.BeaconNode.Containers.BeaconBlock, string>(LogLevel.Debug,
+        public static readonly Action<ILogger, Slot, string, string, BeaconBlock, string, Exception?> PublishingSignedBlock =
+            LoggerMessage.Define<Slot, string, string, BeaconBlock, string>(LogLevel.Debug,
                 new EventId(6454, nameof(PublishingSignedBlock)),
                 "Publishing signed block for slot {Slot} for validator {PublicKey} with RANDAO reveal {RandaoReveal}, block details {BeaconBlock}, and signature {Signature}.");
     }

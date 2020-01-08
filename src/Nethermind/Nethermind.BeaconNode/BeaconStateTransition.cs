@@ -21,29 +21,13 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
-using Attestation = Nethermind.BeaconNode.Containers.Attestation;
-using AttestationData = Nethermind.BeaconNode.Containers.AttestationData;
-using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
-using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
-using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Checkpoint = Nethermind.BeaconNode.Containers.Checkpoint;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
-using Hash32 = Nethermind.Core2.Types.Hash32;
-using HistoricalBatch = Nethermind.BeaconNode.Containers.HistoricalBatch;
-using ILogger = Microsoft.Extensions.Logging.ILogger;
-using IndexedAttestation = Nethermind.BeaconNode.Containers.IndexedAttestation;
-using PendingAttestation = Nethermind.BeaconNode.Containers.PendingAttestation;
-using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
-using Validator = Nethermind.BeaconNode.Containers.Validator;
 
 namespace Nethermind.BeaconNode
 {
@@ -283,10 +267,6 @@ namespace Nethermind.BeaconNode
             }
 
             IReadOnlyList<ValidatorIndex> committee = _beaconStateAccessor.GetBeaconCommittee(state, data.Slot, data.Index);
-            if (attestation.AggregationBits.Count != attestation.CustodyBits.Count)
-            {
-                throw new Exception($"The attestation aggregation bit length {attestation.AggregationBits.Count} must be the same as the custody bit length {attestation.CustodyBits.Count}.");
-            }
             if (attestation.AggregationBits.Count != committee.Count)
             {
                 throw new Exception($"The attestation aggregation bit (and custody bit) length {attestation.AggregationBits.Count} must be the same as the committee length {committee.Count}.");
@@ -354,10 +334,7 @@ namespace Nethermind.BeaconNode
             }
 
             bool slashedAny = false;
-            IEnumerable<ValidatorIndex> attestingIndices1 = attestation1.CustodyBit0Indices.Union(attestation1.CustodyBit1Indices);
-            IEnumerable<ValidatorIndex> attestingIndices2 = attestation2.CustodyBit0Indices.Union(attestation2.CustodyBit1Indices);
-
-            IEnumerable<ValidatorIndex> intersection = attestingIndices1.Intersect(attestingIndices2);
+            IEnumerable<ValidatorIndex> intersection = attestation1.AttestingIndices.Intersect(attestation2.AttestingIndices);
             Epoch currentEpoch = _beaconStateAccessor.GetCurrentEpoch(state);
             foreach (ValidatorIndex index in intersection.OrderBy(x => x))
             {
@@ -475,8 +452,8 @@ namespace Nethermind.BeaconNode
                 Validator newValidator = new Validator(
                     publicKey,
                     deposit.Data.WithdrawalCredentials,
-                    effectiveBalance
-,
+                    effectiveBalance,
+                    false,
                     _chainConstants.FarFutureEpoch,
                     _chainConstants.FarFutureEpoch,
                     _chainConstants.FarFutureEpoch,

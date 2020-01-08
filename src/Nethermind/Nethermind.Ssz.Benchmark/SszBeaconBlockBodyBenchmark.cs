@@ -14,7 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -25,67 +27,78 @@ namespace Nethermind.Ssz.Benchmarks
     [MemoryDiagnoser]
     public class SszBeaconBlockBodyBenchmark
     {
-        private BeaconBlockBody _body = new BeaconBlockBody();
+        private BeaconBlockBody _body;
         private byte[] _encoded;
         
         public SszBeaconBlockBodyBenchmark()
         {
-            AttestationData data = new AttestationData();
-            data.Slot = new Slot(1);
-            data.Source = new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString);
-            data.Target = new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString);
-            data.CommitteeIndex = new CommitteeIndex(4);
-            data.BeaconBlockRoot = Sha256.OfAnEmptyString;
+            AttestationData data = new AttestationData(
+                new Slot(1),
+                new CommitteeIndex(4),
+                Sha256.OfAnEmptyString,
+                new Checkpoint(new Epoch(2), Sha256.OfAnEmptyString),
+                new Checkpoint(new Epoch(3), Sha256.OfAnEmptyString));
             
-            Attestation attestation = new Attestation();
-            attestation.Data = data;
-            attestation.Signature = BlsSignature.TestSig1;
-            attestation.AggregationBits = new byte[5];
+            Attestation attestation = new Attestation(
+                new BitArray(new byte[5]),
+                data,
+                SszTest.TestSig1
+                );
 
-            DepositData depositData = new DepositData();
-            depositData.Amount = new Gwei(7);
-            depositData.Signature = BlsSignature.TestSig1;
-            depositData.PublicKey = BlsPublicKey.TestKey1;
-            depositData.WithdrawalCredentials = Sha256.OfAnEmptyString;
-            
-            Deposit deposit = new Deposit();
-            deposit.Data = depositData;
-            deposit.Proof = new Hash32[Deposit.ContractTreeDepth + 1];
-            
-            IndexedAttestation indexedAttestation1 = new IndexedAttestation();
-            indexedAttestation1.Data = data;
-            indexedAttestation1.Signature = BlsSignature.TestSig1;
-            indexedAttestation1.AttestingIndices = new ValidatorIndex[8];
+            DepositData depositData = new DepositData(
+                SszTest.TestKey1,
+                Sha256.OfAnEmptyString,
+                new Gwei(7),
+                SszTest.TestSig1);
 
-            IndexedAttestation indexedAttestation2 = new IndexedAttestation();
-            indexedAttestation2.Data = data;
-            indexedAttestation2.Signature = BlsSignature.TestSig1;
-            indexedAttestation2.AttestingIndices = new ValidatorIndex[8];
+            Deposit deposit = new Deposit(
+                new Hash32[ByteLength.ContractTreeDepth + 1],
+                depositData);
 
-            AttesterSlashing slashing = new AttesterSlashing();
-            slashing.Attestation1 = indexedAttestation1;
-            slashing.Attestation2 = indexedAttestation2;
+            IndexedAttestation indexedAttestation1 = new IndexedAttestation(
+                new ValidatorIndex[8],
+                data,
+                SszTest.TestSig1);
 
-            Eth1Data eth1Data = new Eth1Data();
-            eth1Data.BlockHash = Sha256.OfAnEmptyString;
-            eth1Data.DepositCount = 9;
-            eth1Data.DepositRoot = Sha256.OfAnEmptyString;
-            
-            _body.Attestations = new Attestation[3];
-            _body.Attestations[1] = attestation;
-            
-            _body.Deposits = new Deposit[3];
-            _body.Deposits[2] = deposit;
-            
-            _body.Graffiti = new byte[32];
-            _body.AttesterSlashings = new AttesterSlashing[3];
-            _body.AttesterSlashings[0] = slashing;
-            _body.Eth1Data = eth1Data;
-            _body.ProposerSlashings = new ProposerSlashing[10];
-            _body.RandaoReversal = BlsSignature.TestSig1;
-            _body.VoluntaryExits = new VoluntaryExit[11];
+            IndexedAttestation indexedAttestation2 = new IndexedAttestation(
+                new ValidatorIndex[8],
+                data,
+                SszTest.TestSig1);
 
-            _encoded = new byte[BeaconBlockBody.SszLength(_body)];
+            AttesterSlashing slashing = new AttesterSlashing(indexedAttestation1, indexedAttestation2);
+
+            Eth1Data eth1Data = new Eth1Data(
+                Sha256.OfAnEmptyString,
+                9,
+                Sha256.OfAnEmptyString);
+            
+            Attestation[] attestations = new Attestation[3];
+            attestations[1] = attestation;
+            
+            Deposit[] deposits = new Deposit[3];
+            deposits[2] = deposit;
+            
+            Bytes32 graffiti = new Bytes32(new byte[32]);
+            
+            AttesterSlashing[] attesterSlashings = new AttesterSlashing[3];
+            attesterSlashings[0] = slashing;
+            
+            ProposerSlashing[] proposerSlashings = new ProposerSlashing[10];
+
+            BlsSignature randaoReveal = SszTest.TestSig1;
+            
+            VoluntaryExit[] voluntaryExits = new VoluntaryExit[11];
+
+            _body = new BeaconBlockBody(randaoReveal,
+                eth1Data,
+                graffiti,
+                proposerSlashings,
+                attesterSlashings,
+                attestations,
+                deposits,
+                voluntaryExits);
+
+            _encoded = new byte[ByteLength.BeaconBlockBodyLength(_body)];
         }
         
         [Benchmark(Baseline = true)]

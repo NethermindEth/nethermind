@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.MockedStart
 {
@@ -31,6 +32,8 @@ namespace Nethermind.BeaconNode.MockedStart
             _adjustment = TimeSpan.FromSeconds(clockOffset);
         }
 
-        public DateTimeOffset UtcNow() => DateTimeOffset.Now + _adjustment;
+        public DateTimeOffset Now() => DateTimeOffset.Now + _adjustment;
+
+        public DateTimeOffset UtcNow() => DateTimeOffset.UtcNow + _adjustment;
     }
 }

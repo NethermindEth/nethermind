@@ -23,14 +23,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
-using Nethermind.BeaconNode.Containers.Json;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Json;
 using Nethermind.Core2.Types;
 using Shouldly;
-
 namespace Nethermind.BeaconNode.Test.Fork
 {
     [TestClass]
@@ -49,7 +50,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
             JsonSerializerOptions options = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
-            options.AddCortexContainerConverters();
+            options.ConfigureNethermindCore2();
             string debugState = System.Text.Json.JsonSerializer.Serialize(state, options);
             
             // Initialization

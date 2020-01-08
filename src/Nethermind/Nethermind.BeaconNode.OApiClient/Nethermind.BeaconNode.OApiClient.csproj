@@ -25,8 +25,8 @@
     <DotNetCliToolReference Include="NSwag.ConsoleCore" Version="13.1.6" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.BeaconNode.Containers\Nethermind.BeaconNode.Containers.csproj" />
-    <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
-    <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
+    <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
+    <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
+    <ProjectReference Include="..\Nethermind.Logging.Microsoft\Nethermind.Logging.Microsoft.csproj" />
   </ItemGroup>
 </Project>

@@ -25,6 +25,7 @@ using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Configuration;
+using Nethermind.Core2.Cryptography;
 
 namespace Nethermind.BeaconNode.Host
 {
@@ -83,6 +84,7 @@ namespace Nethermind.BeaconNode.Host
                     services.AddBeaconNode(hostContext.Configuration);
                     services.AddBeaconNodeStorage(hostContext.Configuration);
                     services.AddBeaconNodePeering(hostContext.Configuration);
+                    services.AddCryptographyService(hostContext.Configuration);
 
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
                     {

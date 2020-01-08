@@ -23,17 +23,6 @@ using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-using Attestation = Nethermind.BeaconNode.Containers.Attestation;
-using AttesterSlashing = Nethermind.BeaconNode.Containers.AttesterSlashing;
-using BeaconBlock = Nethermind.BeaconNode.Containers.BeaconBlock;
-using BeaconBlockBody = Nethermind.BeaconNode.Containers.BeaconBlockBody;
-using BeaconBlockHeader = Nethermind.BeaconNode.Containers.BeaconBlockHeader;
-using BeaconState = Nethermind.BeaconNode.Containers.BeaconState;
-using Deposit = Nethermind.BeaconNode.Containers.Deposit;
-using Eth1Data = Nethermind.BeaconNode.Containers.Eth1Data;
-using Hash32 = Nethermind.Core2.Types.Hash32;
-using ProposerSlashing = Nethermind.BeaconNode.Containers.ProposerSlashing;
-
 namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestBlock

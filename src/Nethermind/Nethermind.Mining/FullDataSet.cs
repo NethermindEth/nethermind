@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Mining
 {
     public class FullDataSet : IEthashDataSet
@@ -27,13 +30,14 @@ namespace Nethermind.Mining
             Data = new uint[(uint)(setSize / Ethash.HashBytes)][];
             for (uint i = 0; i < Data.Length; i++)
             {
-                Data[i] = cache.CalcDataSetItem(i);
+                Data[i] = new uint[16];
+                cache.CalcDataSetItem(i, Data[i]);
             }
         }
 
-        public uint[] CalcDataSetItem(uint i)
+        public void CalcDataSetItem(uint i, Span<uint> output)
         {
-            return Data[i];
+            Data[i].CopyTo(output);
         }
 
         public void Dispose()

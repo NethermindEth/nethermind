@@ -19,10 +19,10 @@ using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
-
 namespace Nethermind.BeaconNode.Test.Helpers
 {
     public static class TestGenesis
@@ -39,8 +39,8 @@ namespace Nethermind.BeaconNode.Test.Helpers
             var validator = new Validator(
                 publicKey,
                 withdrawalCredentials,
-                Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance)
-,
+                Gwei.Min(balance - balance % gweiValues.EffectiveBalanceIncrement, gweiValues.MaximumEffectiveBalance),
+                false,
                 chainConstants.FarFutureEpoch,
                 chainConstants.FarFutureEpoch,
                 chainConstants.FarFutureEpoch,

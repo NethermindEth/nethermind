@@ -18,4 +18,8 @@
     <ProjectReference Include="..\Nethermind.Core2\Nethermind.Core2.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Json" />
+  </ItemGroup>
+
 </Project>

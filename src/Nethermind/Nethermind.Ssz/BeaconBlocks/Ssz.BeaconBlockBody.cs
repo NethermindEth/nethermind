@@ -15,7 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Linq;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
@@ -29,15 +33,15 @@ namespace Nethermind.Ssz
             }
             
             int offset = 0;
-            int dynamicOffset = BeaconBlockBody.SszDynamicOffset;
-            Encode(span, container.RandaoReversal, ref offset);
+            int dynamicOffset = ByteLength.BeaconBlockBodyDynamicOffset;
+            Encode(span, container.RandaoReveal, ref offset);
             Encode(span, container.Eth1Data, ref offset);
-            Encode(span, container.Graffiti, ref offset);
-            Encode(span, container.ProposerSlashings, ref offset, ref dynamicOffset);
-            Encode(span, container.AttesterSlashings, ref offset, ref dynamicOffset);
-            Encode(span, container.Attestations, ref offset, ref dynamicOffset);
-            Encode(span, container.Deposits, ref offset, ref dynamicOffset);
-            Encode(span, container.VoluntaryExits, ref offset, ref dynamicOffset);
+            Encode(span, container.Graffiti.AsSpan().ToArray(), ref offset);
+            Encode(span, container.ProposerSlashings.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.AttesterSlashings.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.Attestations.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.Deposits.ToArray(), ref offset, ref dynamicOffset);
+            Encode(span, container.VoluntaryExits.ToArray(), ref offset, ref dynamicOffset);
         }
         
         public static BeaconBlockBody DecodeBeaconBlockBody(Span<byte> span)
@@ -45,10 +49,9 @@ namespace Nethermind.Ssz
             // static part
             
             int offset = 0;
-            BeaconBlockBody container = new BeaconBlockBody();
-            container.RandaoReversal = DecodeBlsSignature(span, ref offset);
-            container.Eth1Data = DecodeEth1Data(span, ref offset);
-            container.Graffiti = DecodeBytes32(span, ref offset);
+            BlsSignature randaoReveal = DecodeBlsSignature(span, ref offset);
+            Eth1Data eth1Data = DecodeEth1Data(span, ref offset);
+            Bytes32 graffiti = new Bytes32(DecodeBytes32(span, ref offset));
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset2);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset3);
@@ -63,12 +66,20 @@ namespace Nethermind.Ssz
             int depositsLength = dynamicOffset5 - dynamicOffset4;
             int voluntaryExitsLength = span.Length - dynamicOffset5;
 
-            container.ProposerSlashings = DecodeProposerSlashings(span.Slice(dynamicOffset1, proposerSlashingsLength));
-            container.AttesterSlashings = DecodeAttesterSlashings(span.Slice(dynamicOffset2, attesterSlashingsLength));
-            container.Attestations = DecodeAttestations(span.Slice(dynamicOffset3, attestationsLength));
-            container.Deposits = DecodeDeposits(span.Slice(dynamicOffset4, depositsLength));
-            container.VoluntaryExits = DecodeVoluntaryExits(span.Slice(dynamicOffset5, voluntaryExitsLength));
+            ProposerSlashing[] proposerSlashings = DecodeProposerSlashings(span.Slice(dynamicOffset1, proposerSlashingsLength));
+            AttesterSlashing[] attesterSlashings = DecodeAttesterSlashings(span.Slice(dynamicOffset2, attesterSlashingsLength));
+            Attestation[] attestations = DecodeAttestations(span.Slice(dynamicOffset3, attestationsLength));
+            Deposit[] deposits = DecodeDeposits(span.Slice(dynamicOffset4, depositsLength));
+            VoluntaryExit[] voluntaryExits = DecodeVoluntaryExits(span.Slice(dynamicOffset5, voluntaryExitsLength));
             
+            BeaconBlockBody container = new BeaconBlockBody(randaoReveal,
+                eth1Data,
+                graffiti,
+                proposerSlashings,
+                attesterSlashings,
+                attestations,
+                deposits,
+                voluntaryExits);
             return container;
         }
     }

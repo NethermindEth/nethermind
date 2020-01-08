@@ -18,6 +18,7 @@ using System;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 
@@ -29,7 +30,7 @@ namespace Nethermind.Ssz
         private static void Encode(Span<byte> span, ValidatorIndex value, ref int offset)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(offset), value.Number);
-            offset += ValidatorIndex.SszLength;
+            offset += ByteLength.ValidatorIndexLength;
         }
 
         public static void Encode(Span<byte> span, ValidatorIndex value)
@@ -46,13 +47,13 @@ namespace Nethermind.Ssz
         private static ValidatorIndex DecodeValidatorIndex(Span<byte> span, ref int offset)
         {
             ValidatorIndex validatorIndex = new ValidatorIndex(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
-            offset += ValidatorIndex.SszLength;
+            offset += ByteLength.ValidatorIndexLength;
             return validatorIndex;
         }
 
         public static void Encode(Span<byte> span, Span<ValidatorIndex> value)
         {
-            if (span.Length != value.Length * ValidatorIndex.SszLength)
+            if (span.Length != value.Length * ByteLength.ValidatorIndexLength)
             {
                 ThrowTargetLength<ulong[]>(span.Length, value.Length);
             }
@@ -67,7 +68,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            int length = containers.Length * ValidatorIndex.SszLength;
+            int length = containers.Length * ByteLength.ValidatorIndexLength;
             Encode(span, dynamicOffset, ref offset);
             Encode(span.Slice(dynamicOffset, length), containers);
             dynamicOffset += length;
