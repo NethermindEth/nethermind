@@ -29,7 +29,7 @@ namespace Nethermind.Ssz.Test
     public class BitArrayTests
     {
         [TestCaseSource(nameof(GetBitvectorData))]
-        public void BitvectorEncode(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void Can_serialize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var input = new BitArray(value);
@@ -37,16 +37,14 @@ namespace Nethermind.Ssz.Test
             // Act
             var encoded = new byte[(input.Length + 7) / 8];
             Ssz.EncodeVector(encoded, input);
-            //var hashTreeRoot = tree.HashTreeRoot();
 
             // Assert
             var byteString = Bytes.ToHexString(encoded);
             byteString.ShouldBe(expectedByteString);
-            //hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
 
         [TestCaseSource(nameof(GetBitvectorData))]
-        public void BitvectorDecode(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void Can_deserialize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var encoded = Bytes.FromHexString(expectedByteString);
@@ -61,7 +59,7 @@ namespace Nethermind.Ssz.Test
         }
 
         [TestCaseSource(nameof(GetBitvectorData))]
-        public void BitvectorMerkleize(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void Can_merkleize_bitarray_bitvector(bool[] value, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var input = new BitArray(value);
@@ -76,7 +74,7 @@ namespace Nethermind.Ssz.Test
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
-        public void BitlistEncode(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void Can_serialize_bitarray_bitlist(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var input = new BitArray(value);
@@ -84,16 +82,14 @@ namespace Nethermind.Ssz.Test
             // Act
             var encoded = new byte[(input.Length + 8) / 8];
             Ssz.EncodeList(encoded, input);
-            //var hashTreeRoot = tree.HashTreeRoot();
 
             // Assert
             var byteString = Bytes.ToHexString(encoded);
             byteString.ShouldBe(expectedByteString);
-            //hashTreeRoot.ToArray().ShouldBe(expectedHashTreeRoot);
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
-        public void BitlistDecode(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void Can_deserialize_bitarray_bitlist(bool[] value, ulong limit, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var encoded = Bytes.FromHexString(expectedByteString);
@@ -107,7 +103,7 @@ namespace Nethermind.Ssz.Test
         }
 
         [TestCaseSource(nameof(GetBitlistData))]
-        public void BitlistMerkleize(bool[] value, ulong maximumBitlistLength, string expectedByteString, byte[] expectedHashTreeRoot)
+        public void Can_merkleize_bitarray_bitlist(bool[] value, ulong maximumBitlistLength, string expectedByteString, byte[] expectedHashTreeRoot)
         {
             // Arrange
             var input = new BitArray(value);
