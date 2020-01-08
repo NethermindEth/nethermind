@@ -21,6 +21,6 @@ namespace Nethermind.Mining
     public interface IEthashDataSet : IDisposable
     {
         uint Size { get; }
-        void CalcDataSetItem(uint i, Span<uint> output);
+        uint[] CalcDataSetItem(uint i);
     }
 }
