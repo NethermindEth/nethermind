@@ -1276,7 +1276,6 @@ namespace Nethermind.Blockchain
                 if (requiresCanonical)
                 {
                     bool isMain = level.MainChainBlock?.BlockHash.Equals(blockHash) == true;
-                    ;
                     block = isMain ? block : null;
                 }
             }
@@ -1330,26 +1329,34 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockEventArgs> NewHeadBlock;
 
+        /// <summary>
+        /// Can delete a slice of the chain (usually invoked when the chain is corrupted in the DB).
+        /// This will only allow to delete a slice starting somewhere before the head of the chain
+        /// and ending somewhere after the head (in case there are some hanging levels later).
+        /// </summary>
+        /// <param name="startNumber">Start level of the slice to delete</param>
+        /// <param name="endNumber">End level of the slice to delete</param>
+        /// <exception cref="ArgumentException">Thrown when <paramref name="startNumber"/> ot <paramref name="endNumber"/> do not satisfy the slice position rules</exception>
         public void DeleteChainSlice(in long startNumber, in long endNumber)
         {
             if (endNumber - startNumber < 0)
             {
-                throw new InvalidOperationException($"Start number must be equal or greater end number.");
+                throw new ArgumentException("Start number must be equal or greater end number.", nameof(startNumber));
             }
             
             if (endNumber - startNumber > 1000)
             {
-                throw new InvalidOperationException($"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).");
+                throw new ArgumentException($"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).", nameof(startNumber));
             }
             
             if (endNumber < BestKnownNumber)
             {
-                throw new InvalidOperationException("End number has to be at least equal to the best known number when deleting a slice");
+                throw new ArgumentException("End number has to be at least equal to the best known number when deleting a slice", nameof(endNumber));
             }
 
             if (startNumber < 1)
             {
-                throw new InvalidOperationException("Start number must be strictly greater than 0");
+                throw new ArgumentException("Start number must be strictly greater than 0", nameof(startNumber));
             }
 
             Block newHeadBlock = null;
@@ -1369,13 +1376,13 @@ namespace Nethermind.Blockchain
             {
                 for (long i = endNumber; i >= startNumber; i--)
                 {
-                    ChainLevelInfo chainLevelInfo = _chainLevelInfoRepository.LoadLevel(startNumber);
+                    ChainLevelInfo chainLevelInfo = _chainLevelInfoRepository.LoadLevel(i);
                     if (chainLevelInfo == null)
                     {
                         continue;
                     }
                     
-                    _chainLevelInfoRepository.Delete(startNumber);
+                    _chainLevelInfoRepository.Delete(i);
 
                     foreach (BlockInfo blockInfo in chainLevelInfo.BlockInfos)
                     {
@@ -1384,8 +1391,6 @@ namespace Nethermind.Blockchain
                         _blockDb.Delete(blockHash);
                         _headerDb.Delete(blockHash);
                     }
-
-                    _chainLevelInfoRepository.Delete(startNumber);
                 }
             }
 
