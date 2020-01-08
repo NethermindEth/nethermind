@@ -32,6 +32,6 @@ namespace Nethermind.Cli.Modules
         public string AddPeer(string enode, bool addToStaticNodes = false) => NodeManager.Post<string>("admin_addPeer", enode, addToStaticNodes).Result;
         
         [CliFunction("admin", "removePeer")]
-        public string RemovePeer(string enode, bool removeFromStaticNodes = false) => NodeManager.Post<string>("admin_removePeer", enode, addToStaticNodes).Result;
+        public string RemovePeer(string enode, bool removeFromStaticNodes = false) => NodeManager.Post<string>("admin_removePeer", enode, removeFromStaticNodes).Result;
     }
 }
