@@ -17,8 +17,9 @@
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
+using System;
 
-namespace Nethermind.Core2
+namespace Nethermind.Ssz
 {
     public static class ByteLength
     {

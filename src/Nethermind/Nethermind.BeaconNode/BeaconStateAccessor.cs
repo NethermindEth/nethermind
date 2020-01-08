@@ -281,10 +281,10 @@ namespace Nethermind.BeaconNode
             // # Avoid underflow
             Hash32 mix = GetRandaoMix(state, mixEpoch);
             
-            Span<byte> seedHashInput = stackalloc byte[DomainType.Length + ByteLength.EpochLength + ByteLength.Hash32Length];
+            Span<byte> seedHashInput = stackalloc byte[DomainType.Length + sizeof(ulong) + Hash32.Length];
             domainType.AsSpan().CopyTo(seedHashInput);
             BinaryPrimitives.WriteUInt64LittleEndian(seedHashInput.Slice(DomainType.Length), epoch);
-            mix.AsSpan().CopyTo(seedHashInput.Slice(DomainType.Length + ByteLength.EpochLength));
+            mix.AsSpan().CopyTo(seedHashInput.Slice(DomainType.Length + sizeof(ulong)));
             Hash32 seed = _cryptographyService.Hash(seedHashInput);
             return seed;
         }
