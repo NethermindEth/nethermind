@@ -24,7 +24,10 @@ namespace Nethermind.Core2.Configuration
     {
         public static void ConfigureBeaconChain(this IServiceCollection services, IConfiguration configuration)
         {
+            services.AddSingleton<IClientVersion, ClientVersion>();
+            
             services.AddSingleton<ChainConstants>();
+            
             services.Configure<MiscellaneousParameters>(x =>
             {
                 configuration.Bind("BeaconChain:MiscellaneousParameters", section =>

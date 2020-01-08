@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -32,7 +33,7 @@ namespace Nethermind.BeaconNode
     public class BeaconNodeFacade : IBeaconNodeApi
     {
         private readonly ILogger<BeaconNodeFacade> _logger;
-        private readonly ClientVersion _clientVersion;
+        private readonly IClientVersion _clientVersion;
         private readonly ForkChoice _forkChoice;
         private readonly IStoreProvider _storeProvider;
         private readonly INetworkPeering _networkPeering;
@@ -41,7 +42,7 @@ namespace Nethermind.BeaconNode
 
         public BeaconNodeFacade(
             ILogger<BeaconNodeFacade> logger,
-            ClientVersion clientVersion,
+            IClientVersion clientVersion,
             ForkChoice forkChoice,
             IStoreProvider storeProvider,
             INetworkPeering networkPeering,

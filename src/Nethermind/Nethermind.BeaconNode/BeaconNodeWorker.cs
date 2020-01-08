@@ -34,7 +34,7 @@ namespace Nethermind.BeaconNode
         private const string ConfigKey = "config";
 
         private readonly IConfiguration _configuration;
-        private readonly ClientVersion _clientVersion;
+        private readonly IClientVersion _clientVersion;
         private readonly IStoreProvider _storeProvider;
         private readonly ForkChoice _forkChoice;
         private readonly INodeStart _nodeStart;
@@ -49,7 +49,7 @@ namespace Nethermind.BeaconNode
             IClock clock,
             IHostEnvironment environment,
             IConfiguration configuration,
-            ClientVersion clientVersion,
+            IClientVersion clientVersion,
             IStoreProvider storeProvider,
             ForkChoice forkChoice,
             INodeStart nodeStart)

@@ -22,17 +22,16 @@ using System.Runtime.InteropServices;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace Nethermind.BeaconNode
+namespace Nethermind.Core2.Configuration
 {
-    public class ClientVersion
+    public class ClientVersion : IClientVersion
     {
-        private const string ProductToken = "Nethermind";
         private readonly ILogger _logger;
 
         public ClientVersion(ILogger<ClientVersion> logger, IHostEnvironment environment)
         {
             _logger = logger;
-            Description = BuildVersionDescription(ProductToken, environment.EnvironmentName);
+            Description = BuildVersionDescription(environment.EnvironmentName);
         }
 
         /// <summary>
@@ -56,11 +55,15 @@ namespace Nethermind.BeaconNode
         /// </remarks>
         public string Description { get; }
 
-        private string BuildVersionDescription(string productToken, string environmentName)
+        private string BuildVersionDescription(string environmentName)
         {
             List<string> parts = new List<string>();
 
             Assembly assembly = typeof(ClientVersion).Assembly;
+            
+            AssemblyProductAttribute productAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyProductAttribute>().FirstOrDefault();
+            string productToken = productAttribute.Product;
+            
             AssemblyInformationalVersionAttribute versionAttribute = assembly.GetCustomAttributes(false).OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
             string version = versionAttribute.InformationalVersion;
             string product1 = $"{productToken}/{version}";

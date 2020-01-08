@@ -33,7 +33,6 @@ namespace Nethermind.HonestValidator
             services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<ValidatorClient>();
-            services.AddSingleton<ClientVersion>();
             
             services.AddHostedService<HonestValidatorWorker>();
         }
