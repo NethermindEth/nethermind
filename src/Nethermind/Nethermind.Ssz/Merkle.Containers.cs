@@ -95,7 +95,7 @@ namespace Nethermind.Ssz
 
         public static void Ize(out UInt256 root, IList<DepositData> value)
         {
-            Merkleizer merkleizer = new Merkleizer(2);
+            Merkleizer merkleizer = new Merkleizer(0);
             merkleizer.Feed(value, Ssz.MaximumDepositContracts);
             merkleizer.CalculateRoot(out root);
         }

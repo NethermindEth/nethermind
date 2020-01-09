@@ -15,20 +15,45 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Extensions;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 using Shouldly;
+using Bytes = Nethermind.Core2.Bytes;
 
 namespace Nethermind.Ssz.Test
 {
     [TestFixture]
     public class HashTreeRootTests
     {
+        [SetUp]
+        public void Setup()
+        {
+            Ssz.Init(
+                32,
+                4,
+                2048,
+                32,
+                1024,
+                8192,
+                65536,
+                8192,
+                16_777_216,
+                1_099_511_627_776,
+                16,
+                1,
+                128,
+                16,
+                16
+            );    
+        }
+
         [Test]
         public void Can_merkleize_epoch_0()
         {
@@ -59,11 +84,10 @@ namespace Nethermind.Ssz.Test
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
 
             // assert
-            byte[] expected = HashUtility.Chunk(new byte[] {0x0}).ToArray();
+            byte[] expected = HashUtility.Chunk(new byte[] {0x1}).ToArray();
             bytes.ToArray().ShouldBe(expected);
         }
-
-                
+        
         [Test]
         public void Can_merkleize_hash32()
         {
@@ -147,6 +171,146 @@ namespace Nethermind.Ssz.Test
                     HashUtility.ZeroHashes(0, 2)
                 )
             ).ToArray();
+            bytes.ToArray().ShouldBe(expected);
+        }
+        
+        [Test]
+        public void Can_merkleize_deposit_data()
+        {
+            // arrange
+            DepositData depositData = new DepositData(
+                new BlsPublicKey(Enumerable.Repeat((byte) 0x12, BlsPublicKey.Length).ToArray()),
+                new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                new Gwei(5),
+                new BlsSignature(Enumerable.Repeat((byte) 0x67, BlsSignature.Length).ToArray())
+            );
+
+            // act
+            Merkle.Ize(out UInt256 root, depositData);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+
+            // assert
+            byte[] expected = HashUtility.Hash(
+                HashUtility.Hash(
+                    HashUtility.Hash( // public key
+                        Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+                        HashUtility.Chunk(Enumerable.Repeat((byte) 0x12, 16).ToArray())
+                    ),
+                    Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray() // withdrawal credentials
+                ),
+                HashUtility.Hash(
+                    HashUtility.Chunk(new byte[] {0x05}), // amount
+                    HashUtility.Hash( // signature
+                        HashUtility.Hash(
+                            Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+                            Enumerable.Repeat((byte) 0x67, 32).ToArray()
+                        ),
+                        HashUtility.Hash(
+                            Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+                            Enumerable.Repeat((byte) 0x00, 32).ToArray()
+                        )
+                    )
+                )
+            );
+            
+            TestContext.WriteLine("root: {0:x}", root);
+            TestContext.WriteLine("bytes: {0}", bytes.ToHexString(true));
+            TestContext.WriteLine("expected: {0}", expected.ToHexString(true));
+
+            bytes.ToArray().ShouldBe(expected);
+        }
+        
+        [Test]
+        public void Can_merkleize_deposit_data_list()
+        {
+            // arrange
+            DepositData depositData1 = new DepositData(
+                new BlsPublicKey(Enumerable.Repeat((byte) 0x12, BlsPublicKey.Length).ToArray()),
+                new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                new Gwei(5),
+                new BlsSignature(Enumerable.Repeat((byte) 0x67, BlsSignature.Length).ToArray())
+            );
+            DepositData depositData2 = new DepositData(
+                new BlsPublicKey(Enumerable.Repeat((byte) 0x9a, BlsPublicKey.Length).ToArray()),
+                new Hash32(Enumerable.Repeat((byte) 0xbc, Hash32.Length).ToArray()),
+                new Gwei(0xd),
+                new BlsSignature(Enumerable.Repeat((byte) 0xef, BlsSignature.Length).ToArray())
+            );
+            IList<DepositData> depositDataList = new List<DepositData> {depositData1, depositData2};
+
+            // act
+            Merkle.Ize(out UInt256 root, depositDataList);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+            
+            Merkle.Ize(out UInt256 root0, depositDataList[0]);
+            TestContext.WriteLine("root0: {0:x}", root0);
+            Merkle.Ize(out UInt256 root1, depositDataList[1]);
+            TestContext.WriteLine("root1: {0:x}", root1);
+
+            // assert
+            byte[] hash1 = HashUtility.Hash(
+                HashUtility.Hash(
+                    HashUtility.Hash( // public key
+                        Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+                        HashUtility.Chunk(Enumerable.Repeat((byte) 0x12, 16).ToArray())
+                    ),
+                    Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray() // withdrawal credentials
+                ),
+                HashUtility.Hash(
+                    HashUtility.Chunk(new byte[] {0x05}), // amount
+                    HashUtility.Hash( // signature
+                        HashUtility.Hash(
+                            Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+                            Enumerable.Repeat((byte) 0x67, 32).ToArray()
+                        ),
+                        HashUtility.Hash(
+                            Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+                            Enumerable.Repeat((byte) 0x00, 32).ToArray()
+                        )
+                    )
+                )
+            );
+            byte[] hash2 = HashUtility.Hash(
+                HashUtility.Hash(
+                    HashUtility.Hash( // public key
+                        Enumerable.Repeat((byte) 0x9a, 32).ToArray(),
+                        HashUtility.Chunk(Enumerable.Repeat((byte) 0x9a, 16).ToArray())
+                    ),
+                    Enumerable.Repeat((byte) 0xbc, Hash32.Length).ToArray() // withdrawal credentials
+                ),
+                HashUtility.Hash(
+                    HashUtility.Chunk(new byte[] {0x0d}), // amount
+                    HashUtility.Hash( // signature
+                        HashUtility.Hash(
+                            Enumerable.Repeat((byte) 0xef, 32).ToArray(),
+                            Enumerable.Repeat((byte) 0xef, 32).ToArray()
+                        ),
+                        HashUtility.Hash(
+                            Enumerable.Repeat((byte) 0xef, 32).ToArray(),
+                            Enumerable.Repeat((byte) 0x00, 32).ToArray()
+                        )
+                    )
+                )
+            );
+            
+            TestContext.WriteLine("Hash1: {0}", Bytes.ToHexString(hash1, true));
+            TestContext.WriteLine("Hash2: {0}", Bytes.ToHexString(hash2, true));
+
+            byte[] hashList = HashUtility.Merge( // list, depth 32
+                HashUtility.Hash(
+                    hash1,
+                    hash2
+                ),
+                HashUtility.ZeroHashes(1, 32)
+            ).ToArray();
+            TestContext.WriteLine("Hash list: {0}", Bytes.ToHexString(hashList, true));
+
+            byte[] expected = HashUtility.Hash(
+                hashList,
+                HashUtility.Chunk(new byte[] {0x02}) // mix in length
+            );
+            TestContext.WriteLine("Hash expected: {0}", Bytes.ToHexString(expected, true));
+            
             bytes.ToArray().ShouldBe(expected);
         }
     }
