@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,22 +14,18 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain.TxPools
+namespace Nethermind.Core
 {
-    public class TxPoolInfo
+    public class PendingTransactionComparer : IEqualityComparer<Transaction>
     {
-        public IDictionary<Address, IDictionary<ulong, Transaction>> Pending { get; }
-        public IDictionary<Address, IDictionary<ulong, Transaction>> Queued { get; }
+        public static readonly PendingTransactionComparer Default = new PendingTransactionComparer();
+        
+        public bool Equals(Transaction x, Transaction y) =>
+            ReferenceEquals(x, y) || !ReferenceEquals(x, null) && !ReferenceEquals(y, null) && x.SenderAddress == y.SenderAddress && x.Nonce == y.Nonce;
 
-        public TxPoolInfo(IDictionary<Address, IDictionary<ulong, Transaction>> pending,
-            IDictionary<Address, IDictionary<ulong, Transaction>> queued)
-        {
-            Pending = pending;
-            Queued = queued;
-        }
+        public int GetHashCode(Transaction obj) => HashCode.Combine(obj?.SenderAddress, obj?.Nonce);
     }
 }
