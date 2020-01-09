@@ -313,5 +313,283 @@ namespace Nethermind.Ssz.Test
             
             bytes.ToArray().ShouldBe(expected);
         }
+        
+//        [Test]
+//        public void Can_merkleize_deposit()
+//        {
+//            // arrange
+//            Deposit deposit = new Deposit(
+//                Enumerable.Repeat(new Hash32(), 33),
+//                new DepositData(
+//                    new BlsPublicKey(Enumerable.Repeat((byte) 0x12, BlsPublicKey.Length).ToArray()),
+//                    new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+//                    new Gwei(5),
+//                    new BlsSignature(Enumerable.Repeat((byte) 0x67, BlsSignature.Length).ToArray())
+//                )
+//            );
+//
+//            // act
+//            Merkle.Ize(out UInt256 root, deposit);
+//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+//
+//            // assert
+//            byte[] expected = HashUtility.Hash(
+//                HashUtility.Hash(
+//                    HashUtility.Hash( // public key
+//                        Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+//                        HashUtility.Chunk(Enumerable.Repeat((byte) 0x12, 16).ToArray())
+//                    ),
+//                    Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray() // withdrawal credentials
+//                ),
+//                HashUtility.Hash(
+//                    HashUtility.Chunk(new byte[] {0x05}), // amount
+//                    HashUtility.Hash( // signature
+//                        HashUtility.Hash(
+//                            Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+//                            Enumerable.Repeat((byte) 0x67, 32).ToArray()
+//                        ),
+//                        HashUtility.Hash(
+//                            Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+//                            Enumerable.Repeat((byte) 0x00, 32).ToArray()
+//                        )
+//                    )
+//                )
+//            );
+//            
+//            TestContext.WriteLine("root: {0:x}", root);
+//            TestContext.WriteLine("bytes: {0}", bytes.ToHexString(true));
+//            TestContext.WriteLine("expected: {0}", expected.ToHexString(true));
+//
+//            bytes.ToArray().ShouldBe(expected);
+//        }
+
+        [Test]
+        public void Can_merkleize_eth1data()
+        {
+            // arrange
+            Eth1Data eth1Data = new Eth1Data(
+                new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                5,
+                new Hash32(Enumerable.Repeat((byte) 0x67, Hash32.Length).ToArray())
+            );
+
+            // act
+            Merkle.Ize(out UInt256 root, eth1Data);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+
+            // assert
+            byte[] expected = HashUtility.Hash(
+                HashUtility.Hash(
+                    Enumerable.Repeat((byte) 0x34, 32).ToArray(),
+                    HashUtility.Chunk(new byte[] {0x05})
+                ),
+                HashUtility.Hash(
+                    Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+                    Enumerable.Repeat((byte) 0x00, 32).ToArray()
+                )
+            ).ToArray();
+            bytes.ToArray().ShouldBe(expected);
+        }
+
+        [Test]
+        public void Can_merkleize_empty_beacon_block_body()
+        {
+            // arrange
+            List<ProposerSlashing> proposerSlashings = new List<ProposerSlashing>();
+            List<AttesterSlashing> attesterSlashings = new List<AttesterSlashing>();
+            List<Attestation> attestations = new List<Attestation>();
+            List<Deposit> deposits = new List<Deposit>();
+            List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
+            
+            BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
+                new BlsSignature(Enumerable.Repeat((byte) 0x12, BlsSignature.Length).ToArray()),
+                new Eth1Data(
+                    new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+                    5,
+                    new Hash32(Enumerable.Repeat((byte) 0x67, Hash32.Length).ToArray())
+                ),
+                new Bytes32(Enumerable.Repeat((byte) 0x89, Bytes32.Length).ToArray()),
+                proposerSlashings,
+                attesterSlashings,
+                attestations,
+                deposits,
+                voluntaryExits
+            );
+
+            // act
+            Merkle.Ize(out UInt256 root, beaconBlockBody);
+            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+
+            // assert
+            byte[] proposerSlashingsHash = HashUtility.Hash(
+                    HashUtility.ZeroHashes(4, 5)[0],
+                    HashUtility.Chunk(new byte[] { 0x00 })
+                );
+            byte[] attesterSlashingsHash = HashUtility.Hash(
+                HashUtility.ZeroHashes(0, 1)[0],
+                HashUtility.Chunk(new byte[] { 0x00 })
+            );
+            byte[] attestationsHash = HashUtility.Hash(
+                HashUtility.ZeroHashes(7, 8)[0],
+                HashUtility.Chunk(new byte[] { 0x00 })
+            );
+            byte[] depositsHash = HashUtility.Hash(
+                HashUtility.ZeroHashes(4, 5)[0],
+                HashUtility.Chunk(new byte[] { 0x00 })
+            );
+            byte[] voluntaryExitsHash = HashUtility.Hash(
+                HashUtility.ZeroHashes(4, 5)[0],
+                HashUtility.Chunk(new byte[] { 0x00 })
+            );
+            
+            byte[] expected = HashUtility.Hash(
+                HashUtility.Hash(
+                    HashUtility.Hash(
+                        HashUtility.Hash( // randao
+                            HashUtility.Hash(
+                                Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+                                Enumerable.Repeat((byte) 0x12, 32).ToArray()
+                            ),
+                            HashUtility.Hash(
+                                Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+                                Enumerable.Repeat((byte) 0x00, 32).ToArray()
+                            )
+                        ),
+                        HashUtility.Hash( // eth1data
+                            HashUtility.Hash(
+                                Enumerable.Repeat((byte) 0x34, 32).ToArray(),
+                                HashUtility.Chunk(new byte[] {0x05})
+                            ),
+                            HashUtility.Hash(
+                                Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+                                Enumerable.Repeat((byte) 0x00, 32).ToArray()
+                            )
+                        )
+                    ),
+                    HashUtility.Hash(
+                        Enumerable.Repeat((byte) 0x89, Bytes32.Length).ToArray(), // graffiti
+                        proposerSlashingsHash // proposer slashings
+                    )
+                ),
+                HashUtility.Hash(
+                    HashUtility.Hash(
+                        attesterSlashingsHash, // attester slashings
+                        attestationsHash // attestations
+                    ),
+                    HashUtility.Hash(
+                        depositsHash, // deposits
+                        voluntaryExitsHash // voluntary exits
+                    )
+                )
+            );
+            
+            bytes.ToArray().ShouldBe(expected);
+        }
+
+//        [Test]
+//        public void Can_merkleize_beacon_block_body_with_deposit()
+//        {
+//            // arrange
+//            List<ProposerSlashing> proposerSlashings = new List<ProposerSlashing>();
+//            List<AttesterSlashing> attesterSlashings = new List<AttesterSlashing>();
+//            List<Attestation> attestations = new List<Attestation>();
+//            List<Deposit> deposits = new List<Deposit>()
+//            {
+//                new Deposit(
+//                    Enumerable.Repeat(new Hash32(), 33),
+//                    new DepositData(
+//                        new BlsPublicKey(Enumerable.Repeat((byte) 0x12, BlsPublicKey.Length).ToArray()),
+//                        new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+//                        new Gwei(5),
+//                        new BlsSignature(Enumerable.Repeat((byte) 0x67, BlsSignature.Length).ToArray())
+//                    )
+//                )
+//            };
+//            List<VoluntaryExit> voluntaryExits = new List<VoluntaryExit>();
+//            
+//            BeaconBlockBody beaconBlockBody = new BeaconBlockBody(
+//                new BlsSignature(Enumerable.Repeat((byte) 0x12, BlsSignature.Length).ToArray()),
+//                new Eth1Data(
+//                    new Hash32(Enumerable.Repeat((byte) 0x34, Hash32.Length).ToArray()),
+//                    5,
+//                    new Hash32(Enumerable.Repeat((byte) 0x67, Hash32.Length).ToArray())
+//                ),
+//                new Bytes32(Enumerable.Repeat((byte) 0x89, Bytes32.Length).ToArray()),
+//                proposerSlashings,
+//                attesterSlashings,
+//                attestations,
+//                deposits,
+//                voluntaryExits
+//            );
+//
+//            // act
+//            Merkle.Ize(out UInt256 root, beaconBlockBody);
+//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+//
+//            // assert
+//            byte[] proposerSlashingsHash = HashUtility.Hash(
+//                    HashUtility.ZeroHashes(4, 5)[0],
+//                    HashUtility.Chunk(new byte[] { 0x00 })
+//                );
+//            byte[] attesterSlashingsHash = HashUtility.Hash(
+//                HashUtility.ZeroHashes(0, 1)[0],
+//                HashUtility.Chunk(new byte[] { 0x00 })
+//            );
+//            byte[] attestationsHash = HashUtility.Hash(
+//                HashUtility.ZeroHashes(7, 8)[0],
+//                HashUtility.Chunk(new byte[] { 0x00 })
+//            );
+//            byte[] depositsHash = HashUtility.Hash(
+//                HashUtility.ZeroHashes(4, 5)[0],
+//                HashUtility.Chunk(new byte[] { 0x00 })
+//            );
+//            byte[] voluntaryExitsHash = HashUtility.Hash(
+//                HashUtility.ZeroHashes(4, 5)[0],
+//                HashUtility.Chunk(new byte[] { 0x00 })
+//            );
+//            
+//            byte[] expected = HashUtility.Hash(
+//                HashUtility.Hash(
+//                    HashUtility.Hash(
+//                        HashUtility.Hash( // randao
+//                            HashUtility.Hash(
+//                                Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+//                                Enumerable.Repeat((byte) 0x12, 32).ToArray()
+//                            ),
+//                            HashUtility.Hash(
+//                                Enumerable.Repeat((byte) 0x12, 32).ToArray(),
+//                                Enumerable.Repeat((byte) 0x00, 32).ToArray()
+//                            )
+//                        ),
+//                        HashUtility.Hash( // eth1data
+//                            HashUtility.Hash(
+//                                Enumerable.Repeat((byte) 0x34, 32).ToArray(),
+//                                HashUtility.Chunk(new byte[] {0x05})
+//                            ),
+//                            HashUtility.Hash(
+//                                Enumerable.Repeat((byte) 0x67, 32).ToArray(),
+//                                Enumerable.Repeat((byte) 0x00, 32).ToArray()
+//                            )
+//                        )
+//                    ),
+//                    HashUtility.Hash(
+//                        Enumerable.Repeat((byte) 0x89, Bytes32.Length).ToArray(), // graffiti
+//                        proposerSlashingsHash // proposer slashings
+//                    )
+//                ),
+//                HashUtility.Hash(
+//                    HashUtility.Hash(
+//                        attesterSlashingsHash, // attester slashings
+//                        attestationsHash // attestations
+//                    ),
+//                    HashUtility.Hash(
+//                        depositsHash, // deposits
+//                        voluntaryExitsHash // voluntary exits
+//                    )
+//                )
+//            );
+//            
+//            bytes.ToArray().ShouldBe(expected);
+//        }
     }
 }

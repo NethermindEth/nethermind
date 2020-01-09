@@ -190,8 +190,6 @@ namespace Nethermind.Core2.Cryptography
 
         public Hash32 HashTreeRoot(IList<DepositData> depositData)
         {
-//            return depositData.HashTreeRoot(_chainConstants.MaximumDepositContracts);
-            
             Merkle.Ize(out UInt256 root, depositData);
             Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
             return new Hash32(bytes);
