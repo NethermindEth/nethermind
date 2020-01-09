@@ -25,6 +25,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ValidatorLength = Ssz.BlsPublicKeyLength + Ssz.Hash32Length + Ssz.GweiLength + sizeof(bool) + 4 * Ssz.EpochLength;
+
         public static void Encode(Span<byte> span, Validator container)
         {
             if (span.Length != Ssz.ValidatorLength) ThrowTargetLength<Validator>(span.Length, Ssz.ValidatorLength);

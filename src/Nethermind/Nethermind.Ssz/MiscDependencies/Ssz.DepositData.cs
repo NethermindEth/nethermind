@@ -24,6 +24,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int DepositDataLength = Ssz.BlsPublicKeyLength + Ssz.Hash32Length + Ssz.GweiLength + Ssz.BlsSignatureLength;
+        
         public static void Encode(Span<byte> span, DepositData? container)
         {
             if (container is null)

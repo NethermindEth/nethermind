@@ -24,6 +24,8 @@ namespace Nethermind.Ssz
 {
     public partial class Ssz
     {
+        public const int CommitteeIndexLength = sizeof(ulong);
+        
         public static void Encode(Span<byte> span, CommitteeIndex value)
         {
             Encode(span, value.Number);

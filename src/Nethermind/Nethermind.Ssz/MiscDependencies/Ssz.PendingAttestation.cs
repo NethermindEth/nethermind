@@ -25,6 +25,21 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int PendingAttestationDynamicOffset = sizeof(uint) +
+                                                           Ssz.AttestationDataLength +
+                                                           Ssz.SlotLength +
+                                                           Ssz.ValidatorIndexLength;
+
+        public static int PendingAttestationLength(PendingAttestation? value)
+        {
+            if (value == null)
+            {
+                return 0;
+            }
+            
+            return Ssz.PendingAttestationDynamicOffset + (value.AggregationBits.Length + 8) / 8;
+        }
+
         public static void Encode(Span<byte> span, PendingAttestation? container)
         {
             if (span.Length != Ssz.PendingAttestationLength(container)) ThrowTargetLength<PendingAttestation>(span.Length, Ssz.PendingAttestationLength(container));

@@ -25,6 +25,18 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int AttestationDynamicOffset = sizeof(uint) + Ssz.AttestationDataLength + Ssz.BlsSignatureLength;
+
+        public static int AttestationLength(Attestation? container)
+        {
+            if (container == null)
+            {
+                return 0;
+            }
+
+            return AttestationDynamicOffset + (container.AggregationBits.Length + 8) / 8;
+        }
+
         public static void Encode(Span<byte> span, Attestation? container)
         {
             if (span.Length != Ssz.AttestationLength(container)) ThrowTargetLength<Attestation>(span.Length, Ssz.AttestationLength(container));

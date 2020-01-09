@@ -23,6 +23,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ForkLength = Ssz.ForkVersionLength * 2 + Ssz.EpochLength;
+
         private static void Encode(Span<byte> span, Fork value, ref int offset)
         {
             Encode(span.Slice(offset, Ssz.ForkLength), value);

@@ -24,6 +24,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int EpochLength = sizeof(ulong);
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, Epoch value)
         {

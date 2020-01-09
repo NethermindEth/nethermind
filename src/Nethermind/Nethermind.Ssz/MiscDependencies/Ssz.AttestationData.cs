@@ -24,7 +24,9 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-          public static void Encode(Span<byte> span, AttestationData container)
+        public const int AttestationDataLength = Ssz.SlotLength + Ssz.CommitteeIndexLength + Ssz.Hash32Length + 2 * Ssz.CheckpointLength;
+
+        public static void Encode(Span<byte> span, AttestationData container)
         {
             if (span.Length != Ssz.AttestationDataLength)
             {

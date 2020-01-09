@@ -23,6 +23,18 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public static int AttesterSlashingLength(AttesterSlashing? container)
+        {
+            if (container is null)
+            {
+                return 0;
+            }
+            
+            return 2 * sizeof(uint) +
+                   Ssz.IndexedAttestationLength(container.Attestation1) +
+                   Ssz.IndexedAttestationLength(container.Attestation2);
+        }
+
         public static void Encode(Span<byte> span, AttesterSlashing? container)
         {
             if (span.Length != Ssz.AttesterSlashingLength(container))

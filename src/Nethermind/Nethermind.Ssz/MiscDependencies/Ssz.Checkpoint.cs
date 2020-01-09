@@ -25,6 +25,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int CheckpointLength = Ssz.Hash32Length + Ssz.EpochLength;
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Checkpoint value, ref int offset)
         {

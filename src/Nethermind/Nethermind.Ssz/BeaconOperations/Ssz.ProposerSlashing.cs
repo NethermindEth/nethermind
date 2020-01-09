@@ -23,6 +23,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ProposerSlashingLength = Ssz.ValidatorIndexLength + 2 * Ssz.BeaconBlockHeaderLength;
+
         private static void Encode(Span<byte> span, ProposerSlashing?[]? containers, ref int offset, ref int dynamicOffset)
         {
             int length = (containers?.Length ?? 0) * Ssz.ProposerSlashingLength;

@@ -24,6 +24,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int VoluntaryExitLength = Ssz.EpochLength + Ssz.ValidatorIndexLength + Ssz.BlsSignatureLength;
+
         public static void Encode(Span<byte> span, VoluntaryExit[] containers)
         {
             if (span.Length != Ssz.VoluntaryExitLength * containers.Length)

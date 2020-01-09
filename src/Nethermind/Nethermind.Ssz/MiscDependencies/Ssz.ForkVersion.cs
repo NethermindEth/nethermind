@@ -25,6 +25,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ForkVersionLength = ForkVersion.Length;
+
         public static void Encode(Span<byte> span, ForkVersion value)
         {
             value.AsSpan().CopyTo(span);

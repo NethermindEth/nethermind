@@ -24,6 +24,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int Eth1DataLength = 2 * Ssz.Hash32Length + sizeof(ulong);
+
         private static Eth1Data DecodeEth1Data(Span<byte> span, ref int offset)
         {
             Eth1Data eth1Data = DecodeEth1Data(span.Slice(offset, Ssz.Eth1DataLength));

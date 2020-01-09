@@ -26,6 +26,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ValidatorIndexLength = sizeof(ulong);
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, ValidatorIndex value, ref int offset)
         {

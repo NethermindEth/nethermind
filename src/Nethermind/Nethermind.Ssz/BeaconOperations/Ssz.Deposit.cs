@@ -23,34 +23,44 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public static int DepositLengthOfProof()
+        {
+            return (ContractTreeDepth + 1) * Ssz.Hash32Length;
+        }
+
+        public static int DepositLength()
+        {
+           return DepositLengthOfProof() + Ssz.DepositDataLength;
+        }
+
         public static void Encode(Span<byte> span, Deposit[]? containers)
         {
-            if (span.Length != Ssz.DepositLength * (containers?.Length ?? 0))
+            if (span.Length != Ssz.DepositLength() * (containers?.Length ?? 0))
             {
-                ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength);
+                ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength());
             }
 
             if (!(containers is null))
             {
                 for (int i = 0; i < containers.Length; i++)
                 {
-                    Encode(span.Slice(i * Ssz.DepositLength, Ssz.DepositLength), containers[i]);
+                    Encode(span.Slice(i * Ssz.DepositLength(), Ssz.DepositLength()), containers[i]);
                 }
             }
         }
 
         public static Deposit[] DecodeDeposits(Span<byte> span)
         {
-            if (span.Length % Ssz.DepositLength != 0)
+            if (span.Length % Ssz.DepositLength() != 0)
             {
-                ThrowInvalidSourceArrayLength<Deposit>(span.Length, Ssz.DepositLength);
+                ThrowInvalidSourceArrayLength<Deposit>(span.Length, Ssz.DepositLength());
             }
 
-            int count = span.Length / Ssz.DepositLength;
+            int count = span.Length / Ssz.DepositLength();
             Deposit[] containers = new Deposit[count];
             for (int i = 0; i < count; i++)
             {
-                containers[i] = DecodeDeposit(span.Slice(i * Ssz.DepositLength, Ssz.DepositLength));
+                containers[i] = DecodeDeposit(span.Slice(i * Ssz.DepositLength(), Ssz.DepositLength()));
             }
 
             return containers;
@@ -58,7 +68,7 @@ namespace Nethermind.Ssz
         
         private static void Encode(Span<byte> span, Deposit[]? containers, ref int offset, ref int dynamicOffset)
         {
-            int length = (containers?.Length ?? 0) * Ssz.DepositLength;
+            int length = (containers?.Length ?? 0) * Ssz.DepositLength();
             Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
             Encode(span.Slice(dynamicOffset, length), containers);
             dynamicOffset += length;
@@ -67,20 +77,23 @@ namespace Nethermind.Ssz
         
         public static void Encode(Span<byte> span, Deposit? container)
         {
-            if (span.Length != Ssz.DepositLength) ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength);
+            if (span.Length != Ssz.DepositLength()) ThrowTargetLength<Deposit>(span.Length, Ssz.DepositLength());
             if (container == null) return;
-            Encode(span.Slice(0, Ssz.DepositLengthOfProof), container.Proof);
-            Encode(span.Slice(Ssz.DepositLengthOfProof), container.Data);
+            Encode(span.Slice(0, Ssz.DepositLengthOfProof()), container.Proof);
+            Encode(span.Slice(Ssz.DepositLengthOfProof()), container.Data);
         }
 
-        private static byte[] _nullDeposit = new byte[Ssz.DepositLength];
+        private static byte[] NullDeposit()
+        {
+            return new byte[Ssz.DepositLength()];
+        }
 
         public static Deposit? DecodeDeposit(Span<byte> span)
         {
-            if (span.Length != Ssz.DepositLength) ThrowSourceLength<Deposit>(span.Length, Ssz.DepositLength);
-            if (span.SequenceEqual(_nullDeposit)) return null;
-            Hash32[] proof = DecodeHashes(span.Slice(0, Ssz.DepositLengthOfProof));
-            DepositData data = DecodeDepositData(span.Slice(Ssz.DepositLengthOfProof));
+            if (span.Length != Ssz.DepositLength()) ThrowSourceLength<Deposit>(span.Length, Ssz.DepositLength());
+            if (span.SequenceEqual(NullDeposit())) return null;
+            Hash32[] proof = DecodeHashes(span.Slice(0, Ssz.DepositLengthOfProof()));
+            DepositData data = DecodeDepositData(span.Slice(Ssz.DepositLengthOfProof()));
             Deposit deposit = new Deposit(proof, data);
             return deposit;
         }

@@ -23,6 +23,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int BlsSignatureLength = BlsSignature.Length;
+
         public static void Encode(Span<byte> span, BlsSignature value)
         {
             Encode(span, value.Bytes);

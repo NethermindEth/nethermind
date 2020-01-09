@@ -23,6 +23,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int BlsPublicKeyLength = BlsPublicKey.Length;
+        
         public static void Encode(Span<byte> span, BlsPublicKey value)
         {
             Encode(span, value.Bytes);

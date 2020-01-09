@@ -25,6 +25,59 @@ namespace Nethermind.Ssz
 {
     public partial class Ssz
     {
+        public static int BeaconStateDynamicOffset()
+        {
+            return sizeof(ulong) +
+                   Ssz.SlotLength +
+                   Ssz.ForkLength +
+                   Ssz.BeaconBlockHeaderLength +
+                   2 * SlotsPerHistoricalRoot * Ssz.Hash32Length +
+                   sizeof(uint) +
+                   Ssz.Eth1DataLength +
+                   sizeof(uint) +
+                   sizeof(ulong) +
+                   2 * sizeof(uint) +
+                   EpochsPerHistoricalVector * Ssz.Hash32Length +
+                   EpochsPerSlashingsVector * Ssz.GweiLength +
+                   2 * sizeof(uint) +
+                   ((Ssz.JustificationBitsLength + 7) / 8) +
+                   3 * Ssz.CheckpointLength;
+        }
+
+        public static int BeaconStateLength(BeaconState? container)
+        {
+            if (container is null)
+            {
+                return 0;
+            }
+            
+            int result = BeaconStateDynamicOffset();
+            result += Ssz.Hash32Length * (container.HistoricalRoots?.Count ?? 0);
+            result += Ssz.ValidatorLength * (container.Validators?.Count ?? 0);
+            result += Ssz.GweiLength * (container.Balances?.Count ?? 0);
+            result += Ssz.Eth1DataLength * (container.Eth1DataVotes?.Count ?? 0);
+
+            result += (container.PreviousEpochAttestations?.Count ?? 0) * sizeof(uint);
+            if (!(container.PreviousEpochAttestations is null))
+            {
+                for (int i = 0; i < container.PreviousEpochAttestations.Count; i++)
+                {
+                    result += Ssz.PendingAttestationLength(container.PreviousEpochAttestations[i]);
+                }
+            }
+
+            result += (container.CurrentEpochAttestations?.Count ?? 0) * sizeof(uint);
+            if (!(container.CurrentEpochAttestations is null))
+            {
+                for (int i = 0; i < container.CurrentEpochAttestations.Count; i++)
+                {
+                    result += Ssz.PendingAttestationLength(container.CurrentEpochAttestations[i]);
+                }
+            }
+
+            return result;
+        }
+
         public static void Encode(Span<byte> span, BeaconState? container)
         {
             if (container is null)
@@ -38,7 +91,7 @@ namespace Nethermind.Ssz
             }
 
             int offset = 0;
-            int dynamicOffset = Ssz.BeaconStateDynamicOffset;
+            int dynamicOffset = Ssz.BeaconStateDynamicOffset();
 
             Encode(span.Slice(offset, sizeof(ulong)), container.GenesisTime);
             offset += sizeof(ulong);

@@ -24,6 +24,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int SlotLength = sizeof(ulong);
+        
         public static void Encode(Span<byte> span, Slot value)
         {
             Encode(span, value.Number);

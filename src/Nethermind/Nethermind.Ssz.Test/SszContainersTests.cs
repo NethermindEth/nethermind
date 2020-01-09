@@ -177,7 +177,7 @@ namespace Nethermind.Ssz.Test
             blockRoots[3] = Sha256.OfAnEmptyString;
             stateRoots[7] = Sha256.OfAnEmptyString;
             HistoricalBatch container = new HistoricalBatch(blockRoots, stateRoots);
-            Span<byte> encoded = new byte[Ssz.HistoricalBatchLength];
+            Span<byte> encoded = new byte[Ssz.HistoricalBatchLength()];
             Ssz.Encode(encoded, container);
             HistoricalBatch? decoded = Ssz.DecodeHistoricalBatch(encoded);
             Assert.AreEqual(container, decoded);
@@ -314,7 +314,7 @@ namespace Nethermind.Ssz.Test
             proof[7] = Sha256.OfAnEmptyString;
             Deposit container = new Deposit(proof, data);
 
-            Span<byte> encoded = new byte[Ssz.DepositLength];
+            Span<byte> encoded = new byte[Ssz.DepositLength()];
             Ssz.Encode(encoded, container);
             Deposit? decoded = Ssz.DecodeDeposit(encoded);
             Assert.AreEqual(container, decoded);
@@ -360,11 +360,12 @@ namespace Nethermind.Ssz.Test
             Span<byte> encoded = new byte[Ssz.BeaconBlockBodyLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlockBody decoded = Ssz.DecodeBeaconBlockBody(encoded);
-            Assert.AreEqual(container, decoded);
+            
+            AssertBeaconBlockBodyEqual(container, decoded);
             
             Merkle.Ize(out UInt256 root, container);
         }
-
+        
         [Test]
         public void Beacon_block_body_more_detailed()
         {
@@ -463,15 +464,17 @@ namespace Nethermind.Ssz.Test
             Span<byte> encoded = new byte[Ssz.BeaconBlockLength(container)];
             Ssz.Encode(encoded, container);
             BeaconBlock decoded = Ssz.DecodeBeaconBlock(encoded);
-            Assert.AreEqual(container, decoded);
+
+            AssertBeaconBlockEqual(container, decoded);
 
             Span<byte> encodedAgain = new byte[Ssz.BeaconBlockLength(container)];
             Ssz.Encode(encodedAgain, decoded);
+            
             Assert.True(Bytes.AreEqual(encodedAgain, encoded));
             
             Merkle.Ize(out UInt256 root, container);
         }
-
+        
         [Test]
         public void Beacon_state_there_and_back()
         {
@@ -556,28 +559,56 @@ namespace Nethermind.Ssz.Test
             Merkle.Ize(out UInt256 root, container);
         }
 
+        private void AssertBeaconBlockBodyEqual(BeaconBlockBody expected, BeaconBlockBody actual)
+        {
+            actual.RandaoReveal.ShouldBe(expected.RandaoReveal);
+            actual.Eth1Data.ShouldBe(expected.Eth1Data);
+            actual.Graffiti.ShouldBe(expected.Graffiti);
+            actual.ProposerSlashings.Count.ShouldBe(expected.ProposerSlashings.Count);
+            actual.AttesterSlashings.Count.ShouldBe(expected.AttesterSlashings.Count);
+            actual.Attestations.Count.ShouldBe(expected.Attestations.Count);
+            actual.Deposits.Count.ShouldBe(expected.Deposits.Count);
+            actual.VoluntaryExits.Count.ShouldBe(expected.VoluntaryExits.Count);
+
+            actual.AttesterSlashings.ShouldBe(expected.AttesterSlashings);
+            actual.ProposerSlashings.ShouldBe(expected.ProposerSlashings);
+            actual.Attestations.ShouldBe(expected.Attestations);
+            actual.Deposits.ShouldBe(expected.Deposits);
+            actual.VoluntaryExits.ShouldBe(expected.VoluntaryExits);
+        }
+
+        private void AssertBeaconBlockEqual(BeaconBlock expected, BeaconBlock actual)
+        {
+            actual.Slot.ShouldBe(expected.Slot);
+            actual.ParentRoot.ShouldBe(expected.ParentRoot);
+            actual.StateRoot.ShouldBe(expected.StateRoot);
+            actual.Signature.ShouldBe(expected.Signature);
+
+            AssertBeaconBlockBodyEqual(expected.Body, actual.Body);
+        }
+
         public void AssertBeaconStateEqual(BeaconState expected, BeaconState actual)
         {
-            expected.GenesisTime.ShouldBe(actual.GenesisTime);
-            expected.Slot.ShouldBe(actual.Slot);
-            expected.Fork.ShouldBe(actual.Fork);
-            expected.LatestBlockHeader.ShouldBe(actual.LatestBlockHeader);
-            expected.BlockRoots.Count.ShouldBe(actual.BlockRoots?.Count ?? 0);
-            expected.StateRoots.Count.ShouldBe(actual.StateRoots?.Count ?? 0);
-            expected.HistoricalRoots.Count.ShouldBe(actual.HistoricalRoots?.Count ?? 0);
-            expected.Eth1Data.ShouldBe(actual.Eth1Data);
-            expected.Eth1DataVotes.Count.ShouldBe(actual.Eth1DataVotes?.Count ?? 0);
-            expected.Eth1DepositIndex.ShouldBe(actual.Eth1DepositIndex);
-            expected.Validators.Count.ShouldBe(actual.Validators?.Count ?? 0);
-            expected.Balances.Count.ShouldBe(actual.Balances?.Count ?? 0);
-            expected.RandaoMixes.Count.ShouldBe(actual.RandaoMixes?.Count ?? 0);
-            expected.Slashings.Count.ShouldBe(actual.Slashings?.Count ?? 0);
-            expected.PreviousEpochAttestations.Count.ShouldBe(actual.PreviousEpochAttestations?.Count ?? 0);
-            expected.CurrentEpochAttestations.Count.ShouldBe(actual.CurrentEpochAttestations?.Count ?? 0);
+            actual.GenesisTime.ShouldBe(expected.GenesisTime);
+            actual.Slot.ShouldBe(expected.Slot);
+            actual.Fork.ShouldBe(expected.Fork);
+            actual.LatestBlockHeader.ShouldBe(expected.LatestBlockHeader);
+            actual.BlockRoots.Count.ShouldBe(expected.BlockRoots?.Count ?? 0);
+            actual.StateRoots.Count.ShouldBe(expected.StateRoots?.Count ?? 0);
+            actual.HistoricalRoots.Count.ShouldBe(expected.HistoricalRoots?.Count ?? 0);
+            actual.Eth1Data.ShouldBe(expected.Eth1Data);
+            actual.Eth1DataVotes.Count.ShouldBe(expected.Eth1DataVotes?.Count ?? 0);
+            actual.Eth1DepositIndex.ShouldBe(expected.Eth1DepositIndex);
+            actual.Validators.Count.ShouldBe(expected.Validators?.Count ?? 0);
+            actual.Balances.Count.ShouldBe(expected.Balances?.Count ?? 0);
+            actual.RandaoMixes.Count.ShouldBe(expected.RandaoMixes?.Count ?? 0);
+            actual.Slashings.Count.ShouldBe(expected.Slashings?.Count ?? 0);
+            actual.PreviousEpochAttestations.Count.ShouldBe(expected.PreviousEpochAttestations?.Count ?? 0);
+            actual.CurrentEpochAttestations.Count.ShouldBe(expected.CurrentEpochAttestations?.Count ?? 0);
             //expected.JustificationBits.Count.ShouldBe(actual.JustificationBits.Count);
-            expected.PreviousJustifiedCheckpoint.ShouldBe(actual.PreviousJustifiedCheckpoint);
-            expected.CurrentJustifiedCheckpoint.ShouldBe(actual.CurrentJustifiedCheckpoint);
-            expected.FinalizedCheckpoint.ShouldBe(actual.FinalizedCheckpoint);
+            actual.PreviousJustifiedCheckpoint.ShouldBe(expected.PreviousJustifiedCheckpoint);
+            actual.CurrentJustifiedCheckpoint.ShouldBe(expected.CurrentJustifiedCheckpoint);
+            actual.FinalizedCheckpoint.ShouldBe(expected.FinalizedCheckpoint);
         }
     }
 }

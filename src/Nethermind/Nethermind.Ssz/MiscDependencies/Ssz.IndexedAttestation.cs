@@ -26,6 +26,18 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int IndexedAttestationDynamicOffset = sizeof(uint) + Ssz.AttestationDataLength + Ssz.BlsSignatureLength;
+
+        public static int IndexedAttestationLength(IndexedAttestation? value)
+        {
+            if (value is null)
+            {
+                return 0;
+            }
+            
+            return Ssz.IndexedAttestationDynamicOffset + (value.AttestingIndices?.Count ?? 0) * Ssz.ValidatorIndexLength;
+        }
+
         public static void Encode(Span<byte> span, IndexedAttestation? container)
         {
             if (container is null)

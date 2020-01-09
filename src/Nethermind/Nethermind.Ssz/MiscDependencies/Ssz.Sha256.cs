@@ -25,6 +25,8 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int Hash32Length = Hash32.Length;
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Hash32 value, ref int offset)
         {
