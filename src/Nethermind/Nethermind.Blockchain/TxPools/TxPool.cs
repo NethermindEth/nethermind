@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain.TxPools
              * if we leave it for block production only.
              * */
             
-            if (isOwn && !CheckOwnTransaction(tx))
+            if (CheckOwnTransactionAlreadyUsed(tx, isOwn))
             {
                 return AddTxResult.OwnNonceAlreadyUsed;
             }
@@ -249,53 +249,57 @@ namespace Nethermind.Blockchain.TxPools
                 return AddTxResult.AlreadyKnown;
             }
 
-            HandleOwnTransaction(tx);
-            
+            HandleOwnTransaction(tx, isOwn);
+
             NotifySelectedPeers(tx);
             FilterAndStoreTx(tx, blockNumber);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
 
-        private void HandleOwnTransaction(Transaction transaction)
+        private void HandleOwnTransaction(Transaction transaction, bool isOwn)
         {
-            _ownTransactions.TryAdd(transaction.Hash, transaction);
-            _ownTimer.Enabled = true;
-            if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+            if (isOwn)
+            {
+                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTimer.Enabled = true;
+                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+            }
         }
 
-        private bool CheckOwnTransaction(Transaction transaction)
+        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, bool isOwn)
         {
-            var address = transaction.SenderAddress;
-            lock (_locker)
+            if (isOwn)
             {
-                if (!_nonces.TryGetValue(address, out var addressNonces))
+                var address = transaction.SenderAddress;
+                lock (_locker)
                 {
-                    var currentNonce = _stateProvider.GetNonce(address);
-                    addressNonces = new AddressNonces(currentNonce);
-                    _nonces.TryAdd(address, addressNonces);
+                    if (!_nonces.TryGetValue(address, out var addressNonces))
+                    {
+                        var currentNonce = _stateProvider.GetNonce(address);
+                        addressNonces = new AddressNonces(currentNonce);
+                        _nonces.TryAdd(address, addressNonces);
+                    }
+
+                    if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
+                    {
+                        nonce = new Nonce(transaction.Nonce);
+                        addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
+                    }
+
+                    if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
+                    {
+                        // Nonce conflict
+                        if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
+
+                        return true;
+                    }
+
+                    nonce.SetTransactionHash(transaction.Hash);
                 }
-
-                if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
-                {
-                    nonce = new Nonce(transaction.Nonce);
-                    addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
-                }
-
-                if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
-                {
-                    // Nonce conflict
-                    if (_logger.IsWarn)
-                        _logger.Warn(
-                            $"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
-
-                    return false;
-                }
-
-                nonce.SetTransactionHash(transaction.Hash);
             }
 
-            return true;
+            return false;
         }
 
         public void RemoveTransaction(Keccak hash, long blockNumber)

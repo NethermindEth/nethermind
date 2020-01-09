@@ -105,6 +105,8 @@ namespace Nethermind.PerfTest
                 await _blockTree.FixFastSyncGaps(cancellationToken);
             }
 
+            public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
+
             public AddBlockResult Insert(Block block)
             {
                 return _blockTree.Insert(block);
@@ -188,6 +190,10 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
             public event EventHandler<BlockEventArgs> BlockAddedToMain;
             public event EventHandler<BlockEventArgs> NewHeadBlock;
+            public void DeleteChainSlice(in long startNumber, in long endNumber)
+            {
+                _blockTree.DeleteChainSlice(startNumber, endNumber);
+            }
         }
 
         private const string DbBasePath = @"C:\perf_db";
