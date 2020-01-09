@@ -25,7 +25,7 @@ namespace Nethermind.Ssz
     {
         public static int DepositLengthOfProof()
         {
-            return (ContractTreeDepth + 1) * Ssz.Hash32Length;
+            return (DepositContractTreeDepth + 1) * Ssz.Hash32Length;
         }
 
         public static int DepositLength()

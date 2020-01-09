@@ -23,23 +23,58 @@ namespace Nethermind.Ssz
 {
     public partial class Ssz
     {
-        public static ulong ValidatorRegistryLimit = 1_099_511_627_776;
-        public static uint SlotsPerEpoch = 32;
-        public static int SlotsPerEth1VotingPeriod = 1024;
-        public static int SlotsPerHistoricalRoot = 8192;
-        public static int EpochsPerHistoricalVector = 65536;
-        public static int EpochsPerSlashingsVector = 8192;
-        public static int JustificationBitsLength = 4;
-        public static uint MaxValidatorsPerCommittee = 2048;
-        public static uint MaxProposerSlashings { get; set; } = 16;
-        public static uint MaxAttesterSlashings { get; set; } = 1;
-        public static uint MaxAttestations { get; set; } = 128;
-        public static uint MaxDeposits { get; set; } = 16;
-        public static uint MaxVoluntaryExits { get; set; } = 16;        
-        public static ulong HistoricalRootsLimit = 16_777_216;
+        public static int DepositContractTreeDepth { get; private set; }
+        private static int JustificationBitsLength;
         
-        public static int ContractTreeDepth = 32;
+        internal static uint MaxValidatorsPerCommittee { get; private set; }
         
+        internal static uint SlotsPerEpoch { get; private set; }
+        internal static int SlotsPerEth1VotingPeriod { get; private set; }
+        public static int SlotsPerHistoricalRoot { get; private set; }
+        
+        public static int EpochsPerHistoricalVector { get; private set; }
+        public static int EpochsPerSlashingsVector { get; private set; }
+        internal static ulong HistoricalRootsLimit { get; private set; }
+        internal static ulong ValidatorRegistryLimit { get; private set; }
+        
+        internal static uint MaxProposerSlashings { get; private set; }
+        internal static uint MaxAttesterSlashings { get; private set; }
+        internal static uint MaxAttestations { get; private set; }
+        internal static uint MaxDeposits { get; private set; }
+        internal static uint MaxVoluntaryExits { get; private set; }
 
+        public static void Init(ulong depositContractTreeDepth,
+            ulong justificationBitsLength,
+            ulong maximumValidatorsPerCommittee,
+            ulong slotsPerEpoch,
+            ulong slotsPerEth1VotingPeriod,
+            ulong slotsPerHistoricalRoot,
+            ulong epochsPerHistoricalVector,
+            ulong epochsPerSlashingsVector,
+            ulong historicalRootsLimit,
+            ulong validatorRegistryLimit,
+            ulong maximumProposerSlashings,
+            ulong maximumAttesterSlashings,
+            ulong maximumAttestations,
+            ulong maximumDeposits,
+            ulong maximumVoluntaryExits
+        )
+        {
+            DepositContractTreeDepth = (int)depositContractTreeDepth;
+            JustificationBitsLength = (int)justificationBitsLength;
+            MaxValidatorsPerCommittee = (uint)maximumValidatorsPerCommittee;
+            SlotsPerEpoch = (uint)slotsPerEpoch;
+            SlotsPerEth1VotingPeriod = (int)slotsPerEth1VotingPeriod;
+            SlotsPerHistoricalRoot = (int)slotsPerHistoricalRoot;
+            EpochsPerHistoricalVector = (int)epochsPerHistoricalVector;
+            EpochsPerSlashingsVector = (int)epochsPerSlashingsVector;
+            HistoricalRootsLimit = historicalRootsLimit;
+            ValidatorRegistryLimit = validatorRegistryLimit;
+            MaxProposerSlashings = (uint)maximumProposerSlashings;
+            MaxAttesterSlashings = (uint)maximumAttesterSlashings;
+            MaxAttestations = (uint)maximumAttestations;
+            MaxDeposits = (uint)maximumDeposits;
+            MaxVoluntaryExits = (uint)maximumVoluntaryExits;
+        }
     }
 }

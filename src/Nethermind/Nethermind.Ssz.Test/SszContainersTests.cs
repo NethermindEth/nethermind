@@ -35,6 +35,28 @@ namespace Nethermind.Ssz.Test
     [TestFixture]
     public class SszContainersTests
     {
+        [SetUp]
+        public void Setup()
+        {
+            Ssz.Init(
+                32,
+                4,
+                2048,
+                32,
+                1024,
+                8192,
+                65536,
+                8192,
+                16_777_216,
+                1_099_511_627_776,
+                16,
+                1,
+                128,
+                16,
+                16
+                );    
+        }
+
         [Test]
         public void Fork_there_and_back()
         {
@@ -310,7 +332,7 @@ namespace Nethermind.Ssz.Test
                 Gwei.One,
                 SszTest.TestSig1);
 
-            Hash32[] proof = Enumerable.Repeat(Hash32.Zero, Ssz.ContractTreeDepth + 1).ToArray();
+            Hash32[] proof = Enumerable.Repeat(Hash32.Zero, Ssz.DepositContractTreeDepth + 1).ToArray();
             proof[7] = Sha256.OfAnEmptyString;
             Deposit container = new Deposit(proof, data);
 
@@ -387,7 +409,7 @@ namespace Nethermind.Ssz.Test
                 new Gwei(7),
                 SszTest.TestSig1);
 
-            Deposit deposit = new Deposit(new Hash32[Ssz.ContractTreeDepth + 1], depositData);
+            Deposit deposit = new Deposit(new Hash32[Ssz.DepositContractTreeDepth + 1], depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
                 new ValidatorIndex[8],

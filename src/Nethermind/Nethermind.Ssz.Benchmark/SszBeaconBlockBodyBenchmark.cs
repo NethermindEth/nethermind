@@ -52,7 +52,7 @@ namespace Nethermind.Ssz.Benchmarks
                 SszTest.TestSig1);
 
             Deposit deposit = new Deposit(
-                new Hash32[Ssz.ContractTreeDepth + 1],
+                new Hash32[Ssz.DepositContractTreeDepth + 1],
                 depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
