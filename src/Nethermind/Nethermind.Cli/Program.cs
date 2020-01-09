@@ -293,6 +293,7 @@ namespace Nethermind.Cli
             ModuleLoader.LoadModule(typeof(CliqueCliModule));
             ModuleLoader.LoadModule(typeof(DebugCliModule));
             ModuleLoader.LoadModule(typeof(EthCliModule));
+            ModuleLoader.LoadModule(typeof(TxPoolCliModule));
             ModuleLoader.LoadModule(typeof(NetCliModule));
             ModuleLoader.LoadModule(typeof(NodeCliModule));
             ModuleLoader.LoadModule(typeof(NdmCliModule));
