@@ -90,6 +90,9 @@ namespace Nethermind.Core2.Cryptography
             // it sometimes / very rarely has an issue of having to cast list to an array
             // but usually we have a full control over the flow so it ends up being much better
             // what do you think?
+            
+            // TODO: [SG] yes. Change IEnumerable to IList in most places to avoid double-enumeration.
+            
             Span<byte> publicKeysSpan = new Span<byte>(new byte[publicKeys.Count() * BlsPublicKey.Length]);
             int publicKeysSpanIndex = 0;
             foreach (BlsPublicKey publicKey in publicKeys)
@@ -182,6 +185,8 @@ namespace Nethermind.Core2.Cryptography
                 maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
                 maxOperationsPerBlock.MaximumDeposits, maxOperationsPerBlock.MaximumVoluntaryExits,
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
+            
+            // TODO: Get this working and switch over block body, beacon block, and state
 
 //            Merkle.Ize(out UInt256 root, beaconBlockBody);
 //            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
@@ -219,6 +224,10 @@ namespace Nethermind.Core2.Cryptography
             return beaconState.HashTreeRoot(stateListLengths.HistoricalRootsLimit,
                 timeParameters.SlotsPerEth1VotingPeriod, stateListLengths.ValidatorRegistryLimit,
                 maximumAttestationsPerEpoch, miscellaneousParameters.MaximumValidatorsPerCommittee);
+
+//            Merkle.Ize(out UInt256 root, beaconState);
+//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+//            return new Hash32(bytes);
         }
 
         public Hash32 HashTreeRoot(DepositData depositData)
@@ -230,6 +239,8 @@ namespace Nethermind.Core2.Cryptography
 
         public Hash32 SigningRoot(BeaconBlock beaconBlock)
         {
+            // TODO: Signing root version of Nethermind SSZ; or are removed in later version of spec, so maybe just wait until then
+            
             MiscellaneousParameters miscellaneousParameters = _miscellaneousParameterOptions.CurrentValue;
             MaxOperationsPerBlock maxOperationsPerBlock = _maxOperationsPerBlockOptions.CurrentValue;
             return beaconBlock.SigningRoot(maxOperationsPerBlock.MaximumProposerSlashings,

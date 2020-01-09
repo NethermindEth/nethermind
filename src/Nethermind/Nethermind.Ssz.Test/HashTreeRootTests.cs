@@ -314,6 +314,8 @@ namespace Nethermind.Ssz.Test
             bytes.ToArray().ShouldBe(expected);
         }
         
+        // TODO: Add tests for deposit, and deposit list (for beacon block body)
+        
 //        [Test]
 //        public void Can_merkleize_deposit()
 //        {
@@ -485,6 +487,8 @@ namespace Nethermind.Ssz.Test
             
             bytes.ToArray().ShouldBe(expected);
         }
+        
+        // TODO: Finish test for beacon block body with data, e.g. deposit, to get it working
 
 //        [Test]
 //        public void Can_merkleize_beacon_block_body_with_deposit()
