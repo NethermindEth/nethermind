@@ -6,11 +6,11 @@ CLI access is not currently included in the Nethermind launcher but will be adde
 admin
 ^^^^^
 
- - admin.addPeer(enode) - 
+ - admin.addPeer(enode, addToStaticNodes) - 
 
  - admin.peers - 
 
- - admin.removePeer(enode) - 
+ - admin.removePeer(enode, removeFromStaticNodes) - 
 
 clique
 ^^^^^^
@@ -39,6 +39,8 @@ debug
  - debug.getBlockRlp(number) - 
 
  - debug.getBlockRlpByHash(hash) - 
+
+ - debug.getChainlevel(number) - 
 
  - debug.config(category, name) - 
 
