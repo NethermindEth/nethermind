@@ -53,6 +53,28 @@ namespace Nethermind.Core2.Cryptography
             _timeParameterOptions = timeParameterOptions;
             _stateListLengthOptions = stateListLengthOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
+
+            MiscellaneousParameters miscellaneousParameters = miscellaneousParameterOptions.CurrentValue;
+            TimeParameters timeParameters = timeParameterOptions.CurrentValue;
+            StateListLengths stateListLengths = stateListLengthOptions.CurrentValue;
+            MaxOperationsPerBlock maxOperationsPerBlock = maxOperationsPerBlockOptions.CurrentValue;
+            
+            Nethermind.Ssz.Ssz.Init(
+                chainConstants.DepositContractTreeDepth, 
+                chainConstants.JustificationBitsLength,
+                miscellaneousParameters.MaximumValidatorsPerCommittee,
+                timeParameters.SlotsPerEpoch,
+                timeParameters.SlotsPerEth1VotingPeriod,
+                timeParameters.SlotsPerHistoricalRoot,
+                stateListLengths.EpochsPerHistoricalVector,
+                stateListLengths.EpochsPerSlashingsVector,
+                stateListLengths.HistoricalRootsLimit,
+                stateListLengths.ValidatorRegistryLimit,
+                maxOperationsPerBlock.MaximumProposerSlashings,
+                maxOperationsPerBlock.MaximumAttesterSlashings,
+                maxOperationsPerBlock.MaximumAttestations,
+                maxOperationsPerBlock.MaximumDeposits,
+                maxOperationsPerBlock.MaximumVoluntaryExits);
         }
         
         
@@ -160,11 +182,19 @@ namespace Nethermind.Core2.Cryptography
                 maxOperationsPerBlock.MaximumAttesterSlashings, maxOperationsPerBlock.MaximumAttestations,
                 maxOperationsPerBlock.MaximumDeposits, maxOperationsPerBlock.MaximumVoluntaryExits,
                 miscellaneousParameters.MaximumValidatorsPerCommittee);
+
+//            Merkle.Ize(out UInt256 root, beaconBlockBody);
+//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+//            return new Hash32(bytes);
         }
 
         public Hash32 HashTreeRoot(IList<DepositData> depositData)
         {
             return depositData.HashTreeRoot(_chainConstants.MaximumDepositContracts);
+            
+//            Merkle.Ize(out UInt256 root, depositData);
+//            Span<byte> bytes = MemoryMarshal.Cast<UInt256, byte>(MemoryMarshal.CreateSpan(ref root, 1));
+//            return new Hash32(bytes);
         }
 
         public Hash32 HashTreeRoot(Epoch epoch)

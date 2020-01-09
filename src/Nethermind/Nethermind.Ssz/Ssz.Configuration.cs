@@ -25,6 +25,7 @@ namespace Nethermind.Ssz
     {
         public static int DepositContractTreeDepth { get; private set; }
         private static int JustificationBitsLength;
+        internal static ulong MaximumDepositContracts { get; private set; }
         
         internal static uint MaxValidatorsPerCommittee { get; private set; }
         
@@ -43,8 +44,8 @@ namespace Nethermind.Ssz
         internal static uint MaxDeposits { get; private set; }
         internal static uint MaxVoluntaryExits { get; private set; }
 
-        public static void Init(ulong depositContractTreeDepth,
-            ulong justificationBitsLength,
+        public static void Init(int depositContractTreeDepth,
+            int justificationBitsLength,
             ulong maximumValidatorsPerCommittee,
             ulong slotsPerEpoch,
             ulong slotsPerEth1VotingPeriod,
@@ -60,8 +61,8 @@ namespace Nethermind.Ssz
             ulong maximumVoluntaryExits
         )
         {
-            DepositContractTreeDepth = (int)depositContractTreeDepth;
-            JustificationBitsLength = (int)justificationBitsLength;
+            DepositContractTreeDepth = depositContractTreeDepth;
+            JustificationBitsLength = justificationBitsLength;
             MaxValidatorsPerCommittee = (uint)maximumValidatorsPerCommittee;
             SlotsPerEpoch = (uint)slotsPerEpoch;
             SlotsPerEth1VotingPeriod = (int)slotsPerEth1VotingPeriod;
@@ -75,6 +76,8 @@ namespace Nethermind.Ssz
             MaxAttestations = (uint)maximumAttestations;
             MaxDeposits = (uint)maximumDeposits;
             MaxVoluntaryExits = (uint)maximumVoluntaryExits;
+
+            MaximumDepositContracts = (ulong) 1 << depositContractTreeDepth;
         }
     }
 }

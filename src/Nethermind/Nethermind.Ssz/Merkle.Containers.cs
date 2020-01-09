@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
@@ -91,7 +92,14 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
-        
+
+        public static void Ize(out UInt256 root, IList<DepositData> value)
+        {
+            Merkleizer merkleizer = new Merkleizer(2);
+            merkleizer.Feed(value, Ssz.MaximumDepositContracts);
+            merkleizer.CalculateRoot(out root);
+        }
+
         public static void Ize(out UInt256 root, AttestationData? container)
         {
             if (container is null)
