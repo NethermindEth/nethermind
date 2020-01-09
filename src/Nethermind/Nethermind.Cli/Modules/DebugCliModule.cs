@@ -29,7 +29,13 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("debug_getChainLevel", number).Result;
         }
-        
+
+        [CliFunction("debug", "deleteChainSlice")]
+        public JsValue DeleteChainSlice(long startNumber, long endNumber)
+        {
+            return NodeManager.PostJint("debug_deleteChainSlice", startNumber, endNumber).Result;
+        }
+
         [CliFunction("debug", "traceBlock")]
         public JsValue TraceBlock(string rlp, object options)
         {
@@ -53,7 +59,7 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("debug_traceTransaction", hash, options).Result;
         }
-        
+
         [CliFunction("debug", "traceTransactionByBlockAndIndex")]
         public JsValue TraceTransactionByBlockAndIndex(string hash, object options)
         {
@@ -65,13 +71,13 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("debug_traceTransactionByBlockhashAndIndex", hash, options).Result;
         }
-        
+
         [CliFunction("debug", "traceTransactionInBlockByHash")]
         public JsValue TraceTransactionInBlockByHash(string rlp, string hash, object options)
         {
             return NodeManager.PostJint("debug_traceTransactionInBlockByHash", rlp, hash, options).Result;
         }
-        
+
         [CliFunction("debug", "traceTransactionInBlockByIndex")]
         public JsValue TraceTransactionInBlockByIndex(string rlp, int index, object options)
         {
@@ -83,13 +89,13 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("debug_getConfigValue", category, name).Result;
         }
-        
+
         [CliFunction("debug", "getBlockRlpByHash")]
         public string GetBlockRlpByHash(string hash)
         {
             return NodeManager.Post<string>("debug_getBlockRlpByHash", CliParseHash(hash)).Result;
         }
-        
+
         [CliFunction("debug", "getBlockRlp")]
         public string GetBlockRlp(long number)
         {
