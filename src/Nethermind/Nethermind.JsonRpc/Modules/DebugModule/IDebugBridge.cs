@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Evm.Tracing;
@@ -33,5 +34,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         byte[] GetBlockRlp(long number);
         byte[] GetDbValue(string dbName, byte[] key);
         string GetConfigValue(string category, string name);
+        public ChainLevelInfo GetLevelInfo(long number);
+        public void DeleteChainSlice(long startNumber, long endNumber);
     }
 }

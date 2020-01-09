@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Evm.Tracing;
@@ -67,6 +68,16 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             return _dbMappings[dbName][key];
         }
 
+        public ChainLevelInfo GetLevelInfo(long number)
+        {
+            return _blockTree.FindLevel(number);
+        }
+        
+        public void DeleteChainSlice(long startNumber, long endNumber)
+        {
+            _blockTree.DeleteChainSlice(startNumber, endNumber);
+        }
+        
         public GethLikeTxTrace GetTransactionTrace(Keccak transactionHash, GethTraceOptions gethTraceOptions = null)
         {
             return _tracer.Trace(transactionHash, gethTraceOptions ?? GethTraceOptions.Default);

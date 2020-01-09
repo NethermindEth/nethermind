@@ -1,4 +1,4 @@
-﻿//  Copyright (c) 2018 Demerzel Solutions Limited
+//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,21 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Linq;
+using Nethermind.Core;
 
-namespace Nethermind.Mining
+namespace Nethermind.JsonRpc.Modules.DebugModule
 {
-    public interface IEthashDataSet : IDisposable
+    public class ChainLevelForRpc
     {
-        uint Size { get; }
-        uint[] CalcDataSetItem(uint i);
+        public ChainLevelForRpc(ChainLevelInfo chainLevelInfo)
+        {
+            HasBlockOnMainChain = chainLevelInfo.HasBlockOnMainChain;
+            BlockInfos = chainLevelInfo.BlockInfos.Select(bi => new BlockInfoForRpc(bi)).ToArray();
+        }
+
+        public BlockInfoForRpc[] BlockInfos { get; set; }
+        
+        public bool HasBlockOnMainChain { get; set; }
     }
 }

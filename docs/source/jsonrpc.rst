@@ -7,7 +7,7 @@ Some of the methods listed below are not implemented by Nethermind (they are mar
 admin
 ^^^^^
 
- - admin_addPeer(enode) - 
+ - admin_addPeer(enode, addToStaticNodes) - 
 
  - [NOT IMPLEMENTED]admin_dataDir() - 
 
@@ -15,7 +15,7 @@ admin
 
  - admin_peers() - 
 
- - admin_removePeer(enode) - 
+ - admin_removePeer(enode, removeFromStaticNodes) - 
 
  - [NOT IMPLEMENTED]admin_setSolc() - 
 
@@ -43,6 +43,8 @@ clique
 debug
 ^^^^^
 
+ - debug_deleteChainSlice(startNumber, endNumber) - Deletes a slice of a chain from the tree on all branches (Nethermind specific).
+
  - [NOT IMPLEMENTED]debug_dumpBlock(blockParameter) - 
 
  - [NOT IMPLEMENTED]debug_gcStats() - 
@@ -50,6 +52,8 @@ debug
  - debug_getBlockRlp(number) - Retrieves a block in the RLP-serialized form.
 
  - debug_getBlockRlpByHash(hash) - Retrieves a block in the RLP-serialized form.
+
+ - debug_getChainLevel(number) - Retrieves a representation of tree branches on a given chain level (Nethermind specific).
 
  - debug_getConfigValue(category, name) - Retrieves the Nethermind configuration value, e.g. JsonRpc.Enabled
 
