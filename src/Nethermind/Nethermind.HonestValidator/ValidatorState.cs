@@ -16,7 +16,6 @@
 
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 

@@ -41,7 +41,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test
 {
     [TestFixture]
-    [Explicit("Repeatedly fails on Travis")]
+    // [Explicit("Repeatedly fails on Travis")]
     public class PeerManagerTests
     {
         private RlpxMock _rlpxPeer;
@@ -401,12 +401,19 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < count; i++)
             {
                 var generator = new PrivateKeyGenerator();
-                string enode = $"enode://{generator.Generate().PublicKey.ToString(false)}@52.141.78.53:30303";
+                var enode = GenerateEnode(generator);
                 NetworkNode node = new NetworkNode(enode);
                 nodes.Add(node);
             }
 
             return nodes;
+        }
+
+        private static string GenerateEnode(PrivateKeyGenerator generator = null)
+        {
+            generator ??= new PrivateKeyGenerator();
+            string enode = $"enode://{generator.Generate().PublicKey.ToString(false)}@52.141.78.53:30303";
+            return enode;
         }
 
         private void CreateIncomingSessions()
@@ -485,19 +492,67 @@ namespace Nethermind.Network.Test
         }
         
         [Test]
-        public void Will_disconnect_on_remove_node()
+        public void Will_disconnect_on_remove_static_node()
         {
             const int nodesCount = 5;
-            var firstSessionDisconnected = false;
+            var disconnections = 0;
             var staticNodes = CreateNodes(nodesCount);
             _staticNodesManager.Nodes.Returns(staticNodes);
             _peerManager.Init();
             _peerManager.Start();
             Thread.Sleep(_travisDelay);
-            _sessions.First().Disconnected += (o, e) => firstSessionDisconnected = true; 
-            _staticNodesManager.NodeRemoved += Raise.EventWith(new RemoveNetworkNodeEventArgs(staticNodes.First()));
+            
+            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
+            _sessions.ForEach(s => s.Disconnected += DisconnectHandler);
+            
+            _staticNodesManager.NodeRemoved += Raise.EventWith(new NetworkNodeEventArgs(staticNodes.First()));
+            
             _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount - 1);
-            firstSessionDisconnected.Should().BeTrue();
+            disconnections.Should().Be(1);
+        }
+        
+        [Test]
+        public void Will_connect_and_disconnect_on_peer_management()
+        {
+            var disconnections = 0;
+            _peerManager.Init();
+            _peerManager.Start();
+            var node = new NetworkNode(GenerateEnode());
+            _peerManager.AddPeer(node);
+            Thread.Sleep(_travisDelay);
+
+            _peerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] {node.NodeId});
+            
+            void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
+            _sessions.ForEach(s => s.Disconnected += DisconnectHandler);
+
+            _peerManager.RemovePeer(node).Should().BeTrue();
+
+            _peerManager.ActivePeers.Should().BeEmpty();
+            disconnections.Should().Be(1);
+        }
+
+        [Test]
+        public void Multiple_addPeer_will_fail_if_peer_already_added()
+        {
+            _peerManager.Init();
+            _peerManager.Start();
+            var node = new NetworkNode(GenerateEnode());
+            _peerManager.AddPeer(node).Should().BeTrue();
+            _peerManager.AddPeer(node).Should().BeFalse();
+            _peerManager.AddPeer(node).Should().BeFalse();
+            Thread.Sleep(_travisDelay);
+            _peerManager.ActivePeers.Should().HaveCount(1);
+        }
+        
+        [Test]
+        public void RemovePeer_should_fail_if_peer_not_added()
+        {
+            _peerManager.Init();
+            _peerManager.Start();
+            var node = new NetworkNode(GenerateEnode());
+            Thread.Sleep(_travisDelay);
+            _peerManager.RemovePeer(node).Should().BeFalse();
         }
     }
 }

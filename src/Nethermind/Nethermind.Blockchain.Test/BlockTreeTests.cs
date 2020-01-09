@@ -1422,6 +1422,112 @@ namespace Nethermind.Blockchain.Test
 
             txPoolMock.Received().AddTransaction(t1, 1);
         }
+        
+        [Test]
+        public void Can_find_genesis_level()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            ChainLevelInfo info = blockTree.FindLevel(0);
+            Assert.True(info.HasBlockOnMainChain);
+            Assert.AreEqual(1, info.BlockInfos.Length);
+        }
+        
+        [Test]
+        public void Can_find_some_level()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            ChainLevelInfo info = blockTree.FindLevel(1);
+            Assert.True(info.HasBlockOnMainChain);
+            Assert.AreEqual(1, info.BlockInfos.Length);
+        }
+        
+        [Test]
+        public void Cannot_find_future_level()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            ChainLevelInfo info = blockTree.FindLevel(1000);
+            Assert.IsNull(info);
+        }
+        
+        [Test]
+        public void Can_delete_a_future_slice()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.DeleteChainSlice(1000, 2000);
+            Assert.AreEqual(2, blockTree.Head.Number);
+        }
+
+        [Test]
+        public void Can_delete_slice()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.DeleteChainSlice(2, 2);
+            Assert.Null(blockTree.FindBlock(2, BlockTreeLookupOptions.None));
+            Assert.Null(blockTree.FindHeader(2, BlockTreeLookupOptions.None));
+            Assert.Null(blockTree.FindLevel(2));
+        }
+        
+        [Test]
+        public void Does_not_delete_outside_of_the_slice()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.DeleteChainSlice(2, 2);
+            Assert.NotNull(blockTree.FindBlock(1, BlockTreeLookupOptions.None));
+            Assert.NotNull(blockTree.FindHeader(1, BlockTreeLookupOptions.None));
+            Assert.NotNull(blockTree.FindLevel(1));
+        }
+        
+        [Test]
+        public void Can_delete_one_block()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.DeleteChainSlice(2, 2);
+            Assert.AreEqual(1, blockTree.Head.Number);
+        }
+        
+        [Test]
+        public void Can_delete_two_blocks()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            blockTree.DeleteChainSlice(1, 2);
+            Assert.Null(blockTree.FindLevel(1));
+            Assert.Null(blockTree.FindLevel(2));
+        }
+
+        [Test]
+        public void Cannot_delete_in_the_middle()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1, 1));
+        }
+        
+        [Test]
+        public void Throws_when_start_after_end()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(2, 1));
+        }
+        
+        [Test]
+        public void Throws_when_start_at_zero()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(0, 1));
+        }
+        
+        [Test]
+        public void Throws_when_start_below_zero()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(-1, 1));
+        }
+        
+        [Test]
+        public void Cannot_delete_too_many()
+        {
+            BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
+            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1000, 2001));
+        }
 
         static object[] SourceOfBSearchTestCases =
         {

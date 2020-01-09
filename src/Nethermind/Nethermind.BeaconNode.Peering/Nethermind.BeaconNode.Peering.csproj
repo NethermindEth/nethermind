@@ -11,7 +11,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.BeaconNode\Nethermind.BeaconNode.csproj" />
+      <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
     </ItemGroup>
 
     <ItemGroup>
@@ -21,6 +21,8 @@
         </PackageReference>
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="3.0.1" />
     </ItemGroup>
+    
 
 </Project>

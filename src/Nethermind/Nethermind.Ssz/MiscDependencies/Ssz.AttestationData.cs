@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -25,14 +26,14 @@ namespace Nethermind.Ssz
     {
           public static void Encode(Span<byte> span, AttestationData container)
         {
-            if (span.Length != AttestationData.SszLength)
+            if (span.Length != ByteLength.AttestationDataLength)
             {
-                ThrowTargetLength<AttestationData>(span.Length, AttestationData.SszLength);
+                ThrowTargetLength<AttestationData>(span.Length, ByteLength.AttestationDataLength);
             }
 
             int offset = 0;
             Encode(span, container.Slot, ref offset);
-            Encode(span, container.CommitteeIndex, ref offset);
+            Encode(span, container.Index, ref offset);
             Encode(span, container.BeaconBlockRoot, ref offset);
             Encode(span, container.Source, ref offset);
             Encode(span, container.Target, ref offset);
@@ -40,29 +41,29 @@ namespace Nethermind.Ssz
 
         public static AttestationData DecodeAttestationData(Span<byte> span)
         {
-            if (span.Length != AttestationData.SszLength)
+            if (span.Length != ByteLength.AttestationDataLength)
             {
-                ThrowSourceLength<AttestationData>(span.Length, AttestationData.SszLength);
+                ThrowSourceLength<AttestationData>(span.Length, ByteLength.AttestationDataLength);
             }
             
             int offset = 0;
-            AttestationData container = new AttestationData();
-            container.Slot = DecodeSlot(span, ref offset);
-            container.CommitteeIndex = DecodeCommitteeIndex(span, ref offset);
-            container.BeaconBlockRoot = DecodeSha256(span, ref offset);
-            container.Source = DecodeCheckpoint(span, ref offset);
-            container.Target = DecodeCheckpoint(span, ref offset);
+            AttestationData container = new AttestationData(
+                DecodeSlot(span, ref offset),
+                DecodeCommitteeIndex(span, ref offset),
+                DecodeSha256(span, ref offset),
+                DecodeCheckpoint(span, ref offset),
+                DecodeCheckpoint(span, ref offset));
             return container;
         }
 
         private static AttestationData DecodeAttestationData(Span<byte> span, ref int offset)
         {
-            AttestationData container = new AttestationData();
-            container.Slot = DecodeSlot(span, ref offset);
-            container.CommitteeIndex = DecodeCommitteeIndex(span, ref offset);
-            container.BeaconBlockRoot = DecodeSha256(span, ref offset);
-            container.Source = DecodeCheckpoint(span, ref offset);
-            container.Target = DecodeCheckpoint(span, ref offset);
+            Slot slot = DecodeSlot(span, ref offset);
+            CommitteeIndex index = DecodeCommitteeIndex(span, ref offset);
+            Hash32 beaconBlockRoot = DecodeSha256(span, ref offset);
+            Checkpoint source = DecodeCheckpoint(span, ref offset);
+            Checkpoint target = DecodeCheckpoint(span, ref offset);
+            AttestationData container = new AttestationData(slot, index, beaconBlockRoot, source, target);
             return container;
         }
         
@@ -73,8 +74,8 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            Encode(span.Slice(offset, AttestationData.SszLength), value);
-            offset += AttestationData.SszLength;
+            Encode(span.Slice(offset, ByteLength.AttestationDataLength), value);
+            offset += ByteLength.AttestationDataLength;
         }
     }
 }

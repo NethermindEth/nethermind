@@ -16,6 +16,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Linq;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
@@ -31,26 +33,26 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != IndexedAttestation.SszLength(container))
+            if (span.Length != ByteLength.IndexedAttestationLength(container))
             {
-                ThrowTargetLength<IndexedAttestation>(span.Length, IndexedAttestation.SszLength(container));
+                ThrowTargetLength<IndexedAttestation>(span.Length, ByteLength.IndexedAttestationLength(container));
             }
 
             int offset = 0;
-            int dynamicOffset = IndexedAttestation.SszDynamicOffset;
-            Encode(span, container.AttestingIndices, ref offset, ref dynamicOffset);
+            int dynamicOffset = ByteLength.IndexedAttestationDynamicOffset;
+            Encode(span, container.AttestingIndices.ToArray(), ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
             Encode(span, container.Signature, ref offset);
         }
 
         public static IndexedAttestation DecodeIndexedAttestation(Span<byte> span)
         {
-            IndexedAttestation container = new IndexedAttestation();
             int offset = 0;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
-            container.AttestingIndices = DecodeValidatorIndexes(span.Slice(dynamicOffset1));
-            container.Data = DecodeAttestationData(span, ref offset);
-            container.Signature = DecodeBlsSignature(span, ref offset);
+            ValidatorIndex[] attestingIndices = DecodeValidatorIndexes(span.Slice(dynamicOffset1));
+            AttestationData data = DecodeAttestationData(span, ref offset);
+            BlsSignature signature = DecodeBlsSignature(span, ref offset);
+            IndexedAttestation container = new IndexedAttestation(attestingIndices, data, signature);
             return container;
         }
     }

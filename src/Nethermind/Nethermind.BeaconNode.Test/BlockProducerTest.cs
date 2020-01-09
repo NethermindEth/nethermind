@@ -10,12 +10,12 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.MockedStart;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using NSubstitute;
@@ -65,15 +65,15 @@ namespace Nethermind.BeaconNode.Test
             newBlock.Slot.ShouldBe(targetSlot);
             newBlock.Body.RandaoReveal.ShouldBe(randaoReveal);
             
-            Hash32 expectedParentRoot = new Hash32(Bytes.FromHexString("0x3111350140726cc0501223143ae5c7baad7f5a06764fcc7d444a657016e7d616"));
+            Hash32 expectedParentRoot = new Hash32("0x91b06cbcd6dc97b89dc8b95e0b01a497932683b182e6c722ddfa10cd005b2180");
             newBlock.ParentRoot.ShouldBe(expectedParentRoot);
             
             newBlock.Body.Eth1Data.DepositCount.ShouldBe((ulong)numberOfValidators);
             
-            Hash32 expectedEth1DataDepositRoot = new Hash32(Bytes.FromHexString("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"));
+            Hash32 expectedEth1DataDepositRoot = new Hash32("0x66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925");
             newBlock.Body.Eth1Data.DepositRoot.ShouldBe(expectedEth1DataDepositRoot);
             
-            Hash32 expectedStateRoot = new Hash32(Bytes.FromHexString("0xba7192e86b77d51c5e7835ece9c572f01b7fc720300acac8d98b4db42eb94321"));
+            Hash32 expectedStateRoot = new Hash32("0xe05ccf6347cac0b0dab0ad0d5c941fe7c7e2ed4c69550ed9a628bc9d62914242");
             newBlock.StateRoot.ShouldBe(expectedStateRoot);
             
             newBlock.Signature.ShouldBe(new BlsSignature(new byte[96])); // signature should be empty

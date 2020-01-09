@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
 namespace Nethermind.Ssz
@@ -23,27 +24,27 @@ namespace Nethermind.Ssz
     {
         public static void Encode(Span<byte> span, BeaconBlock container)
         {
-            if (span.Length != BeaconBlock.SszLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, BeaconBlock.SszLength(container));
+            if (span.Length != ByteLength.BeaconBlockLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, ByteLength.BeaconBlockLength(container));
             int offset = 0;
             Encode(span, container.Slot, ref offset);
             Encode(span, container.ParentRoot, ref offset);
             Encode(span, container.StateRoot, ref offset);
-            Encode(span, BeaconBlock.SszDynamicOffset, ref offset);
+            Encode(span, ByteLength.BeaconBlockDynamicOffset, ref offset);
             Encode(span, container.Signature, ref offset);
             Encode(span.Slice(offset), container.Body);
         }
 
         public static BeaconBlock DecodeBeaconBlock(Span<byte> span)
         {
-            BeaconBlock beaconBlock = new BeaconBlock();
-
             int offset = 0;
-            beaconBlock.Slot = DecodeSlot(span, ref offset);
-            beaconBlock.ParentRoot = DecodeSha256(span, ref offset);
-            beaconBlock.StateRoot = DecodeSha256(span, ref offset);
+            var slot = DecodeSlot(span, ref offset);
+            var parentRoot = DecodeSha256(span, ref offset);
+            var stateRoot = DecodeSha256(span, ref offset);
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset1);
-            beaconBlock.Signature = DecodeBlsSignature(span, ref offset);
-            beaconBlock.Body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
+            var signature = DecodeBlsSignature(span, ref offset);
+            var body = DecodeBeaconBlockBody(span.Slice(dynamicOffset1));
+            
+            BeaconBlock beaconBlock = new BeaconBlock(slot, parentRoot, stateRoot, body, signature);
             return beaconBlock;
         }
     }

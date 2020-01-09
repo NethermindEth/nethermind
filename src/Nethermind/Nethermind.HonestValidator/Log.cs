@@ -16,7 +16,6 @@
 
 using System;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 

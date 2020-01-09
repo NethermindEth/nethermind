@@ -14,12 +14,10 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Buffers.Binary;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
-using Nethermind.Core2.Types;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode
 {
@@ -28,7 +26,6 @@ namespace Nethermind.BeaconNode
         public static void AddBeaconNode(this IServiceCollection services, IConfiguration configuration)
         {
             services.AddSingleton<IClock, SystemClock>();
-            services.AddSingleton<ICryptographyService, CortexCryptographyService>();
             services.AddSingleton<INodeStart, NodeStart>();
             services.AddSingleton<Genesis>();
             services.AddSingleton<BeaconChainUtility>();

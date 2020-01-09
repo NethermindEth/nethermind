@@ -20,11 +20,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 using Shouldly;
-
 namespace Nethermind.BeaconNode.Test.BlockProcessing
 {
     [TestClass]
@@ -77,9 +76,7 @@ namespace Nethermind.BeaconNode.Test.BlockProcessing
                 return;
             }
 
-            var slashedIndices = attesterSlashing.Attestation1.CustodyBit0Indices
-                .Union(attesterSlashing.Attestation1.CustodyBit1Indices)
-                .ToList();
+            var slashedIndices = attesterSlashing.Attestation1.AttestingIndices;
 
             ValidatorIndex proposerIndex = beaconStateAccessor.GetBeaconProposerIndex(state);
             Gwei preProposerBalance = TestState.GetBalance(state, proposerIndex);

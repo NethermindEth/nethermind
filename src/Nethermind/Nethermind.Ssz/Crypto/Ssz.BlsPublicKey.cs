@@ -16,6 +16,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Ssz
@@ -30,8 +31,8 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BlsPublicKey value, ref int offset)
         {
-            Encode(span.Slice(offset, BlsPublicKey.SszLength), value.Bytes);
-            offset += BlsPublicKey.SszLength;
+            Encode(span.Slice(offset, ByteLength.BlsPublicKeyLength), value.Bytes);
+            offset += ByteLength.BlsPublicKeyLength;
         }
 
         public static BlsPublicKey DecodeBlsPublicKey(Span<byte> span)
@@ -41,8 +42,8 @@ namespace Nethermind.Ssz
 
         private static BlsPublicKey DecodeBlsPublicKey(Span<byte> span, ref int offset)
         {
-            BlsPublicKey publicKey = new BlsPublicKey(span.Slice(offset, BlsPublicKey.SszLength).ToArray());
-            offset += BlsPublicKey.SszLength;
+            BlsPublicKey publicKey = new BlsPublicKey(span.Slice(offset, ByteLength.BlsPublicKeyLength).ToArray());
+            offset += ByteLength.BlsPublicKeyLength;
             return publicKey;
         }
     }

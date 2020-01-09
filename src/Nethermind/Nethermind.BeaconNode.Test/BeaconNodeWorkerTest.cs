@@ -26,6 +26,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2;
 using NSubstitute;
 using Shouldly;
 

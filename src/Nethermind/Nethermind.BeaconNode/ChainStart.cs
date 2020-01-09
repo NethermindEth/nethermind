@@ -17,7 +17,8 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode.Containers;
+using Nethermind.Core2.Containers;
+using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using Nethermind.Logging.Microsoft;
 

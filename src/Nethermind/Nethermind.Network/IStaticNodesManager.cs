@@ -26,7 +26,7 @@ namespace Nethermind.Network
     {
         IEnumerable<NetworkNode> Nodes { get; }
         event EventHandler<NetworkNodeEventArgs> NodeAdded;
-        event EventHandler<RemoveNetworkNodeEventArgs> NodeRemoved;
+        event EventHandler<NetworkNodeEventArgs> NodeRemoved;
         Task InitAsync();
         Task<bool> AddAsync(string enode, bool updateFile = true);
         Task<bool> RemoveAsync(string enode, bool updateFile = true);

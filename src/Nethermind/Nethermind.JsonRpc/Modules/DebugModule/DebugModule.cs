@@ -17,6 +17,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -36,6 +37,20 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             _debugBridge = debugBridge ?? throw new ArgumentNullException(nameof(debugBridge));
             _logger = logManager.GetClassLogger();
+        }
+
+        public ResultWrapper<ChainLevelForRpc> debug_getChainLevel(in long number)
+        {
+            ChainLevelInfo levelInfo = _debugBridge.GetLevelInfo(number);
+            return levelInfo == null
+                ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorType.NotFound)
+                : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
+        }
+        
+        public ResultWrapper<bool> debug_deleteChainSlice(in long startNumber, in long endNumber)
+        {
+            _debugBridge.DeleteChainSlice(startNumber, endNumber);
+            return ResultWrapper<bool>.Success(true);
         }
 
         public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Keccak transactionHash, GethTraceOptions options = null)

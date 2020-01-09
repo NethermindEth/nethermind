@@ -318,7 +318,7 @@ namespace Nethermind.Runner.Runners
                 _rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
             }
 
-            AdminModule adminModule = new AdminModule(_logManager, _peerManager, _staticNodesManager);
+            AdminModule adminModule = new AdminModule(_peerManager, _staticNodesManager);
             _rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
             
             TxPoolModule txPoolModule = new TxPoolModule(_logManager, _txPoolInfoProvider);

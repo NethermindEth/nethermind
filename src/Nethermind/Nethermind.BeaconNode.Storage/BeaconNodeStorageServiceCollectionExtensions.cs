@@ -16,6 +16,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Storage
 {

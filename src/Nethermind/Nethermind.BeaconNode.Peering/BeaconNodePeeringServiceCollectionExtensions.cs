@@ -16,7 +16,7 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.BeaconNode.Services;
+using Nethermind.Core2;
 
 namespace Nethermind.BeaconNode.Peering
 {

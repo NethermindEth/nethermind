@@ -6,15 +6,15 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Containers;
 using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
+using Nethermind.Core2;
+using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Types;
 using NSubstitute;
 using Shouldly;
-
 namespace Nethermind.BeaconNode.Test.Storage
 {
     [TestClass]
@@ -155,9 +155,9 @@ namespace Nethermind.BeaconNode.Test.Storage
             
             block1SigningRoot.ShouldBe(block1Root);
             
-            block1.ParentRoot.ToString().ShouldStartWith("0x7f4520eb");
-            block1.StateRoot.ToString().ShouldStartWith("0x134ba7eb");
-            block1SigningRoot.ToString().ShouldStartWith("0xcc21e696");
+            block1.ParentRoot.ToString().ShouldStartWith("0x89e36b63");
+            block1.StateRoot.ToString().ShouldStartWith("0x35c6537a");
+            block1SigningRoot.ToString().ShouldStartWith("0xcdaa0640");
             block1State.LatestBlockHeader.BodyRoot.ToString().ShouldStartWith("0xaea12492");
         }
     }

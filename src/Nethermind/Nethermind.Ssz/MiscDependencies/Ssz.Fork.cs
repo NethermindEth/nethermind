@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Types;
 
@@ -24,14 +25,14 @@ namespace Nethermind.Ssz
     {
         private static void Encode(Span<byte> span, Fork value, ref int offset)
         {
-            Encode(span.Slice(offset, Fork.SszLength), value);
-            offset += Fork.SszLength;
+            Encode(span.Slice(offset, ByteLength.ForkLength), value);
+            offset += ByteLength.ForkLength;
         }
 
         private static Fork DecodeFork(Span<byte> span, ref int offset)
         {
-            Fork fork = DecodeFork(span.Slice(offset, Fork.SszLength));
-            offset += Fork.SszLength;
+            Fork fork = DecodeFork(span.Slice(offset, ByteLength.ForkLength));
+            offset += ByteLength.ForkLength;
             return fork;
         }
         
@@ -42,7 +43,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != Fork.SszLength) ThrowTargetLength<Fork>(span.Length, Fork.SszLength);
+            if (span.Length != ByteLength.ForkLength) ThrowTargetLength<Fork>(span.Length, ByteLength.ForkLength);
             int offset = 0;
             Encode(span, container.Value.PreviousVersion, ref offset);
             Encode(span, container.Value.CurrentVersion, ref offset);
@@ -51,7 +52,7 @@ namespace Nethermind.Ssz
 
         public static Fork DecodeFork(Span<byte> span)
         {
-            if (span.Length != Fork.SszLength) ThrowSourceLength<Fork>(span.Length, Fork.SszLength);
+            if (span.Length != ByteLength.ForkLength) ThrowSourceLength<Fork>(span.Length, ByteLength.ForkLength);
             int offset = 0;
             ForkVersion previous = DecodeForkVersion(span, ref offset);
             ForkVersion current = DecodeForkVersion(span, ref offset);

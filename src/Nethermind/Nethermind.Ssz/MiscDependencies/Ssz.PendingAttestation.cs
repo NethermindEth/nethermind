@@ -16,6 +16,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 
 namespace Nethermind.Ssz
@@ -24,11 +26,13 @@ namespace Nethermind.Ssz
     {
         public static void Encode(Span<byte> span, PendingAttestation? container)
         {
-            if (span.Length != PendingAttestation.SszLength(container)) ThrowTargetLength<PendingAttestation>(span.Length, PendingAttestation.SszLength(container));
+            if (span.Length != ByteLength.PendingAttestationLength(container)) ThrowTargetLength<PendingAttestation>(span.Length, ByteLength.PendingAttestationLength(container));
             if (container == null) return;
             int offset = 0;
-            int dynamicOffset = PendingAttestation.SszDynamicOffset;
-            Encode(span, container.AggregationBits, ref offset, ref dynamicOffset);
+            int dynamicOffset = ByteLength.PendingAttestationDynamicOffset;
+            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
+            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
+            Encode(span, aggregationBitsPacked, ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
             Encode(span, container.InclusionDelay, ref offset);
             Encode(span, container.ProposerIndex, ref offset);
@@ -45,7 +49,7 @@ namespace Nethermind.Ssz
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
             {
-                int currentLength = PendingAttestation.SszLength(containers[i]);
+                int currentLength = ByteLength.PendingAttestationLength(containers[i]);
                 Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
                 Encode(span.Slice(dynamicOffset, currentLength), containers[i]);
                 offset += VarOffsetSize;
@@ -58,11 +62,12 @@ namespace Nethermind.Ssz
             if (span.Length == 0) return null;
             int offset = 0;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset);
-            PendingAttestation pendingAttestation = new PendingAttestation();
-            pendingAttestation.AggregationBits = DecodeBytes(span.Slice(dynamicOffset, span.Length - dynamicOffset)).ToArray();
-            pendingAttestation.Data = DecodeAttestationData(span, ref offset);
-            pendingAttestation.InclusionDelay = DecodeSlot(span, ref offset);
-            pendingAttestation.ProposerIndex = DecodeValidatorIndex(span, ref offset);
+            var aggregationBitsPacked = DecodeBytes(span.Slice(dynamicOffset, span.Length - dynamicOffset)).ToArray();
+            var aggregationBits = new BitArray(aggregationBitsPacked);
+            var data = DecodeAttestationData(span, ref offset);
+            var inclusionDelay = DecodeSlot(span, ref offset);
+            var proposerIndex = DecodeValidatorIndex(span, ref offset);
+            PendingAttestation pendingAttestation = new PendingAttestation(aggregationBits, data, inclusionDelay, proposerIndex);
             return pendingAttestation;
         }
 

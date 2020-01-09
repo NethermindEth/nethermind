@@ -16,6 +16,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core2;
 using Nethermind.Core2.Crypto;
 
 namespace Nethermind.Ssz
@@ -30,16 +31,16 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static BlsSignature DecodeBlsSignature(Span<byte> span, ref int offset)
         {
-            BlsSignature blsSignature = DecodeBlsSignature(span.Slice(offset, BlsSignature.SszLength));
-            offset += BlsSignature.SszLength;
+            BlsSignature blsSignature = DecodeBlsSignature(span.Slice(offset, ByteLength.BlsSignatureLength));
+            offset += ByteLength.BlsSignatureLength;
             return blsSignature;
         }
         
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, BlsSignature value, ref int offset)
         {
-            Encode(span.Slice(offset, BlsSignature.SszLength), value.Bytes);
-            offset += BlsSignature.SszLength;
+            Encode(span.Slice(offset, ByteLength.BlsSignatureLength), value.Bytes);
+            offset += ByteLength.BlsSignatureLength;
         }
         
         public static BlsSignature DecodeBlsSignature(Span<byte> span)

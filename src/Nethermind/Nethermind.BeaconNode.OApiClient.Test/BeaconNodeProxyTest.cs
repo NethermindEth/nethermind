@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nethermind.Core2;
 using NSubstitute;
 using NSubstitute.Core;
 using NSubstitute.ExceptionExtensions;

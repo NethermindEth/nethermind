@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Configuration
 
         public int DepositContractTreeDepth { get; } = 1 << 5;
 
-        public Epoch FarFutureEpoch { get; } = new Epoch((ulong)1 << 64 - 1);
+        public Epoch FarFutureEpoch { get; } = new Epoch(ulong.MaxValue);
 
         public int JustificationBitsLength { get; } = 4;
 
