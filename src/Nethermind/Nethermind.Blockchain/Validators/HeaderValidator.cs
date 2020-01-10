@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain.Validators
                     return isGenesisValid;
                 }
 
-                if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.Hash})");
+                if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
                 return false;
             }
 
