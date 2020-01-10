@@ -1348,11 +1348,6 @@ namespace Nethermind.Blockchain
             {
                 throw new ArgumentException($"Cannot delete that many blocks at once (start: {startNumber}, end {endNumber}).", nameof(startNumber));
             }
-            
-            if (endNumber < BestKnownNumber)
-            {
-                throw new ArgumentException("End number has to be at least equal to the best known number when deleting a slice", nameof(endNumber));
-            }
 
             if (startNumber < 1)
             {

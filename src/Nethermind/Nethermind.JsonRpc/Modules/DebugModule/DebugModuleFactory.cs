@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
             ReadOnlyChainProcessingEnv readOnlyChainProcessingEnv = new ReadOnlyChainProcessingEnv(txEnv, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, readOnlyDbProvider, _specProvider, _logManager);
             ITracer tracer = new Tracer(readOnlyChainProcessingEnv.Processor, _receiptStorage, new ReadOnlyBlockTree(_blockTree), _dbProvider.TraceDb);
 
-            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.Processor, readOnlyTree);
+            DebugBridge debugBridge = new DebugBridge(_configProvider, readOnlyDbProvider, tracer, readOnlyChainProcessingEnv.Processor, _blockTree);
             return new DebugModule(_logManager, debugBridge);
         }
 

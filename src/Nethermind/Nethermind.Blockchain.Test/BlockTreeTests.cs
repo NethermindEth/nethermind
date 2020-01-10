@@ -1495,10 +1495,10 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void Cannot_delete_in_the_middle()
+        public void Can_delete_in_the_middle()
         {
             BlockTree blockTree = Build.A.BlockTree().OfChainLength(3).TestObject;
-            Assert.Throws<ArgumentException>(() => blockTree.DeleteChainSlice(1, 1));
+            blockTree.DeleteChainSlice(1, 1);
         }
         
         [Test]
