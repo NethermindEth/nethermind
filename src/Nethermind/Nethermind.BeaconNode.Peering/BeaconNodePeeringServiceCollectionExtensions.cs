@@ -24,7 +24,7 @@ namespace Nethermind.BeaconNode.Peering
     {
         public static void AddBeaconNodePeering(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddScoped<INetworkPeering, NetworkPeering>();
+            services.AddSingleton<INetworkPeering, NetworkPeering>();
             services.AddHostedService<PeeringWorker>();
         }
     }
