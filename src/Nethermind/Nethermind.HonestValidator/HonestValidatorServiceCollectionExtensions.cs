@@ -16,8 +16,6 @@
 
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.Services;
 using System.Net.Http;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
@@ -33,7 +31,6 @@ namespace Nethermind.HonestValidator
             services.AddSingleton<IClock, SystemClock>();
             services.AddSingleton<BeaconChain>();
             services.AddSingleton<ValidatorClient>();
-            services.AddSingleton<ClientVersion>();
             
             services.AddHostedService<HonestValidatorWorker>();
         }

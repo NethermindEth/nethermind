@@ -230,7 +230,24 @@ namespace Nethermind.Ssz
                 Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value));
             }
         }
-
+        
+        public static void Ize(out UInt256 root, ReadOnlySpan<byte> value, ulong chunkCount)
+        {
+            const int typeSize = 1;
+            int partialChunkLength = value.Length % (32 / typeSize);
+            if (partialChunkLength > 0)
+            {
+                ReadOnlySpan<byte> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+                Span<byte> lastChunk = stackalloc byte[32 / typeSize];
+                value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+                Ize(out root, MemoryMarshal.Cast<byte, Chunk>(fullChunks), MemoryMarshal.Cast<byte, Chunk>(lastChunk), chunkCount);
+            }
+            else
+            {
+                Ize(out root, MemoryMarshal.Cast<byte, Chunk>(value), chunkCount);
+            }
+        }
+        
         public static void IzeBits(out UInt256 root, Span<byte> value, uint limit)
         {
             // reset lowest bit perf
@@ -345,10 +362,10 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static void Ize(out UInt256 root, Span<ulong> value, ulong limit = 0U)
+        public static void Ize(out UInt256 root, Span<ulong> value, ulong maxLength = 0U)
         {
-            limit = (limit * 8 + 31) / 32;
-            const int typeSize = 8;
+            const int typeSize = sizeof(ulong);
+            ulong limit = (maxLength * typeSize + 31) / 32;
             int partialChunkLength = value.Length % (32 / typeSize);
             if (partialChunkLength > 0)
             {
@@ -380,7 +397,7 @@ namespace Nethermind.Ssz
             }
         }
 
-        public static void Ize(out UInt256 root, Span<UInt256> value, Span<UInt256> lastChunk, ulong limit = 0)
+        public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ReadOnlySpan<UInt256> lastChunk, ulong limit = 0)
         {
             if (limit == 0 && (value.Length + lastChunk.Length == 1))
             {
@@ -404,7 +421,7 @@ namespace Nethermind.Ssz
             merkleizer.CalculateRoot(out root);
         }
 
-        public static void Ize(out UInt256 root, Span<UInt256> value, ulong limit = 0UL)
+        public static void Ize(out UInt256 root, ReadOnlySpan<UInt256> value, ulong limit = 0UL)
         {
             if (limit == 0 && value.Length == 1)
             {

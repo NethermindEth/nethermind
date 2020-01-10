@@ -24,7 +24,6 @@ using Cortex.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.BeaconNode.Services;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Containers;
@@ -129,7 +128,7 @@ namespace Nethermind.BeaconNode.MockedStart
                 DepositData depositData = new DepositData(publicKey, withdrawalCredentials, amount);
 
                 // Sign deposit data
-                Hash32 depositDataSigningRoot = depositData.SigningRoot();
+                Hash32 depositDataSigningRoot = _cryptographyService.SigningRoot(depositData);
                 Domain domain = _beaconChainUtility.ComputeDomain(signatureDomains.Deposit);
                 byte[] destination = new byte[96];
                 bls.TrySignHash(depositDataSigningRoot.AsSpan(), destination, out int bytesWritten, domain.AsSpan());
@@ -145,8 +144,9 @@ namespace Nethermind.BeaconNode.MockedStart
 
                 int index = depositDataList.Count;
                 depositDataList.Add(depositData);
-                Hash32 root = depositDataList.HashTreeRoot((ulong)1 << _chainConstants.DepositContractTreeDepth);
-                IEnumerable<Hash32> allLeaves = depositDataList.Select(x => x.HashTreeRoot());
+                //int depositDataLength = (ulong) 1 << _chainConstants.DepositContractTreeDepth;
+                Hash32 root = _cryptographyService.HashTreeRoot(depositDataList);
+                IEnumerable<Hash32> allLeaves = depositDataList.Select(x => _cryptographyService.HashTreeRoot(x));
                 IList<IList<Hash32>> tree = CalculateMerkleTreeFromLeaves(allLeaves);
                 
 
@@ -161,7 +161,7 @@ namespace Nethermind.BeaconNode.MockedStart
 
                 Hash32 indexHash = new Hash32(indexBytes);
                 proof.Add(indexHash);
-                Hash32 leaf = depositData.HashTreeRoot();
+                Hash32 leaf = _cryptographyService.HashTreeRoot(depositData);
                 _beaconChainUtility.IsValidMerkleBranch(leaf, proof, _chainConstants.DepositContractTreeDepth + 1, (ulong)index, root);
                 Deposit deposit = new Deposit(proof, depositData);
 

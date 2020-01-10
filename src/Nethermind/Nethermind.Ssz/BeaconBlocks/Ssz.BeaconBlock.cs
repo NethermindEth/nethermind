@@ -22,14 +22,21 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int BeaconBlockDynamicOffset = Ssz.SlotLength + 2 * Ssz.Hash32Length + sizeof(uint) + Ssz.BlsSignatureLength;
+
+        public static int BeaconBlockLength(BeaconBlock? container)
+        {
+            return container is null ? 0 : (BeaconBlockDynamicOffset + Ssz.BeaconBlockBodyLength(container.Body));
+        }
+
         public static void Encode(Span<byte> span, BeaconBlock container)
         {
-            if (span.Length != ByteLength.BeaconBlockLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, ByteLength.BeaconBlockLength(container));
+            if (span.Length != Ssz.BeaconBlockLength(container)) ThrowTargetLength<BeaconBlock>(span.Length, Ssz.BeaconBlockLength(container));
             int offset = 0;
             Encode(span, container.Slot, ref offset);
             Encode(span, container.ParentRoot, ref offset);
             Encode(span, container.StateRoot, ref offset);
-            Encode(span, ByteLength.BeaconBlockDynamicOffset, ref offset);
+            Encode(span, Ssz.BeaconBlockDynamicOffset, ref offset);
             Encode(span, container.Signature, ref offset);
             Encode(span.Slice(offset), container.Body);
         }

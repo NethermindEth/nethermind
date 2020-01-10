@@ -20,9 +20,8 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using Nethermind.BeaconNode;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 using Nethermind.HonestValidator.Services;
 using Nethermind.Logging.Microsoft;
 
@@ -34,7 +33,7 @@ namespace Nethermind.HonestValidator
         private readonly IBeaconNodeApi _beaconNodeApi;
         private readonly BeaconChain _beaconChain;
         private readonly ValidatorClient _validatorClient;
-        private readonly ClientVersion _clientVersion;
+        private readonly IClientVersion _clientVersion;
         private readonly ILogger _logger;
         private readonly IClock _clock;
         private readonly IHostEnvironment _environment;
@@ -47,7 +46,7 @@ namespace Nethermind.HonestValidator
             IBeaconNodeApi beaconNodeApi,
             BeaconChain beaconChain,
             ValidatorClient validatorClient,
-            ClientVersion clientVersion)
+            IClientVersion clientVersion)
         {
             _logger = logger;
             _clock = clock;

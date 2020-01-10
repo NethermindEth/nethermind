@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core2.Containers;
@@ -114,7 +115,31 @@ namespace Nethermind.Ssz
             Merkle.IzeBits(out _chunks[^1], value, limit);
             Feed(_chunks[^1]);
         }
-        
+
+        public void FeedBitvector(BitArray bitArray)
+        {
+            // bitfield_bytes
+            byte[] bytes = new byte[(bitArray.Length + 7) / 8];
+            bitArray.CopyTo(bytes, 0);
+            
+            Merkle.Ize(out _chunks[^1], bytes);
+            Feed(_chunks[^1]);
+        }
+
+        public void FeedBitlist(BitArray bitArray, ulong maximumBitlistLength)
+        {
+            // chunk count
+            ulong chunkCount = (maximumBitlistLength + 255) / 256;
+            
+            // bitfield_bytes
+            byte[] bytes = new byte[(bitArray.Length + 7) / 8];
+            bitArray.CopyTo(bytes, 0);
+            
+            Merkle.Ize(out _chunks[^1], bytes, chunkCount);
+            Merkle.MixIn(ref _chunks[^1], bitArray.Length);
+            Feed(_chunks[^1]);
+        }
+
         public void Feed(BlsPublicKey? value)
         {
             if (value is null)
@@ -437,6 +462,19 @@ namespace Nethermind.Ssz
             }
             
             Merkle.Ize(out _chunks[^1], value);
+            Feed(_chunks[^1]);
+        }
+        
+        public void Feed(IList<DepositData> value, ulong maxLength)
+        {
+            UInt256[] subRoots = new UInt256[value.Count];
+            for (int i = 0; i < value.Count; i++)
+            {
+                Merkle.Ize(out subRoots[i], value[i]);
+            }
+
+            Merkle.Ize(out _chunks[^1], subRoots, maxLength);
+            Merkle.MixIn(ref _chunks[^1], value.Count);
             Feed(_chunks[^1]);
         }
         

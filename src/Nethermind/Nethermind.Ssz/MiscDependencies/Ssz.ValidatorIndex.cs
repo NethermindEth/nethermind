@@ -26,11 +26,13 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ValidatorIndexLength = sizeof(ulong);
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, ValidatorIndex value, ref int offset)
         {
             BinaryPrimitives.WriteUInt64LittleEndian(span.Slice(offset), value.Number);
-            offset += ByteLength.ValidatorIndexLength;
+            offset += Ssz.ValidatorIndexLength;
         }
 
         public static void Encode(Span<byte> span, ValidatorIndex value)
@@ -47,13 +49,13 @@ namespace Nethermind.Ssz
         private static ValidatorIndex DecodeValidatorIndex(Span<byte> span, ref int offset)
         {
             ValidatorIndex validatorIndex = new ValidatorIndex(BinaryPrimitives.ReadUInt64LittleEndian(span.Slice(offset)));
-            offset += ByteLength.ValidatorIndexLength;
+            offset += Ssz.ValidatorIndexLength;
             return validatorIndex;
         }
 
         public static void Encode(Span<byte> span, Span<ValidatorIndex> value)
         {
-            if (span.Length != value.Length * ByteLength.ValidatorIndexLength)
+            if (span.Length != value.Length * Ssz.ValidatorIndexLength)
             {
                 ThrowTargetLength<ulong[]>(span.Length, value.Length);
             }
@@ -68,7 +70,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            int length = containers.Length * ByteLength.ValidatorIndexLength;
+            int length = containers.Length * Ssz.ValidatorIndexLength;
             Encode(span, dynamicOffset, ref offset);
             Encode(span.Slice(dynamicOffset, length), containers);
             dynamicOffset += length;

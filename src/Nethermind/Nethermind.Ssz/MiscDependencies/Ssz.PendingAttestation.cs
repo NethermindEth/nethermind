@@ -19,20 +19,34 @@ using System.Buffers.Binary;
 using System.Collections;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
+using Nethermind.Core2.Types;
 
 namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int PendingAttestationDynamicOffset = sizeof(uint) +
+                                                           Ssz.AttestationDataLength +
+                                                           Ssz.SlotLength +
+                                                           Ssz.ValidatorIndexLength;
+
+        public static int PendingAttestationLength(PendingAttestation? value)
+        {
+            if (value == null)
+            {
+                return 0;
+            }
+            
+            return Ssz.PendingAttestationDynamicOffset + (value.AggregationBits.Length + 8) / 8;
+        }
+
         public static void Encode(Span<byte> span, PendingAttestation? container)
         {
-            if (span.Length != ByteLength.PendingAttestationLength(container)) ThrowTargetLength<PendingAttestation>(span.Length, ByteLength.PendingAttestationLength(container));
+            if (span.Length != Ssz.PendingAttestationLength(container)) ThrowTargetLength<PendingAttestation>(span.Length, Ssz.PendingAttestationLength(container));
             if (container == null) return;
             int offset = 0;
-            int dynamicOffset = ByteLength.PendingAttestationDynamicOffset;
-            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
-            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            Encode(span, aggregationBitsPacked, ref offset, ref dynamicOffset);
+            int dynamicOffset = Ssz.PendingAttestationDynamicOffset;
+            Encode(span, container.AggregationBits, ref offset, ref dynamicOffset);
             Encode(span, container.Data, ref offset);
             Encode(span, container.InclusionDelay, ref offset);
             Encode(span, container.ProposerIndex, ref offset);
@@ -49,7 +63,7 @@ namespace Nethermind.Ssz
             int dynamicOffset = containers.Length * VarOffsetSize;
             for (int i = 0; i < containers.Length; i++)
             {
-                int currentLength = ByteLength.PendingAttestationLength(containers[i]);
+                int currentLength = Ssz.PendingAttestationLength(containers[i]);
                 Encode(span.Slice(offset, VarOffsetSize), dynamicOffset);
                 Encode(span.Slice(dynamicOffset, currentLength), containers[i]);
                 offset += VarOffsetSize;
@@ -62,11 +76,10 @@ namespace Nethermind.Ssz
             if (span.Length == 0) return null;
             int offset = 0;
             DecodeDynamicOffset(span, ref offset, out int dynamicOffset);
-            var aggregationBitsPacked = DecodeBytes(span.Slice(dynamicOffset, span.Length - dynamicOffset)).ToArray();
-            var aggregationBits = new BitArray(aggregationBitsPacked);
-            var data = DecodeAttestationData(span, ref offset);
-            var inclusionDelay = DecodeSlot(span, ref offset);
-            var proposerIndex = DecodeValidatorIndex(span, ref offset);
+            BitArray aggregationBits = DecodeBitlist(span.Slice(dynamicOffset, span.Length - dynamicOffset));
+            AttestationData data = DecodeAttestationData(span, ref offset);
+            Slot inclusionDelay = DecodeSlot(span, ref offset);
+            ValidatorIndex proposerIndex = DecodeValidatorIndex(span, ref offset);
             PendingAttestation pendingAttestation = new PendingAttestation(aggregationBits, data, inclusionDelay, proposerIndex);
             return pendingAttestation;
         }

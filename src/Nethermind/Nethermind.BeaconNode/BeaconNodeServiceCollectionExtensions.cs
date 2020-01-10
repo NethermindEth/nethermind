@@ -18,6 +18,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
+using Nethermind.Core2.Configuration;
 
 namespace Nethermind.BeaconNode
 {
@@ -33,7 +34,6 @@ namespace Nethermind.BeaconNode
             services.AddSingleton<BeaconStateTransition>();
             services.AddSingleton<BeaconStateMutator>();
             services.AddSingleton<ForkChoice>();
-            services.AddSingleton<ClientVersion>();
 
             services.AddHostedService<BeaconNodeWorker>();
             

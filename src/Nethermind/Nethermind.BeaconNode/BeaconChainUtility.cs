@@ -21,7 +21,6 @@ using System.Linq;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -246,7 +245,7 @@ namespace Nethermind.BeaconNode
             // Verify aggregate signature
             IEnumerable<BlsPublicKey> publicKeys = attestingIndices.Select(x => state.Validators[(int) (ulong) x].PublicKey);
             BlsPublicKey aggregatePublicKey = _cryptographyService.BlsAggregatePublicKeys(publicKeys);
-            Hash32 messageHash = indexedAttestation.Data.HashTreeRoot();
+            Hash32 messageHash = _cryptographyService.HashTreeRoot(indexedAttestation.Data);
             BlsSignature signature = indexedAttestation.Signature;
 
             bool isValid = _cryptographyService.BlsVerify(aggregatePublicKey, messageHash, signature, domain);

@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Nethermind.BeaconNode.Services;
 using Nethermind.Core2;
 
 namespace Nethermind.HonestValidator.Tests.Helpers

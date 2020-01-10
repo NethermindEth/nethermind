@@ -25,9 +25,11 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ValidatorLength = Ssz.BlsPublicKeyLength + Ssz.Hash32Length + Ssz.GweiLength + sizeof(bool) + 4 * Ssz.EpochLength;
+
         public static void Encode(Span<byte> span, Validator container)
         {
-            if (span.Length != ByteLength.ValidatorLength) ThrowTargetLength<Validator>(span.Length, ByteLength.ValidatorLength);
+            if (span.Length != Ssz.ValidatorLength) ThrowTargetLength<Validator>(span.Length, Ssz.ValidatorLength);
             if (container == null) return;
             int offset = 0;
             Encode(span, container.PublicKey, ref offset);
@@ -42,7 +44,7 @@ namespace Nethermind.Ssz
 
         public static Validator DecodeValidator(Span<byte> span)
         {
-            if (span.Length != ByteLength.ValidatorLength) ThrowSourceLength<Validator>(span.Length, ByteLength.ValidatorLength);
+            if (span.Length != Ssz.ValidatorLength) ThrowSourceLength<Validator>(span.Length, Ssz.ValidatorLength);
             int offset = 0;
             BlsPublicKey publicKey = DecodeBlsPublicKey(span, ref offset);
             Hash32 withdrawalCredentials = DecodeSha256(span, ref offset);
@@ -64,29 +66,29 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != ByteLength.ValidatorLength * containers.Length)
+            if (span.Length != Ssz.ValidatorLength * containers.Length)
             {
-                ThrowTargetLength<Validator>(span.Length, ByteLength.ValidatorLength);
+                ThrowTargetLength<Validator>(span.Length, Ssz.ValidatorLength);
             }
 
             for (int i = 0; i < containers.Length; i++)
             {
-                Encode(span.Slice(i * ByteLength.ValidatorLength, ByteLength.ValidatorLength), containers[i]);
+                Encode(span.Slice(i * Ssz.ValidatorLength, Ssz.ValidatorLength), containers[i]);
             }
         }
         
         public static Validator[] DecodeValidators(Span<byte> span)
         {
-            if (span.Length % ByteLength.ValidatorLength != 0)
+            if (span.Length % Ssz.ValidatorLength != 0)
             {
-                ThrowInvalidSourceArrayLength<Validator>(span.Length, ByteLength.ValidatorLength);
+                ThrowInvalidSourceArrayLength<Validator>(span.Length, Ssz.ValidatorLength);
             }
 
-            int count = span.Length / ByteLength.ValidatorLength;
+            int count = span.Length / Ssz.ValidatorLength;
             Validator[] containers = new Validator[count];
             for (int i = 0; i < count; i++)
             {
-                containers[i] = DecodeValidator(span.Slice(i * ByteLength.ValidatorLength, ByteLength.ValidatorLength));
+                containers[i] = DecodeValidator(span.Slice(i * Ssz.ValidatorLength, Ssz.ValidatorLength));
             }
 
             return containers;

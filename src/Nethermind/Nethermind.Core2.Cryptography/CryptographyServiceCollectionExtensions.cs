@@ -24,7 +24,7 @@ namespace Nethermind.Core2.Cryptography
     {
         public static void AddCryptographyService(this IServiceCollection services, IConfiguration configuration)
         {
-            services.AddSingleton<ICryptographyService, CortexCryptographyService>();
+            services.AddSingleton<ICryptographyService, CryptographyService>();
         }
     }
 }

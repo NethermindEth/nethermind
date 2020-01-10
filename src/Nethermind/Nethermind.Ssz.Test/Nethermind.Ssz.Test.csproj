@@ -23,7 +23,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Nethermind.BeaconNode.Containers\Nethermind.BeaconNode.Containers.csproj" />
       <ProjectReference Include="..\Nethermind.Core2.Json\Nethermind.Core2.Json.csproj" />
       <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
       <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />

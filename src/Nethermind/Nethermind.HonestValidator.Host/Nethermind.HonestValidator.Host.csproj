@@ -15,6 +15,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.BeaconNode.OApiClient\Nethermind.BeaconNode.OApiClient.csproj" />
+      <ProjectReference Include="..\Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj" />
       <ProjectReference Include="..\Nethermind.HonestValidator\Nethermind.HonestValidator.csproj" />
     </ItemGroup>
 

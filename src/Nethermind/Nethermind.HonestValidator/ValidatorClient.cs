@@ -22,7 +22,6 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
@@ -40,6 +39,7 @@ namespace Nethermind.HonestValidator
         private readonly IOptionsMonitor<TimeParameters> _timeParameterOptions;
         private readonly IOptionsMonitor<MaxOperationsPerBlock> _maxOperationsPerBlockOptions;
         private readonly IOptionsMonitor<SignatureDomains> _signatureDomainOptions;
+        private readonly ICryptographyService _cryptographyService;
         private readonly IBeaconNodeApi _beaconNodeApi;
         private readonly IValidatorKeyProvider _validatorKeyProvider;
         private readonly BeaconChain _beaconChain;
@@ -50,6 +50,7 @@ namespace Nethermind.HonestValidator
             IOptionsMonitor<TimeParameters> timeParameterOptions,
             IOptionsMonitor<MaxOperationsPerBlock> maxOperationsPerBlockOptions,
             IOptionsMonitor<SignatureDomains> signatureDomainOptions,
+            ICryptographyService cryptographyService,
             IBeaconNodeApi beaconNodeApi,
             IValidatorKeyProvider validatorKeyProvider,
             BeaconChain beaconChain)
@@ -59,6 +60,7 @@ namespace Nethermind.HonestValidator
             _timeParameterOptions = timeParameterOptions;
             _maxOperationsPerBlockOptions = maxOperationsPerBlockOptions;
             _signatureDomainOptions = signatureDomainOptions;
+            _cryptographyService = cryptographyService;
             _beaconNodeApi = beaconNodeApi;
             _validatorKeyProvider = validatorKeyProvider;
             _beaconChain = beaconChain;
@@ -155,7 +157,7 @@ namespace Nethermind.HonestValidator
             options.ConfigureNethermindCore2();
             string blockJson = System.Text.Json.JsonSerializer.Serialize(block, options);
 
-            var signingRoot = block.SigningRoot(_miscellaneousParameterOptions.CurrentValue, _maxOperationsPerBlockOptions.CurrentValue);
+            var signingRoot = _cryptographyService.SigningRoot(block);
 
             var signature = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, signingRoot, proposerDomain);
 
@@ -182,7 +184,7 @@ namespace Nethermind.HonestValidator
             var domainType = _signatureDomainOptions.CurrentValue.Randao;
             var randaoDomain = ComputeDomain(domainType, forkVersion);
             
-            var randaoRevealHash = epoch.HashTreeRoot();
+            var randaoRevealHash = _cryptographyService.HashTreeRoot(epoch);
 
             var randaoReveal = _validatorKeyProvider.SignHashWithDomain(blsPublicKey, randaoRevealHash, randaoDomain);
 

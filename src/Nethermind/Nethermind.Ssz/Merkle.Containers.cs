@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core2;
 using Nethermind.Core2.Containers;
@@ -91,7 +92,14 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
         }
-        
+
+        public static void Ize(out UInt256 root, IList<DepositData> value)
+        {
+            Merkleizer merkleizer = new Merkleizer(0);
+            merkleizer.Feed(value, Ssz.MaximumDepositContracts);
+            merkleizer.CalculateRoot(out root);
+        }
+
         public static void Ize(out UInt256 root, AttestationData? container)
         {
             if (container is null)
@@ -121,11 +129,11 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.RandaoReveal);
             merkleizer.Feed(container.Eth1Data);
             merkleizer.Feed(container.Graffiti);
-            merkleizer.Feed(container.ProposerSlashings, ByteLength.MaxProposerSlashings);
-            merkleizer.Feed(container.AttesterSlashings, ByteLength.MaxAttesterSlashings);
-            merkleizer.Feed(container.Attestations, ByteLength.MaxAttestations);
-            merkleizer.Feed(container.Deposits, ByteLength.MaxDeposits);
-            merkleizer.Feed(container.VoluntaryExits, ByteLength.MaxVoluntaryExits);
+            merkleizer.Feed(container.ProposerSlashings, Ssz.MaxProposerSlashings);
+            merkleizer.Feed(container.AttesterSlashings, Ssz.MaxAttesterSlashings);
+            merkleizer.Feed(container.Attestations, Ssz.MaxAttestations);
+            merkleizer.Feed(container.Deposits, Ssz.MaxDeposits);
+            merkleizer.Feed(container.VoluntaryExits, Ssz.MaxVoluntaryExits);
             merkleizer.CalculateRoot(out root);
         }
         
@@ -144,20 +152,15 @@ namespace Nethermind.Ssz
             merkleizer.Feed(container.LatestBlockHeader);
             merkleizer.Feed(container.BlockRoots);
             merkleizer.Feed(container.StateRoots);
-            merkleizer.Feed(container.HistoricalRoots.ToArray(), ByteLength.HistoricalRootsLimit);
+            merkleizer.Feed(container.HistoricalRoots.ToArray(), Ssz.HistoricalRootsLimit);
             merkleizer.Feed(container.Eth1Data);
-            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Time.SlotsPerEth1VotingPeriod);
+            merkleizer.Feed(container.Eth1DataVotes.ToArray(), (uint)Ssz.SlotsPerEth1VotingPeriod);
             merkleizer.Feed(container.Eth1DepositIndex);
-            merkleizer.Feed(container.Validators, SszLimit.ValidatorRegistryLimit);
+            merkleizer.Feed(container.Validators, Ssz.ValidatorRegistryLimit);
             merkleizer.Feed(container.Balances.ToArray().ToArray());
-            merkleizer.Feed(container.PreviousEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
-            merkleizer.Feed(container.CurrentEpochAttestations, ByteLength.MaxAttestations * Time.SlotsPerEpoch);
-
-            // TODO: Add ending bit 1 to Bitlist
-            byte[] justificationBitsPacked = new byte[(container.JustificationBits.Length + 7) / 8];
-            container.JustificationBits.CopyTo(justificationBitsPacked, 0);
-            merkleizer.Feed(justificationBitsPacked);
-            
+            merkleizer.Feed(container.PreviousEpochAttestations, Ssz.MaxAttestations * Ssz.SlotsPerEpoch);
+            merkleizer.Feed(container.CurrentEpochAttestations, Ssz.MaxAttestations * Ssz.SlotsPerEpoch);
+            merkleizer.FeedBitvector(container.JustificationBits);
             merkleizer.Feed(container.PreviousJustifiedCheckpoint);
             merkleizer.Feed(container.CurrentJustifiedCheckpoint);
             merkleizer.Feed(container.FinalizedCheckpoint);
@@ -190,9 +193,7 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
-            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            merkleizer.FeedBits(aggregationBitsPacked, (ByteLength.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.FeedBitlist(container.AggregationBits, Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -207,7 +208,7 @@ namespace Nethermind.Ssz
             }
 
             Merkleizer merkleizer = new Merkleizer(2);
-            merkleizer.Feed(container.AttestingIndices.ToArray(), ByteLength.MaxValidatorsPerCommittee);
+            merkleizer.Feed(container.AttestingIndices.ToArray(), Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.Signature);
             merkleizer.CalculateRoot(out root);
@@ -222,10 +223,7 @@ namespace Nethermind.Ssz
             }
             
             Merkleizer merkleizer = new Merkleizer(2);
-
-            byte[] aggregationBitsPacked = new byte[(container.AggregationBits.Length + 7) / 8];
-            container.AggregationBits.CopyTo(aggregationBitsPacked, 0);
-            merkleizer.FeedBits(aggregationBitsPacked, (ByteLength.MaxValidatorsPerCommittee + 255) / 256);
+            merkleizer.FeedBitlist(container.AggregationBits, Ssz.MaxValidatorsPerCommittee);
             merkleizer.Feed(container.Data);
             merkleizer.Feed(container.InclusionDelay);
             merkleizer.Feed(container.ProposerIndex);

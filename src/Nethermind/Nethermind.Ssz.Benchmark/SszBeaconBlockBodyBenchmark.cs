@@ -52,7 +52,7 @@ namespace Nethermind.Ssz.Benchmarks
                 SszTest.TestSig1);
 
             Deposit deposit = new Deposit(
-                new Hash32[ByteLength.ContractTreeDepth + 1],
+                new Hash32[Ssz.DepositContractTreeDepth + 1],
                 depositData);
 
             IndexedAttestation indexedAttestation1 = new IndexedAttestation(
@@ -98,7 +98,7 @@ namespace Nethermind.Ssz.Benchmarks
                 deposits,
                 voluntaryExits);
 
-            _encoded = new byte[ByteLength.BeaconBlockBodyLength(_body)];
+            _encoded = new byte[Ssz.BeaconBlockBodyLength(_body)];
         }
         
         [Benchmark(Baseline = true)]

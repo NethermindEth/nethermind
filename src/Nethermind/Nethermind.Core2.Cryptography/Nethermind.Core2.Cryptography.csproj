@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netstandard2.1</TargetFramework>
+        <TargetFramework>netcoreapp3.0</TargetFramework>
         <Product>Nethermind Eth2.0 blockchain</Product>
         <Copyright>Copyright © 2019 Demerzel Solutions Limited</Copyright>
         <Version>0.0.1</Version>
@@ -11,12 +11,16 @@
 
     <ItemGroup>
         <ProjectReference Include="..\Nethermind.Core2.Abstractions\Nethermind.Core2.Abstractions.csproj" />
+        <ProjectReference Include="..\Nethermind.Core2.Configuration\Nethermind.Core2.Configuration.csproj" />
+        <ProjectReference Include="..\Nethermind.Ssz\Nethermind.Ssz.csproj" />
     </ItemGroup>
 
     <ItemGroup>
         <PackageReference Include="Cortex.Cryptography.Bls" Version="0.4.0" />
+        <PackageReference Include="Cortex.SimpleSerialize" Version="0.2.0" />
         <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="3.0.1" />
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="3.0.1" />
+        <PackageReference Include="Microsoft.Extensions.Options" Version="3.0.1" />
     </ItemGroup>
-
+    
 </Project>

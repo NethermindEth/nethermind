@@ -24,6 +24,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
 using Nethermind.BeaconNode.Services;
 using Nethermind.BeaconNode.Storage;
+using Nethermind.Core2;
 using Nethermind.Core2.Containers;
 using Nethermind.Core2.Crypto;
 using Nethermind.Core2.Cryptography;
@@ -58,7 +59,8 @@ namespace Nethermind.BeaconNode.Test
                 new ConsoleLoggerProvider(TestOptionsMonitor.Create(new ConsoleLoggerOptions()))
             });
 
-            CortexCryptographyService cryptographyService = new CortexCryptographyService();
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
+            
             BeaconChainUtility beaconChainUtility = new BeaconChainUtility(loggerFactory.CreateLogger<BeaconChainUtility>(),
                 miscellaneousParameterOptions, gweiValueOptions, timeParameterOptions,
                 cryptographyService);
@@ -72,11 +74,11 @@ namespace Nethermind.BeaconNode.Test
             BeaconNode.Genesis beaconChain = new BeaconNode.Genesis(loggerFactory.CreateLogger<BeaconNode.Genesis>(),
                 chainConstants, miscellaneousParameterOptions,
                 gweiValueOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions,
-                beaconStateAccessor, beaconStateTransition);
+                cryptographyService,  beaconStateAccessor, beaconStateTransition);
             MemoryStoreProvider storeProvider = new MemoryStoreProvider(loggerFactory, timeParameterOptions);
             ForkChoice forkChoice = new ForkChoice(loggerFactory.CreateLogger<ForkChoice>(),
                 miscellaneousParameterOptions, initialValueOptions, timeParameterOptions, stateListLengthOptions, maxOperationsPerBlockOptions, forkChoiceConfigurationOptions, signatureDomainOptions,
-                beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
+                cryptographyService, beaconChainUtility, beaconStateAccessor, beaconStateTransition, storeProvider);
             ChainStart chainStart = new ChainStart(loggerFactory.CreateLogger<ChainStart>(), beaconChain, forkChoice);
 
             // Act

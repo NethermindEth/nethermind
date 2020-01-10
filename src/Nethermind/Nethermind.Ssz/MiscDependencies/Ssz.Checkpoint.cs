@@ -25,17 +25,19 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int CheckpointLength = Ssz.Hash32Length + Ssz.EpochLength;
+        
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static void Encode(Span<byte> span, Checkpoint value, ref int offset)
         {
-            Encode(span.Slice(offset, ByteLength.CheckpointLength), value);
-            offset += ByteLength.CheckpointLength;
+            Encode(span.Slice(offset, Ssz.CheckpointLength), value);
+            offset += Ssz.CheckpointLength;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static void Encode(Span<byte> span, Checkpoint container)
         {
-            if (span.Length != ByteLength.CheckpointLength) ThrowTargetLength<Checkpoint>(span.Length, ByteLength.CheckpointLength);
+            if (span.Length != Ssz.CheckpointLength) ThrowTargetLength<Checkpoint>(span.Length, Ssz.CheckpointLength);
             int offset = 0;
             Encode(span, container.Epoch, ref offset);
             Encode(span, container.Root, ref offset);
@@ -44,14 +46,14 @@ namespace Nethermind.Ssz
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static Checkpoint DecodeCheckpoint(Span<byte> span, ref int offset)
         {
-            Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, ByteLength.CheckpointLength));
-            offset += ByteLength.CheckpointLength;
+            Checkpoint checkpoint = DecodeCheckpoint(span.Slice(offset, Ssz.CheckpointLength));
+            offset += Ssz.CheckpointLength;
             return checkpoint;
         }
         
         public static Checkpoint DecodeCheckpoint(Span<byte> span)
         {
-            if (span.Length != ByteLength.CheckpointLength) ThrowSourceLength<Checkpoint>(span.Length, ByteLength.CheckpointLength);
+            if (span.Length != Ssz.CheckpointLength) ThrowSourceLength<Checkpoint>(span.Length, Ssz.CheckpointLength);
             int offset = 0;
             Epoch epoch = DecodeEpoch(span, ref offset);
             Hash32 root = DecodeSha256(span, ref offset);

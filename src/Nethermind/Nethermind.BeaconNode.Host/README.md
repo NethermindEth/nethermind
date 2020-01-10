@@ -125,7 +125,7 @@ The Eth 2.0 specifications are evolving. The current code is based on v0.9.1 (20
 
 ### Implemented
 
-Impelmented so far:
+Implemented so far:
 
 Phase 0:
 
@@ -142,7 +142,7 @@ Both these will be merged into the main Nethermind project / renamed / replaced 
 
 ### In Progress
 
-* Honest Validator
+* Honest Validator -- block signing and acceptance by node, so can continuously generate chain
 * Eth2 APIs
 
 ### To Do

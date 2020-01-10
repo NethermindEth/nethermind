@@ -24,11 +24,13 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
-          public static void Encode(Span<byte> span, AttestationData container)
+        public const int AttestationDataLength = Ssz.SlotLength + Ssz.CommitteeIndexLength + Ssz.Hash32Length + 2 * Ssz.CheckpointLength;
+
+        public static void Encode(Span<byte> span, AttestationData container)
         {
-            if (span.Length != ByteLength.AttestationDataLength)
+            if (span.Length != Ssz.AttestationDataLength)
             {
-                ThrowTargetLength<AttestationData>(span.Length, ByteLength.AttestationDataLength);
+                ThrowTargetLength<AttestationData>(span.Length, Ssz.AttestationDataLength);
             }
 
             int offset = 0;
@@ -41,9 +43,9 @@ namespace Nethermind.Ssz
 
         public static AttestationData DecodeAttestationData(Span<byte> span)
         {
-            if (span.Length != ByteLength.AttestationDataLength)
+            if (span.Length != Ssz.AttestationDataLength)
             {
-                ThrowSourceLength<AttestationData>(span.Length, ByteLength.AttestationDataLength);
+                ThrowSourceLength<AttestationData>(span.Length, Ssz.AttestationDataLength);
             }
             
             int offset = 0;
@@ -74,8 +76,8 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            Encode(span.Slice(offset, ByteLength.AttestationDataLength), value);
-            offset += ByteLength.AttestationDataLength;
+            Encode(span.Slice(offset, Ssz.AttestationDataLength), value);
+            offset += Ssz.AttestationDataLength;
         }
     }
 }

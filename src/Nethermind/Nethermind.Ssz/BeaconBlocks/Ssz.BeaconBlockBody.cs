@@ -25,6 +25,36 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int BeaconBlockBodyDynamicOffset = Ssz.BlsSignatureLength + Ssz.Eth1DataLength + Bytes32.Length + 5 * sizeof(uint);
+
+        public static int BeaconBlockBodyLength(BeaconBlockBody? container)
+        {
+            if (container is null)
+            {
+                return 0;
+            }
+
+            int result = BeaconBlockBodyDynamicOffset;
+
+            result += Ssz.ProposerSlashingLength * container.ProposerSlashings.Count;
+            result += Ssz.DepositLength() * container.Deposits.Count;
+            result += Ssz.VoluntaryExitLength * container.VoluntaryExits.Count;
+
+            result += sizeof(uint) * container.AttesterSlashings.Count;
+            for (int i = 0; i < container.AttesterSlashings.Count; i++)
+            {
+                result += Ssz.AttesterSlashingLength(container.AttesterSlashings[i]);
+            }
+
+            result += sizeof(uint) * container.Attestations.Count;
+            for (int i = 0; i < container.Attestations.Count; i++)
+            {
+                result += Ssz.AttestationLength(container.Attestations[i]);
+            }
+
+            return result;
+        }
+
         public static void Encode(Span<byte> span, BeaconBlockBody? container)
         {
             if (container is null)
@@ -33,7 +63,7 @@ namespace Nethermind.Ssz
             }
             
             int offset = 0;
-            int dynamicOffset = ByteLength.BeaconBlockBodyDynamicOffset;
+            int dynamicOffset = Ssz.BeaconBlockBodyDynamicOffset;
             Encode(span, container.RandaoReveal, ref offset);
             Encode(span, container.Eth1Data, ref offset);
             Encode(span, container.Graffiti.AsSpan().ToArray(), ref offset);

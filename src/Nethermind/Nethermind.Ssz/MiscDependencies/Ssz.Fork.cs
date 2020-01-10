@@ -23,16 +23,18 @@ namespace Nethermind.Ssz
 {
     public static partial class Ssz
     {
+        public const int ForkLength = Ssz.ForkVersionLength * 2 + Ssz.EpochLength;
+
         private static void Encode(Span<byte> span, Fork value, ref int offset)
         {
-            Encode(span.Slice(offset, ByteLength.ForkLength), value);
-            offset += ByteLength.ForkLength;
+            Encode(span.Slice(offset, Ssz.ForkLength), value);
+            offset += Ssz.ForkLength;
         }
 
         private static Fork DecodeFork(Span<byte> span, ref int offset)
         {
-            Fork fork = DecodeFork(span.Slice(offset, ByteLength.ForkLength));
-            offset += ByteLength.ForkLength;
+            Fork fork = DecodeFork(span.Slice(offset, Ssz.ForkLength));
+            offset += Ssz.ForkLength;
             return fork;
         }
         
@@ -43,7 +45,7 @@ namespace Nethermind.Ssz
                 return;
             }
             
-            if (span.Length != ByteLength.ForkLength) ThrowTargetLength<Fork>(span.Length, ByteLength.ForkLength);
+            if (span.Length != Ssz.ForkLength) ThrowTargetLength<Fork>(span.Length, Ssz.ForkLength);
             int offset = 0;
             Encode(span, container.Value.PreviousVersion, ref offset);
             Encode(span, container.Value.CurrentVersion, ref offset);
@@ -52,7 +54,7 @@ namespace Nethermind.Ssz
 
         public static Fork DecodeFork(Span<byte> span)
         {
-            if (span.Length != ByteLength.ForkLength) ThrowSourceLength<Fork>(span.Length, ByteLength.ForkLength);
+            if (span.Length != Ssz.ForkLength) ThrowSourceLength<Fork>(span.Length, Ssz.ForkLength);
             int offset = 0;
             ForkVersion previous = DecodeForkVersion(span, ref offset);
             ForkVersion current = DecodeForkVersion(span, ref offset);

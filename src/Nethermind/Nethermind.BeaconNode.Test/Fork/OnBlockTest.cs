@@ -20,7 +20,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nethermind.Core2.Configuration;
-using Nethermind.BeaconNode.Ssz;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.BeaconNode.Test.Helpers;
 using Nethermind.Core2;
@@ -78,6 +77,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             MiscellaneousParameters miscellaneousParameters = testServiceProvider.GetService<IOptions<MiscellaneousParameters>>().Value;
             MaxOperationsPerBlock maxOperationsPerBlock = testServiceProvider.GetService<IOptions<MaxOperationsPerBlock>>().Value;
 
+            ICryptographyService cryptographyService = testServiceProvider.GetService<ICryptographyService>();
             ForkChoice forkChoice = testServiceProvider.GetService<ForkChoice>();
 
             if (!expectValid)
@@ -90,7 +90,7 @@ namespace Nethermind.BeaconNode.Test.Fork
             }
 
             await forkChoice.OnBlockAsync(store, block);
-            Hash32 signingRoot = block.SigningRoot(miscellaneousParameters, maxOperationsPerBlock);
+            Hash32 signingRoot = cryptographyService.SigningRoot(block);
             BeaconBlock storedBlock = await store.GetBlockAsync(signingRoot);
             storedBlock.ShouldBe(block);
         }
