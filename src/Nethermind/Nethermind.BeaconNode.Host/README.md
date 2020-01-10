@@ -79,6 +79,20 @@ $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds
 
 Note that it is possible to run ranges of validators both in-process and as separate validator processes, or even have multiple validator ranges in multiple validator processes.
 
+### Quick start clock
+
+For a network to interact it is important that their clocks are synchronised (the specifications allow for limited tolerance). Normally this is provided by the system clock, synchronised to real time.
+
+To test genesis, the genesis time parameter could then be adjusted to just ahead of the current system clock time, however every time the system was tested this would be different (with a different genesis block).
+
+Whilst we could use a different genesis block each time, Nethermind also has a mock clock that can run at a specific offset, but at realtime speed. 
+
+For example, with genesis time 1,578,009,600 this clock can be set to start at a test time slightly before 1,578,009,600 every time it is run. (The snippets above calculate the offset to use to start at the next minute boundary, so will work if node and validator are started during the same minute.)
+
+Note that the different processess (nodes and validators) need to use the same offset to be synchronised. 
+
+The clock will also be useful in future testing to reproduce specific scenarios starting from particular states at past clock dates (using a negative offset).
+
 ### Optional requirements
 
 * PowerShell Core, to run build scripts
