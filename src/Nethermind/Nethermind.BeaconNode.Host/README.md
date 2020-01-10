@@ -25,7 +25,7 @@ To run the unit tests:
 dotnet test src/Nethermind/Nethermind.BeaconNode.Test
 ```
 
-To run with default Development settings (minimal config), with mocked quick start:
+To run the beacon node with default Development settings (minimal config), with mocked quick start:
 
 ```
 dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64
@@ -44,9 +44,19 @@ Other GET queries:
 
 Note: With QuickStart validator count 64, validators index 20, with public key 0xa1c76af1..., is the validator for slot 1. The corresponding randao signature for fork 0x00000000, at epoch 0, that must be used is 0xa3426b63... (other values will fail validation).
 
-### Test the Honest Validator
+### Test with an in-process Honest Validator
 
-Using the quick start clock, you want to synchronise the clock offset of the node and validator. The following will set genesis to occur at the next full minute. 
+This will run both the beacon node and an in-process honest validator, both using quick start mocked keys. For testing and devleopment it is easiest to run both components in a single host:
+
+```
+dotnet run --project src/Nethermind/Nethermind.BeaconNode.Host --QuickStart:GenesisTime 1578009600 --QuickStart:ValidatorCount 64 --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32
+```
+
+### Test with separate processes for node and validator
+
+This will run the Beacon Node and Honest Validator in separate host processes, communicating via the REST API.
+
+When using the quick start clock (to mock a specific genesis time), you need to synchronise the clock offset of the node and validator. The following will set genesis to occur at the next full minute. 
 
 First, build both the required hosts:
 
@@ -64,9 +74,10 @@ $offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds
 And the validator host in a separate shell (which connects to the node):
 
 ```
-$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 0 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
+$offset = [Math]::Floor((1578009600 - [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())/60) * 60; $offset; dotnet run --no-build --project src/Nethermind/Nethermind.HonestValidator.Host --QuickStart:ValidatorStartIndex 32 --QuickStart:NumberOfValidators 32 --QuickStart:ClockOffset $offset
 ```
 
+Note that it is possible to run ranges of validators both in-process and as separate validator processes, or even have multiple validator ranges in multiple validator processes.
 
 ### Optional requirements
 

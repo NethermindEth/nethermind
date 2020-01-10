@@ -26,6 +26,8 @@ using Nethermind.BeaconNode.Peering;
 using Nethermind.BeaconNode.Storage;
 using Nethermind.Core2.Configuration;
 using Nethermind.Core2.Cryptography;
+using Nethermind.HonestValidator;
+using Nethermind.HonestValidator.MockedStart;
 
 namespace Nethermind.BeaconNode.Host
 {
@@ -89,6 +91,12 @@ namespace Nethermind.BeaconNode.Host
                     if (hostContext.Configuration.GetValue<ulong>("QuickStart:GenesisTime") > 0)
                     {
                         services.AddBeaconNodeQuickStart(hostContext.Configuration);
+                    }
+                    
+                    if (hostContext.Configuration.GetSection("QuickStart:ValidatorStartIndex").Exists())
+                    {
+                        services.AddHonestValidator(hostContext.Configuration);
+                        services.AddHonestValidatorQuickStart(hostContext.Configuration);
                     }
                 })
                 .ConfigureWebHostDefaults(webBuilder =>

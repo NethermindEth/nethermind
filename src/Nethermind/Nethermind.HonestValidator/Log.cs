@@ -77,6 +77,14 @@ namespace Nethermind.HonestValidator
 
         // 4bxx warning
         
+        public static readonly Action<ILogger, Exception?> WaitingForNodeVersion =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4450, nameof(WaitingForNodeVersion)),
+                "Waiting for node version to succeed.");
+        public static readonly Action<ILogger, Exception?> WaitingForGenesisTime =
+            LoggerMessage.Define(LogLevel.Warning,
+                new EventId(4451, nameof(WaitingForGenesisTime)),
+                "Waiting for node genesis time to succeed.");
         // FIXME: Duplicate of beacon node
         public static readonly Action<ILogger, long, Exception?> QuickStartClockCreated =
             LoggerMessage.Define<long>(LogLevel.Warning,
