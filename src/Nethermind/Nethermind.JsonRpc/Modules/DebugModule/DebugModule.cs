@@ -43,7 +43,7 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         {
             ChainLevelInfo levelInfo = _debugBridge.GetLevelInfo(number);
             return levelInfo == null
-                ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorType.NotFound)
+                ? ResultWrapper<ChainLevelForRpc>.Fail($"Chain level {number} does not exist", ErrorCodes.NotFound)
                 : ResultWrapper<ChainLevelForRpc>.Success(new ChainLevelForRpc(levelInfo));
         }
         
