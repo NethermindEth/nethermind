@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Logging;
 using System.IO;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
@@ -27,8 +28,7 @@ namespace Nethermind.Blockchain.Synchronization
     {
         public const int FullSyncThreshold = 32;
         
-        private static TimeSpan StayingOnSyncModeDelay = TimeSpan.FromSeconds(3) - TimeSpan.FromMilliseconds(100);
-        private static DateTime LastNotification = DateTime.UtcNow;
+        private readonly StayingOnSyncMode _stayingOnSyncMode = new StayingOnSyncMode(StayingOnSyncMode.SyncDelayMode.AllSynced);
 
         private readonly ISyncProgressResolver _syncProgressResolver;
         private readonly IEthSyncPeerPool _syncPeerPool;
@@ -127,16 +127,21 @@ namespace Nethermind.Blockchain.Synchronization
                 newSyncMode = bestFullBlock > bestFullState ? SyncMode.WaitForProcessor : SyncMode.Headers;
             }
 
+            _stayingOnSyncMode.SetChainInfo(bestHeader, bestFullBlock, bestFullState);
+            
             if (newSyncMode != Current)
             {
                 if (_logger.IsInfo) _logger.Info($"Switching sync mode from {Current} to {newSyncMode} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
-                LastNotification = DateTime.UtcNow;
+                _stayingOnSyncMode.Notify();
                 ChangeSyncMode(newSyncMode);
             }
-            else if(DateTime.UtcNow - LastNotification >= StayingOnSyncModeDelay)
+            else 
             {
-                if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
-                LastNotification = DateTime.UtcNow;
+                if (_stayingOnSyncMode.ShouldLog())
+                {
+                    if (_logger.IsInfo) _logger.Info($"Staying on sync mode {Current} {BuildStateString(bestHeader, bestFullBlock, bestFullState, maxBlockNumberAmongPeers)}");
+                    _stayingOnSyncMode.Notify();
+                }
             }
         }
 
@@ -147,11 +152,65 @@ namespace Nethermind.Blockchain.Synchronization
             Changed?.Invoke(this, new SyncModeChangedEventArgs(previous, Current));
         }
 
-        private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long bestAmongPeers)
-        {
-            return $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{bestAmongPeers}";
-        }
+        private string BuildStateString(long bestHeader, long bestFullBlock, long bestFullState, long bestAmongPeers) =>
+            $"|best header:{bestHeader}|best full block:{bestFullBlock}|best state:{bestFullState}|best peer block:{bestAmongPeers}";
 
         public event EventHandler<SyncModeChangedEventArgs> Changed;
+
+        private class StayingOnSyncMode
+        {
+            private readonly SyncDelayMode _mode;
+            private TimeSpan NoSyncDelay { get; } = TimeSpan.FromSeconds(3);
+            private TimeSpan MaxSyncDelay { get; } = TimeSpan.FromSeconds(20);
+            private DateTime LastNotification { get; set; } = DateTime.UtcNow;
+            private DateTime LastChainInfo { get; set; } = DateTime.UtcNow;
+            private long BestFullBlock { get; set; }
+            private long BestHeader { get; set; }
+            private long BestFullState { get; set; }
+
+            public StayingOnSyncMode(SyncDelayMode mode)
+            {
+                _mode = mode;
+            }
+
+            public void Notify()
+            {
+                LastNotification = DateTime.UtcNow;
+            }
+
+            public void SetChainInfo(in long bestHeader, in long bestFullBlock, in long bestFullState)
+            {
+                var synced = _mode switch
+                {
+                    SyncDelayMode.AnythingSynced => (BestHeader != bestHeader || BestFullBlock != bestFullBlock || BestFullState != bestFullState),
+                    SyncDelayMode.AllSynced => (BestHeader != bestHeader && BestFullBlock != bestFullBlock && BestFullState != bestFullState),
+                    _ => false
+                };
+                
+                if (synced)
+                {
+                    BestHeader = bestHeader;
+                    BestFullBlock = bestFullBlock;
+                    BestFullState = bestFullState;
+                    LastChainInfo = DateTime.UtcNow;
+                }
+            }
+
+            public bool ShouldLog()
+            {
+                bool CheckDelay(DateTime lastDate, TimeSpan delay)
+                {
+                    return DateTime.UtcNow - lastDate >= delay;
+                }
+
+                return CheckDelay(LastChainInfo, MaxSyncDelay) && CheckDelay(LastNotification, NoSyncDelay);
+            }
+            
+            public enum SyncDelayMode
+            {
+                AnythingSynced,
+                AllSynced
+            }
+        }
     }
 }
