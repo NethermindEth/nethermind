@@ -37,7 +37,7 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa
 {
-    public class AuRaAdditionalBlockProcessorFactory : IAuRaAdditionalBlockProcessorFactory
+    public class AuRaProcessorFactory : IAuRaAdditionalBlockProcessorFactory
     {
         private const long DefaultStartBlockNumber = 1;
         
@@ -49,7 +49,7 @@ namespace Nethermind.AuRa
         private readonly IReceiptStorage _receiptStorage;
         private readonly ILogManager _logManager;
 
-        public AuRaAdditionalBlockProcessorFactory(
+        public AuRaProcessorFactory(
             IDb stateDb,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
@@ -70,19 +70,14 @@ namespace Nethermind.AuRa
         public IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
         {
             long startBlockNumber = startBlock ?? DefaultStartBlockNumber;
-            switch (validator.ValidatorType)
+            return validator.ValidatorType switch
             {
-                case AuRaParameters.ValidatorType.List:
-                    return new ListValidator(validator, _logManager);
-                case AuRaParameters.ValidatorType.Contract:
-                    return new ContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager, startBlockNumber);
-                case AuRaParameters.ValidatorType.ReportingContract:
-                    return new ReportingContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager, startBlockNumber);
-                case AuRaParameters.ValidatorType.Multi:
-                    return new MultiValidator(validator, this, _blockTree, _logManager);
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
+                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessor) new ListValidator(validator, _logManager),
+                AuRaParameters.ValidatorType.Contract => new ContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager, startBlockNumber),
+                AuRaParameters.ValidatorType.ReportingContract => new ReportingContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager, startBlockNumber),
+                AuRaParameters.ValidatorType.Multi => new MultiValidator(validator, this, _blockTree, _logManager),
+                _ => throw new ArgumentOutOfRangeException()
+            };
         }
     }
 }

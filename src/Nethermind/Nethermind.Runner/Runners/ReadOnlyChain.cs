@@ -34,7 +34,7 @@ namespace Nethermind.Runner.Runners
     {
         public IBlockchainProcessor Processor { get; }
         public IStateProvider ReadOnlyStateProvider { get; }
-        public IEnumerable<IAdditionalBlockProcessor> AdditionalBlockProcessors { get; }
+        public IAdditionalBlockProcessor AdditionalBlockProcessors { get; }
         public IBlockProcessor BlockProcessor { get; }
 
         public ReadOnlyChain(ReadOnlyBlockTree readOnlyTree,
@@ -46,7 +46,7 @@ namespace Nethermind.Runner.Runners
             ILogManager logManager,
             ITxPool customTxPool,
             IReceiptStorage receiptStorage, 
-            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> additionalBlockProcessorsFactory)
+            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IAdditionalBlockProcessor> additionalBlockProcessorsFactory)
         {
             ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, ReadOnlyStateProvider, logManager);

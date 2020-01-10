@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain
             ITxPool txPool,
             IReceiptStorage receiptStorage,
             ILogManager logManager,
-            IEnumerable<IAdditionalBlockProcessor> additionalBlockProcessors = null)
+            IAdditionalBlockProcessor additionalBlockProcessors = null)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -77,17 +77,18 @@ namespace Nethermind.Blockchain
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
             _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
+            _additionalBlockProcessor = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
 
-            if (additionalBlockProcessors != null)
-            {
-                var additionalBlockProcessorsArray = additionalBlockProcessors.ToArray();
-                if (additionalBlockProcessorsArray.Length > 0)
-                {
-                    _additionalBlockProcessor = additionalBlockProcessorsArray.Length == 1
-                        ? additionalBlockProcessorsArray[0]
-                        : new CompositeAdditionalBlockProcessor(additionalBlockProcessorsArray);
-                }
-            }
+            // if (additionalBlockProcessors != null)
+            // {
+            //     var additionalBlockProcessorsArray = additionalBlockProcessors.ToArray();
+            //     if (additionalBlockProcessorsArray.Length > 0)
+            //     {
+            //         _additionalBlockProcessor = additionalBlockProcessorsArray.Length == 1
+            //             ? additionalBlockProcessorsArray[0]
+            //             : new CompositeAdditionalBlockProcessor(additionalBlockProcessorsArray);
+            //     }
+            // }
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
