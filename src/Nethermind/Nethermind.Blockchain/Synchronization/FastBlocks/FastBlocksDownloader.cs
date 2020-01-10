@@ -48,19 +48,19 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
         private async Task ExecuteRequest(CancellationToken token, FastBlocksBatch batch)
         {
             SyncPeerAllocation syncPeerAllocation = batch.Allocation;
-            
             try
             {
-                foreach (PeerInfo peerInfo in _syncPeerPool.UsefulPeers)
+                foreach (PeerInfo usefulPeer in _syncPeerPool.UsefulPeers)
                 {
-                    if (peerInfo.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
+                    if (usefulPeer.HeadNumber < Math.Max(0, (batch.MinNumber ?? 0) - 1024))
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Made {peerInfo} sleep for a while - no min number satisfied");
-                        _syncPeerPool.ReportNoSyncProgress(peerInfo);
+                        if (_logger.IsDebug) _logger.Debug($"Made {usefulPeer} sleep for a while - no min number satisfied");
+                        _syncPeerPool.ReportNoSyncProgress(usefulPeer);
                     }
                 }
                 
-                ISyncPeer peer = syncPeerAllocation?.Current?.SyncPeer;
+                PeerInfo peerInfo = syncPeerAllocation?.Current;
+                ISyncPeer peer = peerInfo?.SyncPeer;
                 if (peer != null)
                 {
                     batch.MarkSent();
@@ -152,26 +152,19 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                 (BlocksDataHandlerResult Result, int ItemsSynced) result = (BlocksDataHandlerResult.InvalidFormat, 0);
                 try
                 {
-                    if (batch.Bodies?.Response == null
-                        && batch.Headers?.Response == null
-                        && batch.Receipts?.Response == null)
-                    {
-                        // to avoid uncontrolled loop in case of a code error
-                        await Task.Delay(10);
-                    }
-
                     result = _fastBlocksFeed.HandleResponse(batch);
                 }
                 catch (Exception e)
                 {
                     // possibly clear the response and handle empty response batch here (to avoid missing parts)
+                    // this practically corrupts sync
                     if (_logger.IsError) _logger.Error($"Error when handling response", e);
                 }
 
                 Interlocked.Add(ref _downloadedHeaders, result.ItemsSynced);
                 if (result.ItemsSynced == 0 && peer != null)
                 {
-                    _syncPeerPool.ReportNoSyncProgress(syncPeerAllocation);
+                    _syncPeerPool.ReportNoSyncProgress(peerInfo);
                 }
             }
             finally
