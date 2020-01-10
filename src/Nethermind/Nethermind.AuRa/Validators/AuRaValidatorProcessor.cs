@@ -14,41 +14,36 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
-using System.Diagnostics;
-using System.Linq;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public abstract class AuRaValidatorProcessorBase : IAuRaValidatorProcessor
+    public abstract class AuRaValidatorProcessor : BlockProcessor, IAuRaValidator
     {
-        private readonly ILogger _logger;
-
-        protected AuRaValidatorProcessorBase(AuRaParameters.Validator validator, ILogManager logManager)
-        {
-            if (validator == null) throw new ArgumentNullException(nameof(validator));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        }
-        
         protected virtual Address[] Validators { get; set; }
-        public int MinSealersForFinalization => Validators.MinSealersForFinalization();
-        public int CurrentSealersCount => Validators.Length;
+        public virtual int MinSealersForFinalization => Validators.MinSealersForFinalization();
+        public virtual int CurrentSealersCount => Validators.Length;
 
-        public bool IsValidSealer(Address address, long step) => Validators.GetItemRoundRobin(step) == address;
+        public virtual bool IsValidSealer(Address address, long step) => Validators.GetItemRoundRobin(step) == address;
 
-        void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
+        public virtual void SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
         {
             SetFinalizationManagerInternal(finalizationManager, forProducing);
         }
 
         protected virtual void SetFinalizationManagerInternal(IBlockFinalizationManager finalizationManager, in bool forSealing) { }
 
-        public virtual void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        protected override void PreProcess(Block block, ProcessingOptions options)
         {
             if (!options.IsProducingBlock())
             {
@@ -61,6 +56,10 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        public virtual void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None) { }
+        protected override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options) { }
+
+        protected AuRaValidatorProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, ITransactionProcessor transactionProcessor, ISnapshotableDb stateDb, ISnapshotableDb codeDb, IDb traceDb, IStateProvider stateProvider, IStorageProvider storageProvider, ITxPool txPool, IReceiptStorage receiptStorage, ILogManager logManager) : base(specProvider, blockValidator, rewardCalculator, transactionProcessor, stateDb, codeDb, traceDb, stateProvider, storageProvider, txPool, receiptStorage, logManager)
+        {
+        }
     }
 }

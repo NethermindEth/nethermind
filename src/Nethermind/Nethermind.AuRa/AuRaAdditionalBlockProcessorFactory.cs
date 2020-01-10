@@ -37,7 +37,7 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa
 {
-    public class AuRaProcessorFactory : IAuRaAdditionalBlockProcessorFactory
+    public class AuRaValidatorProcessorFactory : IAuRaValidatorProcessorFactory
     {
         private const long DefaultStartBlockNumber = 1;
         
@@ -49,7 +49,7 @@ namespace Nethermind.AuRa
         private readonly IReceiptStorage _receiptStorage;
         private readonly ILogManager _logManager;
 
-        public AuRaProcessorFactory(
+        public AuRaValidatorProcessorFactory(
             IDb stateDb,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
@@ -67,12 +67,12 @@ namespace Nethermind.AuRa
             _logManager = logManager;
         }
 
-        public IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
+        public AuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null)
         {
             long startBlockNumber = startBlock ?? DefaultStartBlockNumber;
             return validator.ValidatorType switch
             {
-                AuRaParameters.ValidatorType.List => (IAuRaValidatorProcessor) new ListValidator(validator, _logManager),
+                AuRaParameters.ValidatorType.List => (AuRaValidatorProcessor) new ListValidator(validator, _logManager),
                 AuRaParameters.ValidatorType.Contract => new ContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.ReportingContract => new ReportingContractValidator(validator, _stateDb, _stateProvider, _abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager, startBlockNumber),
                 AuRaParameters.ValidatorType.Multi => new MultiValidator(validator, this, _blockTree, _logManager),

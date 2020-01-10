@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -39,7 +40,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockValidator _blockValidator;
         private readonly ISnapshotableDb _codeDb;
         private readonly IDb _traceDb;
-        private readonly ILogger _logger;
+        protected readonly ILogger _logger;
         private readonly IRewardCalculator _rewardCalculator;
         private readonly ISpecProvider _specProvider;
         private readonly ISnapshotableDb _stateDb;
@@ -48,7 +49,6 @@ namespace Nethermind.Blockchain
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly ITxPool _txPool;
         private readonly IReceiptStorage _receiptStorage;
-        private readonly IAdditionalBlockProcessor _additionalBlockProcessor;
 
         public BlockProcessor(ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -61,8 +61,7 @@ namespace Nethermind.Blockchain
             IStorageProvider storageProvider,
             ITxPool txPool,
             IReceiptStorage receiptStorage,
-            ILogManager logManager,
-            IAdditionalBlockProcessor additionalBlockProcessors = null)
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -77,18 +76,6 @@ namespace Nethermind.Blockchain
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _traceDb = traceDb ?? throw new ArgumentNullException(nameof(traceDb));
             _receiptsTracer = new BlockReceiptsTracer(_specProvider, _stateProvider);
-            _additionalBlockProcessor = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
-
-            // if (additionalBlockProcessors != null)
-            // {
-            //     var additionalBlockProcessorsArray = additionalBlockProcessors.ToArray();
-            //     if (additionalBlockProcessorsArray.Length > 0)
-            //     {
-            //         _additionalBlockProcessor = additionalBlockProcessorsArray.Length == 1
-            //             ? additionalBlockProcessorsArray[0]
-            //             : new CompositeAdditionalBlockProcessor(additionalBlockProcessorsArray);
-            //     }
-            // }
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -188,6 +175,14 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Reverted blocks {_stateProvider.StateRoot}");
         }
 
+        protected virtual void PreProcess(Block block, ProcessingOptions options)
+        {
+        }
+        
+        protected virtual void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options)
+        {
+        }
+        
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
         {
             Block block;
@@ -204,8 +199,8 @@ namespace Nethermind.Blockchain
                 }
 
                 block = PrepareBlockForProcessing(suggestedBlock);
-                _additionalBlockProcessor?.PreProcess(block, options);
-                
+                PreProcess(block, options);
+
                 var receipts = ProcessTransactions(block, options, blockTracer);
                 SetReceiptsRoot(block, receipts);
                 ApplyMinerRewards(block, blockTracer);
@@ -214,7 +209,7 @@ namespace Nethermind.Blockchain
                 block.Header.StateRoot = _stateProvider.StateRoot;
                 block.Header.Hash = BlockHeader.CalculateHash(block.Header);
                 
-                _additionalBlockProcessor?.PostProcess(block, receipts, options);
+                PostProcess(block, receipts, options);
 
                 if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
                 {
@@ -315,6 +310,7 @@ namespace Nethermind.Blockchain
                 AuRaStep = bh.AuRaStep,
                 AuRaSignature = bh.AuRaSignature                
             };
+            
             return new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);;
         }
 
@@ -373,32 +369,6 @@ namespace Nethermind.Blockchain
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
-            }
-        }
-        
-        private class CompositeAdditionalBlockProcessor : IAdditionalBlockProcessor
-        {
-            private readonly IAdditionalBlockProcessor[] _additionalBlockProcessors;
-
-            public CompositeAdditionalBlockProcessor(params IAdditionalBlockProcessor[] additionalBlockProcessors)
-            {
-                _additionalBlockProcessors = additionalBlockProcessors ?? throw new ArgumentNullException(nameof(additionalBlockProcessors));
-            }
-            
-            public void PreProcess(Block block, ProcessingOptions options)
-            {
-                for (int i = 0; i < _additionalBlockProcessors.Length; i++)
-                {
-                    _additionalBlockProcessors[i].PreProcess(block, options);
-                }
-            }
-
-            public void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options)
-            {
-                for (int i = 0; i < _additionalBlockProcessors.Length; i++)
-                {
-                    _additionalBlockProcessors[i].PostProcess(block, receipts, options);
-                }
             }
         }
     }

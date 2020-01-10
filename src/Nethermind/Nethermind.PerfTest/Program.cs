@@ -270,7 +270,7 @@ namespace Nethermind.PerfTest
             IBlockDataRecoveryStep recoveryStep = new TxSignaturesRecoveryStep(ethereumSigner, transactionPool, _logManager);
            
             /* blockchain processing */
-            IAdditionalBlockProcessor processorExtension = null;
+            IBlockProcessorExtension processorExtensionExtension = null;
             var blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, specProvider, _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
@@ -291,12 +291,12 @@ namespace Nethermind.PerfTest
             else if (chainSpec.SealEngineType == SealEngineType.AuRa)
             {
                 var abiEncoder = new AbiEncoder();
-                var validatorProcessor = new AuRaProcessorFactory(dbProvider.StateDb, stateProvider, abiEncoder, processor, blockTree, receiptStorage, _logManager)
+                var validatorProcessor = new AuRaValidatorProcessorFactory(dbProvider.StateDb, stateProvider, abiEncoder, processor, blockTree, receiptStorage, _logManager)
                     .CreateValidatorProcessor(chainSpec.AuRa.Validators);
                     
                 sealValidator = new AuRaSealValidator(chainSpec.AuRa, new AuRaStepCalculator(chainSpec.AuRa.StepDuration, new Timestamper()), validatorProcessor, ethereumSigner, _logManager);
                 rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder, processor);
-                processorExtension = validatorProcessor;
+                processorExtensionExtension = validatorProcessor;
             }
             else
             {
@@ -310,7 +310,7 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
             
             /* blockchain processing */
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, processorExtension);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, processorExtensionExtension);
             var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, false);
             
             if (chainSpec.SealEngineType == SealEngineType.AuRa)
@@ -318,7 +318,7 @@ namespace Nethermind.PerfTest
                 stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
                 storageProvider.Commit();
                 stateProvider.Commit(Homestead.Instance);
-                var finalizationManager = new AuRaBlockFinalizationManager(blockTree,blockInfoRepository, blockProcessor, processorExtension as IAuRaValidator, _logManager);
+                var finalizationManager = new AuRaBlockFinalizationManager(blockTree,blockInfoRepository, blockProcessor, processorExtensionExtension as IAuRaValidator, _logManager);
             }
             
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)

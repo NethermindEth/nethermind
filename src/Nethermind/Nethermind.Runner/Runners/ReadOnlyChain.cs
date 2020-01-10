@@ -16,6 +16,9 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Abi;
+using Nethermind.AuRa;
+using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -34,7 +37,6 @@ namespace Nethermind.Runner.Runners
     {
         public IBlockchainProcessor Processor { get; }
         public IStateProvider ReadOnlyStateProvider { get; }
-        public IAdditionalBlockProcessor AdditionalBlockProcessors { get; }
         public IBlockProcessor BlockProcessor { get; }
 
         public ReadOnlyChain(ReadOnlyBlockTree readOnlyTree,
@@ -45,8 +47,8 @@ namespace Nethermind.Runner.Runners
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
             ITxPool customTxPool,
-            IReceiptStorage receiptStorage, 
-            Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IAdditionalBlockProcessor> additionalBlockProcessorsFactory)
+            IReceiptStorage receiptStorage,
+            bool isAuRa)
         {
             ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
             StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, ReadOnlyStateProvider, logManager);
@@ -54,8 +56,16 @@ namespace Nethermind.Runner.Runners
             VirtualMachine virtualMachine = new VirtualMachine(ReadOnlyStateProvider, storageProvider, blockhashProvider, specProvider, logManager);
             ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, ReadOnlyStateProvider, storageProvider, virtualMachine, logManager);
             ITxPool txPool = customTxPool;
-            AdditionalBlockProcessors = additionalBlockProcessorsFactory?.Invoke(dbProvider.StateDb, ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager);
-            BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, AdditionalBlockProcessors);
+            if (isAuRa)
+            {
+                AuRaValidatorProcessorFactory factory = new AuRaValidatorProcessorFactory(dbProvider.StateDb, ReadOnlyStateProvider, new AbiEncoder(), transactionProcessor, readOnlyTree, receiptStorage, logManager);
+                BlockProcessor = factory.CreateValidatorProcessor();
+            }
+            else
+            {
+                BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager);        
+            }
+        
             Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, BlockProcessor, recoveryStep, logManager, false, false));
         }
     }

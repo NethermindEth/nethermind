@@ -42,7 +42,7 @@ namespace Nethermind.AuRa.Test
             var stateDb = Substitute.For<IDb>();
             stateDb[Arg.Any<byte[]>()].Returns((byte[]) null);
             
-            var factory = new AuRaProcessorFactory(
+            var factory = new AuRaValidatorProcessorFactory(
                 stateDb,
                 Substitute.For<IStateProvider>(),
                 Substitute.For<IAbiEncoder>(), 

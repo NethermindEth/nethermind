@@ -40,11 +40,10 @@ using Nethermind.Store;
 
 namespace Nethermind.AuRa.Validators
 {
-    public class ContractValidator : AuRaValidatorProcessorBase
+    public class ContractValidator : AuRaValidatorProcessor
     {
         internal static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
         private static readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
-        private readonly ILogger _logger;
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
@@ -113,7 +112,7 @@ namespace Nethermind.AuRa.Validators
             }
         }
 
-        public override void PreProcess(Block block, ProcessingOptions options = ProcessingOptions.None)
+        protected override void PreProcess(Block block, ProcessingOptions options)
         {
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
@@ -188,7 +187,7 @@ namespace Nethermind.AuRa.Validators
             return pendingValidators;
         }
 
-        public override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
+        protected override void PostProcess(Block block, TxReceipt[] receipts, ProcessingOptions options = ProcessingOptions.None)
         {
             base.PostProcess(block, receipts, options);
             

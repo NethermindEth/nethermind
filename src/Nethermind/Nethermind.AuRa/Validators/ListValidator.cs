@@ -26,9 +26,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.AuRa.Validators
 {
-    public sealed class ListValidator : AuRaValidatorProcessorBase
+    public sealed class ListValidator : AuRaValidatorProcessor
     {
-        public ListValidator(AuRaParameters.Validator validator, ILogManager logManager) : base(validator, logManager)
+        public ListValidator(AuRaParameters.Validator validator, ILogManager logManager) : base(logManager)
         {
             Validators = validator.Addresses?.Length > 0
                 ? validator.Addresses

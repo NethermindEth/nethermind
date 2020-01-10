@@ -19,8 +19,8 @@ using Nethermind.Core.Specs.ChainSpecStyle;
 
 namespace Nethermind.AuRa
 {
-    public interface IAuRaAdditionalBlockProcessorFactory
+    public interface IAuRaValidatorProcessorFactory
     {
-        IAuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
+        AuRaValidatorProcessor CreateValidatorProcessor(AuRaParameters.Validator validator, long? startBlock = null);
     }
 }
