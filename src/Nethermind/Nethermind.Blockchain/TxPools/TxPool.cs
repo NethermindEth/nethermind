@@ -60,7 +60,8 @@ namespace Nethermind.Blockchain.TxPools
         private static readonly ThreadLocal<Random> Random =
             new ThreadLocal<Random>(() => new Random(Interlocked.Increment(ref _seed)));
         
-        private SortedPool<Keccak, Transaction> _transactions = new SortedPool<Keccak,Transaction>(1024, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice));
+        private readonly SortedPool<Keccak, Transaction> _transactions = 
+            new DistinctValueSortedPool<Keccak,Transaction>(1024, (t1, t2) => t1.GasPrice.CompareTo(t2.GasPrice), PendingTransactionComparer.Default);
         
         private readonly ISpecProvider _specProvider;
         private readonly IStateProvider _stateProvider;
@@ -70,14 +71,13 @@ namespace Nethermind.Blockchain.TxPools
         /// <summary>
         /// Transactions published locally (initiated by this node users).
         /// </summary>
-        private ConcurrentDictionary<Keccak, Transaction> _ownTransactions
-            = new ConcurrentDictionary<Keccak, Transaction>();
+        private readonly ConcurrentDictionary<Keccak, Transaction> _ownTransactions  = new ConcurrentDictionary<Keccak, Transaction>();
         
         /// <summary>
         /// Own transactions that were already added to the chain but need more confirmations
         /// before being removed from pending entirely.
         /// </summary>
-        private ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
+        private readonly ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)> _fadingOwnTransactions
             = new ConcurrentDictionary<Keccak, (Transaction tx, long blockNumber)>();
 
         /// <summary>
@@ -217,6 +217,23 @@ namespace Nethermind.Blockchain.TxPools
                 Metrics.PendingTransactionsDiscarded++;
                 return AddTxResult.InvalidChainId;
             }
+            
+            /* We have encountered multiple transactions that do not resolve sender address properly.
+             * We need to investigate what these txs are and why the sender address is resolved to null.
+             * Then we need to decide whether we really want to broadcast them.
+             * */
+            
+            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
+            
+            /* Note that here we should also test incoming transactions for old nonce.
+             * This is not a critical check and it is expensive since it requires state read so it is better
+             * if we leave it for block production only.
+             * */
+            
+            if (CheckOwnTransactionAlreadyUsed(tx, isOwn))
+            {
+                return AddTxResult.OwnNonceAlreadyUsed;
+            }
 
             if (!_transactions.TryInsert(tx.Hash, tx))
             {
@@ -232,64 +249,57 @@ namespace Nethermind.Blockchain.TxPools
                 return AddTxResult.AlreadyKnown;
             }
 
-            /* We have encountered multiple transactions that do not resolve sender address properly.
-             * We need to investigate what these txs are and why the sender address is resolved to null.
-             * Then we need to decide whether we really want to broadcast them.
-             * */
-            
-            tx.SenderAddress = _ecdsa.RecoverAddress(tx, blockNumber);
-            
-            /* Note that here we should also test incoming transactions for old nonce.
-             * This is not a critical check and it is expensive since it requires state read so it is better
-             * if we leave it for block production only.
-             * */
-            
-            if (isOwn && !HandleOwnTransaction(tx))
-            {
-                _transactions.TryRemove(tx.Hash, out _);
-                return AddTxResult.OwnNonceAlreadyUsed;
-            }
-            
+            HandleOwnTransaction(tx, isOwn);
+
             NotifySelectedPeers(tx);
             FilterAndStoreTx(tx, blockNumber);
             NewPending?.Invoke(this, new TxEventArgs(tx));
             return AddTxResult.Added;
         }
 
-        private bool HandleOwnTransaction(Transaction transaction)
+        private void HandleOwnTransaction(Transaction transaction, bool isOwn)
         {
-            var address = transaction.SenderAddress;
-            lock (_locker)
+            if (isOwn)
             {
-                if (!_nonces.TryGetValue(address, out var addressNonces))
-                {
-                    var currentNonce = _stateProvider.GetNonce(address);
-                    addressNonces = new AddressNonces(currentNonce);
-                    _nonces.TryAdd(address, addressNonces);
-                }
-                
-                if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
-                {
-                    nonce = new Nonce(transaction.Nonce);
-                    addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
-                }
-
-                if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
-                {
-                    // Nonce conflict
-                    if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
-
-                    return false;
-                }
-                    
-                nonce.SetTransactionHash(transaction.Hash);
+                _ownTransactions.TryAdd(transaction.Hash, transaction);
+                _ownTimer.Enabled = true;
+                if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
             }
-            
-            _ownTransactions.TryAdd(transaction.Hash, transaction);
-            _ownTimer.Enabled = true;
-            if (_logger.IsInfo) _logger.Info($"Broadcasting own transaction {transaction.Hash} to {_peers.Count} peers");
+        }
 
-            return true;
+        private bool CheckOwnTransactionAlreadyUsed(Transaction transaction, bool isOwn)
+        {
+            if (isOwn)
+            {
+                var address = transaction.SenderAddress;
+                lock (_locker)
+                {
+                    if (!_nonces.TryGetValue(address, out var addressNonces))
+                    {
+                        var currentNonce = _stateProvider.GetNonce(address);
+                        addressNonces = new AddressNonces(currentNonce);
+                        _nonces.TryAdd(address, addressNonces);
+                    }
+
+                    if (!addressNonces.Nonces.TryGetValue(transaction.Nonce, out var nonce))
+                    {
+                        nonce = new Nonce(transaction.Nonce);
+                        addressNonces.Nonces.TryAdd(transaction.Nonce, new Nonce(transaction.Nonce));
+                    }
+
+                    if (!(nonce.TransactionHash is null && nonce.TransactionHash != transaction.Hash))
+                    {
+                        // Nonce conflict
+                        if (_logger.IsWarn) _logger.Warn($"Nonce: {nonce.Value} was already used in transaction: '{nonce.TransactionHash}' and cannot be reused by transaction: '{transaction.Hash}'.");
+
+                        return true;
+                    }
+
+                    nonce.SetTransactionHash(transaction.Hash);
+                }
+            }
+
+            return false;
         }
 
         public void RemoveTransaction(Keccak hash, long blockNumber)

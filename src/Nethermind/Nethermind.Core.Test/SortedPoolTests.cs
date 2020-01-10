@@ -62,8 +62,6 @@ namespace Nethermind.Core.Test
                 Assert.AreEqual(Capacity - i - 1, _sortedPool.Count);
                 Assert.AreEqual(gasPrice, tx.GasPrice);
             }
-            
-            
         }
         
         [Test]

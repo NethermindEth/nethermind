@@ -37,8 +37,8 @@ namespace Nethermind.Blockchain.TxPools
         {
             var transactions = _txPool.GetPendingTransactions();
             var groupedTransactions = transactions.GroupBy(t => t.SenderAddress);
-            var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();
-            var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction[]>>();
+            var pendingTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
+            var queuedTransactions = new Dictionary<Address, IDictionary<ulong, Transaction>>();
             foreach (var group in groupedTransactions)
             {
                 var address = group.Key;
@@ -49,27 +49,29 @@ namespace Nethermind.Blockchain.TxPools
 
                 var accountNonce = _stateProvider.GetNonce(address);
                 var expectedNonce = accountNonce;
-                var pending = new Dictionary<ulong, Transaction[]>();
-                var queued = new Dictionary<ulong, Transaction[]>();
-                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce).GroupBy(t => (ulong)t.Nonce);
+                var pending = new Dictionary<ulong, Transaction>();
+                var queued = new Dictionary<ulong, Transaction>();
+                var transactionsGroupedByNonce = group.OrderBy(t => t.Nonce);
 
-                foreach (var nonceGroup in transactionsGroupedByNonce)
+                foreach (var transaction in transactionsGroupedByNonce)
                 {
-                    if (nonceGroup.Key < accountNonce)
+                    var transactionNonce = (ulong) transaction.Nonce;
+                    
+                    if (transaction.Nonce < accountNonce)
                     {
-                        queued.Add(nonceGroup.Key, nonceGroup.ToArray());
+                        queued.Add(transactionNonce, transaction);
                         continue;
                     }
 
-                    if (nonceGroup.Key == accountNonce ||
-                        accountNonce != expectedNonce && nonceGroup.Key == expectedNonce)
+                    if (transaction.Nonce == accountNonce ||
+                        accountNonce != expectedNonce && transaction.Nonce == expectedNonce)
                     {
-                        pending.Add(nonceGroup.Key, nonceGroup.ToArray());
-                        expectedNonce = nonceGroup.Key + 1;
+                        pending.Add(transactionNonce, transaction);
+                        expectedNonce = transaction.Nonce + 1;
                         continue;
                     }
 
-                    queued.Add(nonceGroup.Key, nonceGroup.ToArray());
+                    queued.Add(transactionNonce, transaction);
                 }
 
                 if (pending.Any())

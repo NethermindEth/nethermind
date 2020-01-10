@@ -126,7 +126,7 @@ namespace Nethermind.Core.Test.Builders
 
         public TransactionBuilder DeliveredBy(PublicKey publicKey)
         {
-            TestObject.DeliveredBy = publicKey;
+            TestObjectInternal.DeliveredBy = publicKey;
             return this;
         }
 

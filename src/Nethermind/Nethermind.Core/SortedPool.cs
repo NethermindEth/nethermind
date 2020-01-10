@@ -18,49 +18,50 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace Nethermind.Core
 {
     public class SortedPool<TKey, TValue>
     {
         private readonly int _capacity;
-        private readonly Comparison<TValue> _comparison;
-        private readonly Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>> _cacheMap;
-        private readonly LinkedList<KeyValuePair<TKey, TValue>> _lruList;
+        protected readonly Comparison<TValue> Comparison;
+        protected readonly Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>> CacheMap;
+        protected readonly LinkedList<KeyValuePair<TKey, TValue>> LruList;
 
         public SortedPool(int capacity, Comparison<TValue> comparison)
         {
             _capacity = capacity;
-            _comparison = comparison;
-            _cacheMap = new Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>>(); // do not initialize it at the full capacity
-            _lruList = new LinkedList<KeyValuePair<TKey, TValue>>();
+            Comparison = comparison;
+            CacheMap = new Dictionary<TKey, LinkedListNode<KeyValuePair<TKey, TValue>>>(); // do not initialize it at the full capacity
+            LruList = new LinkedList<KeyValuePair<TKey, TValue>>();
         }
 
-        public int Count => _cacheMap.Count;
+        public int Count => CacheMap.Count;
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue[] GetSnapshot()
         {
-            return _lruList.Select(i => i.Value).ToArray();
+            return LruList.Select(i => i.Value).ToArray();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue TakeFirst()
         {
-            var value = _lruList.First.Value;
-            _lruList.RemoveFirst();
-            _cacheMap.Remove(value.Key);
+            var value = LruList.First.Value;
+            LruList.RemoveFirst();
+            Remove(value.Key);
             return value.Value;
         }
-
+        
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryRemove(TKey key, out TValue tx)
         {
-            if (_cacheMap.TryGetValue(key, out var txNode))
+            if (CacheMap.TryGetValue(key, out var txNode))
             {
-                if (_cacheMap.Remove(key))
+                if (Remove(key))
                 {
-                    _lruList.Remove(txNode);
+                    LruList.Remove(txNode);
                     tx = txNode.Value.Value;
                     return true;
                 }
@@ -73,7 +74,7 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGetValue(TKey key, out TValue tx)
         {
-            if (_cacheMap.TryGetValue(key, out var txNode))
+            if (CacheMap.TryGetValue(key, out var txNode))
             {
                 tx = txNode.Value.Value;
                 return true;
@@ -86,55 +87,72 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryInsert(TKey key, TValue val)
         {
-            if (val == null)
+            if (CanInsert(key, val))
             {
-                throw new ArgumentNullException();
-            }
-
-            if (_cacheMap.TryGetValue(key, out _))
-            {
-                return false;
-            }
-
-            KeyValuePair<TKey, TValue> cacheItem = new KeyValuePair<TKey, TValue>(key, val);
-            LinkedListNode<KeyValuePair<TKey, TValue>> newNode = new LinkedListNode<KeyValuePair<TKey, TValue>>(cacheItem);
+                KeyValuePair<TKey, TValue> cacheItem = new KeyValuePair<TKey, TValue>(key, val);
+                LinkedListNode<KeyValuePair<TKey, TValue>> newNode = new LinkedListNode<KeyValuePair<TKey, TValue>>(cacheItem);
 
 
-            LinkedListNode<KeyValuePair<TKey, TValue>> node = _lruList.First;
-            bool added = false;
-            while (node != null)
-            {
-                if (_comparison(node.Value.Value, val) < 0)
+                LinkedListNode<KeyValuePair<TKey, TValue>> node = LruList.First;
+                bool added = false;
+                while (node != null)
                 {
-                    _lruList.AddBefore(node, newNode);
-                    added = true;
-                    break;
+                    if (Comparison(node.Value.Value, val) < 0)
+                    {
+                        LruList.AddBefore(node, newNode);
+                        added = true;
+                        break;
+                    }
+
+                    node = node.Next;
                 }
 
-                node = node.Next;
+                if (!added)
+                {
+                    LruList.AddLast(newNode);
+                }
+
+                Add(key, newNode);
+
+                if (CacheMap.Count > _capacity)
+                {
+                    RemoveLast();
+                }
+
+                return true;
             }
 
-            if (!added)
-            {
-                _lruList.AddLast(newNode);
-            }
-
-            _cacheMap.Add(key, newNode);
-
-            if (_cacheMap.Count > _capacity)
-            {
-                RemoveLast();
-            }
-
-            return true;
+            return false;
         }
 
         private void RemoveLast()
         {
-            LinkedListNode<KeyValuePair<TKey, TValue>> node = _lruList.Last;
-            _lruList.RemoveLast();
+            LinkedListNode<KeyValuePair<TKey, TValue>> node = LruList.Last;
+            LruList.RemoveLast();
 
-            _cacheMap.Remove(node.Value.Key);
+            Remove(node.Value.Key);
         }
+        
+        protected virtual bool CanInsert(TKey key, TValue value)
+        {
+            if (value == null)
+            {
+                throw new ArgumentNullException();
+            }
+
+            if (CacheMap.TryGetValue(key, out _))
+            {
+                return false;
+            }
+
+            return true;
+        }
+        
+        protected virtual void Add(TKey key, LinkedListNode<KeyValuePair<TKey, TValue>> newNode)
+        {
+            CacheMap.Add(key, newNode);
+        }
+        
+        protected virtual bool Remove(TKey key) => CacheMap.Remove(key);
     }
 }

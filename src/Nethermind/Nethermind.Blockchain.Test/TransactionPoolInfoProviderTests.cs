@@ -60,26 +60,22 @@ namespace Nethermind.Blockchain.Test
             var pending = info.Pending.First();
             pending.Key.Should().Be(_address);
             pending.Value.Count.Should().Be(3);
-            pending.Value.Sum(v => v.Value.Length).Should().Be(4);
-            VerifyNonceAndTransactions(pending.Value.ElementAt(0), 3, 2);
-            VerifyNonceAndTransactions(pending.Value.ElementAt(1), 4, 1);
-            VerifyNonceAndTransactions(pending.Value.ElementAt(2), 5, 1);
+            VerifyNonceAndTransactions(pending.Value, 3);
+            VerifyNonceAndTransactions(pending.Value, 4);
+            VerifyNonceAndTransactions(pending.Value, 5);
 
             var queued = info.Queued.First();
             queued.Key.Should().Be(_address);
             queued.Value.Count.Should().Be(4);
-            queued.Value.Sum(v => v.Value.Length).Should().Be(4);
-            VerifyNonceAndTransactions(queued.Value.ElementAt(0), 1, 1);
-            VerifyNonceAndTransactions(queued.Value.ElementAt(1), 2, 1);
-            VerifyNonceAndTransactions(queued.Value.ElementAt(2), 8, 1);
-            VerifyNonceAndTransactions(queued.Value.ElementAt(3), 9, 1);
+            VerifyNonceAndTransactions(queued.Value, 1);
+            VerifyNonceAndTransactions(queued.Value, 2);
+            VerifyNonceAndTransactions(queued.Value, 8);
+            VerifyNonceAndTransactions(queued.Value, 9);
         }
 
-        private void VerifyNonceAndTransactions(KeyValuePair<ulong, Transaction[]> nonceAndTransaction,
-            ulong nonce, int transactionsCount)
+        private void VerifyNonceAndTransactions(IDictionary<ulong, Transaction> transactionNonce, ulong nonce)
         {
-            nonceAndTransaction.Key.Should().Be(nonce);
-            nonceAndTransaction.Value.Length.Should().Be(transactionsCount);
+            transactionNonce[nonce].Nonce.Should().Be(nonce);            
         }
 
         private Transaction[] GetTransactions()
@@ -87,7 +83,6 @@ namespace Nethermind.Blockchain.Test
             {
                 GetTransaction(1),
                 GetTransaction(2),
-                GetTransaction(3),
                 GetTransaction(3),
                 GetTransaction(4),
                 GetTransaction(5),

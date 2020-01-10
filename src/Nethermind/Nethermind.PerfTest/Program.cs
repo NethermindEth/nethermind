@@ -105,10 +105,7 @@ namespace Nethermind.PerfTest
                 await _blockTree.FixFastSyncGaps(cancellationToken);
             }
 
-            public ChainLevelInfo FindLevel(long number)
-            {
-                return _blockTree.FindLevel(number);
-            }
+            public ChainLevelInfo FindLevel(long number) => _blockTree.FindLevel(number);
 
             public AddBlockResult Insert(Block block)
             {
