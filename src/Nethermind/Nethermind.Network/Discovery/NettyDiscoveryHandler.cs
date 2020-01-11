@@ -31,7 +31,7 @@ namespace Nethermind.Network.Discovery
     {
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
-        public readonly IDatagramChannel _channel;
+        private readonly IDatagramChannel _channel;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ITimestamper _timestamper;
 
