@@ -46,25 +46,25 @@ namespace Nethermind.Network
 
         public void Register(Assembly assembly)
         {
-            foreach (var type in assembly.GetTypes())
+            foreach (Type type in assembly.GetTypes())
             {
                 if (!type.IsClass)
                 {
                     continue;
                 }
 
-                var implementedInterfaces = type.GetInterfaces();
-                foreach (var implementedInterface in implementedInterfaces)
+                Type[] implementedInterfaces = type.GetInterfaces();
+                foreach (Type implementedInterface in implementedInterfaces)
                 {
                     if (!implementedInterface.IsGenericType)
                     {
                         continue;
                     }
 
-                    var interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
+                    Type interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
                     if (interfaceGenericDefinition == typeof(IMessageSerializer<>).GetGenericTypeDefinition())
                     {
-                        var constructor = type.GetConstructor(Type.EmptyTypes);
+                        ConstructorInfo? constructor = type.GetConstructor(Type.EmptyTypes);
                         if (constructor == null)
                         {
                             continue;

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -40,10 +41,10 @@ namespace Nethermind.Network.Discovery.Serializers
             if (message.Nodes != null && message.Nodes.Any())
             {
                 nodes = new Rlp[message.Nodes.Length];
-                for (var i = 0; i < message.Nodes.Length; i++)
+                for (int i = 0; i < message.Nodes.Length; i++)
                 {
-                    var node = message.Nodes[i];
-                    var serializedNode = SerializeNode(node.Address, node.Id.Bytes);
+                    Node node = message.Nodes[i];
+                    Rlp serializedNode = SerializeNode(node.Address, node.Id.Bytes);
                     nodes[i] = serializedNode;
                 }
             }
@@ -59,14 +60,14 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public NeighborsMessage Deserialize(byte[] msg)
         {
-            var results = PrepareForDeserialization<NeighborsMessage>(msg);
+            (NeighborsMessage Message, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<NeighborsMessage>(msg);
 
-            var rlp = results.Data.AsRlpStream();
+            RlpStream rlp = results.Data.AsRlpStream();
             rlp.ReadSequenceLength();
-            var nodes = DeserializeNodes(rlp);
+            Node[] nodes = DeserializeNodes(rlp);
 
-            var expirationTime = rlp.DecodeLong();
-            var message = results.Message;
+            long expirationTime = rlp.DecodeLong();
+            NeighborsMessage message = results.Message;
             message.Nodes = nodes;
             message.ExpirationTime = expirationTime;
 
@@ -81,7 +82,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 int count = ctx.ReadNumberOfItemsRemaining(lastPosition);
 
                 byte[] ip = ctx.DecodeByteArray();
-                var address = GetAddress(ip, ctx.DecodeInt());
+                IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
                 if (count > 3)
                 {
                     ctx.DecodeInt();

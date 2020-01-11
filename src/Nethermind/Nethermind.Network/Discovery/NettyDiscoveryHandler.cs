@@ -27,7 +27,7 @@ using Nethermind.Network.Discovery.Messages;
 
 namespace Nethermind.Network.Discovery
 {
-    public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMessageSender, INettyChannel
+    public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMessageSender
     {
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
@@ -85,6 +85,7 @@ namespace Nethermind.Network.Discovery
             }
             
             IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
+            // _logger.Debug($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
             await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -94,10 +95,12 @@ namespace Nethermind.Network.Discovery
             });
         }
 
+        private static Random rand = new Random(42);
+        
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
-            var content = packet.Content;
-            var address = packet.Sender;
+            IByteBuffer content = packet.Content;
+            EndPoint address = packet.Sender;
 
             byte[] msg = new byte[content.ReadableBytes];
             content.ReadBytes(msg);
@@ -105,19 +108,17 @@ namespace Nethermind.Network.Discovery
             if (msg.Length < 98)
             {
                 if(_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msg.Length}, sender: {address}");
-                ctx.DisconnectAsync();
                 return;
             }
             
-            var typeRaw = msg[97];
+            byte typeRaw = msg[97];
             if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
             {
                 if(_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
-                ctx.DisconnectAsync();
                 return;
             }
             
-            var type = (MessageType)typeRaw;
+            MessageType type = (MessageType)typeRaw;
             if(_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
             DiscoveryMessage message;
@@ -130,7 +131,6 @@ namespace Nethermind.Network.Discovery
             catch (Exception e)
             {
                 if(_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
-                ctx.DisconnectAsync();
                 return;
             }
 
@@ -139,30 +139,35 @@ namespace Nethermind.Network.Discovery
                 if ((ulong)message.ExpirationTime < _timestamper.EpochSeconds)
                 {
                     if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
-                    ctx.DisconnectAsync();
                     return;
                 }
 
                 if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
                 {
                     if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    ctx.DisconnectAsync();
                     return;
                 }
                 
                 if (message.FarPublicKey == null)
                 {
                     if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    ctx.DisconnectAsync();
                     return;
                 }
 
+                if (message is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
+                }
+                
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)
             {
                 if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {message}", e);
-                ctx.DisconnectAsync();
             }
         }
 

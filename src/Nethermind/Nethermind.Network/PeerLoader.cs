@@ -84,11 +84,11 @@ namespace Nethermind.Network
                 return;
             }
 
-            var networkNodes = _peerStorage.GetPersistedNodes();
+            NetworkNode[] networkNodes = _peerStorage.GetPersistedNodes();
 
             if (_logger.IsInfo) _logger.Info($"Initializing persisted peers: {networkNodes.Length}.");
 
-            foreach (var persistedPeer in networkNodes)
+            foreach (NetworkNode persistedPeer in networkNodes)
             {
                 Node node;
                 try
@@ -101,7 +101,7 @@ namespace Nethermind.Network
                     continue;
                 }
                 
-                var nodeStats = _stats.GetOrAdd(node);
+                INodeStats nodeStats = _stats.GetOrAdd(node);
                 nodeStats.CurrentPersistedNodeReputation = persistedPeer.Reputation;
 
                 peers.Add(new Peer(node));
@@ -122,9 +122,9 @@ namespace Nethermind.Network
 
         private void LoadConfigPeers(List<Peer> peers, IEnumerable<NetworkNode> networkNodes, Action<Node> nodeUpdate)
         {
-            foreach (var networkNode in networkNodes)
+            foreach (NetworkNode networkNode in networkNodes)
             {
-                var node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                Node node = new Node(networkNode.NodeId, networkNode.Host, networkNode.Port);
                 nodeUpdate.Invoke(node);
                 peers.Add(new Peer(node));
             }

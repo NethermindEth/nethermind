@@ -47,7 +47,7 @@ namespace Nethermind.Network
                 // regression - old format
             }
 
-            var networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
+            NetworkNode networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, reputation);
             return networkNode;
         }
 

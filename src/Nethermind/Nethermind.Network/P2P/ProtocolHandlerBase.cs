@@ -61,15 +61,15 @@ namespace Nethermind.Network.P2P
         protected void Send<T>(T message) where T : P2PMessage
         {
             if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.SessionId, Name, typeof(T).Name);
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Host, Name, typeof(T).Name);
             Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()
         {
-            var receivedInitMsgTask = _initCompletionSource.Task;
+            Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
             
             if (firstTask != receivedInitMsgTask)
             {

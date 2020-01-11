@@ -46,7 +46,7 @@ namespace Nethermind.Network
             switch (protocol)
             {
                 case Protocol.P2P:
-                    var args = (P2PProtocolInitializedEventArgs) eventArgs;
+                    P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateP2PVersion(args.P2PVersion))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, incorrect P2PVersion: {args.P2PVersion}");
@@ -67,7 +67,7 @@ namespace Nethermind.Network
 
                     break;
                 case Protocol.Eth:
-                    var ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
+                    EthProtocolInitializedEventArgs ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, different chainId: {ChainId.GetChainName((int) ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_blockTree.ChainId)}");

@@ -37,7 +37,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
             for (int i = 0; i < lowerLength; i++)
             {
-                var b = (byte)(destinationId[i] ^ sourceId[i]);
+                byte b = (byte)(destinationId[i] ^ sourceId[i]);
                 if (b == 0)
                 {
                     distance -= _bitsPerHoop;

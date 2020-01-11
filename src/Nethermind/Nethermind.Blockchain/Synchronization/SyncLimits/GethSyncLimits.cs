@@ -19,6 +19,8 @@ namespace Nethermind.Blockchain.Synchronization.SyncLimits
     public static class GethSyncLimits
     {
         public const int MaxHeaderFetch = 192; // Amount of block headers to be fetched per retrieval request
+        
+        // change MaxBodyFetch to 128
         public const int MaxBodyFetch = 32; // Amount of block bodies to be fetched per retrieval request
         public const int MaxReceiptFetch = 128; // Amount of transaction receipts to allow fetching per request
         public const int MaxCodeFetch = 64; // Amount of contract codes to allow fetching per request

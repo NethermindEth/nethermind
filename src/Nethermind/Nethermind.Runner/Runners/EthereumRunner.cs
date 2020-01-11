@@ -350,12 +350,18 @@ namespace Nethermind.Runner.Runners
         {
             if (_logger.IsInfo) _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
-
-            if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
-            var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
-
+            
             if (_logger.IsInfo) _logger.Info("Stopping sesison monitor...");
             _sessionMonitor?.Stop();
+
+            if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
+            var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
+            
+            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
+            var blockProducerTask = _blockProducer?.StopAsync() ?? Task.CompletedTask;
+            
+            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
+            var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
 
             if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
             var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
@@ -364,17 +370,11 @@ namespace Nethermind.Runner.Runners
             var synchronizerTask = (_synchronizer?.StopAsync() ?? Task.CompletedTask)
                 .ContinueWith(t => _synchronizer?.Dispose());
 
-            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
-            var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
-
-            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
-            var blockProducerTask = _blockProducer?.StopAsync() ?? Task.CompletedTask;
-
             if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
 
-            if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
-            var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
+            if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
+            var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
@@ -784,6 +784,12 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork()
         {
+            if (_networkConfig.DiagTracerEnabled)
+            {
+                NetworkDiagTracer.IsEnabled = true;
+                NetworkDiagTracer.Start();
+            }
+            
             var maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);

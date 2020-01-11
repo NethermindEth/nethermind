@@ -151,9 +151,9 @@ namespace Nethermind.Network.Rlpx
                 Session session = new Session(LocalPort, _logManager, ch, node);
                 InitializeChannel(ch, session);
             }));
-            var connectTask = clientBootstrap.ConnectAsync(node.Address);
+            Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10)), delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
@@ -194,7 +194,7 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = session.Direction == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_serializationService, _handshakeService, session, role, _logManager, _group);
+            NettyHandshakeHandler handshakeHandler = new NettyHandshakeHandler(_serializationService, _handshakeService, session, role, _logManager, _group);
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
@@ -232,9 +232,9 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsDebug) _logger.Debug("Closed _bootstrapChannel");
 
             // every [quietPeriod] we check if there were any event in the loop - if none then we can shutdown
-            var quietPeriod = TimeSpan.FromMilliseconds(100);
-            var nettyCloseTimeout = TimeSpan.FromMilliseconds(1000);
-            var closingTask = Task.WhenAll(
+            TimeSpan quietPeriod = TimeSpan.FromMilliseconds(100);
+            TimeSpan nettyCloseTimeout = TimeSpan.FromMilliseconds(1000);
+            Task closingTask = Task.WhenAll(
                 _bossGroup.ShutdownGracefullyAsync(quietPeriod, nettyCloseTimeout),
                 _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout));
 

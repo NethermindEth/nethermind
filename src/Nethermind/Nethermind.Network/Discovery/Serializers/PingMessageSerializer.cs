@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -24,7 +25,8 @@ namespace Nethermind.Network.Discovery.Serializers
 {
     public class PingMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<PingMessage>
     {
-        public PingMessageSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver) : base(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver)
+        public PingMessageSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver)
+            : base(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver)
         {
         }
 
@@ -47,24 +49,24 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public PingMessage Deserialize(byte[] msg)
         {
-            var results = PrepareForDeserialization<PingMessage>(msg);
+            (PingMessage Message, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<PingMessage>(msg);
             
-            var rlp = results.Data.AsRlpStream();
+            RlpStream rlp = results.Data.AsRlpStream();
             rlp.ReadSequenceLength();
-            var version = rlp.DecodeInt();
+            int version = rlp.DecodeInt();
 
             rlp.ReadSequenceLength();
             byte[] sourceAddress = rlp.DecodeByteArray();
-            var source = GetAddress(sourceAddress, rlp.DecodeInt());
+            IPEndPoint source = GetAddress(sourceAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
             rlp.ReadSequenceLength();
             byte[] destinationAddress = rlp.DecodeByteArray();
-            var destination = GetAddress(destinationAddress, rlp.DecodeInt());
+            IPEndPoint destination = GetAddress(destinationAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
 
-            var expireTime = rlp.DecodeLong();
+            long expireTime = rlp.DecodeLong();
 
-            var message = results.Message;
+            PingMessage message = results.Message;
             message.SourceAddress = source;
             message.DestinationAddress = destination;
             message.Mdc = results.Mdc;

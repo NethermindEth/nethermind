@@ -55,8 +55,8 @@ namespace Nethermind.Network.StaticNodes
             }
 
             if (_logger.IsInfo) _logger.Info($"Loading static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
-            var data = await File.ReadAllTextAsync(_staticNodesPath);
-            var nodes = JsonConvert.DeserializeObject<string[]>(data).Distinct().ToArray();
+            string data = await File.ReadAllTextAsync(_staticNodesPath);
+            string[] nodes = JsonConvert.DeserializeObject<string[]>(data).Distinct().ToArray();
             if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes.");
             if (nodes.Length != 0)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Network.StaticNodes
 
         public async Task<bool> AddAsync(string enode, bool updateFile = true)
         {
-            var node = new NetworkNode(enode);
+            NetworkNode node = new NetworkNode(enode);
             if (!_nodes.TryAdd(node.NodeId, node))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was already added: {enode}");
@@ -88,7 +88,7 @@ namespace Nethermind.Network.StaticNodes
 
         public async Task<bool> RemoveAsync(string enode, bool updateFile = true)
         {
-            var node = new NetworkNode(enode);
+            NetworkNode node = new NetworkNode(enode);
             if (!_nodes.TryRemove(node.NodeId, out _))
             {
                 if (_logger.IsInfo) _logger.Info($"Static node was not found: {enode}");

@@ -206,9 +206,9 @@ namespace Nethermind.Network.Rlpx
 
         private async Task CheckHandshakeInitTimeout()
         {
-            var receivedInitMsgTask = _initCompletionSource.Task;
+            Task<object> receivedInitMsgTask = _initCompletionSource.Task;
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
 
             if (firstTask != receivedInitMsgTask)
             {

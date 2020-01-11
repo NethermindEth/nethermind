@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Stats.Model;
 
@@ -27,10 +28,10 @@ namespace Nethermind.Network.P2P
 
         public AddCapabilityMessage Deserialize(byte[] bytes)
         {
-            var context = bytes.AsRlpStream();
+            RlpStream context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var protocolCode = context.DecodeString();
-            var version = context.DecodeByte();
+            string protocolCode = context.DecodeString();
+            byte version = context.DecodeByte();
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }

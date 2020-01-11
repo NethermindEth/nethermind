@@ -64,8 +64,13 @@ namespace Nethermind.Core.Crypto
         {
             get
             {
-                return LazyInitializer.EnsureInitialized(ref _prefixedBytes,
-                    () => Extensions.Bytes.Concat(0x04, Bytes));
+                if (_prefixedBytes == null)
+                {
+                    return LazyInitializer.EnsureInitialized(ref _prefixedBytes,
+                        () => Extensions.Bytes.Concat(0x04, Bytes));
+                }
+
+                return _prefixedBytes;
             }
         }
 

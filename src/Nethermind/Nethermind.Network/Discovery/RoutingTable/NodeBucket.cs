@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 if (_items.Count < BucketSize)
                 {
-                    var item = new NodeBucketItem(node);
+                    NodeBucketItem item = new NodeBucketItem(node);
                     if (!_items.Contains(item))
                     {
                         _items.Add(item);
@@ -63,7 +63,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     return NodeAddResult.Added();
                 }
 
-                var evictionCandidate = GetEvictionCandidate();
+                NodeBucketItem evictionCandidate = GetEvictionCandidate();
                 return NodeAddResult.Full(evictionCandidate);
             }  
         }
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             lock (_nodeBucketLock)
             {
-                var item = new NodeBucketItem(node);
+                NodeBucketItem item = new NodeBucketItem(node);
                 if (_items.Contains(item))
                 {
                     _items.Remove(item);
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             lock (_nodeBucketLock)
             {
-                var item = new NodeBucketItem(nodeToRemove);
+                NodeBucketItem item = new NodeBucketItem(nodeToRemove);
                 if (_items.Contains(item))
                 {
                     _items.Remove(item);
@@ -101,8 +101,8 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             lock (_nodeBucketLock)
             {
-                var item = new NodeBucketItem(node);
-                var bucketItem = _items.FirstOrDefault(x => x.Equals(item));
+                NodeBucketItem item = new NodeBucketItem(node);
+                NodeBucketItem bucketItem = _items.FirstOrDefault(x => x.Equals(item));
                 bucketItem?.OnContactReceived();
             }
         }
@@ -137,7 +137,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     return 0;
                 }
 
-                var timeComparison = x.LastContactTime.CompareTo(y.LastContactTime);
+                int timeComparison = x.LastContactTime.CompareTo(y.LastContactTime);
                 if (timeComparison == 0)
                 {
                     //last contact time is the same, but items are not the same, selecting higher id as higher item

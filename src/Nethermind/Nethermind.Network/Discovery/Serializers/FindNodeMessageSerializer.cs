@@ -42,14 +42,14 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public FindNodeMessage Deserialize(byte[] msg)
         {
-            var results = PrepareForDeserialization<FindNodeMessage>(msg);
+            (FindNodeMessage Message, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<FindNodeMessage>(msg);
             RlpStream rlpStream = results.Data.AsRlpStream();
 
             rlpStream.ReadSequenceLength();
-            var searchedNodeId = rlpStream.DecodeByteArray();
-            var expirationTime = rlpStream.DecodeLong();
+            byte[] searchedNodeId = rlpStream.DecodeByteArray();
+            long expirationTime = rlpStream.DecodeLong();
 
-            var message = results.Message;
+            FindNodeMessage message = results.Message;
             message.SearchedNodeId = searchedNodeId;
             message.ExpirationTime = expirationTime;
 

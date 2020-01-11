@@ -24,6 +24,8 @@ namespace Nethermind.Network.Discovery.Messages
         public IPEndPoint FarAddress { get; set; }
         
         public PublicKey FarPublicKey { get; set; }
+
+        public int Version {get; set;} = 4;
         
         /// <summary>
         /// Message expiry time as Unix epoch seconds

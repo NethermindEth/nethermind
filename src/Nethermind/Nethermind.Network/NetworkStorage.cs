@@ -75,7 +75,7 @@ namespace Nethermind.Network
 
         public void RemoveNodes(NetworkNode[] nodes)
         {
-            for (var i = 0; i < nodes.Length; i++)
+            for (int i = 0; i < nodes.Length; i++)
             {
                 _fullDb.Remove(nodes[i].NodeId.Bytes);
                 _removeCounter++;
@@ -106,17 +106,17 @@ namespace Nethermind.Network
 
         private NetworkNode GetNode(byte[] networkNodeRaw)
         {
-            var persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
+            NetworkNode persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
             return persistedNode;
         }
 
         private void LogDbContent(IEnumerable<byte[]> values)
         {
-            var sb = new StringBuilder();
+            StringBuilder sb = new StringBuilder();
             sb.AppendLine($"[{_fullDb.Description}]");
-            foreach (var value in values)
+            foreach (byte[] value in values)
             {
-                var node = GetNode(value);
+                NetworkNode node = GetNode(value);
                 sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Rep: {node.Reputation}");
             }
 

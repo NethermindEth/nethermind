@@ -128,7 +128,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
             }
 
-            var nodeId = authMessage.PublicKey;
+            PublicKey nodeId = authMessage.PublicKey;
             if (_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
 
             handshake.RemoteNodeId = nodeId;
@@ -148,7 +148,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 AckMessage ackMessage = new AckMessage();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                var ackData = _messageSerializationService.Serialize(ackMessage);
+                byte[] ackData = _messageSerializationService.Serialize(ackMessage);
                 
                 data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData, Array.Empty<byte>());
             }
@@ -158,7 +158,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 AckEip8Message ackMessage = new AckEip8Message();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
-                var ackData = _messageSerializationService.Serialize(ackMessage);
+                byte[] ackData = _messageSerializationService.Serialize(ackMessage);
                 
                 int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
                 byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);

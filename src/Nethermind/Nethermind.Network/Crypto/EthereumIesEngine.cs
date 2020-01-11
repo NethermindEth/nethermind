@@ -77,16 +77,16 @@ namespace Nethermind.Network.Crypto
         private byte[] EncryptBlock(byte[] input, int inOff, int inLen, byte[] macData)
         {
             // Block cipher mode.
-            var k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
-            var k2 = new byte[_iesParameters.MacKeySize / 8];
-            var k = _kdfKey;
+            byte[] k1 = new byte[((IesWithCipherParameters) _iesParameters).CipherKeySize / 8];
+            byte[] k2 = new byte[_iesParameters.MacKeySize / 8];
+            byte[] k = _kdfKey;
 
             Array.Copy(k, 0, k1, 0, k1.Length);
             Array.Copy(k, k1.Length, k2, 0, k2.Length);
 
             _cipher.Init(true, new ParametersWithIV(new KeyParameter(k1), _iv));
 
-            var c = new byte[_cipher.GetOutputSize(inLen)];
+            byte[] c = new byte[_cipher.GetOutputSize(inLen)];
             int len = _cipher.ProcessBytes(input, inOff, inLen, c, 0);
             len += _cipher.DoFinal(c, len);
 
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Crypto
             
             _cipher.Init(false, new ParametersWithIV(new KeyParameter(k1), _iv));
 
-            var M = new byte[_cipher.GetOutputSize(inLen - _mac.GetMacSize())];
+            byte[] M = new byte[_cipher.GetOutputSize(inLen - _mac.GetMacSize())];
             int len = _cipher.ProcessBytes(inEnc, inOff, inLen - _mac.GetMacSize(), M, 0);
             len += _cipher.DoFinal(M, len);
 

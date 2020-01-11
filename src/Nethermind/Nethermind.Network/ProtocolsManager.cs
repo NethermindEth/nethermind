@@ -126,18 +126,18 @@ namespace Nethermind.Network
                 return;
             }
 
-            var code = protocolCode.ToLowerInvariant();
-            if (!_protocolFactories.TryGetValue(code, out var protocolFactory))
+            string code = protocolCode.ToLowerInvariant();
+            if (!_protocolFactories.TryGetValue(code, out Func<ISession, int, IProtocolHandler> protocolFactory))
             {
                 throw new NotSupportedException($"Protocol {code} {version} is not supported");
             }
 
-            var protocolHandler = protocolFactory(session, version);
+            IProtocolHandler protocolHandler = protocolFactory(session, version);
             protocolHandler.SubprotocolRequested += (s, e) => InitProtocol(session, e.ProtocolCode, e.Version);
             session.AddProtocolHandler(protocolHandler);
             if (addCapabilities)
             {
-                foreach (var capability in _capabilities)
+                foreach (Capability capability in _capabilities)
                 {
                     session.AddSupportedCapability(capability);
                 }
@@ -161,7 +161,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    var handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new P2PProtocolHandler(session, _localPeer.LocalNodeId, _stats, _serializer, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -174,7 +174,7 @@ namespace Nethermind.Network
                         throw new NotSupportedException($"Eth protocol version {version} is not supported.");
                     }
 
-                    var handler = version == 62
+                    Eth62ProtocolHandler handler = version == 62
                         ? new Eth62ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager,
                             _txPool)
                         : new Eth63ProtocolHandler(session, _serializer, _stats, _syncServer, _logManager,
@@ -224,7 +224,7 @@ namespace Nethermind.Network
             handler.ProtocolInitialized += (sender, args) =>
             {
                 if (!RunBasicChecks(session, handler.ProtocolCode, handler.ProtocolVersion)) return;
-                var typedArgs = (EthProtocolInitializedEventArgs)args;
+                EthProtocolInitializedEventArgs typedArgs = (EthProtocolInitializedEventArgs)args;
                 _stats.ReportEthInitializeEvent(session.Node, new EthNodeDetails
                 {
                     ChainId = typedArgs.ChainId,
@@ -320,8 +320,8 @@ namespace Nethermind.Network
 
         public void SendNewCapability(Capability capability)
         {
-            var message = new AddCapabilityMessage(capability);
-            foreach (var (_, session) in _sessions)
+            AddCapabilityMessage message = new AddCapabilityMessage(capability);
+            foreach ((Guid _, ISession session) in _sessions)
             {
                 if (session.HasAgreedCapability(capability))
                 {

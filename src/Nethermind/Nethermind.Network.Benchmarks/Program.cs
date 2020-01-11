@@ -22,7 +22,7 @@ namespace Nethermind.Network.Benchmarks
     {
         public static void Main(string[] args)
         {
-            BenchmarkRunner.Run<HandshakeBenchmarks>();
+            // BenchmarkRunner.Run<HandshakeBenchmarks>();
 //            BenchmarkRunner.Run<KdfDerivation>();
 //            BenchmarkRunner.Run<EcdhAgreement>();
 //            BenchmarkRunner.Run<OutFlowBenchmark>();
@@ -30,6 +30,7 @@ namespace Nethermind.Network.Benchmarks
 //            BenchmarkRunner.Run<NettyFrameEncoder>();
 //            BenchmarkRunner.Run<NettyFrameMerger>();
 //            BenchmarkRunner.Run<NettyPacketSplitter>();
+            BenchmarkRunner.Run<DiscoveryBenchmarks>();
         }
     }
 }
