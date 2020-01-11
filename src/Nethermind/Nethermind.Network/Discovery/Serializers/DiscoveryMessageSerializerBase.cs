@@ -69,11 +69,11 @@ namespace Nethermind.Network.Discovery.Serializers
                 throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
             }
 
-            var mdc = msg.Slice(0, 32);
-            var signature = msg.Slice(32, 65);
+            byte[] mdc = msg.Slice(0, 32);
+            byte[] signature = msg.Slice(32, 65);
             // var type = new[] { msg[97] };
-            var data = msg.Slice(98, msg.Length - 98);
-            var computedMdc = Keccak.Compute(msg.Slice(32)).Bytes;
+            byte[] data = msg.Slice(98, msg.Length - 98);
+            byte[] computedMdc = Keccak.Compute(msg.Slice(32)).Bytes;
 
             if (!Bytes.AreEqual(mdc, computedMdc))
             {

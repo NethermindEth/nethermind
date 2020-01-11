@@ -151,7 +151,7 @@ namespace Nethermind.Network.Rlpx
                 Session session = new Session(LocalPort, _logManager, ch, node);
                 InitializeChannel(ch, session);
             }));
-            var connectTask = clientBootstrap.ConnectAsync(node.Address);
+            Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10)), delayCancellation.Token));
             if (firstTask != connectTask)

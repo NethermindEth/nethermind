@@ -53,7 +53,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                var implementedInterfaces = type.GetInterfaces();
+                Type[] implementedInterfaces = type.GetInterfaces();
                 foreach (Type implementedInterface in implementedInterfaces)
                 {
                     if (!implementedInterface.IsGenericType)

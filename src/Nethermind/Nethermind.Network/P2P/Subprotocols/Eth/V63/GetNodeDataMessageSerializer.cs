@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
@@ -29,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public GetNodeDataMessage Deserialize(byte[] bytes)
         {
             RlpStream rlpStream = bytes.AsRlpStream();
-            var keys = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            Keccak[] keys = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return new GetNodeDataMessage(keys);
         }
     }

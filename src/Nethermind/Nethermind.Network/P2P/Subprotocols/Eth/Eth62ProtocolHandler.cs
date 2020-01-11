@@ -469,7 +469,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(BlockHeadersMessage message, long size)
         {
-            var request = _headersRequests.Take();
+            Request<GetBlockHeadersMessage, BlockHeader[]> request = _headersRequests.Take();
             if (message.PacketType == Eth62MessageCode.BlockHeaders)
             {
                 request.ResponseSize = size;
@@ -544,7 +544,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Logger.Trace($"  Max headers: {message.MaxHeaders}");
             }
 
-            var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
+            Request<GetBlockHeadersMessage, BlockHeader[]> request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request, token);
             request.StartMeasuringTime();
 
@@ -587,7 +587,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Count}");
             }
 
-            var request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
+            Request<GetBlockBodiesMessage, BlockBody[]> request = new Request<GetBlockBodiesMessage, BlockBody[]>(message);
             _bodiesRequests.Add(request, token);
             request.StartMeasuringTime();
 

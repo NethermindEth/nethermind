@@ -84,7 +84,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            var networkNodes = _peerStorage.GetPersistedNodes();
+            NetworkNode[] networkNodes = _peerStorage.GetPersistedNodes();
 
             if (_logger.IsInfo) _logger.Info($"Initializing persisted peers: {networkNodes.Length}.");
 

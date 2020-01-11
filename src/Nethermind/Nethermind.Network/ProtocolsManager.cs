@@ -127,7 +127,7 @@ namespace Nethermind.Network
             }
 
             string code = protocolCode.ToLowerInvariant();
-            if (!_protocolFactories.TryGetValue(code, out var protocolFactory))
+            if (!_protocolFactories.TryGetValue(code, out Func<ISession, int, IProtocolHandler> protocolFactory))
             {
                 throw new NotSupportedException($"Protocol {code} {version} is not supported");
             }

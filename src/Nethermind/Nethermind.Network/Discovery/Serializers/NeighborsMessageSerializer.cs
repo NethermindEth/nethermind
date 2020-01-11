@@ -60,11 +60,11 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public NeighborsMessage Deserialize(byte[] msg)
         {
-            var results = PrepareForDeserialization<NeighborsMessage>(msg);
+            (NeighborsMessage Message, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<NeighborsMessage>(msg);
 
             RlpStream rlp = results.Data.AsRlpStream();
             rlp.ReadSequenceLength();
-            var nodes = DeserializeNodes(rlp);
+            Node[] nodes = DeserializeNodes(rlp);
 
             long expirationTime = rlp.DecodeLong();
             NeighborsMessage message = results.Message;

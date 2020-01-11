@@ -76,12 +76,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public Node[] GetClosestNodes()
         {
-            var nodes = new List<NodeBucketItem>();
+            List<NodeBucketItem> nodes = new List<NodeBucketItem>();
             int bucketSize = _discoveryConfig.BucketSize;
             for (int i = 0; i < Buckets.Length; i++)
             {
                 NodeBucket nodeBucket = Buckets[i];
-                var bucketItems = nodeBucket.Items;
+                IReadOnlyCollection<NodeBucketItem> bucketItems = nodeBucket.Items;
                 if (!bucketItems.Any())
                 {
                     continue;
@@ -103,7 +103,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public Node[] GetClosestNodes(byte[] nodeId)
         {
             Keccak idHash = Keccak.Compute(nodeId);
-            var allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHash != idHash)
+            Node[] allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHash != idHash)
                 .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.Bytes, nodeId)})
                 .OrderBy(x => x.Distance)
                 .Take(_discoveryConfig.BucketSize)

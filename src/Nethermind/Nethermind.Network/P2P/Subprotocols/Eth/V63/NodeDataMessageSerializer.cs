@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             
             RlpStream rlpStream = bytes.AsRlpStream();
 
-            var data = rlpStream.DecodeArray(itemContext => itemContext.DecodeByteArray());
+            byte[][] data = rlpStream.DecodeArray(itemContext => itemContext.DecodeByteArray());
             NodeDataMessage message = new NodeDataMessage(data);
 
             return message;

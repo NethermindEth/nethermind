@@ -105,7 +105,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
             RefreshNodeContactTime();
 
-            var nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
+            Node[] nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
             SendNeighbors(nodes);
         }
 

@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery
 
         public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {
-            var alreadyTriedNodes = new List<Keccak>();
+            List<Keccak> alreadyTriedNodes = new List<Keccak>();
 
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             int nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery
                 while (true)
                 {
                     //if searched node is not specified master node is used
-                    var closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
+                    Node[] closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
                     tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)).ToArray();
                     if (tryCandidates.Any())
                     {
@@ -108,7 +108,7 @@ namespace Nethermind.Network.Discovery
                 while (true)
                 {
                     int count = failRequestCount > 0 ? failRequestCount : _discoveryConfig.Concurrency;
-                    var nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
+                    Node[] nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
                         _logger.Trace($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Discovery
                     nodesTriedCount += nodesToSend.Length;
                     alreadyTriedNodes.AddRange(nodesToSend.Select(x => x.IdHash));
 
-                    var results = await SendFindNode(nodesToSend, searchedNodeId, cancellationToken);
+                    Result[] results = await SendFindNode(nodesToSend, searchedNodeId, cancellationToken);
                     
                     foreach (Result result in results)
                     {
@@ -150,7 +150,7 @@ namespace Nethermind.Network.Discovery
 
         private void LogNodeTable()
         {
-            var nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.Items.Any()).ToArray();
+            NodeBucket[] nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.Items.Any()).ToArray();
             StringBuilder sb = new StringBuilder();
             sb.AppendLine("------------------------------------------------------");
             sb.AppendLine($"NodeTable, non-empty bucket count: {nonEmptyBuckets.Length}, total items count: {nonEmptyBuckets.Sum(x => x.Items.Count)}");
@@ -170,10 +170,10 @@ namespace Nethermind.Network.Discovery
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId, CancellationToken cancellationToken)
         {
-            var sendFindNodeTasks = new List<Task<Result>>();
+            List<Task<Result>> sendFindNodeTasks = new List<Task<Result>>();
             foreach (Node node in nodesToSend)
             {
-                var task = SendFindNode(node, searchedNodeId, cancellationToken);
+                Task<Result> task = SendFindNode(node, searchedNodeId, cancellationToken);
                 sendFindNodeTasks.Add(task);
             }
 

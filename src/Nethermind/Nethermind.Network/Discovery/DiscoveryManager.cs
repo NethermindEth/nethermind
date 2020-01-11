@@ -149,7 +149,7 @@ namespace Nethermind.Network.Discovery
 
         public async Task<bool> WasMessageReceived(Keccak senderIdHash, MessageType messageType, int timeout)
         {
-            var completionSource = GetCompletionSource(senderIdHash, (int)messageType);
+            TaskCompletionSource<DiscoveryMessage> completionSource = GetCompletionSource(senderIdHash, (int)messageType);
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
             Task firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
 
@@ -211,21 +211,21 @@ namespace Nethermind.Network.Discovery
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node, DiscoveryMessage message)
         {
-            var completionSource = RemoveCompletionSource(node.IdHash, (int)msgType);
+            TaskCompletionSource<DiscoveryMessage> completionSource = RemoveCompletionSource(node.IdHash, (int)msgType);
             completionSource?.TrySetResult(message);
         }
 
         private TaskCompletionSource<DiscoveryMessage> GetCompletionSource(Keccak senderAddressHash, int messageType)
         {
             MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
-            var completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMessage>());
+            TaskCompletionSource<DiscoveryMessage> completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMessage>());
             return completionSource;
         }
 
         private TaskCompletionSource<DiscoveryMessage> RemoveCompletionSource(Keccak senderAddressHash, int messageType)
         {
             MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
-            return _waitingEvents.TryRemove(key, out var completionSource) ? completionSource : null;
+            return _waitingEvents.TryRemove(key, out TaskCompletionSource<DiscoveryMessage> completionSource) ? completionSource : null;
         }
 
         private void CleanUpLifecycleManagers()
@@ -236,7 +236,7 @@ namespace Nethermind.Network.Discovery
             }
 
             int cleanupCount = _discoveryConfig.NodeLifecycleManagersCleanupCount;
-            var activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
+            KeyValuePair<Keccak, INodeLifecycleManager>[] activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
             if (activeExcluded.Length == cleanupCount)
             {
                 int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
@@ -244,7 +244,7 @@ namespace Nethermind.Network.Discovery
                 return;
             }
 
-            var unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
+            KeyValuePair<Keccak, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
             if(_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
@@ -255,7 +255,7 @@ namespace Nethermind.Network.Discovery
             int removeCount = 0;
             for (int i = 0; i < count; i++)
             {
-                var item = items[i];
+                KeyValuePair<Keccak, INodeLifecycleManager> item = items[i];
                 if (_nodeLifecycleManagers.TryRemove(item.Key, out _))
                 {
                     _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.NodeStats.NewPersistedNodeReputation),  });

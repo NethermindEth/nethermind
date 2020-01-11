@@ -207,7 +207,7 @@ namespace Nethermind.Network
 
             StopTimers();
 
-            var closingTasks = new List<Task>();
+            List<Task> closingTasks = new List<Task>();
 
             if (_storageCommitTask != null)
             {
@@ -320,7 +320,7 @@ namespace Nethermind.Network
                             .Distinct(_distinctPeerComparer);
                         remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
 
-                        var workerBlock = new ActionBlock<Peer>(
+                        ActionBlock<Peer> workerBlock = new ActionBlock<Peer>(
                             SetupPeerConnection,
                             new ExecutionDataflowBlockOptions
                             {
@@ -510,7 +510,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                var delayResult = _stats.IsConnectionDelayed(preCandidate.Node);
+                (bool Result, NodeStatsEventType? DelayReason) delayResult = _stats.IsConnectionDelayed(preCandidate.Node);
                 if (delayResult.Result)
                 {
                     if (delayResult.DelayReason == NodeStatsEventType.Disconnect)
@@ -627,7 +627,7 @@ namespace Nethermind.Network
                 return "0";
             }
 
-            var validationGroups = incompatibleNodes.GroupBy(x => _stats.FindCompatibilityValidationResult(x.Node)).ToArray();
+            IGrouping<CompatibilityValidationType?, Peer>[] validationGroups = incompatibleNodes.GroupBy(x => _stats.FindCompatibilityValidationResult(x.Node)).ToArray();
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
 
@@ -1029,7 +1029,7 @@ namespace Nethermind.Network
         [Todo(Improve.Allocations, "Remove ToDictionary and ToArray here")]
         private void UpdateReputationAndMaxPeersCount()
         {
-            var storedNodes = _peerStorage.GetPersistedNodes();
+            NetworkNode[] storedNodes = _peerStorage.GetPersistedNodes();
             foreach (NetworkNode node in storedNodes)
             {
                 _activePeers.TryGetValue(node.NodeId, out Peer peer);
@@ -1054,18 +1054,18 @@ namespace Nethermind.Network
             //if we have more persisted nodes then the threshold, we run cleanup process
             if (storedNodes.Length > _networkConfig.PersistedPeerCountCleanupThreshold)
             {
-                var activePeers = _activePeers.Values;
+                ICollection<Peer> activePeers = _activePeers.Values;
                 CleanupPersistedPeers(activePeers, storedNodes);
             }
         }
 
         private void CleanupPersistedPeers(ICollection<Peer> activePeers, NetworkNode[] storedNodes)
         {
-            var activeNodeIds = new HashSet<PublicKey>(activePeers.Select(x => x.Node.Id));
-            var nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
+            HashSet<PublicKey> activeNodeIds = new HashSet<PublicKey>(activePeers.Select(x => x.Node.Id));
+            NetworkNode[] nonActiveNodes = storedNodes.Where(x => !activeNodeIds.Contains(x.NodeId))
                 .OrderBy(x => x.Reputation).ToArray();
             int countToRemove = storedNodes.Length - _networkConfig.MaxPersistedPeerCount;
-            var nodesToRemove = nonActiveNodes.Take(countToRemove).ToArray();
+            NetworkNode[] nodesToRemove = nonActiveNodes.Take(countToRemove).ToArray();
             if (nodesToRemove.Length > 0)
             {
                 _peerStorage.RemoveNodes(nodesToRemove);
@@ -1085,12 +1085,12 @@ namespace Nethermind.Network
             }
 
             // may further optimize allocations here
-            var candidates = _candidatePeers.Values.Where(p => !p.Node.IsStatic).ToArray();
+            Peer[] candidates = _candidatePeers.Values.Where(p => !p.Node.IsStatic).ToArray();
             int countToRemove = candidates.Length - _networkConfig.MaxCandidatePeerCount;
-            var failedValidationCandidates = candidates.Where(x => _stats.HasFailedValidation(x.Node))
+            Peer[] failedValidationCandidates = candidates.Where(x => _stats.HasFailedValidation(x.Node))
                 .OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
-            var otherCandidates = candidates.Except(failedValidationCandidates).OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
-            var nodesToRemove = failedValidationCandidates.Take(countToRemove).ToArray();
+            Peer[] otherCandidates = candidates.Except(failedValidationCandidates).OrderBy(x => _stats.GetCurrentReputation(x.Node)).ToArray();
+            Peer[] nodesToRemove = failedValidationCandidates.Take(countToRemove).ToArray();
             int failedValidationRemovedCount = nodesToRemove.Length;
             int remainingCount = countToRemove - failedValidationRemovedCount;
             if (remainingCount > 0)

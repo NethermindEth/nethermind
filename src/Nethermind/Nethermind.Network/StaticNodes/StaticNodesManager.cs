@@ -56,7 +56,7 @@ namespace Nethermind.Network.StaticNodes
 
             if (_logger.IsInfo) _logger.Info($"Loading static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             string data = await File.ReadAllTextAsync(_staticNodesPath);
-            var nodes = JsonConvert.DeserializeObject<string[]>(data).Distinct().ToArray();
+            string[] nodes = JsonConvert.DeserializeObject<string[]>(data).Distinct().ToArray();
             if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes.");
             if (nodes.Length != 0)
             {

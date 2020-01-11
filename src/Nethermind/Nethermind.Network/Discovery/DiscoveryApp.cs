@@ -255,7 +255,7 @@ namespace Nethermind.Network.Discovery
                 return;
             }
 
-            var nodes = _discoveryStorage.GetPersistedNodes();
+            NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
             foreach (NetworkNode networkNode in nodes)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -403,14 +403,14 @@ namespace Nethermind.Network.Discovery
 
         private async Task<bool> InitializeBootnodes(CancellationToken cancellationToken)
         {
-            var bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
+            NetworkNode[] bootnodes = NetworkNode.ParseNodes(_discoveryConfig.Bootnodes, _logger);
             if (!bootnodes.Any())
             {
                 if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
                 return true;
             }
             
-            var managers = new List<INodeLifecycleManager>();
+            List<INodeLifecycleManager> managers = new List<INodeLifecycleManager>();
             for (int i = 0; i < bootnodes.Length; i++)
             {
                 NetworkNode bootnode = bootnodes[i];
@@ -505,7 +505,7 @@ namespace Nethermind.Network.Discovery
         private async Task RunRefreshAsync(CancellationToken cancellationToken)
         {
             if (_logger.IsTrace) _logger.Trace("Running refresh process.");            
-            var randomId = _cryptoRandom.GenerateRandomBytes(64);
+            byte[] randomId = _cryptoRandom.GenerateRandomBytes(64);
             await _nodesLocator.LocateNodesAsync(randomId, cancellationToken);
         }
 
@@ -514,7 +514,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                var managers = _discoveryManager.GetOrAddNodeLifecycleManagers();
+                IReadOnlyCollection<INodeLifecycleManager> managers = _discoveryManager.GetOrAddNodeLifecycleManagers();
                 //we need to update all notes to update reputation
                 _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id, x.ManagedNode.Host, x.ManagedNode.Port, x.NodeStats.NewPersistedNodeReputation)).ToArray());
 

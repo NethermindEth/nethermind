@@ -114,7 +114,7 @@ namespace Nethermind.Network
         {
             StringBuilder sb = new StringBuilder();
             sb.AppendLine($"[{_fullDb.Description}]");
-            foreach (var value in values)
+            foreach (byte[] value in values)
             {
                 NetworkNode node = GetNode(value);
                 sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Rep: {node.Reputation}");

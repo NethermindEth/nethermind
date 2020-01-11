@@ -166,7 +166,7 @@ namespace Nethermind.Network.P2P
 
             ProtocolVersion = hello.P2PVersion;
 
-            var capabilities = hello.Capabilities;
+            List<Capability> capabilities = hello.Capabilities;
             AvailableCapabilities = new List<Capability>(capabilities);
             foreach (Capability remotePeerCapability in capabilities)
             {
@@ -215,7 +215,7 @@ namespace Nethermind.Network.P2P
             }
 
             _pongCompletionSource = new TaskCompletionSource<Packet>();
-            var pongTask = _pongCompletionSource.Task;
+            Task<Packet> pongTask = _pongCompletionSource.Task;
 
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
             Send(PingMessage.Instance);

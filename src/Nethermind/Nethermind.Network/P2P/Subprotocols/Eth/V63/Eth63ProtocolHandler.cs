@@ -106,7 +106,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(ReceiptsMessage msg, long size)
         {
-            var request = _receiptsRequests.Take();
+            Request<GetReceiptsMessage, TxReceipt[][]> request = _receiptsRequests.Take();
             if (IsRequestMatched(request, msg))
             {
                 request.ResponseSize = size;
@@ -126,7 +126,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(NodeDataMessage msg, int size)
         {
-            var request = _nodeDataRequests.Take();
+            Request<GetNodeDataMessage, byte[][]> request = _nodeDataRequests.Take();
             request.ResponseSize = size;
             if (IsRequestMatched(request, msg))
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Keys count: {message.Keys.Count}");
             }
 
-            var request = new Request<GetNodeDataMessage, byte[][]>(message);
+            Request<GetNodeDataMessage, byte[][]> request = new Request<GetNodeDataMessage, byte[][]>(message);
             request.StartMeasuringTime();
             _nodeDataRequests.Add(request, token);
 
@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 Logger.Trace($"Hashes count: {message.BlockHashes.Count}");
             }
 
-            var request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
+            Request<GetReceiptsMessage, TxReceipt[][]> request = new Request<GetReceiptsMessage, TxReceipt[][]>(message);
             request.StartMeasuringTime();
             _receiptsRequests.Add(request, token);
 

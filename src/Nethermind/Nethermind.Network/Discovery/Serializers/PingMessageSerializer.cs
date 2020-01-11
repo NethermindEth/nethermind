@@ -49,7 +49,7 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public PingMessage Deserialize(byte[] msg)
         {
-            var results = PrepareForDeserialization<PingMessage>(msg);
+            (PingMessage Message, byte[] Mdc, byte[] Data) results = PrepareForDeserialization<PingMessage>(msg);
             
             RlpStream rlp = results.Data.AsRlpStream();
             rlp.ReadSequenceLength();
