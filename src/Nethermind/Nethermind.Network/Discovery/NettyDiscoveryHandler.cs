@@ -27,7 +27,7 @@ using Nethermind.Network.Discovery.Messages;
 
 namespace Nethermind.Network.Discovery
 {
-    public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMessageSender, INettyChannel
+    public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>, IMessageSender
     {
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
