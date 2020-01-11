@@ -22,7 +22,7 @@ namespace Nethermind.Core
 {
     public static class NetworkDiagTracer
     {
-        public static bool IsEnabled => true;
+        public static bool IsEnabled => false;
 
         static NetworkDiagTracer()
         {
