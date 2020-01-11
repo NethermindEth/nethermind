@@ -40,30 +40,31 @@ namespace Nethermind.Runner.Test
         {
         }
 
-        [TestCase("ropsten_archive.cfg", false)]
-        [TestCase("ropsten.cfg", true)]
-        [TestCase("rinkeby_archive.cfg", false)]
-        [TestCase("rinkeby.cfg", true)]
-        [TestCase("goerli_archive.cfg", false)]
-        [TestCase("goerli.cfg", true)]
-        [TestCase("mainnet_archive.cfg", false)]
-        [TestCase("mainnet.cfg", true)]
-        [TestCase("sokol.cfg", true)]
-        [TestCase("sokol_archive.cfg", false)]
-        [TestCase("sokol_validator.cfg", true)]
-        [TestCase("sokol_fastsync.cfg", true)]        
-        [TestCase("poacore.cfg", true)]
-        [TestCase("poacore_archive.cfg", false)]
-        [TestCase("xdai.cfg", true)]
-        [TestCase("xdai_archive.cfg", false)]
-        [TestCase("spaceneth.cfg", false)]
-        [TestCase("volta.cfg", true)]
-        [TestCase("volta_archive.cfg", false)]
-        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled)
+        [TestCase("ropsten_archive.cfg", false, false)]
+        [TestCase("ropsten.cfg", true, false)]
+        [TestCase("rinkeby_archive.cfg", false, false)]
+        [TestCase("rinkeby.cfg", true, true)]
+        [TestCase("goerli_archive.cfg", false, false)]
+        [TestCase("goerli.cfg", true, true)]
+        [TestCase("mainnet_archive.cfg", false, false)]
+        [TestCase("mainnet.cfg", true, true)]
+        [TestCase("sokol.cfg", true, false)]
+        [TestCase("sokol_archive.cfg", false, false)]
+        [TestCase("sokol_validator.cfg", true, false)]
+        [TestCase("sokol_fastsync.cfg", true, false)]        
+        [TestCase("poacore.cfg", true, false)]
+        [TestCase("poacore_archive.cfg", false, false)]
+        [TestCase("xdai.cfg", true, false)]
+        [TestCase("xdai_archive.cfg", false, false)]
+        [TestCase("spaceneth.cfg", false, false)]
+        [TestCase("volta.cfg", true, false)]
+        [TestCase("volta_archive.cfg", false, false)]
+        public void Sync_defaults_are_correct(string configFile, bool fastSyncEnabled, bool fastBlocksEnabled)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
-            Assert.AreEqual(fastSyncEnabled, config.FastSync);
+            Assert.AreEqual(fastSyncEnabled, config.FastSync, "fast sync");
+            Assert.AreEqual(fastBlocksEnabled, config.FastBlocks, "fast blocks");
             Assert.AreEqual(false, config.BeamSyncEnabled);
         }
         
@@ -365,6 +366,23 @@ namespace Nethermind.Runner.Test
         [TestCase("volta.cfg")]
         [TestCase("volta_archive.cfg")]
         public void Kafka_disabled_by_default(string configFile)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            IKafkaConfig kafkaConfig = configProvider.GetConfig<IKafkaConfig>();
+            Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
+        }
+        
+        [TestCase("ropsten.cfg", false, false)]
+        [TestCase("rinkeby.cfg", false, false)]
+        [TestCase("goerli.cfg", false, false)]
+        [TestCase("mainnet.cfg", false, false)]
+        [TestCase("sokol.cfg", false, false)]
+        [TestCase("sokol_validator.cfg", false, false)]
+        [TestCase("sokol_fastsync.cfg", false, false)]
+        [TestCase("poacore.cfg", false, false)]
+        [TestCase("xdai.cfg", false, false)]
+        [TestCase("volta.cfg", false, false)]
+        public void Fast_sync_settings_as_expected(string configFile, bool downloadBodies, bool downloadsReceipts)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             IKafkaConfig kafkaConfig = configProvider.GetConfig<IKafkaConfig>();
