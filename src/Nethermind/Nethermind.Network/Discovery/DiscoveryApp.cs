@@ -135,7 +135,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
+            if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort}");
             _group = new MultithreadEventLoopGroup(1);
             Bootstrap bootstrap = new Bootstrap();
             bootstrap
