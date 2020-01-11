@@ -31,7 +31,7 @@ namespace Nethermind.Network.Discovery
     {
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly IDatagramChannel _channel;
+        public readonly IDatagramChannel _channel;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ITimestamper _timestamper;
 
@@ -86,7 +86,7 @@ namespace Nethermind.Network.Discovery
             }
             
             IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
-            _logger.Debug($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
+            // _logger.Debug($"The message {discoveryMessage} will be sent to {_channel.RemoteAddress}");
             await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -96,6 +96,8 @@ namespace Nethermind.Network.Discovery
             });
         }
 
+        private static Random rand = new Random(42);
+        
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
             IByteBuffer content = packet.Content;
@@ -104,18 +106,23 @@ namespace Nethermind.Network.Discovery
             byte[] msg = new byte[content.ReadableBytes];
             content.ReadBytes(msg);
 
+            // if (rand.Next(100) < 1)
+            // {
+            //     ctx.DisconnectAsync();
+            // }
+            
             if (msg.Length < 98)
             {
-                if(_logger.IsDebug) _logger.Debug($"Incorrect discovery message, length: {msg.Length}, sender: {address}");
-                ctx.DisconnectAsync();
+                if(_logger.IsWarn) _logger.Warn($"Incorrect discovery message, length: {msg.Length}, sender: {address}");
+                // ctx.DisconnectAsync();
                 return;
             }
             
             byte typeRaw = msg[97];
             if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
             {
-                if(_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
-                ctx.DisconnectAsync();
+                if(_logger.IsWarn) _logger.Warn($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
+                // ctx.DisconnectAsync();
                 return;
             }
             
@@ -131,8 +138,8 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                if(_logger.IsDebug) _logger.Debug($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
-                ctx.DisconnectAsync();
+                if(_logger.IsWarn) _logger.Warn($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}, {e.Message}");
+                // ctx.DisconnectAsync();
                 return;
             }
 
@@ -140,31 +147,32 @@ namespace Nethermind.Network.Discovery
             {
                 if ((ulong)message.ExpirationTime < _timestamper.EpochSeconds)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
-                    ctx.DisconnectAsync();
+                    if(_logger.IsWarn) _logger.Warn($"Received a discovery message that has expired, type: {type}, sender: {address}, message: {message}");
+                    // ctx.DisconnectAsync();
                     return;
                 }
 
                 if (!message.FarAddress.Equals((IPEndPoint)packet.Sender))
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    ctx.DisconnectAsync();
+                    if(_logger.IsWarn) _logger.Warn($"Discovery fake IP detected - pretended {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    // ctx.DisconnectAsync();
                     return;
                 }
                 
                 if (message.FarPublicKey == null)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
-                    ctx.DisconnectAsync();
+                    if(_logger.IsDebug) _logger.Warn($"Discovery message without a valid signature {message.FarAddress} but was {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                    // ctx.DisconnectAsync();
                     return;
                 }
 
+                // if(_logger.IsError) _logger.Error($"Received discovery message {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)
             {
                 if(_logger.IsDebug) _logger.Error($"DEBUG/ERROR Error while processing message, type: {type}, sender: {address}, message: {message}", e);
-                ctx.DisconnectAsync();
+                // ctx.DisconnectAsync();
             }
         }
 

@@ -57,7 +57,7 @@ namespace Nethermind.Core.Crypto
             keyBytes.AsSpan().CopyTo(KeyBytes);
         }
 
-        public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+        public PublicKey PublicKey => _publicKey == null ? LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey) : _publicKey;
 
         public Address Address => PublicKey.Address;
 

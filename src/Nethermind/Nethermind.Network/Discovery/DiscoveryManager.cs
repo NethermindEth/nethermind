@@ -130,6 +130,8 @@ namespace Nethermind.Network.Discovery
                 {
                     _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation)});
                 }
+                
+                // _logger.Error($"Adding DISCOVERY NODE {manager.ManagedNode:c}");
                 OnNewNode(manager);
                 return manager;
             });
