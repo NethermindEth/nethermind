@@ -119,7 +119,7 @@ namespace Nethermind.Network.Discovery
                 {
                     if (x.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Error during discovery persistance stop.", x.Exception);
+                        if (_logger.IsError) _logger.Error("Error during discovery persistence stop.", x.Exception);
                     }
                 });
             }
