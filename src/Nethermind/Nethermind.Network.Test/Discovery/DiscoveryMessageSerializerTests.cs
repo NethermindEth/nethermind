@@ -65,7 +65,6 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 DestinationAddress = _nearAddress,
                 SourceAddress = _farAddress,
-                Version = _config.PingMessageVersion,
                 FarPublicKey = _privateKey.PublicKey,
                 ExpirationTime = 60 + (long) _timestamper.EpochMilliseconds
             };

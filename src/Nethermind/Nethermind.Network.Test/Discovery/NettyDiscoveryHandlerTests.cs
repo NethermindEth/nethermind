@@ -90,7 +90,6 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address2,
                 SourceAddress = _address,
                 DestinationAddress = _address2,
-                Version = 4,
                 ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey2.PublicKey
             };
@@ -103,7 +102,6 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _address,
                 SourceAddress = _address2,
                 DestinationAddress = _address,
-                Version = 4,
                 ExpirationTime = (long)(new Timestamper().EpochSeconds + 1200),
                 FarPublicKey = _privateKey.PublicKey
             };

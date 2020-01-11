@@ -22,9 +22,9 @@ using Nethermind.Network.Discovery.Messages;
 
 namespace Nethermind.Network.Discovery.Serializers
 {
-    public class PingMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<PingMessage>
+    public class NewPingMessageSerializer : NewDiscoveryMessageSerializerBase, IMessageSerializer<PingMessage>
     {
-        public PingMessageSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver)
+        public NewPingMessageSerializer(IEcdsa ecdsa, IPrivateKeyGenerator privateKeyGenerator, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver)
             : base(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver)
         {
         }

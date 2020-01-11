@@ -96,11 +96,6 @@ namespace Nethermind.Network.Config
         int UdpChannelCloseTimeout { get; }
 
         /// <summary>
-        /// Version of the Ping message
-        /// </summary>
-        int PingMessageVersion { get; }
-
-        /// <summary>
         /// Maximum count of NodeLifecycleManagers stored in memory
         /// </summary>
         int MaxNodeLifecycleManagersCount { get; }

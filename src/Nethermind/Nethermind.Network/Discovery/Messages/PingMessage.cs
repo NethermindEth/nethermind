@@ -23,8 +23,6 @@ namespace Nethermind.Network.Discovery.Messages
     {
         public IPEndPoint SourceAddress { get; set; }
         public IPEndPoint DestinationAddress { get; set; }
-
-        public int Version { get; set; }
         public byte[] Mdc { get; set; }
 
         public override string ToString()

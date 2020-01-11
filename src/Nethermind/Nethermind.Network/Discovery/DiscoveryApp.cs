@@ -163,8 +163,8 @@ namespace Nethermind.Network.Discovery
         private void InitializeChannel(IDatagramChannel channel)
         {
             _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager);
-            _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
+            _discoveryManager.MessageSender = _discoveryHandler;
             channel.Pipeline
                 .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.INFO))
                 .AddLast(_discoveryHandler);

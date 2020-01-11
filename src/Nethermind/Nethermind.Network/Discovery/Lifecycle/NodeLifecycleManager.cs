@@ -198,8 +198,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             try
             {
-                var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);         
-                msg.Version = _discoveryConfig.PingMessageVersion;
+                var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
