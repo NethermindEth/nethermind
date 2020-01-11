@@ -25,18 +25,13 @@ using System.Xml.XPath;
 
 namespace Nethermind.Core
 {
+    /// <summary>
+    /// This class is not following much rules or performance - it is just here to analyze in depth the network behaviour.
+    /// </summary>
     public static class NetworkDiagTracer
     {
-        public static bool IsEnabled => true;
+        public static bool IsEnabled { get; set; }
 
-        static NetworkDiagTracer()
-        {
-            if (!Directory.Exists("network"))
-            {
-                Directory.CreateDirectory("network");
-            }
-        }
-        
         private static ConcurrentDictionary<string, List<string>> events = new ConcurrentDictionary<string, List<string>>();
 
         public static void Start()

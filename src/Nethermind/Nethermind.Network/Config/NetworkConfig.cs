@@ -31,9 +31,8 @@ namespace Nethermind.Network.Config
         public int PersistedPeerCountCleanupThreshold { get; set; } = 2200;
         public int MaxCandidatePeerCount { get; set; } = 10000;
         public int CandidatePeerCountCleanupThreshold { get; set; } = 11000;
-        
+        public bool DiagTracerEnabled { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
-        
         public int P2PPort { get; set; } = 30303;
     }
 }

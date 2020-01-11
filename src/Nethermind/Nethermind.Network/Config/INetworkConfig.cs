@@ -64,5 +64,8 @@ namespace Nethermind.Network.Config
         
         [ConfigItem(DefaultValue = "11000")]
         int CandidatePeerCountCleanupThreshold { get; set; }
+
+        [ConfigItem(DefaultValue = "false", Description = "Enabled very verbose diag network tracing files for DEV purposes (Nethermind specific)")]
+        bool DiagTracerEnabled { get; set; }
     }
 }

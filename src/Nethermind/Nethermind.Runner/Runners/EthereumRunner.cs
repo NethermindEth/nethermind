@@ -208,6 +208,10 @@ namespace Nethermind.Runner.Runners
             _ipResolver = new IpResolver(_networkConfig, _logManager);
             _networkConfig.ExternalIp = _ipResolver.ExternalIp.ToString();
             _networkConfig.LocalIp = _ipResolver.LocalIp.ToString();
+            if (_networkConfig.DiagTracerEnabled)
+            {
+                NetworkDiagTracer.IsEnabled = true;
+            }
         }
 
         public async Task Start()
