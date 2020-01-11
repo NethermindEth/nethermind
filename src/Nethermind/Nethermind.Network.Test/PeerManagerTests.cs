@@ -305,6 +305,8 @@ namespace Nethermind.Network.Test
 
         private int _travisDelay = 100;
         
+        private int _travisDelayMid = 250;
+        
         private int _travisDelayLong = 1000;
 
         [Test]
@@ -383,7 +385,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(_travisDelay);
+                Thread.Sleep(_travisDelayMid);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 HandshakeAllSessions();
                 Thread.Sleep(_travisDelay);
