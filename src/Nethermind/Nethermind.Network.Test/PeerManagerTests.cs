@@ -385,12 +385,12 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(_travisDelayMid);
+                Thread.Sleep(_travisDelayLong);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 HandshakeAllSessions();
-                Thread.Sleep(_travisDelay);
+                Thread.Sleep(_travisDelayMid);
                 CreateIncomingSessions();
-                Thread.Sleep(_travisDelay);
+                Thread.Sleep(_travisDelayMid);
                 DisconnectAllSessions();
             }
         }
