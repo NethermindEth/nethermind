@@ -211,7 +211,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             var result = await _rpc.ndm_getDeposit(depositId);
             await _consumerService.Received().GetDepositAsync(depositId);
             result.Result.ResultType.Should().Be(ResultType.Success);
-            result.ErrorType.Should().Be(ErrorType.None);
+            result.ErrorCode.Should().Be(ErrorCodes.None);
             result.Result.Error.Should().BeNullOrWhiteSpace();
             VerifyDepositDetails(result.Data);
         }
@@ -224,7 +224,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().GetDepositAsync(depositId);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
-            result.ErrorType.Should().Be(ErrorType.InternalError);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
 
@@ -273,7 +273,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().SendFinishSessionAsync(depositId);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
-            result.ErrorType.Should().Be(ErrorType.InternalError);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
 
@@ -299,7 +299,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().EnableDataStreamAsync(depositId, client, args);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
-            result.ErrorType.Should().Be(ErrorType.InternalError);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
 
@@ -323,7 +323,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().DisableDataStreamAsync(depositId, client);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
-            result.ErrorType.Should().Be(ErrorType.InternalError);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
         
@@ -345,7 +345,7 @@ namespace Nethermind.DataMarketplace.Consumers.Test.Infrastructure
             await _consumerService.Received().DisableDataStreamsAsync(depositId);
             result.Data.Should().BeNull();
             result.Result.ResultType.Should().Be(ResultType.Failure);
-            result.ErrorType.Should().Be(ErrorType.InternalError);
+            result.ErrorCode.Should().Be(ErrorCodes.InternalError);
             result.Result.Error.Should().NotBeNull();
         }
 

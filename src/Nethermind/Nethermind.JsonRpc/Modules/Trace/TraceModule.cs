@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             catch (JsonRpcException ex)
             {
-                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorType, null);
+                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorCode, null);
             }
 
             ParityLikeTxTrace[] result = _tracer.ParityTraceBlock(block.Hash, GetParityTypes(traceTypes));
@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
             catch (JsonRpcException ex)
             {
-                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorType, null);
+                return ResultWrapper<ParityLikeTxTrace[]>.Fail(ex.Message, ex.ErrorCode, null);
             }
 
             return ResultWrapper<ParityLikeTxTrace[]>.Success(_tracer.ParityTraceBlock(block.Hash,

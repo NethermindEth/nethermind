@@ -363,8 +363,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 _blockHeader = BlockTree.BestSuggestedHeader;
                 while (number != _blockHeader?.Number && waitTimeSoFar <= dynamicTimeout)
                 {
-                    Thread.Sleep(100);
-                    waitTimeSoFar += 100;
+                    Thread.Sleep(10);
+                    waitTimeSoFar += 10;
                     _blockHeader = BlockTree.BestSuggestedHeader;
                 }
 
@@ -399,6 +399,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             public SyncingContext Wait()
             {
                 return Wait(WaitTime);
+            }
+            
+            public SyncingContext WaitUntilInitialized()
+            {
+                WaitFor(() => SyncPeerPool.AllPeers.All(p => p.IsInitialized));
+                return this;
             }
 
             public SyncingContext After(Action action)
@@ -467,6 +473,21 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 return Wait(Moment);
             }
 
+            private void WaitFor(Func<bool> isConditionMet, string description = "condition to be met")
+            {
+                const int waitInterval = 10;
+                for (int i = 0; i < WaitTime / waitInterval; i++)
+                {
+                    if (isConditionMet())
+                    {
+                        return;
+                    }
+
+                    TestContext.WriteLine($"({i}) Waiting {waitInterval} for {description}");
+                    Thread.Sleep(waitInterval);
+                }
+            }
+            
             public SyncingContext Stop()
             {
                 Synchronizer.SyncEvent -= SynchronizerOnSyncEvent;
@@ -539,7 +560,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerA.AddBlocksUpTo(2))
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
@@ -553,7 +574,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerA.AddBlocksUpTo(2))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
@@ -572,7 +593,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
                 .AfterPeerIsAdded(peerB)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerB.AddBlocksUpTo(6))
                 .AfterNewBlockMessage(peerB.HeadBlock, peerB)
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
@@ -608,7 +629,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerA.AddBlocksUpTo(2))
                 .AfterHintBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
@@ -624,7 +645,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerA.AddBlocksUpTo(8))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Wait().Stop();
@@ -644,7 +665,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerA.AddBlocksUpTo(16))
                 .AfterNewBlockMessage(peerA.HeadBlock, peerA)
                 .BestSuggestedHeaderIs(peerA.HeadHeader).Stop();
@@ -662,7 +683,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(badPeer)
-                .Wait()
+                .WaitUntilInitialized()
                 .AfterPeerIsAdded(peerA)
                 .BestSuggestedBlockHasNumber(1).Stop();
         }
@@ -686,7 +707,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 .AfterPeerIsAdded(peerA)
                 .BestSuggestedBlockHasNumber(2)
                 .AfterPeerIsAdded(peerB)
-                .Wait(1000)
+                .WaitUntilInitialized()
                 .Stop();
 
             Assert.AreNotEqual(peerB.HeadBlock.Hash, peerA.HeadBlock.Hash);
@@ -811,12 +832,12 @@ namespace Nethermind.Blockchain.Test.Synchronization
             When.Syncing
                 .AfterProcessingGenesis()
                 .AfterPeerIsAdded(peerA)
-                .Wait()
+                .WaitUntilInitialized()
                 .AfterPeerIsAdded(peerB)
-                .Wait()
+                .WaitUntilInitialized()
                 .After(() => peerB.AddHighDifficultyBlocksUpTo(6, 0, 1))
                 .AfterNewBlockMessage(peerB.HeadBlock, peerB)
-                .Wait()
+                .WaitUntilInitialized()
                 .BestSuggestedHeaderIs(peerB.HeadHeader).Stop();
         }
 

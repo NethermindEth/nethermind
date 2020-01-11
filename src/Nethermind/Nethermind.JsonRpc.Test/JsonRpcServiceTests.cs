@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => ResultWrapper<BlockForRpc>.Success(new BlockForRpc(Build.A.Block.WithNumber(2).TestObject, true)));
-            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
+            JsonRpcResponse response = TestRequest(ethModule, "eth_getBlockByNumber", "0x1b4", "true");
             Assert.AreEqual(2L, (response.Result as BlockForRpc)?.Number);
         }
         
@@ -86,7 +86,7 @@ namespace Nethermind.JsonRpc.Test
             string serialized = serializer.Serialize(new TransactionForRpc());
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_call(Arg.Any<TransactionForRpc>()).ReturnsForAnyArgs(x => ResultWrapper<string>.Success("0x1"));
-            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_call", serialized);
+            JsonRpcResponse response = TestRequest(ethModule, "eth_call", serialized);
             Assert.AreEqual("0x1", response.Result);
         }
         
@@ -112,7 +112,7 @@ namespace Nethermind.JsonRpc.Test
                 }
             };
 
-            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_newFilter", JsonConvert.SerializeObject(parameters));
+            JsonRpcResponse response = TestRequest(ethModule, "eth_newFilter", JsonConvert.SerializeObject(parameters));
             Assert.AreEqual(UInt256.One, response.Result);
         }
 
@@ -121,7 +121,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IEthModule ethModule = Substitute.For<IEthModule>();
             ethModule.eth_getWork().ReturnsForAnyArgs(x => ResultWrapper<IEnumerable<byte[]>>.Success(new[] {Bytes.FromHexString("aa"), Bytes.FromHexString("01")}));
-            JsonRpcResponse response = TestRequest<IEthModule>(ethModule, "eth_getWork");
+            JsonRpcResponse response = TestRequest(ethModule, "eth_getWork");
             byte[][] dataList = response.Result as byte[][];
             Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0xaa"));
             Assert.NotNull(dataList?.SingleOrDefault(d => d.ToHexString(true) == "0x01"));
@@ -130,8 +130,8 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void IncorrectMethodNameTest()
         {
-            JsonRpcErrorResponse response = TestRequest<IEthModule>(Substitute.For<IEthModule>(), "incorrect_method") as JsonRpcErrorResponse;
-            Assert.AreEqual(response.Error.Code, JsonRpcService.ErrorCodes[ErrorType.MethodNotFound]);
+            JsonRpcErrorResponse response = TestRequest(Substitute.For<IEthModule>(), "incorrect_method") as JsonRpcErrorResponse;
+            Assert.AreEqual(response.Error.Code, ErrorCodes.MethodNotFound);
             Assert.AreEqual(null, response.Result);
             Assert.AreEqual(response.JsonRpc, "2.0");
         }
@@ -141,7 +141,7 @@ namespace Nethermind.JsonRpc.Test
         {
             INetModule netModule = Substitute.For<INetModule>();
             netModule.net_version().ReturnsForAnyArgs(x => ResultWrapper<string>.Success("1"));
-            JsonRpcResponse response = TestRequest<INetModule>(netModule, "net_version");
+            JsonRpcResponse response = TestRequest(netModule, "net_version");
             Assert.AreEqual(response.Result, "1");
             Assert.IsNotInstanceOf<JsonRpcErrorResponse>(response);
             Assert.AreEqual("2.0", response.JsonRpc);
@@ -152,7 +152,7 @@ namespace Nethermind.JsonRpc.Test
         {
             IWeb3Module web3Module = Substitute.For<IWeb3Module>();
             web3Module.web3_sha3(Arg.Any<byte[]>()).ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(TestItem.KeccakA));
-            JsonRpcResponse response = TestRequest<IWeb3Module>(web3Module, "web3_sha3", "0x68656c6c6f20776f726c64");
+            JsonRpcResponse response = TestRequest(web3Module, "web3_sha3", "0x68656c6c6f20776f726c64");
             Assert.AreEqual(TestItem.KeccakA, response.Result);
         }
     }

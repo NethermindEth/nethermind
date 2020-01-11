@@ -16,16 +16,15 @@
 
 namespace Nethermind.JsonRpc
 {
-    public enum ErrorType
+    public static class ErrorCodes
     {
-        None,
-        ParseError,
-        InvalidRequest,
-        MethodNotFound,
-        InvalidParams,
-        InternalError,
-        ExecutionError,
-        ServerError,
-        NotFound
+        public const int None = 0;
+        public const int ParseError = -32700;
+        public const int InvalidRequest = -32600;
+        public const int MethodNotFound = -32601;
+        public const int InvalidParams = -32602;
+        public const int InternalError = -32603;
+        public const int ExecutionError = -32015;
+        public const int NotFound = -32601;
     }
 }

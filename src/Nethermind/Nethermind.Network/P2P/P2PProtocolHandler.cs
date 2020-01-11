@@ -31,17 +31,17 @@ namespace Nethermind.Network.P2P
 {
     public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler, IPingSender
     {
-        private readonly INodeStatsManager _nodeStatsManager;
-        private bool _sentHello;
-        private bool _isInitialized;
         private TaskCompletionSource<Packet> _pongCompletionSource;
+        private readonly INodeStatsManager _nodeStatsManager;
+        private bool _isInitialized;
+        private bool _sentHello;
 
-        public P2PProtocolHandler(ISession session,
+        public P2PProtocolHandler(
+            ISession session,
             PublicKey localNodeId,
             INodeStatsManager nodeStatsManager,
             IMessageSerializationService serializer,
-            ILogManager logManager)
-            : base(session, nodeStatsManager, serializer, logManager)
+            ILogManager logManager) : base(session, nodeStatsManager, serializer, logManager)
         {
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             LocalNodeId = localNodeId;
@@ -52,16 +52,11 @@ namespace Nethermind.Network.P2P
 
         public List<Capability> AgreedCapabilities { get; }
         public List<Capability> AvailableCapabilities { get; private set; }
-
         public int ListenPort { get; }
-
         public PublicKey LocalNodeId { get; }
-
         public string RemoteClientId { get; private set; }
-
         public bool HasAvailableCapability(Capability capability) => AvailableCapabilities.Contains(capability);
         public bool HasAgreedCapability(Capability capability) => AgreedCapabilities.Contains(capability);
-
         public void AddSupportedCapability(Capability capability)
         {
             if (SupportedCapabilities.Contains(capability))
@@ -112,6 +107,7 @@ namespace Nethermind.Network.P2P
             else if (msg.PacketType == P2PMessageCode.Disconnect)
             {
                 DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
+                if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Disconnect({disconnectMessage.Reason})");
                 if (Logger.IsTrace) Logger.Trace($"|NetworkTrace| {Session.RemoteNodeId} Received disconnect ({(Enum.IsDefined(typeof(DisconnectReason), (byte) disconnectMessage.Reason) ? ((DisconnectReason) disconnectMessage.Reason).ToString() : disconnectMessage.Reason.ToString())}) on {Session.RemotePort}");
                 Close(disconnectMessage.Reason);
             }
@@ -142,6 +138,8 @@ namespace Nethermind.Network.P2P
 
         private void HandleHello(HelloMessage hello)
         {
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Hello({hello.ClientId}, {string.Join(", ", hello.Capabilities)})");
+            
             bool isInbound = !_sentHello;
 
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P received hello.");
@@ -280,6 +278,7 @@ namespace Nethermind.Network.P2P
 
         private void HandlePing()
         {
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Ping");
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
             Send(PongMessage.Instance);
         }
@@ -301,8 +300,11 @@ namespace Nethermind.Network.P2P
             Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
         }
 
+        public override string Name => "eth62";
+        
         private void HandlePong(Packet msg)
         {
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Pong");
             if (Logger.IsTrace) Logger.Trace($"{Session} sending P2P pong");
             _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
             _pongCompletionSource?.TrySetResult(msg);

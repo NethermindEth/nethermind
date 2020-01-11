@@ -20,20 +20,20 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcException : Exception
     {
-        public ErrorType ErrorType { get; }
+        public int ErrorCode { get; }
 
         public JsonRpcException()
         {
         }
 
-        public JsonRpcException(ErrorType errorType, string message) : base(message)
+        public JsonRpcException(int errorCode, string message) : base(message)
         {
-            ErrorType = errorType;
+            ErrorCode = errorCode;
         }
 
-        public JsonRpcException(ErrorType errorType, string message, Exception inner) : base(message, inner)
+        public JsonRpcException(int errorCode, string message, Exception inner) : base(message, inner)
         {
-            ErrorType = errorType;
+            ErrorCode = errorCode;
         }
     }
 }
