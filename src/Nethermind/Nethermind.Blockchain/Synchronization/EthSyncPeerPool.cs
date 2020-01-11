@@ -29,6 +29,7 @@ using Nethermind.Logging;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
+[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
 namespace Nethermind.Blockchain.Synchronization
 {
     /// <summary>
@@ -241,9 +242,9 @@ namespace Nethermind.Blockchain.Synchronization
 
         private DateTime _lastUselessDrop = DateTime.UtcNow;
 
-        private void DropUselessPeers()
+        internal void DropUselessPeers(bool force = false)
         {
-            if (DateTime.UtcNow - _lastUselessDrop < TimeSpan.FromSeconds(30))
+            if (!force && DateTime.UtcNow - _lastUselessDrop < TimeSpan.FromSeconds(30))
             {
                 // give some time to monitoring nodes
                 // (monitoring nodes are nodes that are investigating the network but are not synced themselves)
@@ -266,6 +267,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 if (peerInfo.HeadNumber == 0
+                    && peerInfo.IsInitialized
                     && ourNumber != 0
                     && !peerInfo.SyncPeer.ClientId.Contains("Nethermind"))
                     // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
@@ -686,7 +688,7 @@ namespace Nethermind.Blockchain.Synchronization
             return _peers.TryGetValue(nodeId, out peerInfo);
         }
 
-        public async Task<SyncPeerAllocation> BorrowAsync(BorrowOptions borrowOptions, string description, long? minNumber = null, int timeoutMilliseconds = 0)
+        public async Task<SyncPeerAllocation> BorrowAsync(BorrowOptions borrowOptions = BorrowOptions.None, string description = "", long? minNumber = null, int timeoutMilliseconds = 0)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;

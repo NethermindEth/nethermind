@@ -37,8 +37,8 @@ namespace Nethermind.Blockchain.Test.Synchronization
     public class EthSyncPeerPoolTests
     {
         private INodeStatsManager _stats;
-        private IEthSyncPeerPool _pool;
         private IBlockTree _blockTree;
+        private EthSyncPeerPool _pool;
 
         [SetUp]
         public void SetUp()
@@ -161,6 +161,15 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 _pool.AddPeer(new SimpleSyncPeerMock(TestItem.PublicKeys[i]));
             }
         }
+        
+        [Test]
+        public async Task Will_disconnect_one_when_at_max()
+        {
+            var peers = await SetupPeers(25);
+            await WaitForPeersInitialization();
+            _pool.DropUselessPeers(true);
+            Assert.True(peers.Any(p => p.DisconnectRequested));
+        }
 
         [Test]
         public async Task Cannot_remove_when_stopped()
@@ -203,6 +212,14 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.AreEqual(1, _pool.PeerCount);
         }
 
+        [Test]
+        public void Ensure_best_does_not_throw_on_no_allocations()
+        {
+            _pool.EnsureBest();
+            _pool.Start();
+            _pool.EnsureBest();
+        }
+        
         [Test]
         public void Does_not_crash_when_removing_non_existing_peer()
         {
@@ -474,6 +491,16 @@ namespace Nethermind.Blockchain.Test.Synchronization
         {
             var peers = await SetupPeers(3);
             _pool.ReportInvalid(_pool.AllPeers.First(), "issue details");
+
+            Assert.True(peers[0].DisconnectRequested);
+        }
+        
+        [Test]
+        public async Task Report_invalid_via_allocation_invokes_disconnection()
+        {
+            var peers = await SetupPeers(3);
+            var allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
+            _pool.ReportInvalid(allocation, "issue details");
 
             Assert.True(peers[0].DisconnectRequested);
         }
