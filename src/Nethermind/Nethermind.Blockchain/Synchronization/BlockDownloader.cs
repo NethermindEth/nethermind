@@ -63,6 +63,12 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _syncBatchSize = new SyncBatchSize(logManager);
+            _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+        }
+
+        private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
+        {
+            _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
         public async Task<long> DownloadHeaders(PeerInfo bestPeer, int newBlocksToSkip, CancellationToken cancellation)
