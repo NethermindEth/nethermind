@@ -260,7 +260,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             await _pool.StopAsync();
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Can_refresh()
         {
             _pool.Start();
@@ -268,6 +268,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
             _pool.AddPeer(syncPeer);
             _pool.Refresh(TestItem.PublicKeyA);
+            await Task.Delay(100);
 
             await syncPeer.Received(2).GetHeadBlockHeader(Arg.Any<Keccak>(), Arg.Any<CancellationToken>());
         }
@@ -570,7 +571,7 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Console.WriteLine($"{desc} freed allocation");
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Try_to_break_multithreaded()
         {
             await SetupPeers(25);
