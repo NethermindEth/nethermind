@@ -36,6 +36,8 @@ clique
 debug
 ^^^^^
 
+ - debug.deleteChainSlice(startNumber, endNumber) - 
+
  - debug.getBlockRlp(number) - 
 
  - debug.getBlockRlpByHash(hash) - 
@@ -167,6 +169,15 @@ trace
  - trace.rawTransaction(txData, traceTypes) - Traces a call to eth_sendRawTransaction without making the call, returning the traces
 
  - trace.transaction(txHash) - Returns all traces of given transaction
+
+txpool
+^^^^^^
+
+ - txpool.content - 
+
+ - txpool.inspect - 
+
+ - txpool.status - 
 
 web3
 ^^^^
