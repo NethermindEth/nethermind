@@ -57,6 +57,12 @@ namespace Nethermind.Blockchain
             {new Address("0x5a0b54d5dc17e0aadc383d2db43b0a0d3e029c4c"), "Spark Pool"},
             {new Address("0x06b8c5883ec71bc3f4b332081519f23834c8706e"), "Mining Express"},
             {new Address("0xea674fdde714fd979de3edf0f56aa9716b898ec8"), "Ethermine"},
+            {new Address("0x829bd824b016326a401d083b33d092293333a830"), "F2Pool"},
+            {new Address("0xb2930b35844a230f00e51431acae96fe543a0347"), "MiningPoolHub"},
+            {new Address("0x2a65aca4d5fc5b5c859090a6c34d164135398226"), "DwarfPool 1"},
+            {new Address("0xeea5b82b61424df8020f5fedd81767f2d0d25bfb"), "BTC.com Pool"},
+            {new Address("0x35f61dfb08ada13eba64bf156b80df3d5b3a738d"), "firepool"},
+            {new Address("0x002e08000acbbae2155fab7ac01929564949070d"), "2Miners: SOLO"},
         };
         
         public static Dictionary<Address, string> RinkebyValidators = new Dictionary<Address, string>

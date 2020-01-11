@@ -68,6 +68,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
         {
+            _syncReport.FullSyncBlocksDownloaded.Update(_blockTree.BestSuggestedHeader?.Number ?? 0);
             _syncReport.FullSyncBlocksKnown = Math.Max(_syncReport.FullSyncBlocksKnown, e.Block.Number);
         }
 
