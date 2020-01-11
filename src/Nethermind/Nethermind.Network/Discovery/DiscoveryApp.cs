@@ -244,7 +244,7 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                _logger.Error("Error during discovery initialization", e);
+                if(_logger.IsDebug) _logger.Error("DEBUG/ERROR Error during discovery initialization", e);
             }
         }
 
