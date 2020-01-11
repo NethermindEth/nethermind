@@ -425,6 +425,74 @@ namespace Nethermind.Blockchain.Test.Synchronization
             Assert.NotNull(allocation1.Current, "second A");
             Assert.NotNull(allocation2.Current, "second B");
         }
+        
+        [Test]
+        public async Task Does_not_allocate_sleeping_peers()
+        {
+            var peers = await SetupPeers(3);
+            _pool.ReportNoSyncProgress(_pool.AllPeers.First());
+
+            SyncPeerAllocation allocation1 = await _pool.BorrowAsync();
+            SyncPeerAllocation allocation2 = await _pool.BorrowAsync();
+            SyncPeerAllocation allocation3 = await _pool.BorrowAsync();
+            
+            Assert.True(allocation1.HasPeer);
+            Assert.True(allocation2.HasPeer);
+            Assert.False(allocation3.HasPeer);
+        }
+        
+        [Test]
+        public async Task Can_wake_up_all_sleeping_peers()
+        {
+            var peers = await SetupPeers(3);
+            _pool.ReportNoSyncProgress(_pool.AllPeers.First());
+            _pool.ReportNoSyncProgress(_pool.AllPeers.Last());
+
+            _pool.WakeUpAll();
+            
+            SyncPeerAllocation allocation1 = await _pool.BorrowAsync();
+            SyncPeerAllocation allocation2 = await _pool.BorrowAsync();
+            SyncPeerAllocation allocation3 = await _pool.BorrowAsync();
+
+            Assert.True(allocation1.HasPeer);
+            Assert.True(allocation2.HasPeer);
+            Assert.True(allocation3.HasPeer);
+        }
+        
+        [Test]
+        public async Task Useful_peers_does_not_return_sleeping_peers()
+        {
+            var peers = await SetupPeers(3);
+            _pool.ReportNoSyncProgress(_pool.AllPeers.First());
+            _pool.ReportNoSyncProgress(_pool.AllPeers.Last());
+
+            Assert.AreEqual(1, _pool.UsefulPeers.Count());
+        }
+        
+        [Test]
+        public async Task Report_invalid_invokes_disconnection()
+        {
+            var peers = await SetupPeers(3);
+            _pool.ReportInvalid(_pool.AllPeers.First(), "issue details");
+
+            Assert.True(peers[0].DisconnectRequested);
+        }
+        
+        [Test]
+        public async Task Report_bad_peer_only_disconnects_after_11_times()
+        {
+            var peers = await SetupPeers(1);
+            var allocation = await _pool.BorrowAsync(BorrowOptions.DoNotReplace);
+            
+            for (int i = 0; i < 10; i++)
+            {
+                _pool.ReportBadPeer(allocation);
+                Assert.False(peers[0].DisconnectRequested);
+            }
+            
+            _pool.ReportBadPeer(allocation);
+            Assert.True(peers[0].DisconnectRequested);
+        }
 
         [Test]
         public async Task Will_not_allocate_same_peer_to_two_allocations()

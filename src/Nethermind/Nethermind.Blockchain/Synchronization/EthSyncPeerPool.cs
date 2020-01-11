@@ -246,6 +246,7 @@ namespace Nethermind.Blockchain.Synchronization
             if (DateTime.UtcNow - _lastUselessDrop < TimeSpan.FromSeconds(30))
             {
                 // give some time to monitoring nodes
+                // (monitoring nodes are nodes that are investigating the network but are not synced themselves)
                 return;
             }
 
@@ -267,6 +268,7 @@ namespace Nethermind.Blockchain.Synchronization
                 if (peerInfo.HeadNumber == 0
                     && ourNumber != 0
                     && !peerInfo.SyncPeer.ClientId.Contains("Nethermind"))
+                    // we know that Nethermind reports 0 HeadNumber when it is in sync (and it can still serve a lot of data to other nodes)
                 {
                     peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "PEER REVIEW / HEAD 0");
@@ -283,7 +285,7 @@ namespace Nethermind.Blockchain.Synchronization
                 }
                 else if (peerInfo.HeadNumber > ourNumber + 1024L && peerInfo.TotalDifficulty < ourDifficulty)
                 {
-                    // probably classic nodes tht remain connected after we went pass the DAO
+                    // probably Ethereum Classic nodes tht remain connected after we went pass the DAO
                     // worth to find a better way to discard them at the right time
                     peersDropped++;
                     peerInfo.SyncPeer.Disconnect(DisconnectReason.UselessPeer, "STRAY PEER");
