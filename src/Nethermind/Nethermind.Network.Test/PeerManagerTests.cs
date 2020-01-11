@@ -323,7 +323,7 @@ namespace Nethermind.Network.Test
             }
         }
 
-        [Test]
+        [Test, Retry(3)]
         public async Task Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing()
         {
             SetupPersistedPeers(50);
@@ -347,7 +347,7 @@ namespace Nethermind.Network.Test
             Assert.True(_peerManager.CandidatePeers.All(p => p.OutSession == null));
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_fill_up_over_and_over_again_on_disconnects_and_when_ids_keep_changing_with_max_candidates_40()
         {
             _networkConfig.MaxCandidatePeerCount = 40;
