@@ -67,6 +67,7 @@ namespace Nethermind.Blockchain
             {new Address("0x4bb96091ee9d802ed039c4d1a5f6216f90f81b01"), "Ethpool 2"},
             {new Address("0x464b0b37db1ee1b5fbe27300acfbf172fd5e4f53"), "FKPool"},
             {new Address("0x44fd3ab8381cc3d14afa7c4af7fd13cdc65026e1"), "W Pool"},
+            {new Address("0x4c549990a7ef3fea8784406c1eecc98bf4211fa5"), "Hiveon Pool"},
         };
         
         public static Dictionary<Address, string> RinkebyValidators = new Dictionary<Address, string>
