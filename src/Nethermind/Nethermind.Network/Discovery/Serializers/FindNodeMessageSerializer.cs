@@ -47,9 +47,9 @@ namespace Nethermind.Network.Discovery.Serializers
 
             rlpStream.ReadSequenceLength();
             var searchedNodeId = rlpStream.DecodeByteArray();
-            var expirationTime = rlpStream.DecodeLong();
+            long expirationTime = rlpStream.DecodeLong();
 
-            var message = results.Message;
+            FindNodeMessage message = results.Message;
             message.SearchedNodeId = searchedNodeId;
             message.ExpirationTime = expirationTime;
 

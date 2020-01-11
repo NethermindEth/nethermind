@@ -96,8 +96,8 @@ namespace Nethermind.Network.Discovery
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
-            var content = packet.Content;
-            var address = packet.Sender;
+            IByteBuffer content = packet.Content;
+            EndPoint address = packet.Sender;
 
             byte[] msg = new byte[content.ReadableBytes];
             content.ReadBytes(msg);
@@ -109,7 +109,7 @@ namespace Nethermind.Network.Discovery
                 return;
             }
             
-            var typeRaw = msg[97];
+            byte typeRaw = msg[97];
             if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
             {
                 if(_logger.IsDebug) _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
@@ -117,7 +117,7 @@ namespace Nethermind.Network.Discovery
                 return;
             }
             
-            var type = (MessageType)typeRaw;
+            MessageType type = (MessageType)typeRaw;
             if(_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
             DiscoveryMessage message;

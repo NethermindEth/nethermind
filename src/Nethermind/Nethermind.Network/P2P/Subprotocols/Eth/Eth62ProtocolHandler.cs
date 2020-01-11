@@ -326,7 +326,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             
             ReceivedProtocolInitMsg(status);
 
-            var eventArgs = new EthProtocolInitializedEventArgs(this)
+            EthProtocolInitializedEventArgs eventArgs = new EthProtocolInitializedEventArgs(this)
             {
                 ChainId = (long) status.ChainId,
                 BestHash = status.BestHash,
@@ -351,7 +351,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
-                var transaction = msg.Transactions[i];
+                Transaction transaction = msg.Transactions[i];
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamper.EpochSeconds;
                 AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
@@ -552,7 +552,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Task<BlockHeader[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
                 token.ThrowIfCancellationRequested();
@@ -596,7 +596,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Task<BlockBody[]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
                 token.ThrowIfCancellationRequested();
@@ -624,7 +624,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return new BlockHeader[0];
             }
 
-            var msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = skip;
@@ -641,7 +641,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return new BlockHeader[0];
             }
 
-            var msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = skip;
@@ -677,7 +677,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return new BlockBody[0];
             }
 
-            var bodiesMsg = new GetBlockBodiesMessage(blockHashes);
+            GetBlockBodiesMessage bodiesMsg = new GetBlockBodiesMessage(blockHashes);
 
             BlockBody[] blocks = await SendRequest(bodiesMsg, token);
 
@@ -696,7 +696,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<BlockHeader> ISyncPeer.GetHeadBlockHeader(Keccak hash, CancellationToken token)
         {
-            var msg = new GetBlockHeadersMessage();
+            GetBlockHeadersMessage msg = new GetBlockHeadersMessage();
             msg.StartingBlockHash = hash ?? _remoteHeadBlockHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;

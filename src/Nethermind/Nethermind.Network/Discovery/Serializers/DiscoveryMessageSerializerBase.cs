@@ -80,8 +80,8 @@ namespace Nethermind.Network.Discovery.Serializers
                 throw new NetworkingException("Invalid MDC", NetworkExceptionType.Validation);
             }
 
-            var nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], msg.Slice(97, msg.Length - 97));
-            var message = _messageFactory.CreateIncomingMessage<T>(nodeId);
+            PublicKey nodeId = _nodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], msg.Slice(97, msg.Length - 97));
+            T message = _messageFactory.CreateIncomingMessage<T>(nodeId);
             return (message, mdc, data);
         }
 

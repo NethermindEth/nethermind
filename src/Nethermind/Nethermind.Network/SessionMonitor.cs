@@ -127,7 +127,7 @@ namespace Nethermind.Network
                 return true;
             }
 
-            var pingTime = DateTime.UtcNow;
+            DateTime pingTime = DateTime.UtcNow;
             if (pingTime - session.LastPingUtc > _pingInterval)
             {
                 session.LastPingUtc = pingTime;

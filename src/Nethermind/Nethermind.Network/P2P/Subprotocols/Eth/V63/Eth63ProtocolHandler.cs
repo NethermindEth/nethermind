@@ -141,7 +141,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return Array.Empty<byte[]>();
             }
             
-            var msg = new GetNodeDataMessage(keys);
+            GetNodeDataMessage msg = new GetNodeDataMessage(keys);
             byte[][] receipts = await SendRequest(msg, token);
             return receipts;
         }
@@ -155,7 +155,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             
             // Logger.Info($"Sending receipts request ({blockHashes.Count}) to {this}");
             
-            var msg = new GetReceiptsMessage(blockHashes);
+            GetReceiptsMessage msg = new GetReceiptsMessage(blockHashes);
             TxReceipt[][] txReceipts = await SendRequest(msg, token);
             
             // Logger.Info($"Sent receipts request ({blockHashes.Count}) to {this} - received {txReceipts.Length}");
@@ -180,7 +180,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
                 token.ThrowIfCancellationRequested();
@@ -219,7 +219,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Task<TxReceipt[][]> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new CancellationTokenSource();
             using CancellationTokenSource compositeCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, delayCancellation.Token);
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
+            Task firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, compositeCancellation.Token));
             if (firstTask.IsCanceled)
             {
                 token.ThrowIfCancellationRequested();

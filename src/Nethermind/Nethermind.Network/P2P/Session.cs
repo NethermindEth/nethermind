@@ -131,7 +131,7 @@ namespace Nethermind.Network.P2P
 
         public void AddSupportedCapability(Capability capability)
         {
-            if (!_protocols.TryGetValue(Protocol.P2P, out var protocol))
+            if (!_protocols.TryGetValue(Protocol.P2P, out IProtocolHandler protocol))
             {
                 return;
             }
@@ -140,10 +140,10 @@ namespace Nethermind.Network.P2P
         }
 
         public bool HasAvailableCapability(Capability capability)
-            => _protocols.TryGetValue(Protocol.P2P, out var protocol) && protocol.HasAvailableCapability(capability);
+            => _protocols.TryGetValue(Protocol.P2P, out IProtocolHandler protocol) && protocol.HasAvailableCapability(capability);
 
         public bool HasAgreedCapability(Capability capability)
-            => _protocols.TryGetValue(Protocol.P2P, out var protocol) && protocol.HasAgreedCapability(capability);
+            => _protocols.TryGetValue(Protocol.P2P, out IProtocolHandler protocol) && protocol.HasAgreedCapability(capability);
 
         public IPingSender PingSender { get; set; }
 
@@ -321,7 +321,7 @@ namespace Nethermind.Network.P2P
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (_protocols.Any())
             {
-                foreach (var protocolHandler in _protocols.Values)
+                foreach (IProtocolHandler protocolHandler in _protocols.Values)
                 {
                     try
                     {
@@ -386,7 +386,7 @@ namespace Nethermind.Network.P2P
             }
             else
             {
-                var delayTask = disconnectType == DisconnectType.Local ? Task.Delay(Timeouts.Disconnection) : Task.CompletedTask;
+                Task delayTask = disconnectType == DisconnectType.Local ? Task.Delay(Timeouts.Disconnection) : Task.CompletedTask;
                 delayTask.ContinueWith(t =>
                 {
                     if (_logger.IsTrace) _logger.Trace($"{this} disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");

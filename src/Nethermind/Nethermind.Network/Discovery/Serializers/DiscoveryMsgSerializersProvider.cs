@@ -35,10 +35,10 @@ namespace Nethermind.Network.Discovery.Serializers
             IDiscoveryMessageFactory messageFactory,
             INodeIdResolver nodeIdResolver)
         {
-            var pingSerializer = new PingMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
-            var pongSerializer = new PongMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
-            var findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
-            var neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            PingMessageSerializer pingSerializer = new PingMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            PongMessageSerializer pongSerializer = new PongMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
+            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(ecdsa, privateKeyGenerator, messageFactory, nodeIdResolver);
 
             _messageSerializationService = messageSerializationService;
             _pingMessageSerializer = pingSerializer;

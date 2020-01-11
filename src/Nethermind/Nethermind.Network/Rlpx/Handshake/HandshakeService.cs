@@ -128,7 +128,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plainText);
             }
 
-            var nodeId = authMessage.PublicKey;
+            PublicKey nodeId = authMessage.PublicKey;
             if (_logger.IsTrace) _logger.Trace($"Received AUTH v{authMessage.Version} from {nodeId}");
 
             handshake.RemoteNodeId = nodeId;

@@ -125,7 +125,7 @@ namespace Nethermind.Network.Discovery
 
             return _nodeLifecycleManagers.GetOrAdd(node.IdHash, x =>
             {
-                var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+                INodeLifecycleManager manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
                 {
                     _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.NodeStats.NewPersistedNodeReputation)});
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Discovery
         {
             var completionSource = GetCompletionSource(senderIdHash, (int)messageType);
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout, delayCancellation.Token));
 
             bool result = firstTask == completionSource.Task;
             if (result)
@@ -217,14 +217,14 @@ namespace Nethermind.Network.Discovery
 
         private TaskCompletionSource<DiscoveryMessage> GetCompletionSource(Keccak senderAddressHash, int messageType)
         {
-            var key = new MessageTypeKey(senderAddressHash, messageType);
+            MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
             var completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMessage>());
             return completionSource;
         }
 
         private TaskCompletionSource<DiscoveryMessage> RemoveCompletionSource(Keccak senderAddressHash, int messageType)
         {
-            var key = new MessageTypeKey(senderAddressHash, messageType);
+            MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
             return _waitingEvents.TryRemove(key, out var completionSource) ? completionSource : null;
         }
 
@@ -239,21 +239,21 @@ namespace Nethermind.Network.Discovery
             var activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
             if (activeExcluded.Length == cleanupCount)
             {
-                var removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
+                int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
                 if(_logger.IsTrace) _logger.Trace($"Removed: {removeCounter} activeExcluded node lifecycle managers");
                 return;
             }
 
             var unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
-            var removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
+            int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
             if(_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<Keccak, INodeLifecycleManager>[] items, int count)
         {
-            var removeCount = 0;
-            for (var i = 0; i < count; i++)
+            int removeCount = 0;
+            for (int i = 0; i < count; i++)
             {
                 var item = items[i];
                 if (_nodeLifecycleManagers.TryRemove(item.Key, out _))

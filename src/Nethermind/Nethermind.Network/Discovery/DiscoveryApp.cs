@@ -137,7 +137,7 @@ namespace Nethermind.Network.Discovery
         {
             if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_networkConfig.ExternalIp}:{_networkConfig.DiscoveryPort}");
             _group = new MultithreadEventLoopGroup(1);
-            var bootstrap = new Bootstrap();
+            Bootstrap bootstrap = new Bootstrap();
             bootstrap
                 .Group(_group);
 
@@ -256,7 +256,7 @@ namespace Nethermind.Network.Discovery
             }
 
             var nodes = _discoveryStorage.GetPersistedNodes();
-            foreach (var networkNode in nodes)
+            foreach (NetworkNode networkNode in nodes)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -274,7 +274,7 @@ namespace Nethermind.Network.Discovery
                     continue;
                 }
                 
-                var manager = _discoveryManager.GetNodeLifecycleManager(node, true);
+                INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(node, true);
                 if (manager == null)
                 {
                     if (_logger.IsDebug)
@@ -301,7 +301,7 @@ namespace Nethermind.Network.Discovery
                 {
                     _discoveryTimer.Enabled = false;
                     RunDiscoveryProcess();
-                    var nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
+                    int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
                     _discoveryTimer.Interval = nodesCountAfterDiscovery < 100 ? 10 : nodesCountAfterDiscovery < 1000 ? 100 : _discoveryConfig.DiscoveryInterval;
                 }
                 catch (Exception exception)
@@ -384,7 +384,7 @@ namespace Nethermind.Network.Discovery
                 {
                     return;
                 }
-                var closeTask = _channel.CloseAsync();
+                Task closeTask = _channel.CloseAsync();
                 CancellationTokenSource delayCancellation = new CancellationTokenSource();
                 if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
                 {
@@ -411,13 +411,13 @@ namespace Nethermind.Network.Discovery
             }
             
             var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < bootnodes.Length; i++)
+            for (int i = 0; i < bootnodes.Length; i++)
             {
-                var bootnode = bootnodes[i];
-                var node = bootnode.NodeId == null
+                NetworkNode bootnode = bootnodes[i];
+                Node node = bootnode.NodeId == null
                     ? new Node(bootnode.Host, bootnode.Port)
                     : new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, true);
-                var manager = _discoveryManager.GetNodeLifecycleManager(node);
+                INodeLifecycleManager manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager != null)
                 {
                     managers.Add(manager);
@@ -429,9 +429,9 @@ namespace Nethermind.Network.Discovery
             }
 
             //Wait for pong message to come back from Boot nodes
-            var maxWaitTime = _discoveryConfig.BootnodePongTimeout;
-            var itemTime = maxWaitTime / 100;
-            for (var i = 0; i < 100; i++)
+            int maxWaitTime = _discoveryConfig.BootnodePongTimeout;
+            int itemTime = maxWaitTime / 100;
+            for (int i = 0; i < 100; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -461,10 +461,10 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            var reachedNodeCounter = 0;
-            for (var i = 0; i < managers.Count; i++)
+            int reachedNodeCounter = 0;
+            for (int i = 0; i < managers.Count; i++)
             {
-                var manager = managers[i];
+                INodeLifecycleManager manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
@@ -482,7 +482,7 @@ namespace Nethermind.Network.Discovery
 
         private void RunDiscoveryProcess()
         {
-            var task = Task.Run(async () =>
+            Task task = Task.Run(async () =>
             {
                 await RunDiscoveryAsync(_appShutdownSource.Token);
                 await RunRefreshAsync(_appShutdownSource.Token);
@@ -530,7 +530,7 @@ namespace Nethermind.Network.Discovery
                     _discoveryStorage.StartBatch();
                 });
 
-                var task = _storageCommitTask.ContinueWith(x =>
+                Task task = _storageCommitTask.ContinueWith(x =>
                 {
                     if (x.IsFaulted && _logger.IsError)
                     {

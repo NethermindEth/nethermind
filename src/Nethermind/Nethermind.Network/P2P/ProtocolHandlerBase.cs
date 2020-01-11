@@ -69,7 +69,7 @@ namespace Nethermind.Network.P2P
         {
             var receivedInitMsgTask = _initCompletionSource.Task;
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
             
             if (firstTask != receivedInitMsgTask)
             {

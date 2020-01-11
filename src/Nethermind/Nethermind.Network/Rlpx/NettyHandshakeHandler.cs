@@ -208,7 +208,7 @@ namespace Nethermind.Network.Rlpx
         {
             var receivedInitMsgTask = _initCompletionSource.Task;
             CancellationTokenSource delayCancellation = new CancellationTokenSource();
-            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake, delayCancellation.Token));
 
             if (firstTask != receivedInitMsgTask)
             {

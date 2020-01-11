@@ -63,7 +63,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 throw new Exception($"{nameof(DiscoveryManager)} has to be set");
             }
             
-            var node = new Node(id, host, port);
+            Node node = new Node(id, host, port);
             return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _discoveryMessageFactory, _evictionManager, _nodeStatsManager.GetOrAdd(node), _discoveryConfig, _logger);
         }
     }
