@@ -18,6 +18,7 @@ using System.Net;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.Serializers;
 
@@ -30,26 +31,18 @@ namespace Nethermind.Network.Benchmarks
         [GlobalSetup]
         public void GlobalSetup()
         {
-            _pingMessage = new PingMessage();
-            _pingMessage.SourceAddress = new IPEndPoint(IPAddress.Loopback, IPEndPoint.MaxPort);
-            _pingMessage.DestinationAddress = new IPEndPoint(IPAddress.Broadcast, IPEndPoint.MaxPort);
-            _pingMessage.ExpirationTime = 123456789;
         }
-
-        private NewPingMessageSerializer _pingSerializer = new NewPingMessageSerializer(new Ecdsa(), new PrivateKeyGenerator(new CryptoRandom()), new DiscoveryMessageFactory(Timestamper.Default), new NodeIdResolver(new Ecdsa()));
-        private PingMessageSerializer _newPingSerializer = new PingMessageSerializer(new Ecdsa(), new PrivateKeyGenerator(new CryptoRandom()), new DiscoveryMessageFactory(Timestamper.Default), new NodeIdResolver(new Ecdsa()));
-        private PingMessage _pingMessage;
 
         [Benchmark(Baseline = true)]
         public byte[] Old()
         {
-            return _pingSerializer.Serialize(_pingMessage);
+            return Bytes.Empty;
         }
 
         [Benchmark]
         public byte[] New()
         {
-            return _newPingSerializer.Serialize(_pingMessage);
+            return Bytes.Empty;
         }
     }
 }
