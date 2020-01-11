@@ -320,10 +320,7 @@ namespace Nethermind.Blockchain.Synchronization
             _isStarted = false;
             _refreshLoopCancellation.Cancel();
             await (_refreshLoopTask ?? Task.CompletedTask);
-            Parallel.ForEach(_peers, p =>
-            {
-                p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close");
-            });
+            Parallel.ForEach(_peers, p => { p.Value.SyncPeer.Disconnect(DisconnectReason.ClientQuitting, "App Close"); });
         }
 
         public void EnsureBest()
@@ -527,7 +524,7 @@ namespace Nethermind.Blockchain.Synchronization
             Metrics.SyncPeers = _peers.Count;
 
             if (_logger.IsDebug) _logger.Debug($"Adding {syncPeer.Node:c} to refresh queue");
-            NetworkDiagTracer.ReportInterestingEvent(peerInfo.SyncPeer.Node.Host, "adding node to refresh queue");
+            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(peerInfo.SyncPeer.Node.Host, "adding node to refresh queue");
             _peerRefreshQueue.Add(peerInfo);
         }
 
