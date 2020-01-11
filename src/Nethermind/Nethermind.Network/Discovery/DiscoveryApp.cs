@@ -119,7 +119,7 @@ namespace Nethermind.Network.Discovery
                 {
                     if (x.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Error during discovery persisntance stop.", x.Exception);
+                        if (_logger.IsError) _logger.Error("Error during discovery persistance stop.", x.Exception);
                     }
                 });
             }
@@ -162,8 +162,6 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeChannel(IDatagramChannel channel)
         {
-            _logger.Error($"Initializing channel {channel?.RemoteAddress?.ToString() ?? string.Empty}");
-            _logger.Error($"Initializing channel local {channel?.LocalAddress?.ToString() ?? string.Empty}");
             _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager);
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             _discoveryManager.MessageSender = _discoveryHandler;
@@ -176,8 +174,7 @@ namespace Nethermind.Network.Discovery
         
         private void OnChannelActivated(object sender, EventArgs e)
         {
-            _logger.Error($"Activated channel {(sender as NettyDiscoveryHandler)?._channel?.RemoteAddress?.ToString() ?? string.Empty}");
-            _logger.Error($"Activated channel local {(sender as NettyDiscoveryHandler)?._channel?.LocalAddress?.ToString() ?? string.Empty}");
+            if(_logger.IsInfo) _logger.Info("Activated discovery channel.");
             
             //Make sure this is non blocking code, otherwise netty will not process messages
             Task.Run(() => OnChannelActivated(_appShutdownSource.Token)).ContinueWith
@@ -200,7 +197,6 @@ namespace Nethermind.Network.Discovery
 
         private async Task OnChannelActivated(CancellationToken cancellationToken)
         {
-            if(_logger.IsError) _logger.Error("RUNNING Initializing bootnodes.");
             try
             {
                 //Step 1 - read nodes and stats from db
