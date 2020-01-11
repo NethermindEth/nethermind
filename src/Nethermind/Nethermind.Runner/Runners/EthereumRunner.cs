@@ -208,10 +208,6 @@ namespace Nethermind.Runner.Runners
             _ipResolver = new IpResolver(_networkConfig, _logManager);
             _networkConfig.ExternalIp = _ipResolver.ExternalIp.ToString();
             _networkConfig.LocalIp = _ipResolver.LocalIp.ToString();
-            if (_networkConfig.DiagTracerEnabled)
-            {
-                NetworkDiagTracer.IsEnabled = true;
-            }
         }
 
         public async Task Start()
@@ -614,7 +610,6 @@ namespace Nethermind.Runner.Runners
             _disposeStack.Push(subscription);
 
             await InitializeNetwork();
-            NetworkDiagTracer.Start();
         }
 
         private IBlockFinalizationManager InitFinalizationManager(IList<IAdditionalBlockProcessor> blockPreProcessors)
@@ -789,6 +784,12 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork()
         {
+            if (_networkConfig.DiagTracerEnabled)
+            {
+                NetworkDiagTracer.IsEnabled = true;
+                NetworkDiagTracer.Start();
+            }
+            
             var maxPeersCount = _networkConfig.ActivePeersMaxCount;
             _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
             NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
