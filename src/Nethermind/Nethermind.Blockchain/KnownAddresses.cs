@@ -50,6 +50,15 @@ namespace Nethermind.Blockchain
             {new Address("0x9d525e28fe5830ee92d7aa799c4d21590567b595"), "roninkaizen"}
         };
         
+        public static Dictionary<Address, string> KnownMiners = new Dictionary<Address, string>
+        {
+            {new Address("0x52bc44d5378309ee2abf1539bf71de1b7d7be3b5"), "Nanopool"},
+            {new Address("0x04668ec2f57cc15c381b461b9fedab5d451c8f7f"), "zhizhu.top"},
+            {new Address("0x5a0b54d5dc17e0aadc383d2db43b0a0d3e029c4c"), "Spark Pool"},
+            {new Address("0x06b8c5883ec71bc3f4b332081519f23834c8706e"), "Mining Express"},
+            {new Address("0xea674fdde714fd979de3edf0f56aa9716b898ec8"), "Ethermine"},
+        };
+        
         public static Dictionary<Address, string> RinkebyValidators = new Dictionary<Address, string>
         {
             // Oraclize, AKASHA, Foundation x3, Infura, Augur, Cotton Candy?
