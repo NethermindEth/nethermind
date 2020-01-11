@@ -170,11 +170,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 case Eth62MessageCode.Status:
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(StatusMessage)}({statusMessage.ChainId})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(StatusMessage)}({statusMessage.ChainId})");
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(NewBlockHashesMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(NewBlockHashesMessage));
                     Interlocked.Increment(ref Counter);
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NewBlockHashes from {Node:c}");
                     Metrics.Eth62NewBlockHashesReceived++;
@@ -184,7 +184,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Interlocked.Increment(ref Counter);
                     Metrics.Eth62TransactionsReceived++;
                     TransactionsMessage transactionsMessage = Deserialize<TransactionsMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Length})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Length})");
                     if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
                         Handle(transactionsMessage);
@@ -196,7 +196,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetBlockHeaders from {Node:c}");
                     Metrics.Eth62GetBlockHeadersReceived++;
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(GetBlockHeadersMessage)}({getBlockHeadersMessage.StartingBlockNumber}|{getBlockHeadersMessage.StartingBlockHash}, {getBlockHeadersMessage.MaxHeaders})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(GetBlockHeadersMessage)}({getBlockHeadersMessage.StartingBlockNumber}|{getBlockHeadersMessage.StartingBlockHash}, {getBlockHeadersMessage.MaxHeaders})");
                     Handle(getBlockHeadersMessage);
                     break;
                 case Eth62MessageCode.BlockHeaders:
@@ -204,7 +204,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockHeaders from {Node:c}");
                     Metrics.Eth62BlockHeadersReceived++;
                     BlockHeadersMessage blockHeadersMessage = Deserialize<BlockHeadersMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(BlockHeadersMessage)}({blockHeadersMessage.BlockHeaders.Length})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(BlockHeadersMessage)}({blockHeadersMessage.BlockHeaders.Length})");
                     Handle(blockHeadersMessage, size);
                     break;
                 case Eth62MessageCode.GetBlockBodies:
@@ -212,7 +212,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetBlockBodies from {Node:c}");
                     Metrics.Eth62GetBlockBodiesReceived++;
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(GetBlockBodiesMessage)}({getBlockBodiesMessage.BlockHashes.Count})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(GetBlockBodiesMessage)}({getBlockBodiesMessage.BlockHashes.Count})");
                     Handle(getBlockBodiesMessage);
                     break;
                 case Eth62MessageCode.BlockBodies:
@@ -220,7 +220,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockBodies from {Node:c}");
                     Metrics.Eth62BlockBodiesReceived++;
                     BlockBodiesMessage blockBodiesMessage = Deserialize<BlockBodiesMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(BlockBodiesMessage)}({blockBodiesMessage.Bodies.Length})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(BlockBodiesMessage)}({blockBodiesMessage.Bodies.Length})");
                     Handle(blockBodiesMessage, size);
                     break;
                 case Eth62MessageCode.NewBlock:
@@ -228,7 +228,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NewBlock from {Node:c}");
                     Metrics.Eth62NewBlockReceived++;
                     NewBlockMessage newBlockMessage = Deserialize<NewBlockMessage>(message.Content);
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(NewBlockMessage)}({newBlockMessage.Block.Number})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(NewBlockMessage)}({newBlockMessage.Block.Number})");
                     Handle(newBlockMessage);
                     break;
             }

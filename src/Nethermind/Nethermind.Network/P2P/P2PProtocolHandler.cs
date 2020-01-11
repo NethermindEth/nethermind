@@ -107,7 +107,7 @@ namespace Nethermind.Network.P2P
             else if (msg.PacketType == P2PMessageCode.Disconnect)
             {
                 DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Disconnect({disconnectMessage.Reason})");
+                if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Disconnect({disconnectMessage.Reason})");
                 if (Logger.IsTrace) Logger.Trace($"|NetworkTrace| {Session.RemoteNodeId} Received disconnect ({(Enum.IsDefined(typeof(DisconnectReason), (byte) disconnectMessage.Reason) ? ((DisconnectReason) disconnectMessage.Reason).ToString() : disconnectMessage.Reason.ToString())}) on {Session.RemotePort}");
                 Close(disconnectMessage.Reason);
             }
@@ -138,7 +138,7 @@ namespace Nethermind.Network.P2P
 
         private void HandleHello(HelloMessage hello)
         {
-            NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Hello({hello.ClientId}, {string.Join(", ", hello.Capabilities)})");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Hello({hello.ClientId}, {string.Join(", ", hello.Capabilities)})");
             
             bool isInbound = !_sentHello;
 
@@ -278,7 +278,7 @@ namespace Nethermind.Network.P2P
 
         private void HandlePing()
         {
-            NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Ping");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Ping");
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
             Send(PongMessage.Instance);
         }
@@ -304,7 +304,7 @@ namespace Nethermind.Network.P2P
         
         private void HandlePong(Packet msg)
         {
-            NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Pong");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Pong");
             if (Logger.IsTrace) Logger.Trace($"{Session} sending P2P pong");
             _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
             _pongCompletionSource?.TrySetResult(msg);

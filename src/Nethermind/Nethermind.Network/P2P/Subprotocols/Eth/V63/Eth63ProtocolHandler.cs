@@ -62,28 +62,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             switch (message.PacketType)
             {
                 case Eth63MessageCode.GetReceipts:
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(GetReceiptsMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(GetReceiptsMessage));
                     Interlocked.Increment(ref Counter);
                     if(Logger.IsTrace) Logger.Trace($"{Counter:D5} GetReceipts from {Node:c}");
                     Metrics.Eth63GetReceiptsReceived++;
                     Handle(Deserialize<GetReceiptsMessage>(message.Content));
                     break;
                 case Eth63MessageCode.Receipts:
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(ReceiptsMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(ReceiptsMessage));
                     Interlocked.Increment(ref Counter);
                     if(Logger.IsTrace) Logger.Trace($"{Counter:D5} Receipts from {Node:c}");
                     Metrics.Eth63ReceiptsReceived++;
                     Handle(Deserialize<ReceiptsMessage>(message.Content), size);
                     break;
                 case Eth63MessageCode.GetNodeData:
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(GetNodeDataMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(GetNodeDataMessage));
                     Interlocked.Increment(ref Counter);
                     if(Logger.IsTrace) Logger.Trace($"{Counter:D5} GetNodeData from {Node:c}");
                     Metrics.Eth63GetNodeDataReceived++;
                     Handle(Deserialize<GetNodeDataMessage>(message.Content));
                     break;
                 case Eth63MessageCode.NodeData:
-                    NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(NodeDataMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(NodeDataMessage));
                     Interlocked.Increment(ref Counter);
                     if(Logger.IsTrace) Logger.Trace($"{Counter:D5} NodeData from {Node:c}");
                     Metrics.Eth63NodeDataReceived++;

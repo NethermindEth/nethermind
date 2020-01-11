@@ -61,7 +61,7 @@ namespace Nethermind.Network.P2P
         protected void Send<T>(T message) where T : P2PMessage
         {
             if (Logger.IsTrace) Logger.Trace($"Sending {typeof(T).Name}");
-            NetworkDiagTracer.ReportOutgoingMessage(Session.SessionId, Name, typeof(T).Name);
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.SessionId, Name, typeof(T).Name);
             Session.DeliverMessage(message);
         }
 
