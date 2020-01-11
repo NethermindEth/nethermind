@@ -370,7 +370,7 @@ namespace Nethermind.Network.P2P
 
             UpdateMetric(disconnectType, disconnectReason);
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} disconnect call {disconnectReason} {disconnectType}");
-            NetworkDiagTracer.ReportDisconnect(SessionId, $"{disconnectType} {disconnectReason} {details}");
+            NetworkDiagTracer.ReportDisconnect(Node.Host, $"{disconnectType} {disconnectReason} {details}");
 
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {this} invoking 'Disconnecting' event {disconnectReason} {disconnectType}");
             Disconnecting?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, details));

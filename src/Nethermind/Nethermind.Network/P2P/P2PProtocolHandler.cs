@@ -107,7 +107,7 @@ namespace Nethermind.Network.P2P
             else if (msg.PacketType == P2PMessageCode.Disconnect)
             {
                 DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Disconnect({disconnectMessage.Reason})");
+                if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, "p2p", $"Disconnect({disconnectMessage.Reason})");
                 if (Logger.IsTrace) Logger.Trace($"|NetworkTrace| {Session.RemoteNodeId} Received disconnect ({(Enum.IsDefined(typeof(DisconnectReason), (byte) disconnectMessage.Reason) ? ((DisconnectReason) disconnectMessage.Reason).ToString() : disconnectMessage.Reason.ToString())}) on {Session.RemotePort}");
                 Close(disconnectMessage.Reason);
             }
@@ -138,7 +138,7 @@ namespace Nethermind.Network.P2P
 
         private void HandleHello(HelloMessage hello)
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", $"Hello({hello.ClientId}, {string.Join(", ", hello.Capabilities)})");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, "p2p", $"Hello({hello.ClientId}, {string.Join(", ", hello.Capabilities)})");
             
             bool isInbound = !_sentHello;
 
@@ -245,6 +245,7 @@ namespace Nethermind.Network.P2P
             if (Logger.IsTrace) Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);
             Send(message);
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportDisconnect(Session.Node.Host, $"Local {disconnectReason} {details}");
         }
 
         protected override TimeSpan InitTimeout => Timeouts.P2PHello;
@@ -278,7 +279,7 @@ namespace Nethermind.Network.P2P
 
         private void HandlePing()
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Ping");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, "p2p", "Ping");
             if (Logger.IsTrace) Logger.Trace($"{Session} P2P responding to ping");
             Send(PongMessage.Instance);
         }
@@ -300,11 +301,11 @@ namespace Nethermind.Network.P2P
             Session.MarkDisconnected(disconnectReason, DisconnectType.Remote, "message");
         }
 
-        public override string Name => "eth62";
+        public override string Name => "p2p";
         
         private void HandlePong(Packet msg)
         {
-            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, "p2p", "Pong");
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, "p2p", "Pong");
             if (Logger.IsTrace) Logger.Trace($"{Session} sending P2P pong");
             _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
             _pongCompletionSource?.TrySetResult(msg);

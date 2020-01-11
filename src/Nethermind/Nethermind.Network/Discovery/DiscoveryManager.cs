@@ -100,7 +100,16 @@ namespace Nethermind.Network.Discovery
                         _logger.Error($"Unsupported msgType: {msgType}");
                         return;
                 }
-
+                
+                if (message is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "MANAGER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "MANAGER disc v4", message.MessageType.ToString());    
+                }
+                
                 NotifySubscribersOnMsgReceived(msgType, nodeManager.ManagedNode, message);
                 CleanUpLifecycleManagers();
             }
@@ -141,6 +150,15 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
+                if (discoveryMessage is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMessage.FarAddress.Address.ToString(), "disc v4", discoveryMessage.MessageType.ToString());    
+                }
+                
                 _messageSender.SendMessage(discoveryMessage);
             }
             catch (Exception e)

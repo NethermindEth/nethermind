@@ -15,14 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Timers;
+using System.Xml.XPath;
 
 namespace Nethermind.Core
 {
     public static class NetworkDiagTracer
     {
-        public static bool IsEnabled => false;
+        public static bool IsEnabled => true;
 
         static NetworkDiagTracer()
         {
@@ -32,40 +37,69 @@ namespace Nethermind.Core
             }
         }
         
+        private static ConcurrentDictionary<string, List<string>> events = new ConcurrentDictionary<string, List<string>>();
+
+        public static void Start()
+        {
+            Timer timer = new Timer();
+            timer.Interval = 60000;
+            timer.Elapsed += (sender, args) => DumpEvents(); 
+            timer.Start();
+        }
+
+        private static void DumpEvents()
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+            foreach (KeyValuePair<string,List<string>> keyValuePair in events)
+            {
+                stringBuilder.AppendLine(keyValuePair.Key);
+                foreach (string s in keyValuePair.Value)
+                {
+                    stringBuilder.AppendLine("  " + s);    
+                }
+            }
+            
+            File.WriteAllText(@"network_diag.txt", stringBuilder.ToString());
+        }
+
         [MethodImpl(MethodImplOptions.Synchronized)]
-        private static void LogLine(Guid sessionGuid, string line)
+        private static void Add(string nodeInfo, string line)
         {
-            File.AppendAllText(Path.Combine("network", sessionGuid.ToString()), string.Concat(line, Environment.NewLine));
+            events.AddOrUpdate(nodeInfo, ni => new List<string>(), (s, list) =>
+            {
+                list.Add(line);
+                return list;
+            });
         }
         
-        public static void ReportOutgoingMessage(Guid sessionId, string protocol, string messageCode)
+        public static void ReportOutgoingMessage(string nodeInfo, string protocol, string messageCode)
         {
             if(!IsEnabled) return;
-            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} <<< {protocol} {messageCode}");
         }
         
-        public static void ReportIncomingMessage(Guid sessionId, string protocol, string messageCode)
+        public static void ReportIncomingMessage(string nodeInfo, string protocol, string info)
         {
             if(!IsEnabled) return;
-            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {messageCode}");
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} >>> {protocol} {info}");
         }
         
-        // public static void ReportConnect(Guid sessionId, string clientId)
-        // {
-        //     if(!IsEnabled) return;
-        //     LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
-        // }
-        
-        public static void ReportDisconnect(Guid sessionId, string details)
+        public static void ReportConnect(string nodeInfo, string clientId)
         {
             if(!IsEnabled) return;
-            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} CONNECT {clientId}");
         }
         
-        public static void ReportInterestingEvent(Guid sessionId, string details)
+        public static void ReportDisconnect(string nodeInfo, string details)
         {
             if(!IsEnabled) return;
-            LogLine(sessionId, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} DISCONNECT {details}");
+        }
+        
+        public static void ReportInterestingEvent(string nodeInfo, string details)
+        {
+            if(!IsEnabled) return;
+            Add(nodeInfo, $"{DateTime.UtcNow:HH:mm:ss.ffffff} {details}");
         }
     }
 }

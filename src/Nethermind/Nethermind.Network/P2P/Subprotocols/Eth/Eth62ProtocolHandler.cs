@@ -75,16 +75,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void CheckTxFlooding(object sender, ElapsedEventArgs e)
         {
-            if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
-            {
-                if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
-                InitiateDisconnect(DisconnectReason.UselessPeer, $"tx flooding {_notAcceptedTxsSinceLastCheck}/{_txFloodCheckTimer}");
-            }
-
-            if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
+            if (!_isDowngradedDueToTxFlooding && _notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 10)
             {
                 if (Logger.IsDebug) Logger.Debug($"Downgrading {Node.Id} due to tx flooding");
                 _isDowngradedDueToTxFlooding = true;
+            }
+            else
+            {
+                if (_notAcceptedTxsSinceLastCheck / _txFloodCheckInterval.TotalSeconds > 100)
+                {
+                    if (Logger.IsDebug) Logger.Debug($"Disconnecting {Node.Id} due to tx flooding");
+                    InitiateDisconnect(DisconnectReason.UselessPeer, $"tx flooding {_notAcceptedTxsSinceLastCheck}/{_txFloodCheckInterval.TotalSeconds > 100}");
+                }
             }
 
             _notAcceptedTxsSinceLastCheck = 0;
@@ -133,8 +135,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             statusMessage.TotalDifficulty = head.TotalDifficulty ?? head.Difficulty;
             statusMessage.BestHash = head.Hash;
             statusMessage.GenesisHash = SyncServer.Genesis.Hash;
-
+            
             Send(statusMessage);
+            if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node.Host, Name, statusMessage.ToString());
             Metrics.StatusesSent++;
 
             //We are expecting receiving Status message anytime from the p2p completion, irrespective of sending Status from our side
@@ -170,11 +173,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 case Eth62MessageCode.Status:
                     StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(StatusMessage)}({statusMessage.ChainId})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, statusMessage.ToString());
                     Handle(statusMessage);
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, nameof(NewBlockHashesMessage));
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, nameof(NewBlockHashesMessage));
                     Interlocked.Increment(ref Counter);
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NewBlockHashes from {Node:c}");
                     Metrics.Eth62NewBlockHashesReceived++;
@@ -184,7 +187,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Interlocked.Increment(ref Counter);
                     Metrics.Eth62TransactionsReceived++;
                     TransactionsMessage transactionsMessage = Deserialize<TransactionsMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Length})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(TransactionsMessage)}({transactionsMessage.Transactions.Length})");
                     if (!_isDowngradedDueToTxFlooding || 10 > _random.Next(0, 99)) // TODO: disable that when IsMining is set to true
                     {
                         Handle(transactionsMessage);
@@ -196,7 +199,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetBlockHeaders from {Node:c}");
                     Metrics.Eth62GetBlockHeadersReceived++;
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(GetBlockHeadersMessage)}({getBlockHeadersMessage.StartingBlockNumber}|{getBlockHeadersMessage.StartingBlockHash}, {getBlockHeadersMessage.MaxHeaders})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(GetBlockHeadersMessage)}({getBlockHeadersMessage.StartingBlockNumber}|{getBlockHeadersMessage.StartingBlockHash}, {getBlockHeadersMessage.MaxHeaders})");
                     Handle(getBlockHeadersMessage);
                     break;
                 case Eth62MessageCode.BlockHeaders:
@@ -204,7 +207,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockHeaders from {Node:c}");
                     Metrics.Eth62BlockHeadersReceived++;
                     BlockHeadersMessage blockHeadersMessage = Deserialize<BlockHeadersMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(BlockHeadersMessage)}({blockHeadersMessage.BlockHeaders.Length})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(BlockHeadersMessage)}({blockHeadersMessage.BlockHeaders.Length})");
                     Handle(blockHeadersMessage, size);
                     break;
                 case Eth62MessageCode.GetBlockBodies:
@@ -212,7 +215,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} GetBlockBodies from {Node:c}");
                     Metrics.Eth62GetBlockBodiesReceived++;
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(GetBlockBodiesMessage)}({getBlockBodiesMessage.BlockHashes.Count})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(GetBlockBodiesMessage)}({getBlockBodiesMessage.BlockHashes.Count})");
                     Handle(getBlockBodiesMessage);
                     break;
                 case Eth62MessageCode.BlockBodies:
@@ -220,7 +223,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} BlockBodies from {Node:c}");
                     Metrics.Eth62BlockBodiesReceived++;
                     BlockBodiesMessage blockBodiesMessage = Deserialize<BlockBodiesMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(BlockBodiesMessage)}({blockBodiesMessage.Bodies.Length})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(BlockBodiesMessage)}({blockBodiesMessage.Bodies.Length})");
                     Handle(blockBodiesMessage, size);
                     break;
                 case Eth62MessageCode.NewBlock:
@@ -228,7 +231,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (Logger.IsTrace) Logger.Trace($"{Counter:D5} NewBlock from {Node:c}");
                     Metrics.Eth62NewBlockReceived++;
                     NewBlockMessage newBlockMessage = Deserialize<NewBlockMessage>(message.Content);
-                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.SessionId, Name, $"{nameof(NewBlockMessage)}({newBlockMessage.Block.Number})");
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Host, Name, $"{nameof(NewBlockMessage)}({newBlockMessage.Block.Number})");
                     Handle(newBlockMessage);
                     break;
             }
@@ -355,7 +358,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 transaction.DeliveredBy = Node.Id;
                 transaction.Timestamp = _timestamper.EpochSeconds;
                 AddTxResult result = _txPool.AddTransaction(transaction, SyncServer.Head.Number);
-                if (result == AddTxResult.AlreadyKnown)
+                if (result != AddTxResult.Added)
                 {
                     _notAcceptedTxsSinceLastCheck++;
                 }

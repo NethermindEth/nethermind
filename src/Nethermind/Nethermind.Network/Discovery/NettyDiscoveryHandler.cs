@@ -167,6 +167,15 @@ namespace Nethermind.Network.Discovery
                 }
 
                 // if(_logger.IsError) _logger.Error($"Received discovery message {ctx.Channel.RemoteAddress}, type: {type}, sender: {address}, message: {message}");
+                if (message is PingMessage pingMessage)
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(pingMessage.FarAddress.Address.ToString(), "HANDLER disc v4", $"PING {pingMessage.SourceAddress.Address} -> {pingMessage.DestinationAddress.Address}");    
+                }
+                else
+                {
+                    if(NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(message.FarAddress.Address.ToString(), "HANDLER disc v4", message.MessageType.ToString());    
+                }
+                
                 _discoveryManager.OnIncomingMessage(message);
             }
             catch (Exception e)
