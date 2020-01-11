@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test
                 {
                     throw new InvalidOperationException("making it fail");
                 }
-                
+
                 lock (this)
                 {
                     ConnectAsyncCallsCount++;
@@ -267,14 +267,10 @@ namespace Nethermind.Network.Test
             _peerManager.Init();
             _peerManager.Start();
 
-            
-            for (int i = 0; i < 10; i++)
-            {
-                Thread.Sleep(_travisDelay);
-                Assert.AreEqual(0, _peerManager.ActivePeers.Count);
-            }
+            Thread.Sleep(_travisDelay);
+            Assert.AreEqual(0, _peerManager.ActivePeers.Count);
         }
-        
+
         [Test]
         public void Will_fill_up_over_and_over_again_on_disconnects()
         {
@@ -291,7 +287,7 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
         }
-        
+
         [Test]
         public void Will_fill_up_over_and_over_again_on_newly_discovered()
         {
@@ -307,8 +303,10 @@ namespace Nethermind.Network.Test
             }
         }
 
-        private int _travisDelay = 1000;
+        private int _travisDelay = 100;
         
+        private int _travisDelayLong = 1000;
+
         [Test]
         [Ignore("Behaviour changed that allows peers to go over max if awaiting response")]
         public void Will_fill_up_with_incoming_over_and_over_again_on_disconnects()
@@ -394,7 +392,7 @@ namespace Nethermind.Network.Test
                 DisconnectAllSessions();
             }
         }
-        
+
         private List<NetworkNode> CreateNodes(int count)
         {
             var nodes = new List<NetworkNode>();
@@ -435,7 +433,7 @@ namespace Nethermind.Network.Test
                 _rlpxPeer.CreateRandomIncoming();
             }
         }
-        
+
         private void DiscoverNew(int count)
         {
             for (int i = 0; i < count; i++)
@@ -484,13 +482,12 @@ namespace Nethermind.Network.Test
             foreach (var node in staticNodes)
             {
                 _discoveryApp.NodeDiscovered += Raise.EventWith(new NodeEventArgs(new Node(node.Host, node.Port)));
-
             }
 
             Thread.Sleep(_travisDelay);
             _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount);
         }
-        
+
         [Test]
         public void Will_disconnect_on_remove_static_node()
         {
@@ -501,16 +498,16 @@ namespace Nethermind.Network.Test
             _peerManager.Init();
             _peerManager.Start();
             Thread.Sleep(_travisDelay);
-            
+
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             _sessions.ForEach(s => s.Disconnected += DisconnectHandler);
-            
+
             _staticNodesManager.NodeRemoved += Raise.EventWith(new NetworkNodeEventArgs(staticNodes.First()));
-            
+
             _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount - 1);
             disconnections.Should().Be(1);
         }
-        
+
         [Test]
         public void Will_connect_and_disconnect_on_peer_management()
         {
@@ -519,10 +516,10 @@ namespace Nethermind.Network.Test
             _peerManager.Start();
             var node = new NetworkNode(GenerateEnode());
             _peerManager.AddPeer(node);
-            Thread.Sleep(_travisDelay);
+            Thread.Sleep(_travisDelayLong);
 
-            _peerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(new[] {node.NodeId});
-            
+            _peerManager.ActivePeers.Select(p => p.Node.Id).Should().BeEquivalentTo(node.NodeId);
+
             void DisconnectHandler(object o, DisconnectEventArgs e) => disconnections++;
             _sessions.ForEach(s => s.Disconnected += DisconnectHandler);
 
@@ -541,10 +538,10 @@ namespace Nethermind.Network.Test
             _peerManager.AddPeer(node).Should().BeTrue();
             _peerManager.AddPeer(node).Should().BeFalse();
             _peerManager.AddPeer(node).Should().BeFalse();
-            Thread.Sleep(_travisDelay);
+            Thread.Sleep(_travisDelayLong);
             _peerManager.ActivePeers.Should().HaveCount(1);
         }
-        
+
         [Test]
         public void RemovePeer_should_fail_if_peer_not_added()
         {
