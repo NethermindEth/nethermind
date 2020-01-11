@@ -162,6 +162,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeChannel(IDatagramChannel channel)
         {
+            _logger.Error($"Initializing channel {channel?.RemoteAddress?.ToString() ?? string.Empty}");
             _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _timestamper, _logManager);
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             _discoveryManager.MessageSender = _discoveryHandler;
