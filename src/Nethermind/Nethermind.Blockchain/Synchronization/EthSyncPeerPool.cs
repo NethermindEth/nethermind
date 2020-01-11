@@ -360,6 +360,8 @@ namespace Nethermind.Blockchain.Synchronization
             _signals.Set();
         }
 
+        public event EventHandler PeerAdded;
+
         private static int InitTimeout = 10000; // the Eth.Timeout should hit us earlier
 
         private async Task RefreshPeerInfo(PeerInfo peerInfo, CancellationToken token)
@@ -428,6 +430,7 @@ namespace Nethermind.Blockchain.Synchronization
                             }
 
                             _signals.Set();
+                            PeerAdded?.Invoke(this, EventArgs.Empty);
                         }
                     }
                     finally

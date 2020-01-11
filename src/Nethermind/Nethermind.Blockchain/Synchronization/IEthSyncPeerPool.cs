@@ -18,7 +18,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Synchronization
 {
@@ -65,5 +64,7 @@ namespace Nethermind.Blockchain.Synchronization
         void ReportBadPeer(SyncPeerAllocation batchAssignedPeer);
         
         void WakeUpAll();
+
+        event EventHandler PeerAdded;
     }
 }
