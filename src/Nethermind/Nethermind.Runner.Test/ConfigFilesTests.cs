@@ -17,6 +17,7 @@
 using System.IO;
 using System.Net;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -372,21 +373,22 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
         }
         
-        [TestCase("ropsten.cfg", false, false)]
-        [TestCase("rinkeby.cfg", false, false)]
-        [TestCase("goerli.cfg", false, false)]
+        [TestCase("ropsten.cfg", true, true)]
+        [TestCase("rinkeby.cfg", true, true)]
+        [TestCase("goerli.cfg", true, true)]
         [TestCase("mainnet.cfg", false, false)]
-        [TestCase("sokol.cfg", false, false)]
-        [TestCase("sokol_validator.cfg", false, false)]
-        [TestCase("sokol_fastsync.cfg", false, false)]
-        [TestCase("poacore.cfg", false, false)]
-        [TestCase("xdai.cfg", false, false)]
-        [TestCase("volta.cfg", false, false)]
+        [TestCase("sokol.cfg", true, true)]
+        [TestCase("sokol_validator.cfg", true, true)]
+        [TestCase("sokol_fastsync.cfg", true, true)]
+        [TestCase("poacore.cfg", true, true)]
+        [TestCase("xdai.cfg", true, true)]
+        [TestCase("volta.cfg", true, true)]
         public void Fast_sync_settings_as_expected(string configFile, bool downloadBodies, bool downloadsReceipts)
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
-            IKafkaConfig kafkaConfig = configProvider.GetConfig<IKafkaConfig>();
-            Assert.AreEqual(false, kafkaConfig.Enabled, nameof(kafkaConfig.Enabled));
+            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+            Assert.AreEqual(downloadBodies, syncConfig.DownloadBodiesInFastSync, nameof(syncConfig.DownloadBodiesInFastSync));
+            Assert.AreEqual(downloadsReceipts, syncConfig.DownloadReceiptsInFastSync, nameof(syncConfig.DownloadReceiptsInFastSync));
         }
         
         [TestCase("ropsten_archive.cfg")]
