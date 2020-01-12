@@ -176,6 +176,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
+        private Guid _sealValidatorUserGuid = Guid.NewGuid();
+        
         private void ValidateHeaders(CancellationToken cancellation, FastBlocksBatch batch)
         {
             batch.MarkValidation();
@@ -199,6 +201,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     bool isHashValid = _blockValidator.ValidateHash(header);
+                    
+                    _sealValidator.HintValidationRange(_sealValidatorUserGuid, header.Number + 3000, header.Number - 150000);
                     bool isSealValid = _sealValidator.ValidateSeal(header, false);
                     if (!isHashValid)
                     {

@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -210,6 +211,8 @@ namespace Nethermind.Mining
             _hintBasedCache.Hint(guid, start, end);
         }
 
+        private Guid _hintBasedCacheUser = Guid.Empty;
+        
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
@@ -217,7 +220,13 @@ namespace Nethermind.Mining
             if (dataSet == null)
             {
                 if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
-                dataSet = BuildCache(epoch);
+                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
+                dataSet = _hintBasedCache.Get(epoch);
+                if (dataSet == null)
+                {
+                    if(_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
+                    return false;
+                }
             }
             
             ulong fullSize = GetDataSize(epoch);

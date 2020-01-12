@@ -53,6 +53,8 @@ namespace Nethermind.Mining
 
         public bool ValidateSeal(BlockHeader header, bool force)
         {
+            _logger.Warn($"Validating seal for {header.ToString(BlockHeader.Format.Short)}");
+            
             // genesis block is configured and assumed valid
             if (header.IsGenesis) return true;
 
