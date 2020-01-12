@@ -154,8 +154,6 @@ DiscoveryConfig
 
  NodeLifecycleManagersCleanupCount
 
- PingMessageVersion
-
  PingRetryCount
 
  PongTimeout
@@ -367,6 +365,10 @@ NetworkConfig
    
    default value: 11000
 
+ DiagTracerEnabled
+   Enabled very verbose diag network tracing files for DEV purposes (Nethermind specific)
+   default value: false
+
  DiscoveryPort
    UDP port number for incoming discovery connections.
    default value: 30303
@@ -554,7 +556,6 @@ Sample configuration (mainnet)
               "MaxDiscoveryRounds" : [MISSING_DOCS],
               "MaxNodeLifecycleManagersCount" : [MISSING_DOCS],
               "NodeLifecycleManagersCleanupCount" : [MISSING_DOCS],
-              "PingMessageVersion" : [MISSING_DOCS],
               "PingRetryCount" : [MISSING_DOCS],
               "PongTimeout" : [MISSING_DOCS],
               "SendNodeTimeout" : [MISSING_DOCS],
@@ -624,6 +625,7 @@ Sample configuration (mainnet)
         "Network": {
               "ActivePeersMaxCount" : 25,
               "CandidatePeerCountCleanupThreshold" : 11000,
+              "DiagTracerEnabled" : false,
               "DiscoveryPort" : 30303,
               "ExternalIp" : null,
               "IsPeersPersistenceOn" : true,
