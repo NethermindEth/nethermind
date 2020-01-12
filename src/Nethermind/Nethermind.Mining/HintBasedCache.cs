@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Logging;
 
 namespace Nethermind.Mining
 {
@@ -29,13 +30,15 @@ namespace Nethermind.Mining
         private ConcurrentDictionary<uint, int> _epochRefs = new ConcurrentDictionary<uint, int>();
         private ConcurrentDictionary<uint, Task<IEthashDataSet>> _cachedSets = new ConcurrentDictionary<uint, Task<IEthashDataSet>>();
 
-        public int CachedEpochsCount { get; set; }
+        public int CachedEpochsCount { get; private set; }
 
         private readonly Func<uint, IEthashDataSet> _createDataSet;
+        private ILogger _logger;
 
-        public HintBasedCache(Func<uint, IEthashDataSet> createDataSet)
+        public HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
         {
             _createDataSet = createDataSet;
+            _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Hint(Guid guid, long start, long end)
@@ -70,6 +73,7 @@ namespace Nethermind.Mining
 
                             if (shouldRemove)
                             {
+                                _logger.Warn($"Removing data set for epoch {cachedEpoch}");
                                 _cachedSets.Remove(cachedEpoch, out _);
                                 CachedEpochsCount--;
                             }
@@ -96,6 +100,7 @@ namespace Nethermind.Mining
 
                         if (shouldAdd)
                         {
+                            _logger.Warn($"Building data set for epoch {epoch}");
                             _cachedSets[epoch] = Task<IEthashDataSet>.Run(() => _createDataSet(epoch));
                             CachedEpochsCount++;
                         }

@@ -44,7 +44,7 @@ namespace Nethermind.Mining
         public Ethash(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _hintBasedCache = new HintBasedCache(BuildCache);
+            _hintBasedCache = new HintBasedCache(BuildCache, logManager);
         }
 
         public const int WordBytes = 4; // bytes in word
@@ -207,7 +207,6 @@ namespace Nethermind.Mining
 
         public void HintRange(Guid guid, long start, long end)
         {
-            _logger.Warn($"Hinting range {start}-{end}");
             _hintBasedCache.Hint(guid, start, end);
         }
 
