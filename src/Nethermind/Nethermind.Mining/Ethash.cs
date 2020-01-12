@@ -206,6 +206,7 @@ namespace Nethermind.Mining
 
         public void HintRange(Guid guid, long start, long end)
         {
+            _logger.Warn($"Hinting range {start}-{end}");
             _hintBasedCache.Hint(guid, start, end);
         }
 
