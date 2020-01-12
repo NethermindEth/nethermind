@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -38,6 +39,10 @@ namespace Nethermind.Mining
         public bool CanSeal(long blockNumber, Keccak parentHash)
         {
             return true;
+        }
+
+        public void HintValidationRange(Guid guid, long start, long end)
+        {
         }
 
         public bool ValidateParams(BlockHeader parent, BlockHeader header)

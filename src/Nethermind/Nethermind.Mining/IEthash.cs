@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -21,6 +22,7 @@ namespace Nethermind.Mining
 {
     public interface IEthash
     {
+        void HintRange(Guid guid, long start, long end);
         bool Validate(BlockHeader header);
         (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null); // TODO: for now only with cache
     }

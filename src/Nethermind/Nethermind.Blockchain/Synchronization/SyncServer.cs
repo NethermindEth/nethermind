@@ -83,6 +83,8 @@ namespace Nethermind.Blockchain.Synchronization
             return _pool.PeerCount;
         }
 
+        private Guid _sealValidatorUserGuid = Guid.NewGuid();
+        
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
             if (block.TotalDifficulty == null) throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
@@ -125,6 +127,7 @@ namespace Nethermind.Blockchain.Synchronization
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.ToString(Block.Format.Short)}) from {nodeWhoSentTheBlock:c}");
 
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, block.Number - 128, block.Number + 1024);
             if (!_sealValidator.ValidateSeal(block.Header, true))
             {
                 if (_logger.IsDebug) _logger.Debug($"Peer {peerInfo.SyncPeer?.Node:c} sent a block with an invalid seal");

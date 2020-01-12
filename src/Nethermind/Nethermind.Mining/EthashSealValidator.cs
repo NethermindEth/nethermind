@@ -73,6 +73,11 @@ namespace Nethermind.Mining
             return result;
         }
 
+        public void HintValidationRange(Guid guid, long start, long end)
+        {
+            _ethash.HintRange(guid, start, end);
+        }  
+        
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;

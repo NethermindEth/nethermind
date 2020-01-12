@@ -37,6 +37,10 @@ namespace Nethermind.Clique
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        public void HintValidationRange(Guid guid, long start, long end)
+        {
+        }
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header)
         {
             long number = header.Number;
