@@ -78,6 +78,7 @@ namespace Nethermind.Blockchain.Receipts
                 throw new ArgumentNullException(nameof(txReceipt));
             }
 
+            _database.StartBatch();
             if (txReceipt != null)
             {
                 var spec = _specProvider.GetSpec(blockNumber);
@@ -88,6 +89,41 @@ namespace Nethermind.Blockchain.Receipts
             LowestInsertedReceiptBlock = blockNumber;
 //            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
+        }
+
+        public void Insert((long blockNumber, TxReceipt txReceipt)[] receipts)
+        {
+            long? lowestSoFar = LowestInsertedReceiptBlock;
+            _database.StartBatch();
+            try
+            {
+                for (int i = 0; i < receipts.Length; i++)
+                {
+                    TxReceipt txReceipt = receipts[i].txReceipt;
+                    long blockNumber = receipts[i].blockNumber;
+                    if (txReceipt == null && blockNumber != 1L)
+                    {
+                        throw new ArgumentNullException(nameof(txReceipt));
+                    }
+
+                    if (txReceipt != null)
+                    {
+                        var spec = _specProvider.GetSpec(blockNumber);
+                        RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+                        _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
+                    }
+
+                    lowestSoFar =  Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
+                }
+
+                LowestInsertedReceiptBlock = lowestSoFar ?? long.MaxValue;
+//              LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
+                _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
+            }
+            finally
+            {
+                _database.CommitBatch();
+            }
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }

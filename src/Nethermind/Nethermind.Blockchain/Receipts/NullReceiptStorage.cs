@@ -37,6 +37,10 @@ namespace Nethermind.Blockchain.Receipts
         {
         }
 
+        public void Insert((long blockNumber, TxReceipt txReceipt)[] receipts)
+        {
+        }
+
         public long? LowestInsertedReceiptBlock => long.MaxValue;
     }
 }
