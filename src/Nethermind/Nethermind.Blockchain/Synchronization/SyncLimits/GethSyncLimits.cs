@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Synchronization.SyncLimits
         
         // change MaxBodyFetch to 128
         public const int MaxBodyFetch = 128; // Amount of block bodies to be fetched per retrieval request
-        public const int MaxReceiptFetch = 128; // Amount of transaction receipts to allow fetching per request
+        public const int MaxReceiptFetch = 256; // Amount of transaction receipts to allow fetching per request
         public const int MaxCodeFetch = 64; // Amount of contract codes to allow fetching per request
         public const int MaxProofsFetch = 64; // Amount of merkle proofs to be fetched per retrieval request
         public const int MaxHelperTrieProofsFetch = 64; // Amount of helper tries to be fetched per retrieval request

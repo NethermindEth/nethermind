@@ -262,6 +262,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             batch.Prioritized = true;
                         }
 
+                        int receiptsSpaceToUse = requestSize;
                         int collectedRequests = 0;
                         while (collectedRequests < requestSize)
                         {
@@ -276,7 +277,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
 
                             block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            if (block == null || block.IsGenesis)
+                            receiptsSpaceToUse -= block?.Transactions.Length ?? 0;
+                            if (block == null || block.IsGenesis || receiptsSpaceToUse < 0)
                             {
                                 break;
                             }
