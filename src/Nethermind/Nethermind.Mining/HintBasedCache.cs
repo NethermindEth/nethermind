@@ -17,7 +17,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -26,11 +29,13 @@ namespace Nethermind.Mining
 {
     public class HintBasedCache
     {
-        private ConcurrentDictionary<Guid, HashSet<uint>> _epochsPerGuid = new ConcurrentDictionary<Guid, HashSet<uint>>();
-        private ConcurrentDictionary<uint, int> _epochRefs = new ConcurrentDictionary<uint, int>();
-        private ConcurrentDictionary<uint, Task<IEthashDataSet>> _cachedSets = new ConcurrentDictionary<uint, Task<IEthashDataSet>>();
+        private Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new Dictionary<Guid, HashSet<uint>>();
+        private Dictionary<uint, int> _epochRefs = new Dictionary<uint, int>();
+        private Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new Dictionary<uint, Task<IEthashDataSet>>();
 
-        public int CachedEpochsCount { get; private set; }
+        private int _cachedEpochsCount;
+
+        public int CachedEpochsCount => _cachedEpochsCount;
 
         private readonly Func<uint, IEthashDataSet> _createDataSet;
         private ILogger _logger;
@@ -41,68 +46,74 @@ namespace Nethermind.Mining
             _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Hint(Guid guid, long start, long end)
         {
-            uint startEpoch = (uint)(start / Ethash.EpochLength);
-            uint endEpoch = (uint)(end / Ethash.EpochLength);
+            uint startEpoch = (uint) (start / Ethash.EpochLength);
+            uint endEpoch = (uint) (end / Ethash.EpochLength);
 
             if (endEpoch - startEpoch > 10)
             {
                 throw new InvalidOperationException("Hint too wide");
             }
-            
-            HashSet<uint> epochForGuid = _epochsPerGuid.GetOrAdd(guid, new HashSet<uint>());
-            lock (epochForGuid)
-            {
-                if (epochForGuid.Count > 0)
-                {
-                    foreach (uint cachedEpoch in epochForGuid.ToList())
-                    {
-                        if (cachedEpoch < startEpoch || cachedEpoch > endEpoch)
-                        {
-                            bool shouldRemove = false;
-                            epochForGuid.Remove(cachedEpoch);
-                            lock (_epochRefs)
-                            {
-                                _epochRefs[cachedEpoch] = _epochRefs[cachedEpoch] - 1;
-                                if (_epochRefs[cachedEpoch] == 0)
-                                {
-                                    shouldRemove = true;
-                                }
-                            }
 
-                            if (shouldRemove)
-                            {
-                                _logger.Warn($"Removing data set for epoch {cachedEpoch}");
-                                _cachedSets.Remove(cachedEpoch, out _);
-                                CachedEpochsCount--;
-                            }
-                        }
-                    }
+            if (!_epochsPerGuid.ContainsKey(guid))
+            {
+                _epochsPerGuid[guid] = new HashSet<uint>();
+            }
+
+            HashSet<uint> epochForGuid = _epochsPerGuid[guid];
+            uint currentMin = uint.MaxValue;
+            uint currentMax = 0;
+            foreach (uint alreadyCachedEpoch in epochForGuid.ToList())
+            {
+                if (alreadyCachedEpoch < currentMin)
+                {
+                    currentMin = alreadyCachedEpoch;
                 }
 
+                if (alreadyCachedEpoch > currentMax)
+                {
+                    currentMax = alreadyCachedEpoch;
+                }
+                
+                if (alreadyCachedEpoch < startEpoch || alreadyCachedEpoch > endEpoch)
+                {
+                    epochForGuid.Remove(alreadyCachedEpoch);
+                    if (!_epochRefs.ContainsKey(alreadyCachedEpoch))
+                    {
+                        throw new InvalidAsynchronousStateException("Epoch ref missing");
+                    }
+
+                    _epochRefs[alreadyCachedEpoch] = _epochRefs[alreadyCachedEpoch] - 1;
+                    if (_epochRefs[alreadyCachedEpoch] == 0)
+                    {
+                        _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
+                        _cachedSets.Remove(alreadyCachedEpoch, out _);
+                        Interlocked.Decrement(ref _cachedEpochsCount);
+                    }
+                }
+            }
+
+            if (currentMin > startEpoch || currentMax < endEpoch)
+            {
                 for (long i = startEpoch; i <= endEpoch; i++)
                 {
                     uint epoch = (uint) i;
                     if (!epochForGuid.Contains(epoch))
                     {
-                        bool shouldAdd = false;
                         epochForGuid.Add(epoch);
-                        lock (_epochRefs)
+                        if (!_epochRefs.ContainsKey(epoch))
                         {
-                            if (!_epochRefs.TryGetValue(epoch, out int refCount))
-                            {
-                                shouldAdd = true;
-                            }
-
-                            _epochRefs[epoch] = refCount + 1;
+                            _epochRefs[epoch] = 0;
                         }
 
-                        if (shouldAdd)
+                        _epochRefs[epoch] = _epochRefs[epoch] + 1;
+                        if (_epochRefs[epoch] == 1)
                         {
                             _logger.Warn($"Building data set for epoch {epoch}");
                             _cachedSets[epoch] = Task<IEthashDataSet>.Run(() => _createDataSet(epoch));
-                            CachedEpochsCount++;
+                            Interlocked.Increment(ref _cachedEpochsCount);
                         }
                     }
                 }

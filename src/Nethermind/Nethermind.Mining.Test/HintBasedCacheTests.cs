@@ -50,6 +50,7 @@ namespace Nethermind.Mining.Test
         
         private Guid _guidA = Guid.NewGuid();
         private Guid _guidB = Guid.NewGuid();
+        private Guid _guidC = Guid.NewGuid();
         
         [Test]
         public async Task With_hint_returns_value()
@@ -59,6 +60,44 @@ namespace Nethermind.Mining.Test
             await WaitFor(() => hintBasedCache.CachedEpochsCount == 7);
             
             for (uint i = 0; i < 7; i++)
+            {
+                Assert.NotNull(hintBasedCache.Get(i));
+            }
+        }
+        
+        [Test]
+        public void Sync_hint_and_get()
+        {
+            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            hintBasedCache.Hint(_guidA, 200000, 200000);
+            Assert.NotNull(hintBasedCache.Get((uint)(200000 / Ethash.EpochLength)));
+        }
+
+        [Test]
+        public async Task Many_threads()
+        {
+            int range = 10000000;
+            HintBasedCache hintBasedCache = new HintBasedCache(e => new NullDataSet(), LimboLogs.Instance);
+            void KeepHinting(Guid guid, int start)
+            {
+                for (int i = start; i <= range; i++)
+                {
+                    hintBasedCache.Hint(guid, i, i + 120000);
+                }
+            };
+            
+            Task a = new Task(() => KeepHinting(_guidA, 100000));
+            Task b = new Task(() => KeepHinting(_guidB, 0));
+            Task c = new Task(() => KeepHinting(_guidC, 500000));
+            
+            a.Start();
+            b.Start();
+            c.Start();
+            
+            await Task.WhenAll(a, b, c);
+
+            Assert.AreEqual(5, hintBasedCache.CachedEpochsCount);
+            for (uint i = (uint)(range / Ethash.EpochLength); i < (uint)((range + 120000) / Ethash.EpochLength); i++)
             {
                 Assert.NotNull(hintBasedCache.Get(i));
             }

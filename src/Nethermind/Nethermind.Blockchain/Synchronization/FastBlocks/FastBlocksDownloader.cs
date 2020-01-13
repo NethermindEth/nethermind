@@ -202,7 +202,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
                     bool isHashValid = _blockValidator.ValidateHash(header);
                     
-                    _sealValidator.HintValidationRange(_sealValidatorUserGuid, header.Number - 150000, header.Number + 30000);
+                    _sealValidator.HintValidationRange(_sealValidatorUserGuid,  header.Number - 150000, header.Number + 30000);
                     bool isSealValid = _sealValidator.ValidateSeal(header, false);
                     if (!isHashValid)
                     {
