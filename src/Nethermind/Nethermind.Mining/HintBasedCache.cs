@@ -101,7 +101,7 @@ namespace Nethermind.Mining
                     _epochRefs[alreadyCachedEpoch] = _epochRefs[alreadyCachedEpoch] - 1;
                     if (_epochRefs[alreadyCachedEpoch] == 0)
                     {
-                        _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
+                        // _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
                         _cachedSets.Remove(alreadyCachedEpoch, out Task<IEthashDataSet> removed);
                         _recent[alreadyCachedEpoch] = new DataSetWithTime(DateTimeOffset.UtcNow, removed);
                         Interlocked.Decrement(ref _cachedEpochsCount);
@@ -125,7 +125,7 @@ namespace Nethermind.Mining
                         _epochRefs[epoch] = _epochRefs[epoch] + 1;
                         if (_epochRefs[epoch] == 1)
                         {
-                            _logger.Warn($"Building data set for epoch {epoch}");
+                            // _logger.Warn($"Building data set for epoch {epoch}");
                             if (_recent.ContainsKey(epoch))
                             {
                                 _recent.Remove(epoch, out DataSetWithTime reused);
