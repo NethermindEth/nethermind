@@ -117,14 +117,16 @@ namespace Nethermind.Blockchain.Receipts
                 }
             }
 
-            if (blockNumber > LowestInsertedReceiptBlock)
+            if (blockNumber.HasValue)
             {
-                _logger.Error($"{blockNumber} > {LowestInsertedReceiptBlock}");
+                if (blockNumber > LowestInsertedReceiptBlock)
+                {
+                    _logger.Error($"{blockNumber} > {LowestInsertedReceiptBlock}");
+                }
+
+                LowestInsertedReceiptBlock = blockNumber;
+                _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
             }
-            
-            LowestInsertedReceiptBlock = blockNumber;
-            
-            _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock).Bytes);
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }
