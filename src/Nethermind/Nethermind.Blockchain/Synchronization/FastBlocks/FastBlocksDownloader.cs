@@ -176,6 +176,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             }
         }
 
+        private Guid _sealValidatorUserGuid = Guid.NewGuid();
+        
         private void ValidateHeaders(CancellationToken cancellation, FastBlocksBatch batch)
         {
             batch.MarkValidation();
@@ -199,7 +201,6 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     }
 
                     bool isHashValid = _blockValidator.ValidateHash(header);
-                    bool isSealValid = _sealValidator.ValidateSeal(header, false);
                     if (!isHashValid)
                     {
                         if (_logger.IsTrace) _logger.Trace($"One of the blocks is invalid - invalid hash at {header.Number}");
@@ -207,12 +208,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         batch.Headers.Response = null;
                     }
                     
-                    if (!isSealValid)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"One of the blocks is invalid - invalid seal at {header.ToString(BlockHeader.Format.Short)}");
-                        _syncPeerPool.ReportInvalid(batch.Allocation?.Current, $"invalid hash of block {header.ToString(BlockHeader.Format.Short)}");
-                        batch.Headers.Response = null;
-                    }
+                    // no need to check seals in fast blocks since we trust the pivot block nonetheless}
                 }
             }
             catch (Exception ex)

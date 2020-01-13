@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,16 +37,15 @@ namespace Nethermind.Mining
 {
     public class Ethash : IEthash
     {
+        private HintBasedCache _hintBasedCache;
+
         private readonly ILogger _logger;
 
         public Ethash(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _hintBasedCache = new HintBasedCache(BuildCache, logManager);
         }
-
-        private const int CacheCapacity = 10;
-        private readonly LruCache<uint, DataSetWithAccessTime> _cacheCache = new LruCache<uint, DataSetWithAccessTime>(CacheCapacity);
-        private readonly HashSet<DataSetWithAccessTime> _cacheMonitor = new HashSet<DataSetWithAccessTime>();
 
         public const int WordBytes = 4; // bytes in word
         public static uint DataSetBytesInit = (uint) BigInteger.Pow(2, 30); // bytes in dataset at genesis
@@ -53,14 +53,14 @@ namespace Nethermind.Mining
         public static uint CacheBytesInit = (uint) BigInteger.Pow(2, 24); // bytes in cache at genesis
         public static uint CacheBytesGrowth = (uint) BigInteger.Pow(2, 17); // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
-        public const ulong EpochLength = 30000; // blocks per epoch
+        public const long EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
         public const int HashBytes = 64; // hash length in bytes
         public const uint DataSetParents = 256; // blockNumber of parents of each dataset element
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
-        public static uint GetEpoch(BigInteger blockNumber)
+        public static uint GetEpoch(long blockNumber)
         {
             return (uint) (blockNumber / EpochLength);
         }
@@ -153,6 +153,13 @@ namespace Nethermind.Mining
         public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
         {
             uint epoch = GetEpoch(header.Number);
+            IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
+            if (dataSet == null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                dataSet = BuildCache(epoch);
+            }
+            
             ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
             BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
@@ -163,7 +170,7 @@ namespace Nethermind.Mining
             while (true)
             {
                 byte[] result;
-                (mixHash, result) = Hashimoto(fullSize, GetOrAddCache(epoch), headerHashed, null, nonce);
+                (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessThanTarget(result, target))
                 {
                     break;
@@ -193,101 +200,58 @@ namespace Nethermind.Mining
             return (v1 * FnvPrime) ^ v2;
         }
 
-        internal static uint GetUInt(byte[] bytes, uint offset)
+        private static uint GetUInt(byte[] bytes, uint offset)
         {
             return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int) offset * 4);
         }
 
+        public void HintRange(Guid guid, long start, long end)
+        {
+            _hintBasedCache.Hint(guid, start, end);
+        }
+
+        private Guid _hintBasedCacheUser = Guid.Empty;
+        
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
-            IEthashDataSet cache = GetOrAddCache(epoch);
+            IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
+            if (dataSet == null)
+            {
+                if(_logger.IsWarn) _logger.Warn($"Ethash cache miss for block {header.ToString(BlockHeader.Format.Short)}");
+                _hintBasedCache.Hint(_hintBasedCacheUser, header.Number, header.Number);
+                dataSet = _hintBasedCache.Get(epoch);
+                if (dataSet == null)
+                {
+                    if(_logger.IsError) _logger.Error($"Hint based cache could not get data set for {header.ToString(BlockHeader.Format.Short)}");
+                    return false;
+                }
+            }
+            
             ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
-            (byte[] _, byte[] result) = Hashimoto(fullSize, cache, headerHashed, header.MixHash, header.Nonce);
-
+            (byte[] _, byte[] result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
+            if (!isValid)
+            {
+                return false;
+            }
+            
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
             return IsLessThanTarget(result, threshold);
         }
 
         private readonly Stopwatch _cacheStopwatch = new Stopwatch();
 
-        private class DataSetWithAccessTime
+        private IEthashDataSet BuildCache(uint epoch)
         {
-            public DataSetWithAccessTime(uint epoch, Task<IEthashDataSet> dataSet, ulong accessTime)
-            {
-                Epoch = epoch;
-                DataSet = dataSet;
-                AccessTime = accessTime;
-            }
-
-            public uint Epoch { get; }
-            public Task<IEthashDataSet> DataSet { get; }
-
-            public ulong AccessTime { get; set; }
-        }
-
-        private IEthashDataSet GetOrAddCache(uint epoch)
-        {
-            DataSetWithAccessTime theOne;
-            lock (_cacheCache)
-            {
-                for (uint i = Math.Max(epoch, 2) - 2; i < epoch + 3; i++)
-                {
-                    if (_cacheCache.Get(i) == default)
-                    {
-                        DataSetWithAccessTime someone = new DataSetWithAccessTime(i, BuildCache(i), Timestamper.Default.EpochSeconds);
-                        _cacheCache.Set(i, someone);
-                        _cacheMonitor.Add(someone);
-                    }
-                }
-
-                var now = Timestamper.Default.EpochSeconds;
-                theOne = _cacheCache.Get(epoch);
-                theOne.AccessTime = now;
-
-                HashSet<DataSetWithAccessTime> removed = null;
-                foreach (DataSetWithAccessTime dataSetWithAccessTime in _cacheMonitor)
-                {
-                    if (now - dataSetWithAccessTime.AccessTime > 180)
-                    {
-                        _cacheCache.Delete(dataSetWithAccessTime.Epoch);
-                        if (removed == null)
-                        {
-                            removed = new HashSet<DataSetWithAccessTime>();
-                        }
-
-                        removed.Add(dataSetWithAccessTime);
-                    }
-                }
-
-                if (removed != null)
-                {
-                    foreach (DataSetWithAccessTime dataSetWithAccessTime in removed)
-                    {
-                        _cacheMonitor.Remove(dataSetWithAccessTime);
-                        dataSetWithAccessTime.DataSet.Result.Dispose();
-                    }
-                }
-            }
-
-            IEthashDataSet dataSet = theOne.DataSet.Result;
+            uint cacheSize = GetCacheSize(epoch);
+            Keccak seed = GetSeedHash(epoch);
+            if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
+            _cacheStopwatch.Restart();
+            IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
+            _cacheStopwatch.Stop();
+            if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} with size {cacheSize} nd seed {seed.Bytes.ToHexString()} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
             return dataSet;
-        }
-
-        private Task<IEthashDataSet> BuildCache(uint epoch)
-        {
-            return Task.Run(() =>
-            {
-                uint cacheSize = GetCacheSize(epoch);
-                Keccak seed = GetSeedHash(epoch);
-                if (_logger.IsInfo) _logger.Info($"Building ethash cache for epoch {epoch}");
-                _cacheStopwatch.Restart();
-                IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
-                _cacheStopwatch.Stop();
-                if (_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} with size {cacheSize} nd seed {seed.Bytes.ToHexString()} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
-                return dataSet;
-            });
         }
 
         private static HeaderDecoder _headerDecoder = new HeaderDecoder();
@@ -299,7 +263,7 @@ namespace Nethermind.Mining
             return headerHashed;
         }
 
-        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], byte[], bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
@@ -341,11 +305,10 @@ namespace Nethermind.Mining
 
             if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
             {
-                // TODO: handle properly
-                throw new InvalidOperationException(); // TODO: need to change this
+                return (null, null, false);
             }
 
-            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes); // this tests fine
+            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes, true); // this tests fine
         }
     }
 }

@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-            var peer = batch.AssignedPeer.Current.SyncPeer;
+            ISyncPeer peer = batch.AssignedPeer?.Current?.SyncPeer;
             if (peer != null)
             {
                 var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
@@ -90,14 +90,14 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
         private async Task KeepSyncing(CancellationToken token)
         {
             bool oneMoreTry = false;
-            
+
             do
             {
                 if (token.IsCancellationRequested)
                 {
                     return;
                 }
-                
+
                 oneMoreTry = false;
                 StateSyncBatch request = PrepareRequest();
                 if (request.RequestedNodes.Length != 0)
@@ -111,6 +111,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     task.ContinueWith(t =>
 #pragma warning restore 4014
                     {
+                        if (t.IsFaulted)
+                        {
+                            if (_logger.IsWarn) _logger.Warn($"Failure when executing node data request {t.Exception}");
+                        }
+
                         Interlocked.Decrement(ref _pendingRequests);
                         if (request.RequestedNodes.Length != 0)
                         {
@@ -135,10 +140,10 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 Keccak[] hashes = _additionalConsumer.PrepareRequest();
                 StateSyncBatch priorityBatch = new StateSyncBatch();
                 priorityBatch.RequestedNodes = hashes.Select(h => new StateSyncItem(h, NodeDataType.Code, 0, 0)).ToArray();
-                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {_pendingRequests}");    
+                if (_logger.IsWarn) _logger.Warn($"!!! Priority batch {_pendingRequests}");
                 return priorityBatch;
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Pending requests {_pendingRequests}");
             return _feed.PrepareRequest();
         }

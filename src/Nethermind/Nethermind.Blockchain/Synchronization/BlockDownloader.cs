@@ -316,8 +316,11 @@ namespace Nethermind.Blockchain.Synchronization
             return default;
         }
 
+        private Guid _sealValidatorUserGuid = Guid.NewGuid();
+        
         private async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
+            _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 60000);
             Task<BlockHeader[]> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
             await headersRequest.ContinueWith(t => DownloadFailHandler(t, "headers"), cancellation);
 

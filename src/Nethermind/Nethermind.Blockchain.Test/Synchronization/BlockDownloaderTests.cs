@@ -666,6 +666,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private class SlowSealValidator : ISealValidator
         {
+            public void HintValidationRange(Guid guid, long start, long end)
+            {
+            }
+
             public bool ValidateParams(BlockHeader parent, BlockHeader header)
             {
                 Thread.Sleep(1000);

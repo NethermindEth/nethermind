@@ -14,11 +14,11 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Mining
 {
@@ -30,6 +30,8 @@ namespace Nethermind.Mining
     
     public interface ISealValidator
     {
+        void HintValidationRange(Guid guid, long start, long end);
+
         bool ValidateParams(BlockHeader parent, BlockHeader header);
         
         /// <summary>

@@ -101,7 +101,8 @@ namespace Nethermind.Network.P2P
 
                 return _node;
             }
-            set => _node = value;
+            
+            private set => _node = value;
         }
 
         public void EnableSnappy()

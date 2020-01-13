@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -42,6 +43,14 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             LowestInsertedReceiptBlock = blockNumber;
+        }
+
+        public void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts)
+        {
+            foreach ((long blockNumber, TxReceipt txReceipt) in receipts)
+            {
+                Insert(blockNumber, txReceipt);
+            }
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }

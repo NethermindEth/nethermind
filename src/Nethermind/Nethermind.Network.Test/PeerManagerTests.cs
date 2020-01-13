@@ -271,7 +271,7 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(0, _peerManager.ActivePeers.Count);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_fill_up_over_and_over_again_on_disconnects()
         {
             SetupPersistedPeers(50);

@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
     {
         private int BodiesRequestSize = GethSyncLimits.MaxBodyFetch;
         private int HeadersRequestSize = GethSyncLimits.MaxHeaderFetch;
-        private int ReceiptsRequestStats = GethSyncLimits.MaxReceiptFetch;
+        private int ReceiptsRequestSize = GethSyncLimits.MaxReceiptFetch;
 
         private ILogger _logger;
         private readonly ISpecProvider _specProvider;
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
             {
                 BodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
                 HeadersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
-                ReceiptsRequestStats = NethermindSyncLimits.MaxReceiptFetch;
+                ReceiptsRequestSize = NethermindSyncLimits.MaxReceiptFetch;
             }
         }
 
@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             predecessorBlock = null;
                         }
 
-                        int requestSize = (int) Math.Min(block.Number, ReceiptsRequestStats);
+                        int requestSize = (int) Math.Min(block.Number, ReceiptsRequestSize);
                         batch = new FastBlocksBatch();
                         batch.Receipts = new ReceiptsSyncBatch();
                         batch.Receipts.Predecessors = new long?[requestSize];
@@ -612,10 +612,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void InsertReceipts(List<(long, TxReceipt)> receipts)
         {
-            foreach ((long blockNumber, TxReceipt receipt) in receipts)
-            {
-                _receiptStorage.Insert(blockNumber, receipt);
-            }
+            _receiptStorage.Insert(receipts);
         }
 
         private static FastBlocksBatch PrepareReceiptFiller(int added, ReceiptsSyncBatch receiptsSyncBatch)

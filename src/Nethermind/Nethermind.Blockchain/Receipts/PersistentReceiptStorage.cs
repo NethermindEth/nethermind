@@ -15,6 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -88,6 +90,43 @@ namespace Nethermind.Blockchain.Receipts
             LowestInsertedReceiptBlock = blockNumber;
 //            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
+        }
+
+        public void Insert(List<(long blockNumber, TxReceipt txReceipt)> receipts)
+        {
+            if (!receipts.Any())
+            {
+                return;
+            }
+
+            long? blockNumber = null;
+            foreach ((long blockNumber, TxReceipt txReceipt) tuple in receipts)
+            {
+                blockNumber = tuple.blockNumber;
+                TxReceipt txReceipt = tuple.txReceipt;
+                if (txReceipt == null && blockNumber != 1L)
+                {
+                    throw new ArgumentNullException(nameof(txReceipt));
+                }
+
+                if (txReceipt != null)
+                {
+                    var spec = _specProvider.GetSpec(blockNumber.Value);
+                    RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+                    _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
+                }
+            }
+
+            if (blockNumber.HasValue)
+            {
+                if (blockNumber > LowestInsertedReceiptBlock)
+                {
+                    _logger.Error($"{blockNumber} > {LowestInsertedReceiptBlock}");
+                }
+
+                LowestInsertedReceiptBlock = blockNumber;
+                _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
+            }
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }
