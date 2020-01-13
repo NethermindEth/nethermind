@@ -71,11 +71,11 @@ namespace Nethermind.Store
 
         public byte[][] GetAll() => Values.Select(v => v).ToArray();
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
         }
 

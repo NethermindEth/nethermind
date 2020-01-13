@@ -23,8 +23,8 @@ namespace Nethermind.Store
         string Name { get; }
         byte[] this[byte[] key] { get; set; }
         byte[][] GetAll();
-        void StartBatch();
-        void CommitBatch();
+        void StartBatch(Guid? guid = null);
+        void CommitBatch(Guid? guid = null);
         void Remove(byte[] key);
         bool KeyExists(byte[] key);
     }

@@ -72,11 +72,11 @@ namespace Nethermind.Store.BeamSyncStore
             throw new NotSupportedException();
         }
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
         }
 

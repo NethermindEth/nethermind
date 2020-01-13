@@ -54,14 +54,14 @@ namespace Nethermind.Store
 
         public byte[][] GetAll() => _db.GetAll();
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
-            _db.StartBatch();
+            _db.StartBatch(guid);
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
-            _db.CommitBatch();
+            _db.CommitBatch(guid);
         }
 
         public void Remove(byte[] key)

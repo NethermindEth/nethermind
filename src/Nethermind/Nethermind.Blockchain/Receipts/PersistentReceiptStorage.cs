@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Receipts
             _database.Set(txReceipt.TxHash,
                 Rlp.Encode(txReceipt, behaviors).Bytes);
         }
-
+        
         public void Insert(long blockNumber, TxReceipt txReceipt)
         {
             if (txReceipt == null && blockNumber != 1L)
@@ -87,16 +87,14 @@ namespace Nethermind.Blockchain.Receipts
                 _database.Set(txReceipt.TxHash, Rlp.Encode(txReceipt, behaviors).Bytes);
             }
 
-            LowestInsertedReceiptBlock = blockNumber;
-//            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
-            _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
+            UpdateLowestInsertedInDb(blockNumber);
         }
-
-        [MethodImpl(MethodImplOptions.Synchronized)]
+        
         public void Insert(List<(long BlockNumber, TxReceipt TxReceipt)> receipts)
         {
             long? lowestSoFar = LowestInsertedReceiptBlock;
-            _database.StartBatch();
+            Guid batchGuid = Guid.NewGuid();
+            _database.StartBatch(batchGuid);
             try
             {
                 for (int i = 0; i < receipts.Count; i++)
@@ -117,15 +115,20 @@ namespace Nethermind.Blockchain.Receipts
 
                     lowestSoFar =  Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
                 }
-
-                LowestInsertedReceiptBlock = lowestSoFar ?? long.MaxValue;
-//              LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
-                _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
             }
             finally
             {
-                _database.CommitBatch();
+                _database.CommitBatch(batchGuid);
             }
+            
+            UpdateLowestInsertedInDb(lowestSoFar);
+        }
+
+        private void UpdateLowestInsertedInDb(long? lowestSoFar)
+        {
+            LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, lowestSoFar ?? long.MaxValue);
+//              LowestInsertedReceiptBlock = Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
+            _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }
 
         public long? LowestInsertedReceiptBlock { get; private set; }

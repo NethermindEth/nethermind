@@ -33,6 +33,7 @@ namespace Nethermind.Db
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         private readonly RocksDb _db;
         private WriteBatch _currentBatch;
+        private Dictionary<Guid, WriteBatch> _namedBatches = new Dictionary<Guid, WriteBatch>();
         private WriteOptions _writeOptions;
 
         public abstract string Name { get; }
@@ -217,16 +218,48 @@ namespace Nethermind.Db
 //            return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
         }
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
-            _currentBatch = new WriteBatch();
+            if (guid.HasValue)
+            {
+                StartNamedBatch(guid.Value);
+            }
+            else
+            {
+                _currentBatch = new WriteBatch();    
+            }
+        }
+        
+        private void StartNamedBatch(Guid guid)
+        {
+            lock (_namedBatches)
+            {
+                _namedBatches[guid] = new WriteBatch();
+            }
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
-            _db.Write(_currentBatch, _writeOptions);
-            _currentBatch.Dispose();
-            _currentBatch = null;
+            WriteBatch batch;
+            lock (_namedBatches)
+            {
+                batch = guid.HasValue ? _namedBatches[guid.Value] : _currentBatch;
+            }
+
+            _db.Write(batch, _writeOptions);
+            batch.Dispose();
+
+            if (guid.HasValue)
+            {
+                lock (_namedBatches)
+                {
+                    _namedBatches[guid.Value] = null;
+                }
+            }
+            else
+            {
+                _currentBatch = null;    
+            }
         }
 
         public void Dispose()

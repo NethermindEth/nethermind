@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 
@@ -51,12 +52,12 @@ namespace Nethermind.Store
             throw new System.NotImplementedException();
         }
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
             throw new System.NotSupportedException();
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
             throw new System.NotSupportedException();
         }

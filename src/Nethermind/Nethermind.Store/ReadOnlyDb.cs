@@ -52,12 +52,11 @@ namespace Nethermind.Store
         }
 
         public byte[][] GetAll() => _memDb.GetAll();
-
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
         }
 

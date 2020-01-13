@@ -75,11 +75,11 @@ namespace Nethermind.Db
 
         public byte[][] GetAll() => _cache.Values.Select(v => v).ToArray();
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
             if (!_hasPendingChanges)
             {

@@ -68,12 +68,12 @@ namespace Nethermind.Store.Rpc
 
         public byte[][] GetAll() => _recordDb.GetAll();
 
-        public void StartBatch()
+        public void StartBatch(Guid? guid = null)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
 
-        public void CommitBatch()
+        public void CommitBatch(Guid? guid = null)
         {
             throw new InvalidOperationException("RPC DB does not support writes");
         }
