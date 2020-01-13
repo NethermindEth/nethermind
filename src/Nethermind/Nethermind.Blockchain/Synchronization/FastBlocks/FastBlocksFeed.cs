@@ -262,12 +262,10 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             batch.Prioritized = true;
                         }
 
-                        int receiptsSpaceToUse = ReceiptsRequestSize;
                         int collectedRequests = 0;
                         while (collectedRequests < requestSize)
                         {
                             _lowestRequestedReceiptsHash = block.Hash;
-
                             if (block.Transactions.Length > 0)
                             {
                                 batch.Receipts.Predecessors[collectedRequests] = predecessorBlock?.Number;
