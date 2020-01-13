@@ -624,7 +624,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void InsertReceipts(List<(long, TxReceipt)> receipts)
         {
-            (_receiptStorage as PersistentReceiptStorage).Insert(receipts);
+            _receiptStorage.Insert(receipts);
         }
 
         private static FastBlocksBatch PrepareReceiptFiller(int added, ReceiptsSyncBatch receiptsSyncBatch)
