@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -91,6 +92,7 @@ namespace Nethermind.Blockchain.Receipts
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }
 
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Insert(List<(long BlockNumber, TxReceipt TxReceipt)> receipts)
         {
             long? lowestSoFar = LowestInsertedReceiptBlock;
