@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private async Task ExecuteRequest(CancellationToken token, StateSyncBatch batch)
         {
-            var peer = batch.AssignedPeer.Current.SyncPeer;
+            ISyncPeer peer = batch.AssignedPeer?.Current?.SyncPeer;
             if (peer != null)
             {
                 var hashes = batch.RequestedNodes.Select(r => r.Hash).ToArray();
@@ -111,6 +111,11 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     task.ContinueWith(t =>
 #pragma warning restore 4014
                     {
+                        if (t.IsFaulted)
+                        {
+                            _logger.Error("Failure when executing node data request");
+                        }
+                        
                         Interlocked.Decrement(ref _pendingRequests);
                         if (request.RequestedNodes.Length != 0)
                         {
