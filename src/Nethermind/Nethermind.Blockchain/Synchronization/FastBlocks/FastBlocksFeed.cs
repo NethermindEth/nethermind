@@ -412,7 +412,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
         private void LogStateOnPrepare()
         {
-            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}, DEPENDENCIES {_headerDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
+            if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_blockTree.LowestInsertedHeader?.Number}|{_blockTree.LowestInsertedBody?.Number}|{_receiptStorage.LowestInsertedReceiptBlock}, LOWEST_REQUESTED {_lowestRequestedHeaderNumber}|#|#, DEPENDENCIES {_headerDependencies.Count}|{_bodiesDependencies.Count}|{_receiptDependencies.Count}, SENT: {_sentBatches.Count}, PENDING: {_pendingBatches.Count}");
             if (_logger.IsTrace)
             {
                 lock (_handlerLock)
