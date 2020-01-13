@@ -36,9 +36,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 {
     public class FastBlocksFeed : IFastBlocksFeed
     {
-        private int BodiesRequestSize = GethSyncLimits.MaxBodyFetch;
-        private int HeadersRequestSize = GethSyncLimits.MaxHeaderFetch;
-        private int ReceiptsRequestStats = GethSyncLimits.MaxReceiptFetch;
+        private int MaxBodiesFetch = GethSyncLimits.MaxBodyFetch;
+        private int MaxHeadersFetch = GethSyncLimits.MaxHeaderFetch;
+        private int MaxReceiptsFetch = GethSyncLimits.MaxReceiptFetch;
 
         private ILogger _logger;
         private readonly ISpecProvider _specProvider;
@@ -95,9 +95,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
 
             if (!_syncConfig.UseGethLimitsInFastBlocks)
             {
-                BodiesRequestSize = NethermindSyncLimits.MaxBodyFetch;
-                HeadersRequestSize = NethermindSyncLimits.MaxHeaderFetch;
-                ReceiptsRequestStats = NethermindSyncLimits.MaxReceiptFetch;
+                MaxBodiesFetch = NethermindSyncLimits.MaxBodyFetch;
+                MaxHeadersFetch = NethermindSyncLimits.MaxHeaderFetch;
+                MaxReceiptsFetch = NethermindSyncLimits.MaxReceiptFetch;
             }
         }
 
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
                         }
 
-                        int requestSize = (int) Math.Min(header.Number, BodiesRequestSize);
+                        int requestSize = (int) Math.Min(header.Number, MaxBodiesFetch);
                         batch = new FastBlocksBatch();
                         batch.Bodies = new BodiesSyncBatch();
                         batch.Bodies.Request = new Keccak[requestSize];
@@ -215,8 +215,8 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         batch = new FastBlocksBatch();
                         batch.MinNumber = _lowestRequestedHeaderNumber - 1;
                         batch.Headers = new HeadersSyncBatch();
-                        batch.Headers.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - HeadersRequestSize);
-                        batch.Headers.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, HeadersRequestSize);
+                        batch.Headers.StartNumber = Math.Max(0, _lowestRequestedHeaderNumber - MaxHeadersFetch);
+                        batch.Headers.RequestSize = (int) Math.Min(_lowestRequestedHeaderNumber, MaxHeadersFetch);
                         _lowestRequestedHeaderNumber = batch.Headers.StartNumber;
 
                         break;
@@ -250,7 +250,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             predecessorBlock = null;
                         }
 
-                        int requestSize = (int) Math.Min(block.Number, ReceiptsRequestStats);
+                        int requestSize = (int) Math.Min(block.Number, MaxReceiptsFetch);
                         batch = new FastBlocksBatch();
                         batch.Receipts = new ReceiptsSyncBatch();
                         batch.Receipts.Predecessors = new long?[requestSize];
@@ -262,11 +262,21 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             batch.Prioritized = true;
                         }
 
-                        int receiptsSpaceToUse = requestSize;
+                        int receiptsSpaceToUse = MaxReceiptsFetch;
                         int collectedRequests = 0;
                         while (collectedRequests < requestSize)
                         {
-                            _lowestRequestedReceiptsHash = block.Hash;
+                            receiptsSpaceToUse -= block?.Transactions.Length ?? 0;
+                            if (receiptsSpaceToUse < 0)
+                            {
+                                break;
+                            }
+
+                            if (block.Transactions.Length > 0 || block.IsGenesis)
+                            {
+                                _lowestRequestedReceiptsHash = block.Hash;
+                            }
+                            
                             if (block.Transactions.Length > 0)
                             {
                                 batch.Receipts.Predecessors[collectedRequests] = predecessorBlock?.Number;
@@ -277,8 +287,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             }
 
                             block = _blockTree.FindBlock(block.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                            receiptsSpaceToUse -= block?.Transactions.Length ?? 0;
-                            if (block == null || block.IsGenesis || receiptsSpaceToUse < 0)
+                            if (block == null || block.IsGenesis)
                             {
                                 break;
                             }
@@ -292,7 +301,7 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                             batch.Receipts.Request = new Keccak[collectedRequests];
                             Array.Copy(currentBlocks, 0, batch.Receipts.Blocks, 0, collectedRequests);
                             Array.Copy(currentRequests, 0, batch.Receipts.Request, 0, collectedRequests);
-                            batch.Receipts.IsFinal = true;
+                            batch.Receipts.IsFinal = receiptsSpaceToUse >= 0;
                         }
                         
                         if (collectedRequests == 0 && (block?.IsGenesis ?? true))

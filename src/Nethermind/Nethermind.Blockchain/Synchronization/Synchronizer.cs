@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Synchronization
     public class Synchronizer : ISynchronizer
     {
         private const int _syncTimerInterval = 1000;
-        
+
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
         private readonly IBlockTree _blockTree;
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain.Synchronization
 
         private readonly BlockDownloader _blockDownloader;
         private readonly FastBlocksDownloader _fastBlockDownloader;
-        
+
         private ManualResetEventSlim _syncRequested = new ManualResetEventSlim(false);
         private CancellationTokenSource _syncLoopCancellation = new CancellationTokenSource();
         private CancellationTokenSource _peerSyncCancellation;
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain.Synchronization
             _syncPeerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _nodeDataDownloader = nodeDataDownloader ?? throw new ArgumentNullException(nameof(nodeDataDownloader));
             _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-            
+
             SyncProgressResolver syncProgressResolver = new SyncProgressResolver(_blockTree, receiptStorage, _nodeDataDownloader, syncConfig, logManager);
             _syncMode = new SyncModeSelector(syncProgressResolver, _syncPeerPool, _syncConfig, logManager);
             _syncReport = new SyncReport(_syncPeerPool, _nodeStatsManager, syncConfig, syncProgressResolver, _syncMode, logManager);
@@ -210,10 +210,9 @@ namespace Nethermind.Blockchain.Synchronization
             }
         }
 
-        public bool IsParallel(SyncMode syncMode)
+        private static bool RequiresBlocksSyncAllocation(SyncMode syncMode)
         {
-            // parallel modes are the ones that do not use a synchronizer loop but create loops of their own
-            return syncMode == SyncMode.FastBlocks || syncMode == SyncMode.StateNodes;   
+            return syncMode == SyncMode.Beam || syncMode == SyncMode.Full || syncMode == SyncMode.Headers;
         }
 
         private async Task RunSyncLoop()
@@ -235,20 +234,24 @@ namespace Nethermind.Blockchain.Synchronization
 
                 _syncMode.Update();
                 _syncReport.CurrentSyncMode = _syncMode.Current;
-                
-                if (_blocksSyncAllocation == null)
+
+                if (RequiresBlocksSyncAllocation(_syncMode.Current))
                 {
-                    await AllocateBlocksSync();
-                    if (_syncMode.Current == SyncMode.Headers)
+                    if (_blocksSyncAllocation == null)
                     {
-                        _blocksSyncAllocation.MinBlocksAhead = SyncModeSelector.FullSyncThreshold;
-                    }
-                    else
-                    {
-                        _blocksSyncAllocation.MinBlocksAhead = null;
+                        await AllocateBlocksSync();
+
+                        if (_syncMode.Current == SyncMode.Headers)
+                        {
+                            _blocksSyncAllocation.MinBlocksAhead = SyncModeSelector.FullSyncThreshold;
+                        }
+                        else
+                        {
+                            _blocksSyncAllocation.MinBlocksAhead = null;
+                        }
                     }
                 }
-                else if (IsParallel(_syncMode.Current))
+                else
                 {
                     FreeBlocksSyncAllocation();
                 }
@@ -316,7 +319,7 @@ namespace Nethermind.Blockchain.Synchronization
                             await syncProgressTask.ContinueWith(t => HandleSyncRequestResult(t, bestPeer));
                             break;
                     }
-                
+
                     if (syncProgressTask.IsCompletedSuccessfully)
                     {
                         long progress = syncProgressTask.Result;
