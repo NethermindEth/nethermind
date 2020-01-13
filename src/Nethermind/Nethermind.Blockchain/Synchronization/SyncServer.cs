@@ -120,7 +120,7 @@ namespace Nethermind.Blockchain.Synchronization
                 return;
             }
 
-            if (block.Number < _blockTree.BestSuggestedHeader?.Number - 512)
+            if (block.Number < (_blockTree.Head?.Number ?? 0) - 512)
             {
                 return;
             }
