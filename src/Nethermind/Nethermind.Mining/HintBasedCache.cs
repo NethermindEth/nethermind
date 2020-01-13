@@ -32,7 +32,20 @@ namespace Nethermind.Mining
         private Dictionary<Guid, HashSet<uint>> _epochsPerGuid = new Dictionary<Guid, HashSet<uint>>();
         private Dictionary<uint, int> _epochRefs = new Dictionary<uint, int>();
         private Dictionary<uint, Task<IEthashDataSet>> _cachedSets = new Dictionary<uint, Task<IEthashDataSet>>();
+        private Dictionary<uint, DataSetWithTime> _recent = new Dictionary<uint, DataSetWithTime>();
 
+        private struct DataSetWithTime
+        {
+            public DataSetWithTime(DateTimeOffset timestamp, Task<IEthashDataSet> dataSet)
+            {
+                Timestamp = timestamp;
+                DataSet = dataSet;
+            }
+            
+            public DateTimeOffset Timestamp { get; set; }
+            public Task<IEthashDataSet> DataSet { get; set; }
+        }
+        
         private int _cachedEpochsCount;
 
         public int CachedEpochsCount => _cachedEpochsCount;
@@ -89,7 +102,8 @@ namespace Nethermind.Mining
                     if (_epochRefs[alreadyCachedEpoch] == 0)
                     {
                         _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
-                        _cachedSets.Remove(alreadyCachedEpoch, out _);
+                        _cachedSets.Remove(alreadyCachedEpoch, out Task<IEthashDataSet> removed);
+                        _recent[alreadyCachedEpoch] = new DataSetWithTime(DateTimeOffset.UtcNow, removed);
                         Interlocked.Decrement(ref _cachedEpochsCount);
                     }
                 }
@@ -112,7 +126,24 @@ namespace Nethermind.Mining
                         if (_epochRefs[epoch] == 1)
                         {
                             _logger.Warn($"Building data set for epoch {epoch}");
-                            _cachedSets[epoch] = Task<IEthashDataSet>.Run(() => _createDataSet(epoch));
+                            if (_recent.ContainsKey(epoch))
+                            {
+                                _recent.Remove(epoch, out DataSetWithTime reused);
+                                _cachedSets[epoch] = reused.DataSet;
+                            }
+                            else
+                            {
+                                foreach (KeyValuePair<uint,DataSetWithTime> recent in _recent.ToList())
+                                {
+                                    if (recent.Value.Timestamp < DateTimeOffset.UtcNow.AddSeconds(-30))
+                                    {
+                                        _recent.Remove(recent.Key);
+                                    }
+                                }
+                                
+                                _cachedSets[epoch] = Task<IEthashDataSet>.Run(() => _createDataSet(epoch));
+                            }
+                            
                             Interlocked.Increment(ref _cachedEpochsCount);
                         }
                     }
