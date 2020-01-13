@@ -607,12 +607,13 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                     else
                     {
                         InsertReceipts(validReceipts);
-                        if (_receiptStorage.LowestInsertedReceiptBlock != null)
-                        {
-                            _syncReport.FastBlocksPivotNumber = _pivotNumber;
-                            _syncReport.FastBlocksReceipts.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber) + 1);
-                        }
                     }
+                }
+                
+                if (_receiptStorage.LowestInsertedReceiptBlock != null)
+                {
+                    _syncReport.FastBlocksPivotNumber = _pivotNumber;
+                    _syncReport.FastBlocksReceipts.Update(_pivotNumber - (_receiptStorage.LowestInsertedReceiptBlock ?? _pivotNumber) + 1);
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"LOWEST_INSERTED {_receiptStorage.LowestInsertedReceiptBlock} | HANDLED {batch}");
