@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,7 +25,7 @@ namespace Nethermind.Blockchain.Receipts
         TxReceipt Find(Keccak hash);
         void Add(TxReceipt txReceipt, bool isProcessed);
         void Insert(long blockNumber, TxReceipt txReceipt);
-        void Insert((long blockNumber, TxReceipt txReceipt)[] receipts);
+        void Insert(List<(long BlockNumber, TxReceipt TxReceipt)> receipts);
         long? LowestInsertedReceiptBlock { get; }
     }
 }

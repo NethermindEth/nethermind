@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -77,8 +78,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 throw new ArgumentNullException(nameof(txReceipt));
             }
-
-            _database.StartBatch();
+            
             if (txReceipt != null)
             {
                 var spec = _specProvider.GetSpec(blockNumber);
@@ -91,16 +91,16 @@ namespace Nethermind.Blockchain.Receipts
             _database.Set(Keccak.Zero, Rlp.Encode(LowestInsertedReceiptBlock.Value).Bytes);
         }
 
-        public void Insert((long blockNumber, TxReceipt txReceipt)[] receipts)
+        public void Insert(List<(long BlockNumber, TxReceipt TxReceipt)> receipts)
         {
             long? lowestSoFar = LowestInsertedReceiptBlock;
             _database.StartBatch();
             try
             {
-                for (int i = 0; i < receipts.Length; i++)
+                for (int i = 0; i < receipts.Count; i++)
                 {
-                    TxReceipt txReceipt = receipts[i].txReceipt;
-                    long blockNumber = receipts[i].blockNumber;
+                    TxReceipt txReceipt = receipts[i].TxReceipt;
+                    long blockNumber = receipts[i].BlockNumber;
                     if (txReceipt == null && blockNumber != 1L)
                     {
                         throw new ArgumentNullException(nameof(txReceipt));

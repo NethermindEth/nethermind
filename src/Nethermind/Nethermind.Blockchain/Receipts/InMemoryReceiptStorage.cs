@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -45,11 +46,11 @@ namespace Nethermind.Blockchain.Receipts
             LowestInsertedReceiptBlock = blockNumber;
         }
 
-        public void Insert((long blockNumber, TxReceipt txReceipt)[] receipts)
+        public void Insert(List<(long BlockNumber, TxReceipt TxReceipt)> receipts)
         {
-            foreach ((long blockNumber, TxReceipt txReceipt) tuple in receipts)
+            foreach ((long blockNumber, TxReceipt txReceipt) in receipts)
             {
-                Insert(tuple.blockNumber, tuple.txReceipt);
+                Insert(blockNumber, txReceipt);
             }
         }
 
