@@ -267,8 +267,9 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         while (collectedRequests < requestSize)
                         {
                             receiptsSpaceToUse -= block?.Transactions.Length ?? 0;
-                            if (receiptsSpaceToUse < 0)
+                            if (receiptsSpaceToUse < 0 && (block?.Transactions.Length ?? 0) <= MaxReceiptsFetch)
                             {
+                                // second check is here so we can always request oversized blocks
                                 break;
                             }
 

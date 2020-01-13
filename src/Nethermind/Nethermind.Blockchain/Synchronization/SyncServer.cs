@@ -87,12 +87,6 @@ namespace Nethermind.Blockchain.Synchronization
         
         public void AddNewBlock(Block block, Node nodeWhoSentTheBlock)
         {
-            if (_blockTree.Head.IsGenesis && block.Number != 1)
-            {
-                // ignore new blocks during
-                return;
-            }
-            
             if (block.TotalDifficulty == null) throw new InvalidOperationException("Cannot add a block with unknown total difficulty");
 
             _pool.TryFind(nodeWhoSentTheBlock.Id, out PeerInfo peerInfo);
