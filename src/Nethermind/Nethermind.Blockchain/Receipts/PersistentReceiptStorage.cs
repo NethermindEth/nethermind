@@ -90,6 +90,7 @@ namespace Nethermind.Blockchain.Receipts
             UpdateLowestInsertedInDb(blockNumber);
         }
         
+        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Insert(List<(long BlockNumber, TxReceipt TxReceipt)> receipts)
         {
             long? lowestSoFar = LowestInsertedReceiptBlock;
@@ -115,15 +116,12 @@ namespace Nethermind.Blockchain.Receipts
 
                     lowestSoFar =  Math.Min(LowestInsertedReceiptBlock ?? long.MaxValue, blockNumber);
                 }
+                
+                UpdateLowestInsertedInDb(lowestSoFar);
             }
             finally
             {
                 _database.CommitBatch(batchGuid);
-            }
-
-            if (lowestSoFar.HasValue)
-            {
-                UpdateLowestInsertedInDb(lowestSoFar);
             }
         }
 
