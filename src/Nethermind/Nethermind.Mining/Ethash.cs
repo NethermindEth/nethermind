@@ -170,7 +170,7 @@ namespace Nethermind.Mining
             while (true)
             {
                 byte[] result;
-                (mixHash, result) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
+                (mixHash, result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessThanTarget(result, target))
                 {
                     break;
