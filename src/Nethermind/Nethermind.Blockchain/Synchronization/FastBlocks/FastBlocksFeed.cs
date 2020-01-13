@@ -266,17 +266,17 @@ namespace Nethermind.Blockchain.Synchronization.FastBlocks
                         int collectedRequests = 0;
                         while (collectedRequests < requestSize)
                         {
-                            receiptsSpaceToUse -= block?.Transactions.Length ?? 0;
-                            if (receiptsSpaceToUse < 0 && (block?.Transactions.Length ?? 0) <= MaxReceiptsFetch)
-                            {
-                                // second check is here so we can always request oversized blocks
-                                break;
-                            }
+                            // receiptsSpaceToUse -= block?.Transactions.Length ?? 0;
+                            // if (receiptsSpaceToUse < 0 && (block?.Transactions.Length ?? 0) <= MaxReceiptsFetch)
+                            // {
+                            //     // second check is here so we can always request oversized blocks
+                            //     break;
+                            // }
 
-                            if (block.Transactions.Length > 0 || block.IsGenesis)
-                            {
+                            // if (block.Transactions.Length > 0 || block.IsGenesis)
+                            // {
                                 _lowestRequestedReceiptsHash = block.Hash;
-                            }
+                            // }
                             
                             if (block.Transactions.Length > 0)
                             {
