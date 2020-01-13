@@ -387,7 +387,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             // we want to keep more or less to the same side (left or right - we chose left) so we punish
             // the high child indices
             // we want to go deep first so we add bonus for the depth
-            float priority = 1.5f - (float) level / Math.Max(_maxStateLevel, (byte)1) + (float) rightness / Math.Max(_maxRightness, 1) - (float) _syncProgress.LastProgress / 2;
+            float priority = 1.5f - (float) level / Math.Max(_maxStateLevel, (byte) 1) + (float) rightness / Math.Max(_maxRightness, 1) - (float) _syncProgress.LastProgress / 2;
             return priority;
         }
 
@@ -540,9 +540,9 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     TimeSpan sinceLastReport = DateTime.UtcNow - _lastReportTime.small;
                     if (sinceLastReport > TimeSpan.FromSeconds(1))
                     {
-                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal)sinceLastReport.TotalMilliseconds;
-                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal)sinceLastReport.TotalMilliseconds;
-                        decimal handledNodesPerSecond = 1000m * (_handledNodesCount - _lastHandledNodesCount) / (decimal)sinceLastReport.TotalMilliseconds;
+                        decimal savedNodesPerSecond = 1000m * (_savedNodesCount - _lastSavedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
+                        decimal requestedNodesPerSecond = 1000m * (_requestedNodesCount - _lastRequestedNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
+                        decimal handledNodesPerSecond = 1000m * (_handledNodesCount - _lastHandledNodesCount) / (decimal) sinceLastReport.TotalMilliseconds;
                         _lastSavedNodesCount = _savedNodesCount;
                         _lastRequestedNodesCount = _requestedNodesCount;
                         _lastHandledNodesCount = _handledNodesCount;
@@ -731,6 +731,25 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private class DependentItemComparer : IEqualityComparer<DependentItem>
         {
+            private DependentItemComparer()
+            {
+            }
+
+            private static DependentItemComparer _instance;
+
+            public static DependentItemComparer Instance
+            {
+                get
+                {
+                    if (_instance == null)
+                    {
+                        LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
+                    }
+
+                    return _instance;
+                }
+            }
+
             public bool Equals(DependentItem x, DependentItem y)
             {
                 return x?.SyncItem.Hash == y?.SyncItem.Hash;
@@ -748,7 +767,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (!_dependencies.ContainsKey(dependency))
                 {
-                    _dependencies[dependency] = new HashSet<DependentItem>(new DependentItemComparer());
+                    _dependencies[dependency] = new HashSet<DependentItem>(DependentItemComparer.Instance);
                 }
 
                 _dependencies[dependency].Add(dependentItem);
@@ -820,7 +839,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Sending limited size request {length} at level {_maxStateLevel}");
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Preparing a request of length {length} from ({StreamsDescription}) nodes");
 
             List<StateSyncItem> requestHashes = new List<StateSyncItem>();

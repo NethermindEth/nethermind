@@ -482,9 +482,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            foreach ((Keccak Hash, long Number) hint in newBlockHashes.BlockHashes)
+            foreach ((Keccak hash, long number) in newBlockHashes.BlockHashes)
             {
-                SyncServer.HintBlock(hint.Hash, hint.Number, Node);
+                SyncServer.HintBlock(hash, number, Node);
             }
         }
 
