@@ -33,7 +33,7 @@ namespace Nethermind.Db
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         private readonly RocksDb _db;
         private WriteBatch _currentBatch;
-        private Dictionary<Guid, WriteBatch> _namedBatches = new Dictionary<Guid, WriteBatch>();
+        private ConcurrentDictionary<Guid, WriteBatch> _namedBatches = new ConcurrentDictionary<Guid, WriteBatch>();
         private WriteOptions _writeOptions;
 
         public abstract string Name { get; }
@@ -232,29 +232,19 @@ namespace Nethermind.Db
         
         private void StartNamedBatch(Guid guid)
         {
-            lock (_namedBatches)
-            {
-                _namedBatches[guid] = new WriteBatch();
-            }
+            _namedBatches[guid] = new WriteBatch();
         }
 
         public void CommitBatch(Guid? guid = null)
         {
-            WriteBatch batch;
-            lock (_namedBatches)
-            {
-                batch = guid.HasValue ? _namedBatches[guid.Value] : _currentBatch;
-            }
+            WriteBatch batch = guid.HasValue ? _namedBatches[guid.Value] : _currentBatch;
 
             _db.Write(batch, _writeOptions);
             batch.Dispose();
 
             if (guid.HasValue)
             {
-                lock (_namedBatches)
-                {
-                    _namedBatches[guid.Value] = null;
-                }
+                _namedBatches[guid.Value] = null;
             }
             else
             {
