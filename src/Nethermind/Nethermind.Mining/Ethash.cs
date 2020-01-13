@@ -230,8 +230,12 @@ namespace Nethermind.Mining
             
             ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
-            (byte[] _, byte[] result) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
-
+            (byte[] _, byte[] result, bool isValid) = Hashimoto(fullSize, dataSet, headerHashed, header.MixHash, header.Nonce);
+            if (!isValid)
+            {
+                return false;
+            }
+            
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
             return IsLessThanTarget(result, threshold);
         }
@@ -259,7 +263,7 @@ namespace Nethermind.Mining
             return headerHashed;
         }
 
-        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], byte[], bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint) (fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
@@ -301,11 +305,10 @@ namespace Nethermind.Mining
 
             if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
             {
-                // TODO: handle properly
-                throw new InvalidOperationException(); // TODO: need to change this
+                return (null, null, false);
             }
 
-            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes); // this tests fine
+            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes, true); // this tests fine
         }
     }
 }
