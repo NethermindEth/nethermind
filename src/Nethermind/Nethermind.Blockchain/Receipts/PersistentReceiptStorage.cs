@@ -120,8 +120,11 @@ namespace Nethermind.Blockchain.Receipts
             {
                 _database.CommitBatch(batchGuid);
             }
-            
-            UpdateLowestInsertedInDb(lowestSoFar);
+
+            if (lowestSoFar.HasValue)
+            {
+                UpdateLowestInsertedInDb(lowestSoFar);
+            }
         }
 
         private void UpdateLowestInsertedInDb(long? lowestSoFar)
