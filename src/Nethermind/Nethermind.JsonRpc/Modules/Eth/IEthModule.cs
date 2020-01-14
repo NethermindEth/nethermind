@@ -64,7 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = true, Description = "Returns storage data at address. storage_index", IsReadOnly = true)]
         ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex, BlockParameter blockParameter = null);
         
-        [JsonRpcMethod(IsImplemented = true, Description = "Returns number of transactions in the block", IsReadOnly = true)]
+        [JsonRpcMethod(IsImplemented = true, Description = "Returns account nonce (number of trnsactions from the account since genesis) at the given block number", IsReadOnly = true)]
         ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter = null);
         
         [JsonRpcMethod(IsImplemented = true, Description = "Returns number of transactions in the block block hash", IsReadOnly = true)]
