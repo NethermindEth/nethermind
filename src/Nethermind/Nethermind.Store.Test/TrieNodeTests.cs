@@ -30,7 +30,8 @@ namespace Nethermind.Store.Test
         private TrieNode _heavyLeaf;
         private TrieNode _accountLeaf;
 
-        public TrieNodeTests()
+        [SetUp]
+        public void Setup()
         {
             _tiniestLeaf = new TrieNode(NodeType.Leaf);
             _tiniestLeaf.Key = new HexPrefix(true, 5);
