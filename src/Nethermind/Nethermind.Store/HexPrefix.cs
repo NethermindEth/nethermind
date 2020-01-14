@@ -33,6 +33,17 @@ namespace Nethermind.Store
         public bool IsLeaf { get; }
         public bool IsExtension => !IsLeaf;
 
+        public int Size
+        {
+            get
+            {
+                const int refSize = sizeof(long);
+                const int arrayOverhead = sizeof(long);
+                return refSize + Path.Length + arrayOverhead
+                    + 4 /* aligned bools */;
+            }
+        }
+
         public byte[] ToBytes()
         {
             byte[] output = new byte[Path.Length / 2 + 1];

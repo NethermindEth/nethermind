@@ -58,15 +58,15 @@ namespace Nethermind.Store
         public string DumpState()
         {
             TreeDumper dumper = new TreeDumper();
-            _tree.Accept(dumper, _codeDb, _tree.RootHash);
+            _tree.Accept(dumper, _tree.RootHash);
             return dumper.ToString();
         }
 
 
         public TrieStats CollectStats()
         {
-            TrieStatsCollector collector = new TrieStatsCollector(_logManager);
-            _tree.Accept(collector, _codeDb, _tree.RootHash);
+            TrieStatsCollector collector = new TrieStatsCollector(_codeDb, _logManager);
+            _tree.Accept(collector, _tree.RootHash);
             return collector.Stats;
         }
 

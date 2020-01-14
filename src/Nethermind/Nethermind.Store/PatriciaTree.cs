@@ -257,7 +257,19 @@ namespace Nethermind.Store
                 return new Rlp(_db[keccak.Bytes]);
             }
 
-            return NodeCache.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
+            Rlp cachedRlp = NodeCache.Get(keccak);
+            if (cachedRlp == null)
+            {
+                byte[] dbValue = _db[keccak.Bytes];
+                if (dbValue == null)
+                {
+                    throw new TrieException($"Node {keccak} is missing from the DB");
+                }
+                
+                return new Rlp(dbValue);
+            }
+
+            return cachedRlp;
         }
 
         public byte[] Run(Span<byte> updatePath, int nibblesCount, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true, Keccak rootHash = null)
@@ -720,7 +732,7 @@ namespace Nethermind.Store
             public int PathIndex { get; }
         }
 
-        public void Accept(ITreeVisitor visitor, IDb codeDb, Keccak rootHash)
+        public void Accept(ITreeVisitor visitor, Keccak rootHash)
         {
             VisitContext visitContext = new VisitContext();
             TrieNode rootRef = null;
@@ -740,7 +752,7 @@ namespace Nethermind.Store
             }
             
             visitor.VisitTree(rootHash, visitContext);
-            rootRef?.Accept(visitor, this, codeDb, visitContext);
+            rootRef?.Accept(visitor, this, visitContext);
         }
     }
 }

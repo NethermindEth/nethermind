@@ -418,7 +418,7 @@ namespace Nethermind.Core.Encoding
             }
         }
 
-        public int ReadNumberOfItemsRemaining(int? beforePosition = null)
+        public int ReadNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         {
             int positionStored = Position;
             int numberOfItems = 0;
@@ -452,6 +452,10 @@ namespace Nethermind.Core.Encoding
                 }
 
                 numberOfItems++;
+                if (numberOfItems >= maxSearch)
+                {
+                    break;
+                }
             }
 
             Position = positionStored;

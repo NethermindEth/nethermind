@@ -254,7 +254,7 @@ namespace Nethermind.JsonRpc.Eip1186
 
         private AccountDecoder _accountDecoder = new AccountDecoder();
 
-        public void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext)
+        public void VisitCode(Keccak codeHash, VisitContext visitContext)
         {
             throw new InvalidOperationException($"{nameof(ProofCollector)} does never expect to visit code");
         }

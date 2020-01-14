@@ -91,7 +91,7 @@ namespace Nethermind.Store
 
         public void RunTreeVisitor(Keccak rootHash, ITreeVisitor treeVisitor)	
         {
-            _state.Accept(treeVisitor, _codeDb, rootHash);	
+            _state.Accept(treeVisitor, rootHash);	
         }
 
         public byte[] GetCode(Keccak rootHash, Address address)

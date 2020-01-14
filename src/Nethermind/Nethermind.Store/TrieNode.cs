@@ -30,46 +30,26 @@ namespace Nethermind.Store
     public class TrieNode
     {
         public static bool AllowBranchValues { private get; set; }
-
+        private static object _nullNode = new object();
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         private RlpStream _rlpStream;
         private object[] _data;
         private bool _isDirty;
 
-        private static object NullNode = new object();
-
         public long Size
         {
             get
             {
-                if (_rlpStream != null)
-                {
-                    return _rlpStream.Length;
-                }
-
-                switch (NodeType)
-                {
-                    case NodeType.Unknown:
-                        return FullRlp?.Length ?? 0;
-                    case NodeType.Branch:
-                        int length = 0;
-                        for (int i = 0; i < _data.Length; i++)
-                        {
-                            if (_data[i] != null)
-                            {
-                                length += sizeof(int);
-                            }
-                        }
-
-                        return length;
-                    case NodeType.Extension:
-                        return Key.Path.Length;
-                    case NodeType.Leaf:
-                        return Key.Path.Length + Value.Length;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
+                const int refSize = sizeof(long);
+                const int arrayOverhead = 20;
+                return
+                    (Keccak == null ? refSize : refSize + 32) +
+                    (_rlpStream == null ? refSize : refSize + 4 + arrayOverhead) + 
+                    (refSize + FullRlp?.Length ?? refSize) +
+                    refSize + (_data?.Length * refSize ?? 0) /* _data */
+                    /* _isDirty + NodeType aligned to 4 (is it 8?)*/ + 4
+                    + refSize + (Key?.Size ?? 0);
             }
         }
 
@@ -134,7 +114,7 @@ namespace Nethermind.Store
 
         public Keccak Keccak { get; set; }
         public Rlp FullRlp { get; private set; }
-        public NodeType NodeType { get; set; }
+        public NodeType NodeType { get; private set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
@@ -187,6 +167,13 @@ namespace Nethermind.Store
             set
             {
                 InitData();
+                if (IsBranch)
+                {
+                    // in Ethereum all paths are of equal length, hence branches will never have values
+                    // so we decided to save 1/17th of the array size in memory
+                    throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
+                }
+
                 _data[IsLeaf ? 1 : 16] = value;
             }
         }
@@ -205,10 +192,15 @@ namespace Nethermind.Store
                 {
                     if (FullRlp == null)
                     {
-                        FullRlp = tree.GetNode(Keccak, allowCaching);
-                        if (FullRlp == null)
+                        if (Keccak == null)
                         {
-                            throw new TrieException($"Unable to resolve node {Keccak}");
+                            throw new TrieException($"Unable to resolve node without Keccak");
+                        }
+
+                        FullRlp = tree.GetNode(Keccak, allowCaching);
+                        if (FullRlp?.Bytes == null)
+                        {
+                            throw new TrieException($"Trie returned a malformed RLP for node {Keccak}");
                         }
 
                         _rlpStream = FullRlp.Bytes.AsRlpStream();
@@ -221,9 +213,11 @@ namespace Nethermind.Store
 
                 Metrics.TreeNodeRlpDecodings++;
                 _rlpStream.ReadSequenceLength();
-                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining();
 
-                if (numberOfItems == 17)
+                // micro optimization to prevent searches beyond 3 items for branches (search up to three)
+                int numberOfItems = _rlpStream.ReadNumberOfItemsRemaining(null, 3);
+
+                if (numberOfItems > 2)
                 {
                     NodeType = NodeType.Branch;
                 }
@@ -245,7 +239,7 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
+                    throw new TrieException($"Unexpected number of items = {numberOfItems} when decoding a node");
                 }
             }
             catch (Exception e)
@@ -283,7 +277,6 @@ namespace Nethermind.Store
             Metrics.TreeNodeHashCalculations++;
             Keccak = Keccak.Compute(FullRlp);
         }
-
 
         internal Rlp RlpEncode()
         {
@@ -345,7 +338,7 @@ namespace Nethermind.Store
                 {
                     case 0:
                     case 128:
-                        _data[i] = NullNode;
+                        _data[i] = _nullNode;
                         break;
                     case 160:
                         _rlpStream.Position--;
@@ -379,7 +372,7 @@ namespace Nethermind.Store
         {
             if (!IsBranch)
             {
-                throw new InvalidOperationException("only on branch");
+                throw new TrieException("An attempt was made to ask about whether a child is null on a non-branch node.");
             }
 
             if (_rlpStream != null && _data?[i] == null)
@@ -388,17 +381,22 @@ namespace Nethermind.Store
                 return _rlpStream.PeekNextRlpLength() == 1;
             }
 
-            return ReferenceEquals(_data[i], NullNode) || _data?[i] == null;
+            return _data?[i] == null || ReferenceEquals(_data[i], _nullNode);
         }
 
         public bool IsChildDirty(int i)
         {
+            if (IsExtension)
+            {
+                i++;
+            }
+
             if (_data?[i] == null)
             {
                 return false;
             }
 
-            if (ReferenceEquals(_data[i], NullNode))
+            if (ReferenceEquals(_data[i], _nullNode))
             {
                 return false;
             }
@@ -413,17 +411,17 @@ namespace Nethermind.Store
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             ResolveChild(childIndex);
-            return ReferenceEquals(_data[childIndex], NullNode) ? null : (TrieNode) _data[childIndex];
+            return ReferenceEquals(_data[childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
         }
 
         public void SetChild(int i, TrieNode node)
         {
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data[index] = node ?? NullNode;
+            _data[index] = node ?? _nullNode;
         }
 
-        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, IDb codeDb, VisitContext visitContext)
+        internal void Accept(ITreeVisitor visitor, PatriciaTree tree, VisitContext visitContext)
         {
             try
             {
@@ -437,8 +435,6 @@ namespace Nethermind.Store
 
             switch (NodeType)
             {
-                case NodeType.Unknown:
-                    throw new NotImplementedException();
                 case NodeType.Branch:
                 {
                     visitor.VisitBranch(this, visitContext);
@@ -449,7 +445,7 @@ namespace Nethermind.Store
                         if (child != null && visitor.ShouldVisit(child.Keccak))
                         {
                             visitContext.BranchChildIndex = i;
-                            child.Accept(visitor, tree, codeDb, visitContext);
+                            child.Accept(visitor, tree, visitContext);
                         }
                     }
 
@@ -466,7 +462,7 @@ namespace Nethermind.Store
                     {
                         visitContext.Level++;
                         visitContext.BranchChildIndex = null;
-                        child.Accept(visitor, tree, codeDb, visitContext);
+                        child.Accept(visitor, tree, visitContext);
                         visitContext.Level--;
                     }
 
@@ -483,7 +479,7 @@ namespace Nethermind.Store
                         {
                             visitContext.Level++;
                             visitContext.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, codeDb.Get(account.CodeHash), visitContext);
+                            visitor.VisitCode(account.CodeHash, visitContext);
                             visitContext.Level--;
                         }
 
@@ -493,7 +489,7 @@ namespace Nethermind.Store
                             TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
                             visitContext.Level++;
                             visitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, codeDb, visitContext);
+                            storageRoot.Accept(visitor, tree, visitContext);
                             visitContext.Level--;
                             visitContext.IsStorage = false;
                         }
@@ -503,7 +499,7 @@ namespace Nethermind.Store
                 }
 
                 default:
-                    throw new ArgumentOutOfRangeException();
+                    throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
             }
         }
 
@@ -534,27 +530,19 @@ namespace Nethermind.Store
             public Rlp Encode(TrieNode item)
             {
                 Metrics.TreeNodeRlpEncodings++;
+
                 if (item == null)
                 {
-                    return Rlp.OfEmptySequence;
+                    throw new TrieException("An attempt was made to RLP encode a null node.");
                 }
 
-                if (item.IsLeaf)
+                return item.NodeType switch
                 {
-                    return EncodeLeaf(item);
-                }
-
-                if (item.IsBranch)
-                {
-                    return RlpEncodeBranch(item);
-                }
-
-                if (item.IsExtension)
-                {
-                    return EncodeExtension(item);
-                }
-
-                throw new InvalidOperationException($"Unknown node type {item.NodeType}");
+                    NodeType.Branch => RlpEncodeBranch(item),
+                    NodeType.Extension => EncodeExtension(item),
+                    NodeType.Leaf => EncodeLeaf(item),
+                    _ => throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}")
+                };
             }
 
             private static Rlp EncodeExtension(TrieNode item)
@@ -585,15 +573,20 @@ namespace Nethermind.Store
                 return new Rlp(rlpStream.Data);
             }
 
-            private static Rlp EncodeLeaf(TrieNode item)
+            private static Rlp EncodeLeaf(TrieNode node)
             {
-                byte[] keyBytes = item.Key.ToBytes();
-                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(item.Value);
+                if (node.Key == null)
+                {
+                    throw new TrieException($"Key of a leaf node is null at node {node.Keccak}");
+                }
+
+                byte[] keyBytes = node.Key.ToBytes();
+                int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
                 RlpStream rlpStream = new RlpStream(totalLength);
                 rlpStream.StartSequence(contentLength);
                 rlpStream.Encode(keyBytes);
-                rlpStream.Encode(item.Value);
+                rlpStream.Encode(node.Value);
                 return new Rlp(rlpStream.Data);
             }
 
@@ -611,7 +604,7 @@ namespace Nethermind.Store
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data[i], NullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
                         {
                             totalLength++;
                         }
@@ -648,7 +641,7 @@ namespace Nethermind.Store
                     else
                     {
                         rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data[i], NullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
                         {
                             destination[position++] = 128;
                         }

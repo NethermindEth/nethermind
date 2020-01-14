@@ -68,7 +68,7 @@ namespace Nethermind.Core.Encoding
 
         public Rlp(byte[] bytes)
         {
-            Bytes = bytes;
+            Bytes = bytes ?? throw new RlpException("RLP cannot be initialized with null bytes");
         }
 
         public byte[] Bytes { get; }

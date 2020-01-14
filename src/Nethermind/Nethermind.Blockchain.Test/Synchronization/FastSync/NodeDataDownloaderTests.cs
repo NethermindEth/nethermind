@@ -913,20 +913,20 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
 
             if (!skipLogs) _logger.Info($"-------------------- REMOTE --------------------");
             TreeDumper dumper = new TreeDumper();
-            _remoteStateTree.Accept(dumper, _remoteCodeDb, _remoteStateTree.RootHash);
+            _remoteStateTree.Accept(dumper, _remoteStateTree.RootHash);
             string remote = dumper.ToString();
             if (!skipLogs) _logger.Info(remote);
             if (!skipLogs) _logger.Info($"-------------------- LOCAL --------------------");
             dumper.Reset();
-            _localStateTree.Accept(dumper, _localCodeDb, _localStateTree.RootHash);
+            _localStateTree.Accept(dumper, _localStateTree.RootHash);
             string local = dumper.ToString();
             if (!skipLogs) _logger.Info(local);
 
             if (stage == "END")
             {
                 Assert.AreEqual(remote, local, $"{remote}{Environment.NewLine}{local}");
-                TrieStatsCollector collector = new TrieStatsCollector(_logManager);
-                _localStateTree.Accept(collector, _localCodeDb, _localStateTree.RootHash);
+                TrieStatsCollector collector = new TrieStatsCollector(_localCodeDb, _logManager);
+                _localStateTree.Accept(collector, _localStateTree.RootHash);
                 Assert.AreEqual(0, collector.Stats.MissingCode);
             }
 

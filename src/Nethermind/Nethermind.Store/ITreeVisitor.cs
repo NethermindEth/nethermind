@@ -41,6 +41,6 @@ namespace Nethermind.Store
         
         void VisitLeaf(TrieNode node, VisitContext visitContext, byte[] value = null);
         
-        void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext);
+        void VisitCode(Keccak codeHash, VisitContext visitContext);
     }
 }
