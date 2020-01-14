@@ -28,8 +28,5 @@ namespace Nethermind.Db.Databases
             : base(basePath, "configs", dbConfig, logManager)
         {
         }
-
-        protected override void UpdateReadMetrics() => Metrics.ConfigsDbReads++;
-        protected override void UpdateWriteMetrics() => Metrics.CodeDbWrites++;
     }
 }

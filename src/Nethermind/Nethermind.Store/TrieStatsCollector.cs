@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 
@@ -21,12 +22,14 @@ namespace Nethermind.Store
 {
     public class TrieStatsCollector : ITreeVisitor
     {
+        private readonly IDb _codeDb;
         private int _lastAccountNodeCount = 0;
         
         private readonly ILogger _logger;
 
-        public TrieStatsCollector(ILogManager logManager)
+        public TrieStatsCollector(IDb codeDb, ILogManager logManager)
         {
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _logger = logManager.GetClassLogger();
         }
         
@@ -95,8 +98,9 @@ namespace Nethermind.Store
             }
         }
         
-        public void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext)
+        public void VisitCode(Keccak codeHash, VisitContext visitContext)
         {
+            byte[] code = _codeDb[codeHash.Bytes];
             if (code != null)
             {
                 Stats.CodeCount++;

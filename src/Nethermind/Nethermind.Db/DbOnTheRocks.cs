@@ -62,8 +62,8 @@ namespace Nethermind.Db
             }
         }
 
-        protected abstract void UpdateReadMetrics();
-        protected abstract void UpdateWriteMetrics();
+        protected virtual void UpdateReadMetrics() => Metrics.OtherDbReads++;
+        protected virtual void UpdateWriteMetrics() => Metrics.OtherDbWrites++;
 
         private T ReadConfig<T>(IDbConfig dbConfig, string propertyName)
         {

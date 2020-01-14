@@ -14,22 +14,24 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
+using System.Runtime.CompilerServices;
 
-namespace Nethermind.Store
+namespace Nethermind.Core.Crypto
 {
-    public class StateException : Exception
+    public static class MemorySizes
     {
-        public StateException()
-        {
-        }
+        private const int AlignmentMask = 7;
+        public const int Alignment = 8;
 
-        public StateException(string message) : base(message)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Align(int unalignedSize)
         {
+            return unalignedSize + (-unalignedSize & AlignmentMask);
         }
-
-        public StateException(string message, Exception inner) : base(message, inner)
-        {
-        }
+        
+        public const int RefSize = 8;
+        public const int SmallObjectOverhead = 24;
+        // public const int LargeObjectOverhead = 32; // just guessing, 20 on 32bit
+        public const int ArrayOverhead = 20;
     }
 }

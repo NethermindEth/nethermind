@@ -34,6 +34,8 @@ namespace Nethermind.Core.Encoding
         {
         }
         
+        public int MemorySize => MemorySizes.SmallObjectOverhead;
+        
         public RlpStream(int length)
         {
             Data = new byte[length]; ;
@@ -418,7 +420,7 @@ namespace Nethermind.Core.Encoding
             }
         }
 
-        public int ReadNumberOfItemsRemaining(int? beforePosition = null)
+        public int ReadNumberOfItemsRemaining(int? beforePosition = null, int maxSearch = int.MaxValue)
         {
             int positionStored = Position;
             int numberOfItems = 0;
@@ -452,6 +454,10 @@ namespace Nethermind.Core.Encoding
                 }
 
                 numberOfItems++;
+                if (numberOfItems >= maxSearch)
+                {
+                    break;
+                }
             }
 
             Position = positionStored;

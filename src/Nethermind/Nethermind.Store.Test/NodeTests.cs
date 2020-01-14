@@ -131,7 +131,6 @@ namespace Nethermind.Store.Test
         {
             TrieNode node = new TrieNode(NodeType.Branch);
             node.SetChild(0, new TrieNode(NodeType.Leaf, TestItem.KeccakA));
-            node.Value = new byte[] {1, 2, 3};
             PatriciaTree tree = BuildATreeFromNode(node);
             TrieNode decoded = new TrieNode(NodeType.Unknown, node.Keccak);
             decoded.ResolveNode(tree);

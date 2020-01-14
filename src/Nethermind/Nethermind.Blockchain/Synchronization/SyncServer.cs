@@ -280,6 +280,7 @@ namespace Nethermind.Blockchain.Synchronization
             {
                 if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                 {
+                    // todo (hint instead)
                     peerInfo.SyncPeer.SendNewBlock(block);
                     counter++;
                 }

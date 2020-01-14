@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -15,21 +15,19 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Core.Crypto;
+using NUnit.Framework;
 
-namespace Nethermind.Store
+namespace Nethermind.Core.Test
 {
-    public class StateException : Exception
+    [TestFixture]
+    public class MemorySizeTests
     {
-        public StateException()
+        [TestCase(1, 8)]
+        [TestCase(1023, 1024)]
+        public void Span(int unaligned, int aligned)
         {
-        }
-
-        public StateException(string message) : base(message)
-        {
-        }
-
-        public StateException(string message, Exception inner) : base(message, inner)
-        {
+            Assert.AreEqual(aligned, MemorySizes.Align(unaligned));
         }
     }
 }

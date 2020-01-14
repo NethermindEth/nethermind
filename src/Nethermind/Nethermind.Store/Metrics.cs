@@ -18,6 +18,9 @@ namespace Nethermind.Store
 {
     public static class Metrics
     {
+        public static long TrieCacheSize { get; set; }
+        
+        public static long TrieMemorySize { get; set; }
         public static long BlocksDbReads { get; set; }
         public static long BlocksDbWrites { get; set; }
         public static long CodeDbReads { get; set; }
@@ -34,10 +37,6 @@ namespace Nethermind.Store
         public static long StorageTreeWrites { get; set; }
         public static long PendingTxsDbReads { get; set; }
         public static long PendingTxsDbWrites { get; set; }
-        public static long ConsumersDbReads { get; set; }
-        public static long ConsumersDbWrites { get; set; }
-        public static long ConfigsDbReads { get; set; }
-        public static long ConfigsDbWrites { get; set; }
         public static long EthRequestsDbReads { get; set; }
         public static long EthRequestsDbWrites { get; set; }
         public static long TraceDbReads { get; set; }

@@ -87,9 +87,9 @@ namespace Nethermind.Store
             }
         }
 
-        public void VisitCode(Keccak codeHash, byte[] code, VisitContext visitContext)
+        public void VisitCode(Keccak codeHash, VisitContext visitContext)
         {
-            _builder.AppendLine($"{GetPrefix(visitContext)}CODE {codeHash} LENGTH {code.Length}");
+            _builder.AppendLine($"{GetPrefix(visitContext)}CODE {codeHash}");
         }
 
         public override string ToString()

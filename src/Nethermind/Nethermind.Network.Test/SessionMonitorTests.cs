@@ -48,8 +48,6 @@ namespace Nethermind.Network.Test
         public void Will_unregister_on_disconnect()
         {
             ISession session = CreateSession();
-
-            TestRandom testRandom = new TestRandom((i) => 1);
             SessionMonitor sessionMonitor = new SessionMonitor(new NetworkConfig(), LimboLogs.Instance);
             sessionMonitor.AddSession(session);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");

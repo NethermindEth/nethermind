@@ -61,11 +61,13 @@ namespace Nethermind.Core.Crypto
             return result;
         }
     }
-    
+
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
         internal const int Size = 32;
+
+        public int MemorySize => MemorySizes.ArrayOverhead + Size;
 
         public Keccak(string hexString)
             : this(Extensions.Bytes.FromHexString(hexString))
