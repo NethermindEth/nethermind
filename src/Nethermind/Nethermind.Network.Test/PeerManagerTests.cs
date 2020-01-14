@@ -251,11 +251,11 @@ namespace Nethermind.Network.Test
             SetupPersistedPeers(50);
             _peerManager.Init();
             _peerManager.Start();
-            Thread.Sleep(_travisDelay);
+            Thread.Sleep(_travisDelayLong);
             Assert.AreEqual(25, _rlpxPeer.ConnectAsyncCallsCount);
             DisconnectAllSessions();
 
-            Thread.Sleep(_travisDelay);
+            Thread.Sleep(_travisDelayLong);
             Assert.AreEqual(50, _rlpxPeer.ConnectAsyncCallsCount);
         }
 
