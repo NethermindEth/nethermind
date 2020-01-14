@@ -6,13 +6,13 @@ on:
     - '*'
 
 jobs:
-    bls-building:
-        name: Updating DAppNode package
-        runs-on: ubuntu-latest
-        steps:
-        - name: Send dispatch event to DAppNodePackage-nethermind repo
-        run: |
-            curl -v -X POST -u "${{ secrets.PAT_USERNAME }}:${{ secrets.PAT_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode_update"}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
-      
+  bls-building:
+    name: Updating DAppNode package
+    runs-on: ubuntu-latest
+    steps:
+    - name: Send dispatch event to DAppNodePackage-nethermind repo
+    run: |
+        curl -v -X POST -u "${{ secrets.PAT_USERNAME }}:${{ secrets.PAT_TOKEN }}" -H "Accept: application/vnd.github.everest-preview+json" -H "Content-Type: application/json" --data '{"event_type":"dappnode_update"}' https://api.github.com/repos/nethermindeth/nethermind/dispatches
+    
 
 
