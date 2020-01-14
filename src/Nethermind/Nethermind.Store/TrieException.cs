@@ -18,17 +18,17 @@ using System;
 
 namespace Nethermind.Store
 {
-    public class StateException : Exception
+    public class TrieException : StateException
     {
-        public StateException()
+        public TrieException()
         {
         }
 
-        public StateException(string message) : base(message)
+        public TrieException(string message) : base(message)
         {
         }
 
-        public StateException(string message, Exception inner) : base(message, inner)
+        public TrieException(string message, Exception inner) : base(message, inner)
         {
         }
     }

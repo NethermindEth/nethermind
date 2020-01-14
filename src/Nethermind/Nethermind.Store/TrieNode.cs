@@ -16,6 +16,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.Serialization;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +30,7 @@ namespace Nethermind.Store
     public class TrieNode
     {
         public static bool AllowBranchValues { private get; set; }
-        
+
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         private RlpStream _rlpStream;
@@ -37,6 +38,40 @@ namespace Nethermind.Store
         private bool _isDirty;
 
         private static object NullNode = new object();
+
+        public long Size
+        {
+            get
+            {
+                if (_rlpStream != null)
+                {
+                    return _rlpStream.Length;
+                }
+
+                switch (NodeType)
+                {
+                    case NodeType.Unknown:
+                        return FullRlp?.Length ?? 0;
+                    case NodeType.Branch:
+                        int length = 0;
+                        for (int i = 0; i < _data.Length; i++)
+                        {
+                            if (_data[i] != null)
+                            {
+                                length += sizeof(int);
+                            }
+                        }
+
+                        return length;
+                    case NodeType.Extension:
+                        return Key.Path.Length;
+                    case NodeType.Leaf:
+                        return Key.Path.Length + Value.Length;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+        }
 
         public TrieNode(NodeType nodeType)
         {
@@ -171,6 +206,11 @@ namespace Nethermind.Store
                     if (FullRlp == null)
                     {
                         FullRlp = tree.GetNode(Keccak, allowCaching);
+                        if (FullRlp == null)
+                        {
+                            throw new TrieException($"Unable to resolve node {Keccak}");
+                        }
+
                         _rlpStream = FullRlp.Bytes.AsRlpStream();
                     }
                 }
@@ -210,7 +250,7 @@ namespace Nethermind.Store
             }
             catch (Exception e)
             {
-                throw new StateException($"Unable to resolve node {Keccak.ToString(true)}", e);
+                throw new TrieException($"Trie exception when working with node {Keccak}", e);
             }
         }
 
@@ -301,25 +341,24 @@ namespace Nethermind.Store
             {
                 SeekChild(i);
                 int prefix = _rlpStream.ReadByte();
-                if (prefix == 0)
+                switch (prefix)
                 {
-                    _data[i] = NullNode;
-                }
-                else if (prefix == 128)
-                {
-                    _data[i] = NullNode;
-                }
-                else if (prefix == 160)
-                {
-                    _rlpStream.Position--;
-                    _data[i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
-                }
-                else
-                {
-                    _rlpStream.Position--;
-                    Span<byte> fullRlp = _rlpStream.PeekNextItem();
-                    TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
-                    _data[i] = child;
+                    case 0:
+                    case 128:
+                        _data[i] = NullNode;
+                        break;
+                    case 160:
+                        _rlpStream.Position--;
+                        _data[i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
+                        break;
+                    default:
+                    {
+                        _rlpStream.Position--;
+                        Span<byte> fullRlp = _rlpStream.PeekNextItem();
+                        TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
+                        _data[i] = child;
+                        break;
+                    }
                 }
             }
         }
@@ -482,13 +521,13 @@ namespace Nethermind.Store
                 position = sequenceLength - valueRlpLength;
                 if (AllowBranchValues)
                 {
-                    Rlp.Encode(result, position, item.Value);    
+                    Rlp.Encode(result, position, item.Value);
                 }
                 else
                 {
                     result[position] = 128;
                 }
-                
+
                 return new Rlp(result);
             }
 
@@ -572,7 +611,7 @@ namespace Nethermind.Store
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data[i], TrieNode.NullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data[i], NullNode) || item._data[i] == null)
                         {
                             totalLength++;
                         }
@@ -609,7 +648,7 @@ namespace Nethermind.Store
                     else
                     {
                         rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data[i], TrieNode.NullNode) || item._data[i] == null)
+                        if (ReferenceEquals(item._data[i], NullNode) || item._data[i] == null)
                         {
                             destination[position++] = 128;
                         }

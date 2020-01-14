@@ -15,8 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test
@@ -32,12 +34,12 @@ namespace Nethermind.Store.Test
             _tiniestLeaf = new TrieNode(NodeType.Leaf);
             _tiniestLeaf.Key = new HexPrefix(true, 5);
             _tiniestLeaf.Value = new byte[] {10};
-            
+
             _heavyLeaf = new TrieNode(NodeType.Leaf);
             _heavyLeaf.Key = new HexPrefix(true, 5);
             _heavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
         }
-        
+
         [Test]
         public void Can_encode_decode_tiny_branch()
         {
@@ -54,7 +56,7 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest.Value, "value");
             Assert.AreEqual(_tiniestLeaf.Key.ToBytes(), decodedTiniest.Key.ToBytes(), "key");
         }
-        
+
         [Test]
         public void Can_encode_decode_heavy_branch()
         {
@@ -69,7 +71,7 @@ namespace Nethermind.Store.Test
 
             Assert.AreEqual(decoded.GetChildHash(11), decodedTiniest.Keccak, "value");
         }
-        
+
         [Test]
         public void Can_encode_decode_tiny_extension()
         {
@@ -87,7 +89,7 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(_tiniestLeaf.Value, decodedTiniest.Value, "value");
             Assert.AreEqual(_tiniestLeaf.Key.ToBytes(), decodedTiniest.Key.ToBytes(), "key");
         }
-        
+
         [Test]
         public void Can_encode_decode_heavy_extension()
         {
@@ -116,7 +118,7 @@ namespace Nethermind.Store.Test
             TrieNode getResult = trieNode[11];
             Assert.AreSame(tiniest, getResult);
         }
-        
+
         [Test]
         public void Get_child_hash_works_on_hashed_child_of_a_branch()
         {
@@ -124,11 +126,11 @@ namespace Nethermind.Store.Test
             trieNode[11] = _heavyLeaf;
             Rlp rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
-            
+
             Keccak getResult = decoded.GetChildHash(11);
             Assert.NotNull(getResult);
         }
-        
+
         [Test]
         public void Get_child_hash_works_on_inlined_child_of_a_branch()
         {
@@ -136,11 +138,11 @@ namespace Nethermind.Store.Test
             trieNode[11] = _tiniestLeaf;
             Rlp rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Branch, rlp);
-            
+
             Keccak getResult = decoded.GetChildHash(11);
             Assert.Null(getResult);
         }
-        
+
         [Test]
         public void Get_child_hash_works_on_hashed_child_of_an_extension()
         {
@@ -149,11 +151,11 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 5);
             Rlp rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
-            
+
             Keccak getResult = decoded.GetChildHash(0);
             Assert.NotNull(getResult);
         }
-        
+
         [Test]
         public void Get_child_hash_works_on_inlined_child_of_an_extension()
         {
@@ -162,9 +164,41 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 5);
             Rlp rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
-            
+
             Keccak getResult = decoded.GetChildHash(0);
             Assert.Null(getResult);
+        }
+
+        [Test]
+        public void Unknown_node_with_missing_data_can_accept_visitor()
+        {
+            PatriciaTree tree = new PatriciaTree();
+            TrieNode trieNode = new TrieNode(NodeType.Unknown);
+            trieNode.Accept(Substitute.For<ITreeVisitor>(), tree, new MemDb(), new VisitContext());
+        }
+        
+        [Test]
+        public void Leaf_with_simple_account_can_accept_visitors()
+        {
+            Account account = new Account(100);
+            AccountDecoder decoder = new AccountDecoder();
+            
+            PatriciaTree tree = new PatriciaTree();
+            TrieNode trieNode = new TrieNode(NodeType.Leaf);
+            trieNode.Value = decoder.Encode(account).Bytes;
+            trieNode.Accept(Substitute.For<ITreeVisitor>(), tree, new MemDb(), new VisitContext());
+        }
+        
+        [Test]
+        public void Leaf_with_contract_without_storage_and_empty_code_can_accept_visitors()
+        {
+            Account account = new Account(1, 100, Keccak.EmptyTreeHash, Keccak.OfAnEmptyString); 
+            AccountDecoder decoder = new AccountDecoder();
+            
+            PatriciaTree tree = new PatriciaTree();
+            TrieNode trieNode = new TrieNode(NodeType.Leaf);
+            trieNode.Value = decoder.Encode(account).Bytes;
+            trieNode.Accept(Substitute.For<ITreeVisitor>(), tree, new MemDb(), new VisitContext());
         }
     }
 }
