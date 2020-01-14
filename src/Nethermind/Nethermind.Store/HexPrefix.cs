@@ -15,42 +15,93 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
     public abstract class HexPrefix
     {
-        class LeafPrefix : HexPrefix
+        sealed class ArrayBasedPrefix : HexPrefix
         {
-            public LeafPrefix(params byte[] path) : base(path) { }
-            public override bool IsLeaf => true;
+            readonly byte[] _payload;
+
+            public ArrayBasedPrefix(bool isLeaf, ReadOnlySpan<byte> value)
+            {
+                _payload = value.ToArray();
+                IsLeaf = isLeaf;
+            }
+
+            public override ReadOnlySpan<byte> Path => _payload;
+            public override bool IsLeaf { get; }
         }
 
-        class ExtensionPrefix : HexPrefix
+        sealed class LongBasedPrefix : HexPrefix
         {
-            public ExtensionPrefix(params byte[] path) : base(path) { }
-            public override bool IsLeaf => false;
+            public const int MaxLength = 7;
+            const long IsLeafMask = 8;
+            const long LengthMask = 7;
+
+            long _value;
+
+            public override ReadOnlySpan<byte> Path => MemoryMarshal
+                .AsBytes(MemoryMarshal.CreateReadOnlySpan(ref _value, 1))
+                .Slice(1, (int)(_value & LengthMask));
+
+            public LongBasedPrefix(bool isLeaf, ReadOnlySpan<byte> value)
+            {
+                _value = value.Length;
+                if (isLeaf)
+                {
+                    _value |= IsLeafMask;
+                }
+
+                ref var destination = ref Unsafe.Add(ref Unsafe.As<long, byte>(ref _value), 1);
+
+                for (var i = 0; i < value.Length; i++)
+                {
+                    Unsafe.Add(ref destination, i) = value[i];
+                }
+            }
+
+            public override bool IsLeaf => (_value & IsLeafMask) != 0;
         }
+
+        public static HexPrefix Create(bool isLeaf) => Create(isLeaf, Span<byte>.Empty);
+
+        public static HexPrefix Create(bool isLeaf, byte path) => Create(isLeaf, MemoryMarshal.CreateReadOnlySpan(ref path, 1));
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static HexPrefix Create(bool isLeaf, params byte[] path)
+        public static HexPrefix Create(bool isLeaf, ReadOnlySpan<byte> path)
         {
-            if (isLeaf)
-                return new LeafPrefix(path);
-            
-            return new ExtensionPrefix(path);
+            if (path.Length <= LongBasedPrefix.MaxLength)
+            {
+                return new LongBasedPrefix(isLeaf, path);
+            }
+
+            return new ArrayBasedPrefix(isLeaf, path);
         }
 
-        [DebuggerStepThrough]
-        HexPrefix(params byte[] path)
+        public static HexPrefix Create(bool isLeaf, ReadOnlySpan<byte> path1, ReadOnlySpan<byte> path2)
         {
-            Path = path;
+            Span<byte> path = stackalloc byte[path1.Length + path2.Length];
+            path1.CopyTo(path);
+            path2.CopyTo(path.Slice(path1.Length));
+
+            return Create(isLeaf, path);
+        }
+        
+        public static HexPrefix Create(bool isLeaf, byte path1, ReadOnlySpan<byte> path2)
+        {
+            Span<byte> path = stackalloc byte[1 + path2.Length];
+            path[0] = path1;
+            path2.CopyTo(path.Slice(1));
+
+            return Create(isLeaf, path);
         }
 
-        public byte[] Path { get; private set; }
+        public abstract ReadOnlySpan<byte> Path { get; }
         public abstract bool IsLeaf { get; }
         public bool IsExtension => !IsLeaf;
 
@@ -77,14 +128,18 @@ namespace Nethermind.Store
         public static HexPrefix FromBytes(Span<byte> bytes)
         {
             bool isLeaf = bytes[0] >= 32;
-            
-            HexPrefix hexPrefix = Create(isLeaf);
+
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
-            hexPrefix.Path = new byte[nibblesCount];
+
+            Span<byte> path = stackalloc byte[nibblesCount];
+
+            ref var p = ref MemoryMarshal.GetReference(path);
+
             for (int i = 0; i < nibblesCount; i++)
             {
-                hexPrefix.Path[i] =
+                Unsafe.Add(ref p, i) =
+                path[i] =
                     isEven
                         ? i % 2 == 0
                             ? (byte)((bytes[1 + i / 2] & 240) / 16)
@@ -94,7 +149,7 @@ namespace Nethermind.Store
                             : (byte)((bytes[1 + i / 2] & 240) / 16);
             }
 
-            return hexPrefix;
+            return Create(isLeaf, path);
         }
 
         public override string ToString()

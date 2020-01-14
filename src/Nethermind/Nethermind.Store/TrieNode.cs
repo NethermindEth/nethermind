@@ -105,7 +105,7 @@ namespace Nethermind.Store
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
-        public byte[] Path => Key.Path;
+        public ReadOnlySpan<byte> Path => Key.Path;
 
         internal HexPrefix Key
         {

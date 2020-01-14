@@ -292,7 +292,7 @@ namespace Nethermind.Store
                     return null;
                 }
 
-                RootRef = TreeNodeFactory.CreateLeaf(HexPrefix.Create(true, updatePath.Slice(0, nibblesCount).ToArray()), updateValue);
+                RootRef = TreeNodeFactory.CreateLeaf(HexPrefix.Create(true, updatePath.Slice(0, nibblesCount)), updateValue);
                 RootRef.IsDirty = true;
                 return updateValue;
             }
@@ -383,13 +383,13 @@ namespace Nethermind.Store
                             }
                             else if (childNode.IsExtension)
                             {
-                                childNode.Key = HexPrefix.Create(false, Bytes.Concat((byte) childNodeIndex, childNode.Path));
+                                childNode.Key = HexPrefix.Create(false, (byte) childNodeIndex, childNode.Path);
                                 childNode.IsDirty = true;
                                 nextNode = childNode;
                             }
                             else if (childNode.IsLeaf)
                             {
-                                childNode.Key = HexPrefix.Create(true, Bytes.Concat((byte) childNodeIndex, childNode.Path));
+                                childNode.Key = HexPrefix.Create(true, (byte) childNodeIndex, childNode.Path);
                                 childNode.IsDirty = true;
                                 nextNode = childNode;
                             }
@@ -404,12 +404,12 @@ namespace Nethermind.Store
                 {
                     if (nextNode.IsLeaf)
                     {
-                        nextNode.Key = HexPrefix.Create(true, Bytes.Concat(node.Path, nextNode.Path));
+                        nextNode.Key = HexPrefix.Create(true, node.Path, nextNode.Path);
                     }
                     else if (nextNode.IsExtension)
                     {
                         nextNode.IsDirty = true;
-                        nextNode.Key = HexPrefix.Create(false, Bytes.Concat(node.Path, nextNode.Path));
+                        nextNode.Key = HexPrefix.Create(false, node.Path, nextNode.Path);
                     }
                     else if (nextNode.IsBranch)
                     {
@@ -503,8 +503,8 @@ namespace Nethermind.Store
         private byte[] TraverseLeaf(TrieNode node, TraverseContext traverseContext)
         {
             Span<byte> remaining = traverseContext.GetRemainingUpdatePath();
-            Span<byte> shorterPath;
-            Span<byte> longerPath;
+            ReadOnlySpan<byte> shorterPath;
+            ReadOnlySpan<byte> longerPath;
             if (traverseContext.RemainingUpdatePathLength - node.Path.Length < 0)
             {
                 shorterPath = remaining;
@@ -576,8 +576,8 @@ namespace Nethermind.Store
 
             if (extensionLength != 0)
             {
-                Span<byte> extensionPath = longerPath.Slice(0, extensionLength);
-                TrieNode extension = TreeNodeFactory.CreateExtension(HexPrefix.Create(false, extensionPath.ToArray()));
+                ReadOnlySpan<byte> extensionPath = longerPath.Slice(0, extensionLength);
+                TrieNode extension = TreeNodeFactory.CreateExtension(HexPrefix.Create(false, extensionPath));
                 extension.IsDirty = true;
                 _nodeStack.Push(new StackedNode(extension, 0));
             }
@@ -590,17 +590,17 @@ namespace Nethermind.Store
             }
             else
             {
-                Span<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
-                TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(HexPrefix.Create(true, shortLeafPath.ToArray()), shorterPathValue);
+                ReadOnlySpan<byte> shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
+                TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(HexPrefix.Create(true, shortLeafPath), shorterPathValue);
                 shortLeaf.IsDirty = true;
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
-            Span<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
+            ReadOnlySpan<byte> leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
 
 
             node.IsDirty = true;
-            node.Key = HexPrefix.Create(true, leafPath.ToArray());
+            node.Key = HexPrefix.Create(true, leafPath);
             node.Value = longerPathValue;
 
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
@@ -645,10 +645,10 @@ namespace Nethermind.Store
                 throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
             }
 
-            byte[] pathBeforeUpdate = node.Path;
+            ReadOnlySpan<byte> pathBeforeUpdate = node.Path;
             if (extensionLength != 0)
             {
-                byte[] extensionPath = node.Path.Slice(0, extensionLength);
+                ReadOnlySpan<byte> extensionPath = node.Path.Slice(0, extensionLength);
                 node.Key = HexPrefix.Create(false, extensionPath);
                 node.IsDirty = true;
                 _nodeStack.Push(new StackedNode(node, 0));
@@ -670,7 +670,7 @@ namespace Nethermind.Store
 
             if (pathBeforeUpdate.Length - extensionLength > 1)
             {
-                byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
+                ReadOnlySpan<byte> extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
                 TrieNode secondExtension = TreeNodeFactory.CreateExtension(HexPrefix.Create(false, extensionPath), node.GetChild(0));
                 secondExtension.IsDirty = true;
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);

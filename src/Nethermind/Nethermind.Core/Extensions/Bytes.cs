@@ -121,6 +121,11 @@ namespace Nethermind.Core.Extensions
         {
             return a1.SequenceEqual(a2);
         }
+        
+        public static bool AreEqual(ReadOnlySpan<byte> a1, ReadOnlySpan<byte> a2)
+        {
+            return a1.SequenceEqual(a2);
+        }
 
         public static bool IsZero(this byte[] bytes)
         {
