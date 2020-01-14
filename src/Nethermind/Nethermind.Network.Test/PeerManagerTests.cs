@@ -282,7 +282,7 @@ namespace Nethermind.Network.Test
             for (int i = 0; i < 10; i++)
             {
                 currentCount += 25;
-                Thread.Sleep(_travisDelay);
+                Thread.Sleep(_travisDelayLong);
                 Assert.AreEqual(currentCount, _rlpxPeer.ConnectAsyncCallsCount);
                 DisconnectAllSessions();
             }
