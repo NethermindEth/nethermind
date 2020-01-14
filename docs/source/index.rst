@@ -30,4 +30,6 @@ ToC
    security
    docker
    docker_alpine
+   docker_arm32
+   docker_arm64
    contact

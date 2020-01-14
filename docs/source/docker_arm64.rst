@@ -1,10 +1,16 @@
-Docker (Arm64)
+Docker (arm64)
 ***************
 
 Using an existing image
 =======================
 
+Docker images are available for both arm64 and arm32 architectures.
+
 https://hub.docker.com/r/nethermind/nethermind/
+
+Docker pull command::
+    
+    docker pull nethermind/nethermind:arm64
 
 You can use ``--help`` to get a list of possible start parameters for Nethermind::
 
