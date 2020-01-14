@@ -16,21 +16,42 @@
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    public class HexPrefix
+    public abstract class HexPrefix
     {
-        [DebuggerStepThrough]
-        public HexPrefix(bool isLeaf, params byte[] path)
+        class LeafPrefix : HexPrefix
         {
-            IsLeaf = isLeaf;
+            public LeafPrefix(params byte[] path) : base(path) { }
+            public override bool IsLeaf => true;
+        }
+
+        class ExtensionPrefix : HexPrefix
+        {
+            public ExtensionPrefix(params byte[] path) : base(path) { }
+            public override bool IsLeaf => false;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static HexPrefix Create(bool isLeaf, params byte[] path)
+        {
+            if (isLeaf)
+                return new LeafPrefix(path);
+            
+            return new ExtensionPrefix(path);
+        }
+
+        [DebuggerStepThrough]
+        HexPrefix(params byte[] path)
+        {
             Path = path;
         }
 
         public byte[] Path { get; private set; }
-        public bool IsLeaf { get; }
+        public abstract bool IsLeaf { get; }
         public bool IsExtension => !IsLeaf;
 
         public byte[] ToBytes()
@@ -55,7 +76,9 @@ namespace Nethermind.Store
 
         public static HexPrefix FromBytes(Span<byte> bytes)
         {
-            HexPrefix hexPrefix = new HexPrefix(bytes[0] >= 32);
+            bool isLeaf = bytes[0] >= 32;
+            
+            HexPrefix hexPrefix = Create(isLeaf);
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
             hexPrefix.Path = new byte[nibblesCount];

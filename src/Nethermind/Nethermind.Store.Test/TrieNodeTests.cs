@@ -30,11 +30,11 @@ namespace Nethermind.Store.Test
         public TrieNodeTests()
         {
             _tiniestLeaf = new TrieNode(NodeType.Leaf);
-            _tiniestLeaf.Key = new HexPrefix(true, 5);
+            _tiniestLeaf.Key = HexPrefix.Create(true, 5);
             _tiniestLeaf.Value = new byte[] {10};
             
             _heavyLeaf = new TrieNode(NodeType.Leaf);
-            _heavyLeaf.Key = new HexPrefix(true, 5);
+            _heavyLeaf.Key = HexPrefix.Create(true, 5);
             _heavyLeaf.Value = Keccak.EmptyTreeHash.Bytes.Concat(Keccak.EmptyTreeHash.Bytes).ToArray();
         }
         
@@ -74,7 +74,7 @@ namespace Nethermind.Store.Test
         public void Can_encode_decode_tiny_extension()
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
-            trieNode.Key = new HexPrefix(false, 5);
+            trieNode.Key = HexPrefix.Create(false, 5);
             trieNode.SetChild(0, _tiniestLeaf);
 
             Rlp rlp = trieNode.RlpEncode();
@@ -92,7 +92,7 @@ namespace Nethermind.Store.Test
         public void Can_encode_decode_heavy_extension()
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
-            trieNode.Key = new HexPrefix(false, 5);
+            trieNode.Key = HexPrefix.Create(false, 5);
             trieNode.SetChild(0, _heavyLeaf);
 
             Rlp rlp = trieNode.RlpEncode();
@@ -108,7 +108,7 @@ namespace Nethermind.Store.Test
         public void Can_set_and_get_children_using_indexer()
         {
             TrieNode tiniest = new TrieNode(NodeType.Leaf);
-            tiniest.Key = new HexPrefix(true, 5);
+            tiniest.Key = HexPrefix.Create(true, 5);
             tiniest.Value = new byte[] {10};
 
             TrieNode trieNode = new TrieNode(NodeType.Branch);
@@ -146,7 +146,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode[0] = _heavyLeaf;
-            trieNode.Key = new HexPrefix(false, 5);
+            trieNode.Key = HexPrefix.Create(false, 5);
             Rlp rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
             
@@ -159,7 +159,7 @@ namespace Nethermind.Store.Test
         {
             TrieNode trieNode = new TrieNode(NodeType.Extension);
             trieNode[0] = _tiniestLeaf;
-            trieNode.Key = new HexPrefix(false, 5);
+            trieNode.Key = HexPrefix.Create(false, 5);
             Rlp rlp = trieNode.RlpEncode();
             TrieNode decoded = new TrieNode(NodeType.Extension, rlp);
             
