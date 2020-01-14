@@ -16,6 +16,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
@@ -33,14 +34,12 @@ namespace Nethermind.Store
         public bool IsLeaf { get; }
         public bool IsExtension => !IsLeaf;
 
-        public int Size
+        public int MemorySize
         {
             get
             {
-                const int refSize = sizeof(long);
-                const int arrayOverhead = sizeof(long);
-                return refSize + Path.Length + arrayOverhead
-                    + 4 /* aligned bools */;
+                int unaligned = MemorySizes.SmallObjectOverhead + MemorySizes.ArrayOverhead + Path.Length;
+                return MemorySizes.Align(unaligned);
             }
         }
 

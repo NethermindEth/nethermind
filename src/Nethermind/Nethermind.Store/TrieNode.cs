@@ -37,22 +37,22 @@ namespace Nethermind.Store
         private object[] _data;
         private bool _isDirty;
 
-        public long Size
+        public int MemorySize
         {
             get
             {
-                const int refSize = sizeof(long);
-                const int arrayOverhead = 20;
-                return
-                    (Keccak == null ? refSize : refSize + 32) +
-                    (_rlpStream == null ? refSize : refSize + 4 + arrayOverhead) + 
-                    (refSize + FullRlp?.Length ?? refSize) +
-                    refSize + (_data?.Length * refSize ?? 0) /* _data */
-                    /* _isDirty + NodeType aligned to 4 (is it 8?)*/ + 4
-                    + refSize + (Key?.Size ?? 0);
+                int unaligned = (Keccak == null ? MemorySizes.RefSize : MemorySizes.RefSize + Keccak.MemorySize) +
+                                (MemorySizes.RefSize + FullRlp?.MemorySize ?? MemorySizes.RefSize) +
+                                (MemorySizes.RefSize + _rlpStream?.MemorySize ?? MemorySizes.RefSize) +
+                                MemorySizes.RefSize + (MemorySizes.ArrayOverhead + _data?.Length * MemorySizes.RefSize ?? MemorySizes.ArrayOverhead) /* _data */ +
+                                MemorySizes.SmallObjectOverhead
+                                /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
+                                + (Key?.MemorySize ?? 0);
+                
+                return MemorySizes.Align(unaligned);
             }
         }
-
+        
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;

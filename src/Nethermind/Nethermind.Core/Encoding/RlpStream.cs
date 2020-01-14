@@ -34,6 +34,8 @@ namespace Nethermind.Core.Encoding
         {
         }
         
+        public int MemorySize => MemorySizes.SmallObjectOverhead;
+        
         public RlpStream(int length)
         {
             Data = new byte[length]; ;

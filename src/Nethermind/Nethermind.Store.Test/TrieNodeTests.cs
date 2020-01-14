@@ -513,13 +513,13 @@ namespace Nethermind.Store.Test
         [Test]
         public void Size_of_a_heavy_leaf_is_correct()
         {
-            Assert.AreEqual(236, _heavyLeaf.Size);
+            Assert.AreEqual(160, _heavyLeaf.MemorySize);
         }
         
         [Test]
         public void Size_of_a_tiny_leaf_is_correct()
         {
-            Assert.AreEqual(108, _tiniestLeaf.Size);
+            Assert.AreEqual(144, _tiniestLeaf.MemorySize);
         }
 
         [Test]
@@ -532,7 +532,7 @@ namespace Nethermind.Store.Test
                 node.SetChild(i, _accountLeaf);
             }
             
-            Assert.AreEqual(172, node.Size);
+            Assert.AreEqual(208, node.MemorySize);
         }
         
         [Test]
@@ -542,7 +542,7 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, _tiniestLeaf);
             
-            Assert.AreEqual(81, trieNode.Size);
+            Assert.AreEqual(144, trieNode.MemorySize);
         }
         
         [Test]
@@ -552,7 +552,7 @@ namespace Nethermind.Store.Test
             trieNode.Key = new HexPrefix(false, 1);
             trieNode.SetChild(0, _tiniestLeaf);
             
-            Assert.AreEqual(81, trieNode.Size);
+            Assert.AreEqual(144, trieNode.MemorySize);
         }
     }
 }
