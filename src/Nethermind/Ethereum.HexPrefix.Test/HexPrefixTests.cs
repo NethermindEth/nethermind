@@ -41,7 +41,7 @@ namespace Ethereum.HexPrefix.Test
         public void Test(HexPrefixTest test)
         {
             Nethermind.Store.HexPrefix result =
-                new Nethermind.Store.HexPrefix(test.IsTerm, test.Sequence);
+                Nethermind.Store.HexPrefix.Create(test.IsTerm, test.Sequence);
             byte[] bytes = result.ToBytes();
             string resultHex = bytes.ToHexString(false);
             Assert.AreEqual(test.Output, resultHex);
