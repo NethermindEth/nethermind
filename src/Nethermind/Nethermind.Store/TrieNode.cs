@@ -16,8 +16,6 @@
 
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.Serialization;
-using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -34,7 +32,8 @@ namespace Nethermind.Store
         private static TrieNodeDecoder _nodeDecoder = new TrieNodeDecoder();
         private static AccountDecoder _accountDecoder = new AccountDecoder();
         private RlpStream _rlpStream;
-        private object[] _data;
+        private object _data0;
+        private object _dataN;
         private bool _isDirty;
 
         public int MemorySize
@@ -48,11 +47,11 @@ namespace Nethermind.Store
                                 MemorySizes.SmallObjectOverhead
                                 /* _isDirty + NodeType aligned to 4 (is it 8?) and end up in object overhead*/
                                 + (Key?.MemorySize ?? 0);
-                
-                return MemorySizes.Align(unaligned);
+
+                return MemorySizes.Align(0);
             }
         }
-        
+
         public TrieNode(NodeType nodeType)
         {
             NodeType = nodeType;
@@ -124,11 +123,11 @@ namespace Nethermind.Store
 
         internal HexPrefix Key
         {
-            get => _data[0] as HexPrefix;
+            get => _data0 as HexPrefix;
             set
             {
                 InitData();
-                _data[0] = value;
+                _data0 = value;
             }
         }
 
@@ -139,7 +138,7 @@ namespace Nethermind.Store
                 InitData();
                 if (IsLeaf)
                 {
-                    return (byte[]) _data[1];
+                    return Unsafe.As<byte[]>(_dataN);
                 }
 
                 if (!AllowBranchValues)
@@ -148,20 +147,21 @@ namespace Nethermind.Store
                     return new byte[0];
                 }
 
-                if (_data[16] == null)
+                var data = Get(16);
+                if (data == null)
                 {
                     if (_rlpStream == null)
                     {
-                        _data[16] = new byte[0];
+                        data = new byte[0];
                     }
                     else
                     {
                         SeekChild(16);
-                        _data[16] = _rlpStream.DecodeByteArray();
+                        data = _rlpStream.DecodeByteArray();
                     }
                 }
 
-                return (byte[]) _data[16];
+                return (byte[])data;
             }
 
             set
@@ -174,7 +174,14 @@ namespace Nethermind.Store
                     throw new TrieException("Optimized Patricia Trie does not support setting values on branches.");
                 }
 
-                _data[IsLeaf ? 1 : 16] = value;
+                if (IsLeaf)
+                {
+                    _dataN = value;
+                }
+                else
+                {
+                    Unsafe.As<object[]>(_dataN)[16] = value;
+                }
             }
         }
 
@@ -285,17 +292,14 @@ namespace Nethermind.Store
 
         private void InitData()
         {
-            if (_data == null)
+            if (_dataN == null)
             {
                 switch (NodeType)
                 {
                     case NodeType.Unknown:
                         throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
-                        _data = new object[AllowBranchValues ? 17 : 16];
-                        break;
-                    default:
-                        _data = new object[2];
+                        _dataN = new object[AllowBranchValues ? 16 : 15];
                         break;
                 }
             }
@@ -330,7 +334,10 @@ namespace Nethermind.Store
             }
 
             InitData();
-            if (_data[i] == null)
+
+            ref var data = ref Get(i);
+
+            if (data == null)
             {
                 SeekChild(i);
                 int prefix = _rlpStream.ReadByte();
@@ -338,23 +345,26 @@ namespace Nethermind.Store
                 {
                     case 0:
                     case 128:
-                        _data[i] = _nullNode;
+                        data = _nullNode;
                         break;
                     case 160:
                         _rlpStream.Position--;
-                        _data[i] = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
+                        data = new TrieNode(NodeType.Unknown, _rlpStream.DecodeKeccak());
                         break;
                     default:
-                    {
-                        _rlpStream.Position--;
-                        Span<byte> fullRlp = _rlpStream.PeekNextItem();
-                        TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
-                        _data[i] = child;
-                        break;
-                    }
+                        {
+                            _rlpStream.Position--;
+                            Span<byte> fullRlp = _rlpStream.PeekNextItem();
+                            TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
+                            data = child;
+                            break;
+                        }
                 }
             }
         }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public ref object Get(int i) => ref i == 0 ? ref _data0 : ref Unsafe.As<object[]>(_dataN)[i - 1];
 
         public Keccak GetChildHash(int i)
         {
@@ -401,7 +411,7 @@ namespace Nethermind.Store
                 return false;
             }
 
-            return ((TrieNode) _data[i]).IsDirty;
+            return ((TrieNode)_data[i]).IsDirty;
         }
 
         public TrieNode GetChild(int childIndex)
@@ -411,14 +421,15 @@ namespace Nethermind.Store
              */
             childIndex = IsExtension ? childIndex + 1 : childIndex;
             ResolveChild(childIndex);
-            return ReferenceEquals(_data[childIndex], _nullNode) ? null : (TrieNode) _data[childIndex];
+            ref var data = ref Get(childIndex);
+            return ReferenceEquals(data, _nullNode) ? null : (TrieNode)data;
         }
 
         public void SetChild(int i, TrieNode node)
         {
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data[index] = node ?? _nullNode;
+            Get(index) = node ?? _nullNode;
         }
 
         internal void Accept(ITreeVisitor visitor, PatriciaTree tree, VisitContext visitContext)
@@ -436,67 +447,67 @@ namespace Nethermind.Store
             switch (NodeType)
             {
                 case NodeType.Branch:
-                {
-                    visitor.VisitBranch(this, visitContext);
-                    visitContext.Level++;
-                    for (int i = 0; i < 16; i++)
                     {
-                        TrieNode child = GetChild(i);
-                        if (child != null && visitor.ShouldVisit(child.Keccak))
+                        visitor.VisitBranch(this, visitContext);
+                        visitContext.Level++;
+                        for (int i = 0; i < 16; i++)
                         {
-                            visitContext.BranchChildIndex = i;
-                            child.Accept(visitor, tree, visitContext);
+                            TrieNode child = GetChild(i);
+                            if (child != null && visitor.ShouldVisit(child.Keccak))
+                            {
+                                visitContext.BranchChildIndex = i;
+                                child.Accept(visitor, tree, visitContext);
+                            }
                         }
-                    }
 
-                    visitContext.Level--;
-                    visitContext.BranchChildIndex = null;
-                    break;
-                }
+                        visitContext.Level--;
+                        visitContext.BranchChildIndex = null;
+                        break;
+                    }
 
                 case NodeType.Extension:
-                {
-                    visitor.VisitExtension(this, visitContext);
-                    TrieNode child = GetChild(0);
-                    if (child != null && visitor.ShouldVisit(child.Keccak))
                     {
-                        visitContext.Level++;
-                        visitContext.BranchChildIndex = null;
-                        child.Accept(visitor, tree, visitContext);
-                        visitContext.Level--;
-                    }
+                        visitor.VisitExtension(this, visitContext);
+                        TrieNode child = GetChild(0);
+                        if (child != null && visitor.ShouldVisit(child.Keccak))
+                        {
+                            visitContext.Level++;
+                            visitContext.BranchChildIndex = null;
+                            child.Accept(visitor, tree, visitContext);
+                            visitContext.Level--;
+                        }
 
-                    break;
-                }
+                        break;
+                    }
 
                 case NodeType.Leaf:
-                {
-                    visitor.VisitLeaf(this, visitContext, Value);
-                    if (!visitContext.IsStorage)
                     {
-                        Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                        if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
+                        visitor.VisitLeaf(this, visitContext, Value);
+                        if (!visitContext.IsStorage)
                         {
-                            visitContext.Level++;
-                            visitContext.BranchChildIndex = null;
-                            visitor.VisitCode(account.CodeHash, visitContext);
-                            visitContext.Level--;
+                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
+                            if (account.HasCode && visitor.ShouldVisit(account.CodeHash))
+                            {
+                                visitContext.Level++;
+                                visitContext.BranchChildIndex = null;
+                                visitor.VisitCode(account.CodeHash, visitContext);
+                                visitContext.Level--;
+                            }
+
+                            if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
+                            {
+                                visitContext.IsStorage = true;
+                                TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
+                                visitContext.Level++;
+                                visitContext.BranchChildIndex = null;
+                                storageRoot.Accept(visitor, tree, visitContext);
+                                visitContext.Level--;
+                                visitContext.IsStorage = false;
+                            }
                         }
 
-                        if (account.HasStorage && visitor.ShouldVisit(account.StorageRoot))
-                        {
-                            visitContext.IsStorage = true;
-                            TrieNode storageRoot = new TrieNode(NodeType.Unknown, account.StorageRoot);
-                            visitContext.Level++;
-                            visitContext.BranchChildIndex = null;
-                            storageRoot.Accept(visitor, tree, visitContext);
-                            visitContext.Level--;
-                            visitContext.IsStorage = false;
-                        }
+                        break;
                     }
-
-                    break;
-                }
 
                 default:
                     throw new TrieException($"An attempt was made to visit a node {Keccak} of type {NodeType}");
@@ -597,20 +608,21 @@ namespace Nethermind.Store
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (item._rlpStream != null && item._data[i] == null)
+                    ref var data = ref item.Get(i);
+                    if (item._rlpStream != null && data == null)
                     {
                         (int prefixLength, int contentLength) = item._rlpStream.PeekPrefixAndContentLength();
                         totalLength += prefixLength + contentLength;
                     }
                     else
                     {
-                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
+                        if (ReferenceEquals(data, _nullNode) || data == null)
                         {
                             totalLength++;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode) item._data[i];
+                            TrieNode childNode = (TrieNode)data;
                             childNode.ResolveKey(false);
                             totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
@@ -630,7 +642,9 @@ namespace Nethermind.Store
                 item.SeekChild(0);
                 for (int i = 0; i < 16; i++)
                 {
-                    if (rlpStream != null && item._data[i] == null)
+                    var data = item.Get(i);
+
+                    if (rlpStream != null && data == null)
                     {
                         int length = rlpStream.PeekNextRlpLength();
                         Span<byte> nextItem = rlpStream.Data.AsSpan().Slice(rlpStream.Position, length);
@@ -641,13 +655,13 @@ namespace Nethermind.Store
                     else
                     {
                         rlpStream?.SkipItem();
-                        if (ReferenceEquals(item._data[i], _nullNode) || item._data[i] == null)
+                        if (ReferenceEquals(data, _nullNode) || data == null)
                         {
                             destination[position++] = 128;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode) item._data[i];
+                            TrieNode childNode = (TrieNode)data;
                             childNode.ResolveKey(false);
                             if (childNode.Keccak == null)
                             {
