@@ -167,7 +167,7 @@ namespace Nethermind.Store
             set
             {
                 InitData();
-                if (IsBranch)
+                if (IsBranch && !AllowBranchValues)
                 {
                     // in Ethereum all paths are of equal length, hence branches will never have values
                     // so we decided to save 1/17th of the array size in memory
