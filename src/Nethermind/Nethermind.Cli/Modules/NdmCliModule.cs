@@ -35,7 +35,7 @@ namespace Nethermind.Cli.Modules
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = 0;
             tx.Data = Bytes.FromHexString(ContractData.GetInitCode(new Address(address)));
-            tx.Gas = 3000000;
+            tx.Gas = 2000000;
             tx.GasPrice = (UInt256) (Engine.JintEngine.GetValue("gasPrice").AsNumber());
             tx.From = new Address(address);
 
@@ -47,7 +47,7 @@ namespace Nethermind.Cli.Modules
             }
             
             JsValue receipt = null;
-            while (receipt == null)
+            while (receipt == JsValue.Null)
             {
                 Console.WriteLine("Awaiting receipt...");
                 receipt = NodeManager.PostJint("eth_getTransactionReceipt", txHash).Result;
