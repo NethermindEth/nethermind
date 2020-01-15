@@ -412,11 +412,12 @@ namespace Nethermind.Runner.Test
         {
             ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+            ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
             
             Assert.True(initConfig.DiscoveryEnabled, nameof(initConfig.DiscoveryEnabled));
             Assert.True(initConfig.ProcessingEnabled, nameof(initConfig.ProcessingEnabled));
             Assert.True(initConfig.PeerManagerEnabled, nameof(initConfig.PeerManagerEnabled));
-            Assert.True(initConfig.SynchronizationEnabled, nameof(initConfig.SynchronizationEnabled));
+            Assert.True(syncConfig.SynchronizationEnabled, nameof(syncConfig.SynchronizationEnabled));
             Assert.False(initConfig.WebSocketsEnabled, nameof(initConfig.WebSocketsEnabled));
             if (isProduction)
             {

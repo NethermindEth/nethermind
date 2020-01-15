@@ -747,7 +747,7 @@ namespace Nethermind.Runner.Runners
 
         private async Task RunBlockTreeInitTasks()
         {
-            if (!_initConfig.SynchronizationEnabled)
+            if (!_syncConfig.SynchronizationEnabled)
             {
                 return;
             }
@@ -949,7 +949,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_syncConfig.SynchronizationEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(IInitConfig.SynchronizationEnabled)} set to false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
