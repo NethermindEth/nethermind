@@ -53,7 +53,7 @@ namespace Nethermind.Core.Crypto
                     $"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
-            Bytes = bytes.Slice(bytes.Length - 64, 64);
+            Bytes = bytes.Length == 64 ? bytes : bytes.Slice(bytes.Length - 64, 64);
         }
 
         public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);

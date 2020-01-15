@@ -57,8 +57,13 @@ namespace Nethermind.Blockchain.Synchronization
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            _pivotHash = new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString());
         }
 
+        private Keccak _pivotHash;
+        
+        private BlockHeader _pivotHeader;
+        
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
 
@@ -72,9 +77,15 @@ namespace Nethermind.Blockchain.Synchronization
                 }
 
                 bool headIsGenesis = _blockTree.Head.Hash == _blockTree.Genesis.Hash;
-                return headIsGenesis
-                    ? _blockTree.FindHeader(new Keccak(_syncConfig.PivotHash ?? Keccak.Zero.ToString()), BlockTreeLookupOptions.None) ?? _blockTree.Genesis
-                    : _blockTree.Head;
+                if (headIsGenesis)
+                {
+                    if (_pivotHeader == null)
+                    {
+                        _pivotHeader = _blockTree.FindHeader(_pivotHash, BlockTreeLookupOptions.None);
+                    }
+                }
+                
+                return headIsGenesis ? _pivotHeader ?? _blockTree.Genesis : _blockTree.Head;
             }
         }
 
