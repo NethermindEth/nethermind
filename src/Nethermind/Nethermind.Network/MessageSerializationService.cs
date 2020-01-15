@@ -41,6 +41,7 @@ namespace Nethermind.Network
                 return zeroSerializer.Deserialize(buffer);
             }
 
+            // during fast sync this is where 15% of allocations happen and this is entirely unnecessary
             return serializer.Deserialize(buffer.ReadAllBytes());
         }
 

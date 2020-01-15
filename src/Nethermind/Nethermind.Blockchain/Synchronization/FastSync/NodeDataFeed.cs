@@ -466,7 +466,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if (Keccak.Compute(currentResponseItem) != currentStateSyncItem.Hash)
+                        if(ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
                             if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
