@@ -490,7 +490,7 @@ namespace Nethermind.Network.Test
             _peerManager.ActivePeers.Count(p => p.Node.IsStatic).Should().Be(nodesCount);
         }
 
-        [Test]
+        [Test, Retry(3)]
         public void Will_disconnect_on_remove_static_node()
         {
             const int nodesCount = 5;
