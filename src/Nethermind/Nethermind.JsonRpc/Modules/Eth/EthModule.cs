@@ -150,14 +150,14 @@ namespace Nethermind.JsonRpc.Modules.Eth
             return GetStorage(address, positionIndex, blockParameter ?? BlockParameter.Latest);
         }
 
-        public ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+        public Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
         {
             if (_blockchainBridge.Head == null)
             {
-                return ResultWrapper<UInt256?>.Fail($"Incorrect head block", ErrorCodes.InternalError, null);
+                return Task.FromResult(ResultWrapper<UInt256?>.Fail($"Incorrect head block", ErrorCodes.InternalError, null));
             }
 
-            return GetAccountNonce(address, blockParameter ?? BlockParameter.Latest);
+            return Task.FromResult(GetAccountNonce(address, blockParameter ?? BlockParameter.Latest));
         }
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)

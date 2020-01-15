@@ -34,15 +34,15 @@ namespace Nethermind.Cli.Modules
         }
         
         [CliFunction("personal", "lockAccount")]
-        public JsValue LockAccount(string addressHex)
+        public bool LockAccount(string addressHex)
         {
-            return NodeManager.PostJint($"personal_lockAccount", addressHex).Result;
+            return NodeManager.Post<bool>($"personal_lockAccount", addressHex).Result;
         }
         
         [CliFunction("personal", "unlockAccount")]
-        public JsValue UnlockAccount(string addressHex, string password)
+        public bool UnlockAccount(string addressHex, string password)
         {
-            return NodeManager.PostJint($"personal_unlockAccount", addressHex, password).Result;
+            return NodeManager.Post<bool>($"personal_unlockAccount", addressHex, password).Result;
         }
 
         public PersonalCliModule(ICliEngine engine, INodeManager nodeManager) : base(engine, nodeManager)

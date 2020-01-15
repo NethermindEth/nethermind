@@ -22,7 +22,6 @@ namespace Nethermind.Runner.Config
         public bool KeepDevWalletInMemory { get; set; } = false;
         public bool WebSocketsEnabled { get; set; } = false;
         public bool DiscoveryEnabled { get; set; } = true;
-        public bool SynchronizationEnabled { get; set; } = true;
         public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
