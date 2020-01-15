@@ -60,8 +60,12 @@ namespace Nethermind.Blockchain.Synchronization
             _timer.Interval = TickTime;
             _timer.AutoReset = false;
             _timer.Elapsed += TimerOnElapsed;
-            _timer.Start();
-            
+
+            if (_syncConfig.SynchronizationEnabled)
+            {
+                _timer.Start();
+            }
+
             _syncModeSelector.Changed +=SyncModeSelectorOnChanged;
         }
 

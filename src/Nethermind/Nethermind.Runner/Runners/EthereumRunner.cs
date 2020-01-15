@@ -947,7 +947,7 @@ namespace Nethermind.Runner.Runners
 
         private Task StartSync()
         {
-            if (!_initConfig.SynchronizationEnabled)
+            if (!_syncConfig.SynchronizationEnabled)
             {
                 if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(IInitConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
