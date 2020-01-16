@@ -14,13 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class GetNodeDataMessageSerializer : IMessageSerializer<GetNodeDataMessage>
+    public class GetNodeDataMessageSerializer : IMessageSerializer<GetNodeDataMessage>, IZeroMessageSerializer<GetNodeDataMessage>
     {
         public byte[] Serialize(GetNodeDataMessage message)
         {
@@ -32,6 +33,33 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             RlpStream rlpStream = bytes.AsRlpStream();
             Keccak[] keys = rlpStream.DecodeArray(itemContext => itemContext.DecodeKeccak());
             return new GetNodeDataMessage(keys);
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, GetNodeDataMessage message)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < message.Keys.Count; i++)
+            {
+                contentLength += Rlp.LengthOf(message.Keys[i]);
+            }
+            
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.Keys.Count; i++)
+            {
+                rlpStream.Encode(message.Keys[i]);
+            }
+        }
+
+        public GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            Keccak[] result = rlpStream.DecodeArray(stream => stream.DecodeKeccak());
+            return new GetNodeDataMessage(result);
         }
     }
 }

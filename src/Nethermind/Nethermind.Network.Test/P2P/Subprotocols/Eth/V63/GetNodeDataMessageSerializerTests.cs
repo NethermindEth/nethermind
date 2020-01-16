@@ -28,11 +28,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             GetNodeDataMessage message = new GetNodeDataMessage(keys);
             GetNodeDataMessageSerializer serializer = new GetNodeDataMessageSerializer();
-            var serialized = serializer.Serialize(message);
-            GetNodeDataMessage deserialized = serializer.Deserialize(serialized);
-
-            Assert.AreEqual(keys.Length, deserialized.Keys.Count, "count");
-            for (int i = 0; i < keys.Length; i++) Assert.AreEqual(keys[i], deserialized.Keys[i], $"keys[{i}]");
+            
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
 
         [Test]
