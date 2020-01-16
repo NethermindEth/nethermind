@@ -481,6 +481,11 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastSync
                 throw new NotImplementedException();
             }
 
+            public void HintNewBlock(Keccak blockHash, long number)
+            {
+                throw new NotImplementedException();
+            }
+
             public void SendNewTransaction(Transaction transaction)
             {
                 throw new NotImplementedException();

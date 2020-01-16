@@ -280,6 +280,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(msg);
         }
 
+        public void HintNewBlock(Keccak blockHash, long number)
+        {
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
+
+            NewBlockHashesMessage msg = new NewBlockHashesMessage();
+            msg.BlockHashes = new[] {(blockHash, number)};
+            Send(msg);
+        }
+
         public void SendNewTransaction(Transaction transaction)
         {
             Interlocked.Increment(ref Counter);
