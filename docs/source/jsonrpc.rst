@@ -128,7 +128,7 @@ eth
 
  - eth_getTransactionByHash(transactionHash) - Retrieves a transaction by hash
 
- - eth_getTransactionCount(address, blockParameter) - Returns number of transactions in the block
+ - eth_getTransactionCount(address, blockParameter) - Returns account nonce (number of trnsactions from the account since genesis) at the given block number
 
  - eth_getTransactionReceipt(txHashData) - Retrieves a transaction receipt by tx hash
 
