@@ -65,7 +65,7 @@ namespace Nethermind.Network
                     Type interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
                     if (interfaceGenericDefinition == typeof(IMessageSerializer<>).GetGenericTypeDefinition())
                     {
-                        ConstructorInfo? constructor = type.GetConstructor(Type.EmptyTypes);
+                        ConstructorInfo constructor = type.GetConstructor(Type.EmptyTypes);
                         if (constructor == null)
                         {
                             continue;

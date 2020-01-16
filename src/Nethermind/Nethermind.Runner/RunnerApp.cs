@@ -157,8 +157,8 @@ namespace Nethermind.Runner
                 // Fallback to "{executingDirectory}/configs/{configFile}" if "configs" catalog was not specified.
                 if (!File.Exists(configFilePath))
                 {
-                    string? configName = Path.GetFileName(configFilePath);
-                    string? configDirectory = Path.GetDirectoryName(configFilePath);
+                    string configName = Path.GetFileName(configFilePath);
+                    string configDirectory = Path.GetDirectoryName(configFilePath);
                     string redirectedConfigPath = Path.Combine(configDirectory, DefaultConfigsDirectory, configName);
                     Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
