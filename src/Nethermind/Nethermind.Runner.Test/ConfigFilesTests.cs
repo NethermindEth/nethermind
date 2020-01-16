@@ -69,6 +69,32 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(false, config.BeamSyncEnabled);
         }
         
+        [TestCase("ropsten_archive.cfg", "ws://ropsten-stats.parity.io/api")]
+        [TestCase("ropsten.cfg", "ws://ropsten-stats.parity.io/api")]
+        [TestCase("rinkeby_archive.cfg", "ws://localhost:3000/api")]
+        [TestCase("rinkeby.cfg", "ws://localhost:3000/api")]
+        [TestCase("goerli_archive.cfg", "wss://stats.goerli.net/api")]
+        [TestCase("goerli.cfg", "wss://stats.goerli.net/api")]
+        [TestCase("mainnet_archive.cfg", "wss://ethstats.net/api")]
+        [TestCase("mainnet.cfg", "wss://ethstats.net/api")]
+        [TestCase("sokol.cfg", "ws://localhost:3000/api")]
+        [TestCase("sokol_archive.cfg", "ws://localhost:3000/api")]
+        [TestCase("sokol_validator.cfg", "ws://localhost:3000/api")]
+        [TestCase("sokol_fastsync.cfg", "ws://localhost:3000/api")]        
+        [TestCase("poacore.cfg", "ws://localhost:3000/api")]
+        [TestCase("poacore_archive.cfg", "ws://localhost:3000/api")]
+        [TestCase("xdai.cfg", "ws://localhost:3000/api")]
+        [TestCase("xdai_archive.cfg", "ws://localhost:3000/api")]
+        [TestCase("spaceneth.cfg", "ws://localhost:3000/api")]
+        [TestCase("volta.cfg", "ws://localhost:3000/api")]
+        [TestCase("volta_archive.cfg", "ws://localhost:3000/api")]
+        public void Ethstats_values_are_correct(string configFile, string host)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            IEthStatsConfig config = configProvider.GetConfig<IEthStatsConfig>();
+            Assert.AreEqual(host, config.Server);
+        }
+        
         [TestCase("ropsten_archive.cfg", true)]
         [TestCase("ropsten.cfg", true)]
         [TestCase("rinkeby_archive.cfg", true)]
