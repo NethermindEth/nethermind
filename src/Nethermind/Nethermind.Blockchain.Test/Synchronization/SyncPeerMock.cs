@@ -67,8 +67,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
         }
 
-        public Guid SessionId { get; } = Guid.NewGuid();
-        public bool IsFastSyncSupported => false;
         public Node Node { get; }
         
         public Node LocalNode { get; }
@@ -143,6 +141,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
         public void SendNewBlock(Block block)
         {
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, LocalNode));
+        }
+
+        public void HintNewBlock(Keccak blockHash, long number)
+        {
+            _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, Node));
         }
 
         public void SendNewTransaction(Transaction transaction)

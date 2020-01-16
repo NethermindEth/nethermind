@@ -280,20 +280,31 @@ namespace Nethermind.Blockchain.Synchronization
             return null;
         }
 
+        private Random _broadcastRandomizer = new Random(); 
+        
         [Todo(Improve.Refactor, "This may not be desired if the other node is just syncing now too")]
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
             if (_blockTree.BestKnownNumber > block.Number) return;
 
+            int peerCount = _pool.PeerCount;
+            double broadcastRatio = Math.Sqrt(peerCount) / peerCount;
+            
             int counter = 0;
             foreach (PeerInfo peerInfo in _pool.AllPeers)
             {
                 if (peerInfo.TotalDifficulty < (block.TotalDifficulty ?? UInt256.Zero))
                 {
-                    // todo (hint instead)
-                    peerInfo.SyncPeer.SendNewBlock(block);
-                    counter++;
+                    if (_broadcastRandomizer.NextDouble() < broadcastRatio)
+                    {
+                        peerInfo.SyncPeer.SendNewBlock(block);
+                        counter++;
+                    }
+                    else
+                    {
+                        peerInfo.SyncPeer.HintNewBlock(block.Hash, block.Number);
+                    }
                 }
             }
 

@@ -91,8 +91,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 BuildTree(newLength, _withReceipts);
             }
 
-            public Guid SessionId { get; }
-            public bool IsFastSyncSupported { get; }
             public Node Node { get; }
             public string ClientId { get; }
             public UInt256 TotalDifficultyOnSessionStart { get; }
@@ -156,6 +154,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
 
             public void SendNewBlock(Block block)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void HintNewBlock(Keccak blockHash, long number)
             {
                 throw new NotImplementedException();
             }
@@ -775,8 +778,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
 
         private class ThrowingPeer : ISyncPeer
         {
-            public Guid SessionId { get; }
-            public bool IsFastSyncSupported { get; }
             public Node Node { get; }
             public string ClientId => "EX peer";
             public UInt256 TotalDifficultyOnSessionStart => UInt256.MaxValue;
@@ -807,6 +808,11 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
 
             public void SendNewBlock(Block block)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void HintNewBlock(Keccak blockHash, long number)
             {
                 throw new NotImplementedException();
             }

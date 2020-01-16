@@ -27,8 +27,6 @@ namespace Nethermind.Blockchain.Synchronization
 {
     public interface ISyncPeer
     {
-        Guid SessionId { get;}
-        bool IsFastSyncSupported { get; }
         Node Node { get; }
         string ClientId { get; }
         UInt256 TotalDifficultyOnSessionStart { get; }
@@ -40,6 +38,7 @@ namespace Nethermind.Blockchain.Synchronization
         Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader> GetHeadBlockHeader(Keccak hash, CancellationToken token);
         void SendNewBlock(Block block);
+        void HintNewBlock(Keccak blockHash, long number);
         void SendNewTransaction(Transaction transaction);
         Task<TxReceipt[][]> GetReceipts(IList<Keccak> blockHash, CancellationToken token);
         Task<byte[][]> GetNodeData(IList<Keccak> hashes, CancellationToken token);
