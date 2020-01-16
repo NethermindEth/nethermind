@@ -21,6 +21,7 @@ namespace Nethermind.Blockchain
     [ConfigCategory(Description = "Configuration of the synchronization modes.")]
     public class SyncConfig : ISyncConfig
     {
+        public bool SynchronizationEnabled { get; set; } = true;
         public bool FastBlocks { get; set; } = false;
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool BeamSyncEnabled { get; set; } = false;

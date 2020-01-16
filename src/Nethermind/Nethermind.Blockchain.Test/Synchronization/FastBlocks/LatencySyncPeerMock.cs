@@ -50,10 +50,7 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
             LocalNode.ClientId = "local nethermind";
             RemoteIndex++;
         }
-
-        public Guid SessionId { get; } = Guid.NewGuid();
         
-        public bool IsFastSyncSupported => false;
         public Node Node { get; }
         public Node LocalNode { get; }
         public string ClientId => Node.ClientId;
@@ -85,6 +82,11 @@ namespace Nethermind.Blockchain.Test.Synchronization.FastBlocks
         }
         
         public void SendNewBlock(Block block)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void HintNewBlock(Keccak blockHash, long number)
         {
             throw new NotImplementedException();
         }

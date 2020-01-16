@@ -15,12 +15,44 @@ You will need .NET SDK 3.0
  * Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
  * Mac https://www.microsoft.com/net/download?initial-os=macos
 
-Linux
+Linux (Ubuntu 16.04)
+^^^^^
+
+::
+
+    sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 && \
+    sudo add-apt-repository ppa:ubuntu-toolchain-r/test && \
+    sudo apt-get update && \
+    sudo apt-get install gcc-6 g++-6 && \
+    sudo apt install libzstd1
+
+Linux (Ubuntu 18.04/Debian 10)
 ^^^^^
 
 ::
 
     sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
+
+Linux (CentOS 8)
+^^^^^
+
+::
+
+    sudo yum install -y glibc-devel && \
+    sudo yum install bzip2-devel && \
+    sudo yum install -y libzstd && \
+    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
+    sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
+
+Linux (Fedora 31)
+^^^^^
+
+::
+    sudo yum install -y glibc-devel && \
+    sudo yum install -y snappy && \
+    sudo yum install -y libzstd && \
+    sudo ln -s `find /usr/lib64/ -type f -name "libbz2.so.1*"` /usr/lib64/libbz2.so.1.0 && \
+    sudo ln -s `find /usr/lib64/ -type f -name "libsnappy.so.1*"` /usr/lib64/libsnappy.so
 
 MacOS
 ^^^^^

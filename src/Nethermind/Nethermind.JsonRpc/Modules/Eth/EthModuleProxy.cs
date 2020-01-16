@@ -100,10 +100,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
             throw new NotSupportedException();
         }
 
-        public ResultWrapper<UInt256?> eth_getTransactionCount(Address address, BlockParameter blockParameter)
-        {
-            throw new NotSupportedException();
-        }
+        public async Task<ResultWrapper<UInt256?>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
+            => ResultWrapper<UInt256?>.From(await _proxy.eth_getTransactionCount(address, MapBlockParameter(blockParameter)));
 
         public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Keccak blockHash)
         {

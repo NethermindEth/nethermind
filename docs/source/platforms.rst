@@ -10,9 +10,9 @@ Supported Platforms
     - High Sierra (10.13+)
  - Linux `Details <https://docs.microsoft.com/en-us/dotnet/core/install/dependencies?tabs=netcore31&pivots=os-linux/>`_
     - Red Hat Enterprise Linux	6, 7, 8	x64 (not tested by us)
-    - CentOS	7+	x64 (not tested by us)
+    - CentOS	8+	x64
     - Oracle Linux	7+	x64 (not tested by us)
-    - Fedora	29+	x64 (not tested by us)
+    - Fedora	31+ x64
     - Debian	9+	x64, ARM32, ARM64 (not tested by us)
     - Ubuntu	16.04+	x64, ARM32, ARM64 (read additional info in release notes for Ubuntu 16.04)
     - Linux Mint	18+	x64 (not tested by us)

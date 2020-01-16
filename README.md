@@ -32,7 +32,7 @@ it syncs fully on Mainnet, Ropsten, Rinkeby, Goerli
 *	Windows https://www.microsoft.com/net/download?initial-os=windows
 * you may need to install https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads
 
-#### Linux
+#### Linux (Ubuntu)
 
 *	Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
 * `sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6`
@@ -45,6 +45,9 @@ sudo apt-get update && \
 sudo apt-get install gcc-6 g++-6 && \
 sudo apt install libzstd1
 ```
+
+Instructions for other distributions such as CentOS, Fedora or Debian are available here https://nethermind.readthedocs.io/en/latest/build.html
+
 #### Mac
 
 *	Mac https://www.microsoft.com/net/download?initial-os=macos

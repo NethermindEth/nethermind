@@ -62,9 +62,6 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 ClientId = description;
             }
 
-            public Guid SessionId { get; } = Guid.NewGuid();
-
-            public bool IsFastSyncSupported => true;
             public Node Node { get; }
             public string ClientId { get; }
 
@@ -113,6 +110,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
             }
 
             public void SendNewBlock(Block block)
+            {
+            }
+
+            public void HintNewBlock(Keccak blockHash, long number)
             {
             }
 

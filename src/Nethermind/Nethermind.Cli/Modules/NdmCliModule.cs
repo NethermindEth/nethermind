@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading;
+using Jint.Native;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,25 +30,31 @@ namespace Nethermind.Cli.Modules
     public class NdmCliModule : CliModuleBase
     {
         [CliFunction("ndm", "deploy")]
-        public string Deploy(string address)
+        public JsValue Deploy(string address)
         {
             TransactionForRpc tx = new TransactionForRpc();
             tx.Value = 0;
             tx.Data = Bytes.FromHexString(ContractData.GetInitCode(new Address(address)));
-            tx.Gas = 3000000;
+            tx.Gas = 2000000;
             tx.GasPrice = (UInt256) (Engine.JintEngine.GetValue("gasPrice").AsNumber());
             tx.From = new Address(address);
 
-            Keccak keccak = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
-            ReceiptForRpc receipt = null;
-            while (receipt == null)
+            Keccak txHash = NodeManager.Post<Keccak>("eth_sendTransaction", tx).Result;
+            Console.WriteLine($"Sent transaction {tx.From}->{tx.To} with gas {tx.Gas} at price {tx.GasPrice} and received tx hash: {txHash}");
+            if (txHash == null)
+            {
+                return null;
+            }
+            
+            JsValue receipt = null;
+            while (receipt == JsValue.Null)
             {
                 Console.WriteLine("Awaiting receipt...");
-                receipt = NodeManager.Post<ReceiptForRpc>("eth_getTransactionReceipt", keccak).Result;
+                receipt = NodeManager.PostJint("eth_getTransactionReceipt", txHash).Result;
                 Thread.Sleep(1000);
             }
 
-            return receipt.ContractAddress.ToString();
+            return receipt;
         }
         
         [CliFunction("ndm", "recognize")]

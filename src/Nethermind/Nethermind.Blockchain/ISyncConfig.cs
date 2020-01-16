@@ -20,6 +20,9 @@ namespace Nethermind.Blockchain
 {
     public interface ISyncConfig : IConfig
     {
+        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
+        bool SynchronizationEnabled { get; set; }
+        
         [ConfigItem(Description = "Beam Sync - only for DEBUG / DEV - not working in prod yet.", DefaultValue = "false")]
         bool BeamSyncEnabled { get; set; }
         

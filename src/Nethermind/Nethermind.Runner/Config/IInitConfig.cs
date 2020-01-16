@@ -31,10 +31,7 @@ namespace Nethermind.Runner.Config
         
         [ConfigItem(Description = "If 'false' then the node does not try to find nodes beyond the bootnodes configured.", DefaultValue = "true")]
         bool DiscoveryEnabled { get; set; }
-        
-        [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
-        bool SynchronizationEnabled { get; set; }
-        
+
         [ConfigItem(Description = "If 'false' then the node does not download/process new blocks..", DefaultValue = "true")]
         bool ProcessingEnabled { get; set; }
         

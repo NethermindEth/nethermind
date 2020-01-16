@@ -208,6 +208,10 @@ namespace Nethermind.Blockchain.Test.Synchronization
                 ReceivedBlocks.Push(block);
             }
 
+            public void HintNewBlock(Keccak blockHash, long number)
+            {
+            }
+
             public Stack<Block> ReceivedBlocks { get; set; } = new Stack<Block>();
             public event EventHandler Disconnected;
 
