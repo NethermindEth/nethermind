@@ -81,6 +81,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             message.Reverse = 0;
             message.StartingBlockNumber = 100;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("c464010280");
 

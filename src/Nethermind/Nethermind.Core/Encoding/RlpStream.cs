@@ -803,7 +803,7 @@ namespace Nethermind.Core.Encoding
                 }
                 else
                 {
-                    result[i] = (T) decodeItem(this);
+                    result[i] = decodeItem(this);
                 }
             }
 

@@ -466,7 +466,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                         }
 
                         /* node sent data that is not consistent with its hash - it happens surprisingly often */
-                        if(!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
+                        if (!ValueKeccak.Compute(currentResponseItem).BytesAsSpan.SequenceEqual(currentStateSyncItem.Hash.Bytes))
                         {
                             if (_logger.IsTrace) _logger.Trace($"Peer sent invalid data (batch {requestLength}->{responseLength}) of length {batch.Responses[i]?.Length} of type {batch.RequestedNodes[i].NodeDataType} at level {batch.RequestedNodes[i].Level} of type {batch.RequestedNodes[i].NodeDataType} Keccak({batch.Responses[i].ToHexString()}) != {batch.RequestedNodes[i].Hash}");
                             invalidNodes++;
@@ -666,28 +666,28 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                     {
                         _maxStateLevel = 64;
                         DependentItem dependentItem = new DependentItem(currentStateSyncItem, currentResponseItem, 0, true);
-                        Account account = _accountDecoder.Decode(new RlpStream(trieNode.Value));
-                        if (account.CodeHash != Keccak.OfAnEmptyString)
+                        (Keccak codeHash, Keccak storageRoot) = _accountDecoder.DecodeHashesOnly(new RlpStream(trieNode.Value));
+                        if (codeHash != Keccak.OfAnEmptyString)
                         {
                             // prepare a branch without the code DB
                             // this only protects against being same as storage root?
-                            if (account.CodeHash == account.StorageRoot)
+                            if (codeHash == storageRoot)
                             {
                                 lock (_codesSameAsNodes)
                                 {
-                                    _codesSameAsNodes.Add(account.CodeHash);
+                                    _codesSameAsNodes.Add(codeHash);
                                 }
                             }
                             else
                             {
-                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(account.CodeHash, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
+                                AddNodeResult addCodeResult = AddNode(new StateSyncItem(codeHash, NodeDataType.Code, 0, currentStateSyncItem.Rightness), dependentItem, "code");
                                 if (addCodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                             }
                         }
 
-                        if (account.StorageRoot != Keccak.EmptyTreeHash)
+                        if (storageRoot != Keccak.EmptyTreeHash)
                         {
-                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(account.StorageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
+                            AddNodeResult addStorageNodeResult = AddNode(new StateSyncItem(storageRoot, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult != AddNodeResult.AlreadySaved) dependentItem.Counter++;
                         }
 
@@ -728,38 +728,6 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
 
         private long _lastDbReads;
         private decimal _averageTimeInHandler;
-
-        private class DependentItemComparer : IEqualityComparer<DependentItem>
-        {
-            private DependentItemComparer()
-            {
-            }
-
-            private static DependentItemComparer _instance;
-
-            public static DependentItemComparer Instance
-            {
-                get
-                {
-                    if (_instance == null)
-                    {
-                        LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
-                    }
-
-                    return _instance;
-                }
-            }
-
-            public bool Equals(DependentItem x, DependentItem y)
-            {
-                return x?.SyncItem.Hash == y?.SyncItem.Hash;
-            }
-
-            public int GetHashCode(DependentItem obj)
-            {
-                return obj?.SyncItem.Hash.GetHashCode() ?? 0;
-            }
-        }
 
         private void AddDependency(Keccak dependency, DependentItem dependentItem)
         {
@@ -972,6 +940,38 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
                 Value = value;
                 Counter = counter;
                 IsAccount = isAccount;
+            }
+        }
+        
+        private class DependentItemComparer : IEqualityComparer<DependentItem>
+        {
+            private DependentItemComparer()
+            {
+            }
+
+            private static DependentItemComparer _instance;
+
+            public static DependentItemComparer Instance
+            {
+                get
+                {
+                    if (_instance == null)
+                    {
+                        LazyInitializer.EnsureInitialized(ref _instance, () => new DependentItemComparer());
+                    }
+
+                    return _instance;
+                }
+            }
+
+            public bool Equals(DependentItem x, DependentItem y)
+            {
+                return x?.SyncItem.Hash == y?.SyncItem.Hash;
+            }
+
+            public int GetHashCode(DependentItem obj)
+            {
+                return obj?.SyncItem.Hash.GetHashCode() ?? 0;
             }
         }
     }
