@@ -50,7 +50,7 @@ namespace Nethermind.Network
             LoadConfigPeers(allPeers, _discoveryConfig.Bootnodes, n =>
             {
                 n.IsBootnode = true;
-                if (_logger.IsInfo) _logger.Info($"Bootnode     : {n}");
+                if (_logger.IsDebug) _logger.Debug($"Bootnode     : {n}");
             });
             
             LoadConfigPeers(allPeers, _networkConfig.StaticPeers, n =>
