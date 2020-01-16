@@ -23,15 +23,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
 {
     public static class SerializerTester
     {
-        public static void Test<T>(IMessageSerializer<T> serializer, T message) where T : P2PMessage
+        public static void Test<T>(IMessageSerializer<T> serializer, T message, string expectedData = null) where T : P2PMessage
         {
             byte[] serialized = serializer.Serialize(message);
             T deserialized = serializer.Deserialize(serialized);
             byte[] serializedAgain = serializer.Serialize(deserialized);
             Assert.AreEqual(serialized.ToHexString(), serializedAgain.ToHexString(), "test old way");
+
+            if (expectedData != null)
+            {
+                Assert.AreEqual(expectedData, serialized.ToHexString());
+            }
         }
 
-        public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message) where T : P2PMessage
+        public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string expectedData = null) where T : P2PMessage
         {
             IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
             IByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
@@ -45,7 +50,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
                 serializer.Serialize(buffer2, deserialized);
 
                 buffer.SetReaderIndex(0);
-                Assert.AreEqual(buffer.ReadAllHex(), buffer2.ReadAllHex(), "test zero");
+                string allHex = buffer.ReadAllHex();
+                Assert.AreEqual(allHex, buffer2.ReadAllHex(), "test zero");
+                
+                if (expectedData != null)
+                {
+                    Assert.AreEqual(expectedData, allHex);
+                }
             }
             finally
             {

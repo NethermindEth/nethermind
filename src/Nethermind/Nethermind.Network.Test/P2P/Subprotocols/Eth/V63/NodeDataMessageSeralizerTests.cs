@@ -26,23 +26,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         private static void Test(byte[][] data)
         {
             NodeDataMessage message = new NodeDataMessage(data);
+            
             NodeDataMessageSerializer serializer = new NodeDataMessageSerializer();
-            var serialized = serializer.Serialize(message);
-            NodeDataMessage deserialized = serializer.Deserialize(serialized);
-
-            if (data == null)
-            {
-                Assert.AreEqual(0, deserialized.Data.Length);
-            }
-            else
-            {
-                Assert.AreEqual(data.Length, deserialized.Data.Length, "length");
-                for (int i = 0; i < data.Length; i++) Assert.AreEqual(data[i] ?? new byte[0], deserialized.Data[i], $"data[{i}]");
-            }
+            SerializerTester.Test(serializer, message);
+            SerializerTester.TestZero(serializer, message);
         }
 
         [Test]
         public void Roundtrip()
+        {
+            byte[][] data = {TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes};
+            Test(data);
+        }
+        
+        [Test]
+        public void Zero_roundtrip()
         {
             byte[][] data = {TestItem.KeccakA.Bytes, TestItem.KeccakB.Bytes, TestItem.KeccakC.Bytes};
             Test(data);

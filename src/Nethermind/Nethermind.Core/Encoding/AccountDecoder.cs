@@ -22,6 +22,16 @@ namespace Nethermind.Core.Encoding
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
+        public (Keccak CodeHash, Keccak StorageRoot) DecodeHashesOnly(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            rlpStream.SkipLength();
+            rlpStream.SkipItem();
+            rlpStream.SkipItem();
+            Keccak storageRoot = rlpStream.DecodeKeccak();
+            Keccak codeHash = rlpStream.DecodeKeccak();
+            return (codeHash, storageRoot);
+        }
+        
         public Account Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             rlpStream.ReadSequenceLength();

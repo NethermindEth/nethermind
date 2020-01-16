@@ -15,12 +15,13 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Linq;
+using DotNetty.Buffers;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public class NodeDataMessageSerializer : IMessageSerializer<NodeDataMessage>
+    public class NodeDataMessageSerializer : IMessageSerializer<NodeDataMessage>, IZeroMessageSerializer<NodeDataMessage>
     {
         public byte[] Serialize(NodeDataMessage message)
         {
@@ -45,6 +46,33 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             NodeDataMessage message = new NodeDataMessage(data);
 
             return message;
+        }
+
+        public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < message.Data.Length; i++)
+            {
+                contentLength += Rlp.LengthOf(message.Data[i]);
+            }
+            
+            int totalLength = Rlp.LengthOfSequence(contentLength);
+            
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            byteBuffer.EnsureWritable(totalLength, true);
+            
+            rlpStream.StartSequence(contentLength);
+            for (int i = 0; i < message.Data.Length; i++)
+            {
+                rlpStream.Encode(message.Data[i]);
+            }
+        }
+
+        public NodeDataMessage Deserialize(IByteBuffer byteBuffer)
+        {
+            RlpStream rlpStream = new NettyRlpStream(byteBuffer);
+            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            return new NodeDataMessage(result);
         }
     }
 }
