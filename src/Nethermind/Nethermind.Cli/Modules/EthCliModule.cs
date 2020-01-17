@@ -132,6 +132,12 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
         }
+        
+        [CliFunction("eth", "getTransactionByHash")]
+        public JsValue GetTransactionByHash(string txHash)
+        {
+            return NodeManager.PostJint("eth_getTransactionByHash", txHash).Result;
+        }
 
         [CliFunction("eth", "getTransactionReceipt")]
         public JsValue GetTransactionReceipt(string txHash)
