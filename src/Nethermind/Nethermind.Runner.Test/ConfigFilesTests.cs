@@ -69,6 +69,37 @@ namespace Nethermind.Runner.Test
             Assert.AreEqual(false, config.BeamSyncEnabled);
         }
         
+        [TestCase("ropsten_archive.cfg", true)]
+        [TestCase("ropsten.cfg", true)]
+        [TestCase("rinkeby_archive.cfg", true)]
+        [TestCase("rinkeby.cfg", true)]
+        [TestCase("goerli_archive.cfg", true)]
+        [TestCase("goerli.cfg", true)]
+        [TestCase("mainnet_archive.cfg", true)]
+        [TestCase("mainnet.cfg", true)]
+        [TestCase("sokol.cfg", true)]
+        [TestCase("sokol_archive.cfg", true)]
+        [TestCase("sokol_validator.cfg", true)]
+        [TestCase("sokol_fastsync.cfg", true)]        
+        [TestCase("poacore.cfg", true)]
+        [TestCase("poacore_archive.cfg", true)]
+        [TestCase("xdai.cfg", true)]
+        [TestCase("xdai_archive.cfg", true)]
+        [TestCase("spaceneth.cfg", false)]
+        [TestCase("volta.cfg", true)]
+        [TestCase("volta_archive.cfg", true)]
+        [TestCase("ndm_consumer_goerli.cfg", true)]
+        [TestCase("ndm_consumer_local.cfg", true)]
+        [TestCase("ndm_consumer_mainnet_proxy.cfg", false)]
+        [TestCase("ndm_consumer_ropsten.cfg", true)]
+        [TestCase("ndm_consumer_ropsten_proxy.cfg", false)]
+        public void Sync_is_disabled_when_needed(string configFile, bool isSyncEnabled)
+        {
+            ConfigProvider configProvider = GetConfigProviderFromFile(configFile);
+            ISyncConfig config = configProvider.GetConfig<ISyncConfig>();
+            Assert.AreEqual(isSyncEnabled, config.SynchronizationEnabled);
+        }
+        
         [TestCase("ropsten_archive.cfg", "ws://ropsten-stats.parity.io/api")]
         [TestCase("ropsten.cfg", "ws://ropsten-stats.parity.io/api")]
         [TestCase("rinkeby_archive.cfg", "ws://localhost:3000/api")]
