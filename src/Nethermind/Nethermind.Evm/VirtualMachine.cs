@@ -605,7 +605,7 @@ namespace Nethermind.Evm
                 {
                     case Instruction.STOP:
                     {
-                        UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+                        UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
                         EndInstructionTrace();
                         return CallResult.Empty;
                     }
@@ -2130,7 +2130,7 @@ namespace Nethermind.Evm
                             evmState.IsStatic,
                             false);
 
-                        UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+                        UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
                         return new CallResult(callState);
                     }
                     case Instruction.RETURN:
@@ -2141,7 +2141,7 @@ namespace Nethermind.Evm
                         UpdateMemoryCost(ref memoryPos, length);
                         byte[] returnData = evmState.Memory.Load(ref memoryPos, length);
 
-                        UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+                        UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
                         EndInstructionTrace();
                         return new CallResult(returnData, null);
                     }
@@ -2331,7 +2331,7 @@ namespace Nethermind.Evm
                             instruction == Instruction.STATICCALL || evmState.IsStatic,
                             false);
 
-                        UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+                        UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
                         EndInstructionTrace();
                         return new CallResult(callState);
                     }
@@ -2349,7 +2349,7 @@ namespace Nethermind.Evm
                         UpdateMemoryCost(ref memoryPos, length);
                         byte[] errorDetails = evmState.Memory.Load(ref memoryPos, length);
 
-                        UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+                        UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
                         EndInstructionTrace();
                         return new CallResult(errorDetails, null, true);
                     }
@@ -2416,7 +2416,7 @@ namespace Nethermind.Evm
 
                         _state.SubtractFromBalance(env.ExecutingAccount, ownerBalance, spec);
 
-                        UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+                        UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
                         EndInstructionTrace();
                         return CallResult.Empty;
                     }
@@ -2556,7 +2556,7 @@ namespace Nethermind.Evm
                 EndInstructionTrace();
             }
 
-            UpdateCurrentState(evmState, programCounter, gasAvailable, stackHead);
+            UpdateCurrentState(evmState, programCounter, gasAvailable, evmStack.Head);
             return CallResult.Empty;
         }
 
