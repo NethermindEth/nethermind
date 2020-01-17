@@ -56,7 +56,18 @@ namespace Nethermind.Core.Crypto
             Bytes = bytes.Length == 64 ? bytes : bytes.Slice(bytes.Length - 64, 64);
         }
 
-        public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
+        public Address Address
+        {
+            get
+            {
+                if (_address == null)
+                {
+                    LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
+                }
+
+                return _address;
+            }   
+        }
 
         public byte[] Bytes { get; }
 
