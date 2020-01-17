@@ -115,7 +115,8 @@ namespace Nethermind.AuRa.Validators
             
             if (shouldLoadValidators)
             {
-                Validators = LoadValidatorsFromContract(block.Header);
+                Validators = isInitBlock ? LoadValidatorsFromContract(block.Header) : _validatorStore.GetValidators();
+
                 if (mainChainProcessing)
                 {
                     if (_logger.IsInfo) _logger.Info($"{(isInitBlock ? "Initial" : "Current")} contract validators ({Validators.Length}): [{string.Join<Address>(", ", Validators)}].");
