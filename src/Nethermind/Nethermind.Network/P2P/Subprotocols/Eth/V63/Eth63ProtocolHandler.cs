@@ -47,9 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxPool txPool) : base(session, serializer, nodeStatsManager, syncServer, logManager, txPool)
         {
         }
-
-        public override bool IsFastSyncSupported => true;
-
+        
         public override byte ProtocolVersion => 63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go

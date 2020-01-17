@@ -48,7 +48,7 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.Post<string>("eth_call", tx, blockParameter ?? "latest").Result;
         }
-        
+
         [CliFunction("eth", "getBlockByHash")]
         public JsValue GetBlockByHash(string hash, bool returnFullTransactionObjects)
         {
@@ -72,11 +72,17 @@ namespace Nethermind.Cli.Modules
         {
             return NodeManager.PostJint("eth_getBlockByNumber", blockParameter, returnFullTransactionObjects).Result;
         }
-        
+
         [CliFunction("eth", "sendEth")]
         public string SendEth(string from, string to, decimal amountInEth)
         {
             return SendEth(CliParseAddress(from), CliParseAddress(to), (UInt256) (amountInEth * (decimal) 1.Ether()));
+        }
+
+        [CliFunction("eth", "estimateGas")]
+        public string EstimateGas(object json)
+        {
+            return NodeManager.Post<string>("eth_estimateGas", json).Result;
         }
 
         [CliFunction("eth", "sendWei")]
@@ -86,7 +92,7 @@ namespace Nethermind.Cli.Modules
         }
 
         [CliFunction("eth", "sendRawTransaction")]
-        public string SendWei(string txRlp)
+        public string SendRawTransaction(string txRlp)
         {
             return NodeManager.Post<string>("eth_sendRawTransaction", txRlp).Result;
         }
@@ -125,6 +131,12 @@ namespace Nethermind.Cli.Modules
         public JsValue GetTransactionByBlockNumberAndIndex(string blockParameter, string index)
         {
             return NodeManager.PostJint("eth_getTransactionByBlockNumberAndIndex", blockParameter, index).Result;
+        }
+        
+        [CliFunction("eth", "getTransactionByHash")]
+        public JsValue GetTransactionByHash(string txHash)
+        {
+            return NodeManager.PostJint("eth_getTransactionByHash", txHash).Result;
         }
 
         [CliFunction("eth", "getTransactionReceipt")]
