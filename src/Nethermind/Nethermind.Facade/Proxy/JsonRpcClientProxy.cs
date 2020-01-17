@@ -37,7 +37,7 @@ namespace Nethermind.Facade.Proxy
                 return;
             }
             
-            SetUrls(urls.ToArray());
+            UpdateUrls(urls.ToArray());
         }
 
         public Task<RpcResult<T>> SendAsync<T>(string method, params object[] @params)
@@ -63,11 +63,17 @@ namespace Nethermind.Facade.Proxy
         // Multiple URLs as a possibility for load-balancing/fallback mechanism in the future.
         public void SetUrls(params string[] urls)
         {
+            if (UpdateUrls(urls)) return;
+            if (_logger.IsInfo) _logger.Info("JSON RPC Proxy URL has been set.");
+        }
+
+        private bool UpdateUrls(string[] urls)
+        {
             if (HasEmptyUrls(urls))
             {
                 _url = string.Empty;
                 if (_logger.IsWarn) _logger.Warn("JSON RPC Proxy URL has been removed.");
-                return;
+                return true;
             }
 
             foreach (var url in urls)
@@ -81,7 +87,7 @@ namespace Nethermind.Facade.Proxy
             }
 
             _url = urls.FirstOrDefault(u => !string.IsNullOrWhiteSpace(u));
-            if (_logger.IsInfo) _logger.Info($"JSON RPC Proxy URL has been set.");
+            return false;
         }
 
         private static bool HasEmptyUrls(IEnumerable<string> urls)
