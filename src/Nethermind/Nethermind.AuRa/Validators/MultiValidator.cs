@@ -29,6 +29,7 @@ namespace Nethermind.AuRa.Validators
     {
         private readonly IAuRaAdditionalBlockProcessorFactory _validatorFactory;
         private readonly IBlockTree _blockTree;
+        private readonly IValidatorStore _validatorStore;
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IDictionary<long, AuRaParameters.Validator> _validators;
         private readonly ILogger _logger;
@@ -37,18 +38,21 @@ namespace Nethermind.AuRa.Validators
         private bool _validatorUsedForSealing;
         private long _lastProcessedBlock = 0;
         
-        public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, IBlockTree blockTree, ILogManager logManager)
+        public MultiValidator(AuRaParameters.Validator validator, IAuRaAdditionalBlockProcessorFactory validatorFactory, IBlockTree blockTree, IValidatorStore validatorStore, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
             if (validator.ValidatorType != AuRaParameters.ValidatorType.Multi) throw new ArgumentException("Wrong validator type.", nameof(validator));
             _validatorFactory = validatorFactory ?? throw new ArgumentNullException(nameof(validatorFactory));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
             _validators = validator.Validators?.Count > 0
                 ? validator.Validators
                 : throw new ArgumentException("Multi validator cannot be empty.", nameof(validator.Validators));
         }
+        
+        public Address[] Validators => _currentValidator?.Validators;
 
         private void InitCurrentValidator(long blockNumber)
         {
@@ -60,18 +64,18 @@ namespace Nethermind.AuRa.Validators
             _lastProcessedBlock = blockNumber;
         }
 
-        private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator> val)
+        private bool TryGetLastValidator(long blockNum, out KeyValuePair<long, AuRaParameters.Validator> validator)
         {
             var headNumber = _blockTree.Head?.Number ?? 0;
             
-            val = default;
+            validator = default;
             bool found = false;
             
             foreach (var kvp in _validators)
             {
                 if (kvp.Key <= blockNum || kvp.Key <= headNumber && kvp.Value.ValidatorType.CanChangeImmediately())
                 {
-                    val = kvp;
+                    validator = kvp;
                     found = true;
                 }
             }
@@ -153,11 +157,6 @@ namespace Nethermind.AuRa.Validators
 
             _lastProcessedBlock = block.Number;
         }
-        
-        public bool IsValidSealer(Address address, long step) => _currentValidator?.IsValidSealer(address, step) == true;
-
-        public int MinSealersForFinalization => _currentValidator.MinSealersForFinalization;
-        public int CurrentSealersCount => _currentValidator.CurrentSealersCount;
 
         void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
         {
@@ -191,6 +190,12 @@ namespace Nethermind.AuRa.Validators
                 _currentValidator = CreateValidator(finalizedAtBlockNumber, validatorPrototype);
                 _currentValidator.SetFinalizationManager(_blockFinalizationManager, _validatorUsedForSealing);
                 _currentValidatorPrototype = validatorPrototype;
+                
+                // TODO: Check if we can produce blocks after switching to ContractValidator
+                if (validatorPrototype.ValidatorType.CanChangeImmediately())
+                {
+                    _validatorStore.SetValidators(finalizedAtBlockNumber, _currentValidator.Validators);
+                }
             }
         }
 

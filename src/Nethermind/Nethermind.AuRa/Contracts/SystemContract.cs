@@ -27,21 +27,21 @@ namespace Nethermind.AuRa.Contracts
 {
     public class SystemContract
     {
-        private readonly Address _contractAddress;
+        protected Address ContractAddress { get; }
 
         public SystemContract(Address contractAddress)
         {
-            _contractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
+            ContractAddress = contractAddress ?? throw new ArgumentNullException(nameof(contractAddress));
         }
         
-        protected Transaction GenerateTransaction(byte[] transactionData, long gasLimit = long.MaxValue, UInt256? nonce = null)
+        protected Transaction GenerateTransaction(byte[] transactionData, Address sender, long gasLimit = long.MaxValue, UInt256? nonce = null)
         {
             var transaction = new Transaction(true)
             {
                 Value = UInt256.Zero,
                 Data = transactionData,
-                To = _contractAddress,
-                SenderAddress = Address.SystemUser,
+                To = ContractAddress,
+                SenderAddress = sender,
                 GasLimit = gasLimit,
                 GasPrice = UInt256.Zero,
                 Nonce = nonce ?? UInt256.Zero,
@@ -77,6 +77,7 @@ namespace Nethermind.AuRa.Contracts
             try
             {
                 transactionProcessor.Execute(transaction, header, tracer);
+                
                 return tracer.StatusCode == StatusCode.Success;
             }
             catch (Exception)

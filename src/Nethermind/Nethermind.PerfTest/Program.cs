@@ -192,7 +192,7 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewHeadBlock;
             public void DeleteChainSlice(in long startNumber, in long endNumber)
             {
-                throw new NotSupportedException();
+                _blockTree.DeleteChainSlice(startNumber, endNumber);
             }
         }
 
@@ -210,6 +210,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullPendingTxsDbPath = Path.Combine(DbBasePath, "pendingtxs");
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, "blocks");
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, "blockInfos");
+        private static ValidatorStore _validatorStore;
 
         private const int BlocksToLoad = 100_000;
 
@@ -291,10 +292,11 @@ namespace Nethermind.PerfTest
             else if (chainSpec.SealEngineType == SealEngineType.AuRa)
             {
                 var abiEncoder = new AbiEncoder();
-                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(dbProvider.StateDb, stateProvider, abiEncoder, processor, blockTree, receiptStorage, _logManager)
+                _validatorStore = new ValidatorStore(dbProvider.StateDb);
+                var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(stateProvider, abiEncoder, processor, blockTree, receiptStorage, _validatorStore, _logManager)
                     .CreateValidatorProcessor(chainSpec.AuRa.Validators);
                     
-                sealValidator = new AuRaSealValidator(chainSpec.AuRa, new AuRaStepCalculator(chainSpec.AuRa.StepDuration, new Timestamper()), validatorProcessor, ethereumSigner, _logManager);
+                sealValidator = new AuRaSealValidator(chainSpec.AuRa, new AuRaStepCalculator(chainSpec.AuRa.StepDuration, new Timestamper()), _validatorStore, ethereumSigner, _logManager);
                 rewardCalculator = new AuRaRewardCalculator(chainSpec.AuRa, abiEncoder, processor);
                 blockProcessors.Add(validatorProcessor);
             }
@@ -318,7 +320,11 @@ namespace Nethermind.PerfTest
                 stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
                 storageProvider.Commit();
                 stateProvider.Commit(Homestead.Instance);
-                var finalizationManager = new AuRaBlockFinalizationManager(blockTree,blockInfoRepository, blockProcessor, blockProcessors.OfType<IAuRaValidator>().First(), _logManager);
+                var finalizationManager = new AuRaBlockFinalizationManager(blockTree,blockInfoRepository, blockProcessor, _validatorStore, new ValidSealerStrategy(), _logManager);
+                foreach (IAuRaValidator auRaValidator in blockProcessors.OfType<IAuRaValidator>())
+                {
+                    auRaValidator.SetFinalizationManager(finalizationManager);
+                }
             }
             
             foreach ((Address address, ChainSpecAllocation allocation) in chainSpec.Allocations)

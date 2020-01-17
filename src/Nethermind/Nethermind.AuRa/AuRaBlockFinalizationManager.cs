@@ -35,20 +35,22 @@ namespace Nethermind.AuRa
         private static readonly List<BlockHeader> Empty = new List<BlockHeader>();
         private readonly IBlockTree _blockTree;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
-        private readonly IAuRaValidator _auRaValidator;
         private readonly ILogger _logger;
         private readonly IBlockProcessor _blockProcessor;
+        private readonly IValidatorStore _validatorStore;
+        private readonly IValidSealerStrategy _validSealerStrategy;
         private long _lastFinalizedBlockLevel;
         private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
-        public AuRaBlockFinalizationManager(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository, IBlockProcessor blockProcessor, IAuRaValidator auRaValidator, ILogManager logManager)
+        public AuRaBlockFinalizationManager(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository, IBlockProcessor blockProcessor, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
-            _auRaValidator = auRaValidator ?? throw new ArgumentNullException(nameof(auRaValidator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
+            _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _blockProcessor.BlockProcessed += OnBlockProcessed;
             Initialize();
         }
@@ -66,8 +68,6 @@ namespace Nethermind.AuRa
             while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
 
             LastFinalizedBlockLevel = level;
-            
-            _auRaValidator.SetFinalizationManager(this);
             
             // This is needed if processing was stopped between processing last block and running finalization logic 
             if (hasHead)
@@ -105,7 +105,7 @@ namespace Nethermind.AuRa
                 return (chainLevelInfo, blockInfo);
             }
             
-            var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
+            var minSealersForFinalization = block.IsGenesis ? 1 : Validators.MinSealersForFinalization();
             var originalBlock = block;
             
             bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
@@ -190,6 +190,8 @@ namespace Nethermind.AuRa
             return finalizedBlocks;
         }
 
+        private Address[] Validators => _validatorStore.GetValidators();
+
         /* Simple, unoptimized method implementation for reference: 
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
@@ -239,7 +241,7 @@ namespace Nethermind.AuRa
         {
             var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();
-            var minSealersForFinalization = _auRaValidator.MinSealersForFinalization;
+            var minSealersForFinalization = Validators.MinSealersForFinalization();
             while (block.Number > 0)
             {
                 validators.Add(block.Beneficiary);
@@ -263,12 +265,12 @@ namespace Nethermind.AuRa
             }
 
             var validators = new HashSet<Address>();
-            var minSealersForFinalization = _auRaValidator.MinSealersForFinalization;
+            var minSealersForFinalization = Validators.MinSealersForFinalization();
             var blockInfo = GetBlockInfo(blockLevel);
             while (blockInfo != null)
             {
                 var block = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
-                if (_auRaValidator.IsValidSealer(block.Beneficiary, block.AuRaStep.Value))
+                if (_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, block.AuRaStep.Value))
                 {
                     validators.Add(block.Beneficiary);
                     if (validators.Count >= minSealersForFinalization)
@@ -356,7 +358,7 @@ namespace Nethermind.AuRa
 
             public void Clear()
             {
-                _validatorCount.Clear();;
+                _validatorCount.Clear();
                 _blocks.Clear();
             }
 

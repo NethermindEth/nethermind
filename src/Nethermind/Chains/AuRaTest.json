@@ -13,18 +13,16 @@
               "list": ["0x557abc72a6594d1bd9a655a1cb58a595526416c8"]
             },
             "4" : {
-              "list": ["0x557abc72a6594d1bd9a655a1cb58a595526416c8", "0x69399093be61566a1c86b09bd02612c6bf31214f"]
+              "list": ["0x69399093be61566a1c86b09bd02612c6bf31214f"]
             },
             "8" : {
-              "list": ["0x557abc72a6594d1bd9a655a1cb58a595526416c8", "0x7e99aceb5d3dba8c79732c6cf49f184b00cff69b"]
+              "list": ["0x7e99aceb5d3dba8c79732c6cf49f184b00cff69b"]
             },
             "12" : {
               "safeContract": "0x8bf38d4764929064f2d4d3a56520a76ab3df415b"
             }
           }
-        },
-        "blockRewardContractAddress": "0x3145197AD50D7083D0222DE4fCCf67d9BD05C30D",
-        "blockRewardContractTransition": 4639000
+        }
       }
     }
   },
@@ -70,7 +68,6 @@
     "0000000000000000000000000000000000000005": { "builtin": { "name": "modexp", "activate_at": "0x0", "pricing": { "modexp": { "divisor": 20 } } } },
     "0000000000000000000000000000000000000006": { "builtin": { "name": "alt_bn128_add", "activate_at": "0x0", "pricing": { "linear": { "base": 500, "word": 0 } } } },
     "0000000000000000000000000000000000000007": { "builtin": { "name": "alt_bn128_mul", "activate_at": "0x0", "pricing": { "linear": { "base": 40000, "word": 0 } } } },
-    "0000000000000000000000000000000000000008": { "builtin": { "name": "alt_bn128_pairing", "activate_at": "0x0", "pricing": { "alt_bn128_pairing": { "base": 100000, "pair": 80000, "eip1108_transition_base": 0, "eip1108_transition_pair": 0 } } } },
 
     "0x0000000000000000000000000000000000000001": {
       "balance": "1",

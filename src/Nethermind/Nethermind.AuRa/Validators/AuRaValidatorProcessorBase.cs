@@ -27,19 +27,17 @@ namespace Nethermind.AuRa.Validators
 {
     public abstract class AuRaValidatorProcessorBase : IAuRaValidatorProcessor
     {
+        private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly ILogger _logger;
 
-        protected AuRaValidatorProcessorBase(AuRaParameters.Validator validator, ILogManager logManager)
+        protected AuRaValidatorProcessorBase(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
         {
             if (validator == null) throw new ArgumentNullException(nameof(validator));
+            _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
         
-        protected virtual Address[] Validators { get; set; }
-        public int MinSealersForFinalization => Validators.MinSealersForFinalization();
-        public int CurrentSealersCount => Validators.Length;
-
-        public bool IsValidSealer(Address address, long step) => Validators.GetItemRoundRobin(step) == address;
+        public Address[] Validators { get; protected set; }
 
         void IAuRaValidator.SetFinalizationManager(IBlockFinalizationManager finalizationManager, bool forProducing)
         {
@@ -53,7 +51,7 @@ namespace Nethermind.AuRa.Validators
             if (!options.IsProducingBlock())
             {
                 var auRaStep = block.Header.AuRaStep.Value;
-                if (!IsValidSealer(block.Beneficiary, auRaStep))
+                if (!_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, auRaStep))
                 {
                     if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {block.ToString(Block.Format.FullHashAndNumber)}, step {auRaStep} from author {block.Beneficiary}.");
                     throw new InvalidBlockException(block.Hash);

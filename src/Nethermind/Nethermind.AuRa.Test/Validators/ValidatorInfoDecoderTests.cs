@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,23 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using FluentAssertions;
+using Nethermind.AuRa.Validators;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-namespace Nethermind.AuRa.Validators
+namespace Nethermind.AuRa.Test.Validators
 {
-    internal static class AuRaValidatorsCollectionExtensions
+    public class ValidatorInfoDecoderTests
     {
-        public static int MinSealersForFinalization(this IList<Address> validators) => validators.Count / 2 + 1;
+        [Test]
+        public void Can_decode_previously_encoded()
+        {
+            var info = new ValidatorInfo(10, 5, new[] {TestItem.AddressA, TestItem.AddressC});
+            var rlp = Rlp.Encode(info);
+            var decoded = Rlp.Decode<ValidatorInfo>(rlp);
+            decoded.Should().BeEquivalentTo(info);
+        }
     }
 }

@@ -30,16 +30,16 @@ namespace Nethermind.AuRa
     {
         private readonly AuRaParameters _parameters;
         private readonly IAuRaStepCalculator _stepCalculator;
-        private readonly IAuRaValidator _validator;
+        private readonly IValidatorStore _validatorStore;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly ILogger _logger;
         private readonly ReceivedSteps _receivedSteps = new ReceivedSteps();
         
-        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IAuRaValidator validator, IEthereumEcdsa ecdsa, ILogManager logManager)
+        public AuRaSealValidator(AuRaParameters parameters, IAuRaStepCalculator stepCalculator, IValidatorStore validatorStore, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
             _parameters = parameters ?? throw new ArgumentNullException(nameof(parameters));
             _stepCalculator = stepCalculator ?? throw new ArgumentNullException(nameof(stepCalculator));
-            _validator = validator ?? throw new ArgumentNullException(nameof(validator));
+            _validatorStore = validatorStore?? throw new ArgumentNullException(nameof(validatorStore));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -94,7 +94,7 @@ namespace Nethermind.AuRa
             }
 
             // Report malice if the validator produced other sibling blocks in the same step.
-            if (_receivedSteps.ContainsOrInsert(header, _validator.CurrentSealersCount))
+            if (_receivedSteps.ContainsOrInsert(header, _validatorStore.GetValidators().Length))
             {
                 if (_logger.IsDebug) _logger.Debug($"Validator {header.Beneficiary} produced sibling blocks in the same step {header.AuRaStep} in block {header.Number}.");
                 // report malicious
@@ -132,7 +132,7 @@ namespace Nethermind.AuRa
             }
             
             // cannot call: _validator.IsValidSealer(header.Author); because we can call it only when previous step was processed.
-            // this responsibility delegated to actual validator during processing 
+            // this responsibility delegated to actual validator during processing with AuRaSealerValidator
             return true;
         }
 

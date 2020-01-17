@@ -42,10 +42,7 @@ namespace Nethermind.AuRa.Validators
 {
     public class ContractValidator : AuRaValidatorProcessorBase
     {
-        internal static readonly Keccak PendingValidatorsKey = Keccak.Compute("PendingValidators");
-        private static readonly PendingValidatorsDecoder _pendingValidatorsDecoder = new PendingValidatorsDecoder();
         private readonly ILogger _logger;
-        private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionProcessor _transactionProcessor;
         
@@ -55,7 +52,7 @@ namespace Nethermind.AuRa.Validators
         private IBlockFinalizationManager _blockFinalizationManager;
         private readonly IBlockTree _blockTree;
         private readonly IReceiptStorage _receiptStorage;
-        private Address[] _validators;
+        private readonly IValidatorStore _validatorStore;
         private bool _validatorUsedForSealing;
 
         protected Address ContractAddress { get; }
@@ -64,31 +61,26 @@ namespace Nethermind.AuRa.Validators
         protected CallOutputTracer Output { get; } = new CallOutputTracer();
         protected ValidatorContract ValidatorContract => _validatorContract ??= CreateValidatorContract(ContractAddress);
 
-        protected override Address[] Validators
-        {
-            get => _validators ??= LoadValidatorsFromContract(_blockTree.Head);
-            set => _validators = value;
-        }
-        
         private PendingValidators CurrentPendingValidators => _currentPendingValidators;
 
         public ContractValidator(
             AuRaParameters.Validator validator,
-            IDb stateDb,
             IStateProvider stateProvider,
             IAbiEncoder abiEncoder,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
+            IValidatorStore validatorStore,
+            IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
-            long startBlockNumber) : base(validator, logManager)
+            long startBlockNumber) : base(validator, validSealerStrategy, logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             ContractAddress = validator.Addresses?.FirstOrDefault() ?? throw new ArgumentException("Missing contract address for AuRa validator.", nameof(validator.Addresses));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
+            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             AbiEncoder = abiEncoder ?? throw new ArgumentNullException(nameof(abiEncoder));
             InitBlockNumber = startBlockNumber;
@@ -118,19 +110,25 @@ namespace Nethermind.AuRa.Validators
             var isProducingBlock = options.IsProducingBlock();
             var isProcessingBlock = !isProducingBlock;
             var isInitBlock = InitBlockNumber == block.Number;
-            var shouldLoadValidators = _validators == null || isProducingBlock;
+            var shouldLoadValidators = Validators == null || isProducingBlock;
+            var mainChainProcessing = !_validatorUsedForSealing && isProcessingBlock;
             
             if (shouldLoadValidators)
             {
                 Validators = LoadValidatorsFromContract(block.Header);
-                if (!_validatorUsedForSealing && isProcessingBlock)
+                if (mainChainProcessing)
                 {
-                    if (_logger.IsInfo)  _logger.Info($"{(isInitBlock ? "Initial" : "Current")} contract validators ({Validators.Length}): [{string.Join<Address>(", ", Validators)}].");
+                    if (_logger.IsInfo) _logger.Info($"{(isInitBlock ? "Initial" : "Current")} contract validators ({Validators.Length}): [{string.Join<Address>(", ", Validators)}].");
                 }
             }
             
             if (isInitBlock)
             {
+                if (mainChainProcessing)
+                {
+                    _validatorStore.SetValidators(InitBlockNumber, Validators);
+                }
+                
                 InitiateChange(block, Validators.ToArray(), isProcessingBlock, true);
             }
             else
@@ -141,8 +139,8 @@ namespace Nethermind.AuRa.Validators
                     if (reorganisationHappened)
                     {
                         var reorganisationToBlockBeforePendingValidatorsInitChange = block.Number <= CurrentPendingValidators?.BlockNumber;
-                        var pendingValidators = reorganisationToBlockBeforePendingValidatorsInitChange ? null : LoadPendingValidators();
-                        SetPendingValidators(pendingValidators);
+                        SetPendingValidators(reorganisationToBlockBeforePendingValidatorsInitChange ? null : LoadPendingValidators(), reorganisationToBlockBeforePendingValidatorsInitChange);
+
                     }
                     else if (block.Number > _lastProcessedBlockNumber + 1) // blocks skipped, like fast sync
                     {
@@ -207,6 +205,7 @@ namespace Nethermind.AuRa.Validators
                 if (_logger.IsInfo && isProcessingBlock) _logger.Info($"Applying validator set change signalled at block {CurrentPendingValidators.BlockNumber} before block {block.ToString(BlockHeader.Format.Short)}.");
                 if (block.Number == InitBlockNumber)
                 {
+                    ValidatorContract.EnsureSystemAccount(_stateProvider);
                     ValidatorContract.TryInvokeTransaction(block, _transactionProcessor, ValidatorContract.FinalizeChange(), Output);
                 }
                 else
@@ -234,7 +233,6 @@ namespace Nethermind.AuRa.Validators
 
         private Address[] LoadValidatorsFromContract(BlockHeader blockHeader)
         {
-            ValidatorContract.EnsureSystemAccount(_stateProvider);
             ValidatorContract.InvokeTransaction(blockHeader, _transactionProcessor, ValidatorContract.GetValidators(), Output);
 
             if (Output.ReturnValue.Length == 0)
@@ -269,17 +267,14 @@ namespace Nethermind.AuRa.Validators
                     SetPendingValidators(CurrentPendingValidators, true);
                     if (!_validatorUsedForSealing)
                     {
+                        _validatorStore.SetValidators(e.FinalizingBlock.Number, Validators);
                         if (_logger.IsInfo) _logger.Info($"Finalizing validators for transition within contract signalled at block {CurrentPendingValidators.BlockNumber}. after block {e.FinalizingBlock.ToString(BlockHeader.Format.Short)}.");
                     }
                 }
             }
         }
 
-        private PendingValidators LoadPendingValidators()
-        {
-            var rlpStream = new RlpStream(_stateDb.Get(PendingValidatorsKey) ?? Rlp.OfEmptySequence.Bytes);
-            return _pendingValidatorsDecoder.Decode(rlpStream);
-        }
+        private PendingValidators LoadPendingValidators() => _validatorStore.PendingValidators;
 
         private void SetPendingValidators(PendingValidators validators, bool canSave = false)
         {
@@ -291,121 +286,8 @@ namespace Nethermind.AuRa.Validators
             // * We are loading validators from db.
             if (canSave)
             {
-                _stateDb.Set(PendingValidatorsKey, _pendingValidatorsDecoder.Encode(CurrentPendingValidators).Bytes);
+                _validatorStore.PendingValidators = validators;
             }
-        }
-
-        internal class PendingValidators
-        {
-            public PendingValidators(long blockNumber, Keccak blockHash, Address[] addresses)
-            {
-                BlockNumber = blockNumber;
-                BlockHash = blockHash;
-                Addresses = addresses;
-            }
-
-            public Address[] Addresses { get; }
-            public long BlockNumber { get; }
-            public Keccak BlockHash { get; }
-            public bool AreFinalized { get; set; }
-        }
-
-        private class PendingValidatorsDecoder : IRlpDecoder<PendingValidators>
-        {
-            static PendingValidatorsDecoder()
-            {
-                Rlp.Decoders[typeof(PendingValidators)] = new PendingValidatorsDecoder();
-            }
-            
-            public PendingValidators Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                if (rlpStream.IsNextItemNull())
-                {
-                    rlpStream.ReadByte();
-                    return null;
-                }
-                
-                var sequenceLength = rlpStream.ReadSequenceLength();
-                var pendingValidatorsCheck = rlpStream.Position + sequenceLength;
-
-                var blockNumber = rlpStream.DecodeLong();
-                var blockHash = rlpStream.DecodeKeccak();
-                
-                var addressSequenceLength = rlpStream.ReadSequenceLength();
-                var addressCheck = rlpStream.Position + addressSequenceLength;
-                List<Address> addresses = new List<Address>();
-                while (rlpStream.Position < addressCheck)
-                {
-                    addresses.Add(rlpStream.DecodeAddress());
-                }
-                rlpStream.Check(addressCheck);
-                
-                var result = new PendingValidators(blockNumber, blockHash, addresses.ToArray())
-                {
-                    AreFinalized = rlpStream.DecodeBool()
-                };
-                
-                rlpStream.Check(pendingValidatorsCheck);
-                
-                return result;
-            }
-
-            public Rlp Encode(PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                if (item == null)
-                {
-                    return Rlp.OfEmptySequence;
-                }
-            
-                RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
-                Encode(rlpStream, item, rlpBehaviors);
-                return new Rlp(rlpStream.Data);
-            }
-
-            public void Encode(MemoryStream stream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-                Rlp.StartSequence(stream, contentLength);
-                Rlp.Encode(stream, item.BlockNumber);
-                Rlp.Encode(stream, item.BlockHash);
-                Rlp.StartSequence(stream, addressesLength);
-                for (int i = 0; i < item.Addresses.Length; i++)
-                {
-                    Rlp.Encode(stream, item.Addresses[i]);
-                }
-                Rlp.Encode(stream, item.AreFinalized);
-            }
-            
-            public void Encode(RlpStream rlpStream, PendingValidators item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-            {
-                (int contentLength, int addressesLength) = GetContentLength(item, rlpBehaviors);
-                rlpStream.StartSequence(contentLength);
-                rlpStream.Encode(item.BlockNumber);
-                rlpStream.Encode(item.BlockHash);
-                rlpStream.StartSequence(addressesLength);
-                for (int i = 0; i < item.Addresses.Length; i++)
-                {
-                    rlpStream.Encode(item.Addresses[i]);
-                }
-                rlpStream.Encode(item.AreFinalized);
-            }
-
-            public int GetLength(PendingValidators item, RlpBehaviors rlpBehaviors) =>
-                item == null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors).Total);
-
-            private (int Total, int Addresses) GetContentLength(PendingValidators item, RlpBehaviors rlpBehaviors)
-            {
-                int contentLength = Rlp.LengthOf(item.BlockNumber) 
-                                    + Rlp.LengthOf(item.BlockHash) 
-                                    + Rlp.LengthOf(item.AreFinalized); 
-                
-                var addressesLength = GetAddressesLength(item.Addresses);
-                contentLength += Rlp.LengthOfSequence(addressesLength);
-                
-                return (contentLength, addressesLength);
-            }
-
-            private int GetAddressesLength(Address[] addresses) => addresses.Sum(Rlp.LengthOf);
         }
     }
 }

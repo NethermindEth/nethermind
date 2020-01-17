@@ -44,6 +44,8 @@ namespace Nethermind.AuRa.Test
         private IAuRaStepCalculator _auRaStepCalculator;
         private IAuRaValidator _auRaValidator;
         private Address _address;
+        private IValidatorStore _validatorStore;
+        private IValidSealerStrategy _validSealerStrategy;
 
         [SetUp]
         public void Setup()
@@ -54,15 +56,19 @@ namespace Nethermind.AuRa.Test
 
             _auRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
             _auRaValidator = Substitute.For<IAuRaValidator>();
+            _validatorStore = Substitute.For<IValidatorStore>();
+            _validSealerStrategy = Substitute.For<IValidSealerStrategy>();
             var wallet = new DevWallet(new WalletConfig(), NullLogManager.Instance);
             _address = wallet.NewAccount(new NetworkCredential(string.Empty, "AAA").SecurePassword);
             
             _auRaSealer = new AuRaSealer(
                 _blockTree,
                 _auRaValidator,
+                _validatorStore,
                 _auRaStepCalculator,
                 _address,
                 wallet,
+                _validSealerStrategy,
                 NullLogManager.Instance);
         }
 
@@ -73,7 +79,7 @@ namespace Nethermind.AuRa.Test
         public bool can_seal(long auRaStep, bool validSealer)
         {
             _auRaStepCalculator.CurrentStep.Returns(auRaStep);
-            _auRaValidator.IsValidSealer(_address, auRaStep).Returns(validSealer);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, auRaStep).Returns(validSealer);
             return _auRaSealer.CanSeal(10, _blockTree.Head.Hash);
         }
 
@@ -81,7 +87,7 @@ namespace Nethermind.AuRa.Test
         public async Task seal_can_recover_address()
         {
             _auRaStepCalculator.CurrentStep.Returns(11);
-            _auRaValidator.IsValidSealer(_address, 11).Returns(true);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), _address, 11).Returns(true);
             var block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithBeneficiary(_address).WithAura(11, null).TestObject).TestObject;
             
             block = await _auRaSealer.SealBlock(block, CancellationToken.None);

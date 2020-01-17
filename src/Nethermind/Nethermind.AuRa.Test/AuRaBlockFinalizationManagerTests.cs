@@ -14,209 +14,369 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections;
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
-using FluentAssertions;
 using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Store;
 using Nethermind.Store.Repositories;
-using NSubstitute;
-using NUnit.Framework;
+using Nito.Collections;
 
-namespace Nethermind.AuRa.Test
+namespace Nethermind.AuRa
 {
-    public class AuRaBlockFinalizationManagerTests
+    public class AuRaBlockFinalizationManager : IBlockFinalizationManager
     {
-        private IChainLevelInfoRepository _chainLevelInfoRepository;
-        private IBlockProcessor _blockProcessor;
-        private IAuRaValidator _auraValidator;
-        private ILogManager _logManager;
+        private static readonly List<BlockHeader> Empty = new List<BlockHeader>();
+        private readonly IBlockTree _blockTree;
+        private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
+        private readonly ILogger _logger;
+        private readonly IBlockProcessor _blockProcessor;
+        private readonly IValidatorStore _validatorStore;
+        private readonly IValidSealerStrategy _validSealerStrategy;
+        private long _lastFinalizedBlockLevel;
+        private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
+        private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
-        [SetUp]
-        public void Initialize()
+        public AuRaBlockFinalizationManager(IBlockTree blockTree, IChainLevelInfoRepository chainLevelInfoRepository, IBlockProcessor blockProcessor, IValidatorStore validatorStore, IValidSealerStrategy validSealerStrategy, ILogManager logManager)
         {
-            _chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
-            _blockProcessor = Substitute.For<IBlockProcessor>();
-            _auraValidator = Substitute.For<IAuRaValidator>();
-            _logManager = Substitute.For<ILogManager>();
-
-            _auraValidator.MinSealersForFinalization.Returns(2);
-            
-            Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
+            _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
+            _blockProcessor.BlockProcessed += OnBlockProcessed;
+            Initialize();
         }
 
-        private void BuildChainLevelTree(params ChainLevelInfo[] levels)
+        private void Initialize()
         {
-            for (var index = 0; index < levels.Length; index++)
+            var hasHead = _blockTree.Head != null;
+            var level = hasHead ? _blockTree.Head.Number + 1 : 0;
+            ChainLevelInfo chainLevel;
+            do
             {
-                var element = levels[index];
-                _chainLevelInfoRepository.LoadLevel(index).Returns(element);
+                level--;
+                chainLevel = _chainLevelInfoRepository.LoadLevel(level);
+            } 
+            while (chainLevel?.MainChainBlock?.IsFinalized != true && level >= 0);
+
+            LastFinalizedBlockLevel = level;
+            
+            // This is needed if processing was stopped between processing last block and running finalization logic 
+            if (hasHead)
+            {
+                FinalizeBlocks(_blockTree.Head);
             }
         }
 
-        [Test]
-        public void correctly_initializes_lastFinalizedBlock()
+        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
-            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(3, 1, 1);
-            FinalizeToLevel(1, blockTreeBuilder.ChainLevelInfoRepository);
-            
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
-            finalizationManager.LastFinalizedBlockLevel.Should().Be(1);
+            FinalizeBlocks(e.Block.Header);
         }
 
-        private void FinalizeToLevel(long upperLevel, ChainLevelInfoRepository chainLevelInfoRepository)
+        private void FinalizeBlocks(BlockHeader finalizingBlock)
         {
-            for (long i = 0; i <= upperLevel; i++)
+            var finalizedBlocks = GetFinalizedBlocks(finalizingBlock);
+            
+            if (finalizedBlocks.Any())
             {
-                var level = chainLevelInfoRepository.LoadLevel(i);
-                if (level?.MainChainBlock != null)
+                if (_logger.IsDebug) _logger.Debug(finalizedBlocks.Count == 1
+                        ? $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].ToString(BlockHeader.Format.FullHashAndNumber)}."
+                        : $"Blocks finalized by {finalizingBlock.ToString(BlockHeader.Format.FullHashAndNumber)}: {finalizedBlocks[0].Number}-{finalizedBlocks[finalizedBlocks.Count - 1].Number} [{string.Join(",", finalizedBlocks.Select(b => b.Hash))}].");
+                
+                LastFinalizedBlockLevel = finalizedBlocks[^1].Number;
+                BlocksFinalized?.Invoke(this, new FinalizeEventArgs(finalizingBlock, finalizedBlocks));
+            }
+        }
+        
+        private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
+        {
+            (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
+            {
+                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(blockHeader.Number);
+                var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
+                return (chainLevelInfo, blockInfo);
+            }
+            
+            var minSealersForFinalization = block.IsGenesis ? 1 : Validators.MinSealersForFinalization();
+            var originalBlock = block;
+            
+            bool IsConsecutiveBlock() => originalBlock.ParentHash == _lastProcessedBlockHash;
+            bool ConsecutiveBlockWillFinalizeBlocks() => _consecutiveValidatorsForNotYetFinalizedBlocks.Count >= minSealersForFinalization;
+
+            List<BlockHeader> finalizedBlocks;
+            var isConsecutiveBlock = IsConsecutiveBlock();
+            HashSet<Address> validators = null;
+            bool iterateThroughBlocks = true;
+            // For consecutive blocks we can do a lot of optimizations.
+            if (isConsecutiveBlock)
+            {
+                _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
+                
+                // if block is consecutive than we can just check if this sealer will cause any blocks get finalized
+                // using cache of validators of not yet finalized blocks from previous block operation
+                iterateThroughBlocks = ConsecutiveBlockWillFinalizeBlocks();
+
+                if (iterateThroughBlocks)
                 {
-                    level.MainChainBlock.IsFinalized = true;
-                    chainLevelInfoRepository.PersistLevel(i, level);
+                    // if its consecutive block we already checked there will be finalization of some blocks. Lets start processing directly from the first block that will be finalized.
+                    block = _consecutiveValidatorsForNotYetFinalizedBlocks.GetBlockThatWillBeFinalized(out validators, minSealersForFinalization) ?? block;
+                }
+            }
+            else
+            {
+                _consecutiveValidatorsForNotYetFinalizedBlocks.Clear();
+                validators = new HashSet<Address>();
+            }
+
+            if (iterateThroughBlocks)
+            {
+                finalizedBlocks = new List<BlockHeader>();
+                var originalBlockSealer = originalBlock.Beneficiary;
+                bool ancestorsNotYetRemoved = true;
+
+                using (var batch = _chainLevelInfoRepository.StartBatch())
+                {
+                    var (chainLevel, blockInfo) = GetBlockInfo(block);
+
+                    // if this block sealer seals for 2nd time than this seal can not finalize any blocks
+                    // as the 1st seal or some seal between 1st seal and current one would already finalize some of them
+                    bool OriginalBlockSealerSignedOnlyOnce() => !validators.Contains(originalBlockSealer) || block.Beneficiary != originalBlockSealer;
+                    
+                    while (!blockInfo.IsFinalized && (isConsecutiveBlock || OriginalBlockSealerSignedOnlyOnce()))
+                    {
+                        validators.Add(block.Beneficiary);
+                        if (validators.Count >= minSealersForFinalization)
+                        {
+                            blockInfo.IsFinalized = true;
+                            _chainLevelInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+
+                            finalizedBlocks.Add(block);
+                            if (ancestorsNotYetRemoved)
+                            {
+                                _consecutiveValidatorsForNotYetFinalizedBlocks.RemoveAncestors(block.Number);
+                                ancestorsNotYetRemoved = false;
+                            }
+                        }
+                        else
+                        {
+                            _consecutiveValidatorsForNotYetFinalizedBlocks.Add(block);
+                        }
+
+                        if (!block.IsGenesis)
+                        {
+                            block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+                            (chainLevel, blockInfo) = GetBlockInfo(block);
+                        }
+                    }
+                }
+
+                finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
+            }
+            else
+            {
+                finalizedBlocks = Empty;
+            }
+
+            _lastProcessedBlockHash = originalBlock.Hash;
+
+            return finalizedBlocks;
+        }
+
+        private Address[] Validators => _validatorStore.GetValidators();
+
+        /* Simple, unoptimized method implementation for reference: 
+        private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
+        {
+            (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
+            {
+                var chainLevelInfo = _blockInfoRepository.LoadLevel(blockHeader.Number);
+                var blockInfo = chainLevelInfo.BlockInfos.First(i => i.BlockHash == blockHeader.Hash);
+                return (chainLevelInfo, blockInfo);
+            }
+
+            List<BlockHeader> finalizedBlocks = new List<BlockHeader>();
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
+            var originalBlockSealer = block.Beneficiary;
+            
+            using (var batch = _blockInfoRepository.StartBatch())
+            {
+                var (chainLevel, blockInfo) = GetBlockInfo(block);
+                
+                while (!blockInfo.IsFinalized)
+                {
+                    validators.Add(block.Beneficiary);
+                    if (validators.Count >= minSealersForFinalization)
+                    {
+                        blockInfo.IsFinalized = true;
+                        _blockInfoRepository.PersistLevel(block.Number, chainLevel, batch);
+                        finalizedBlocks.Add(block);
+                    }
+
+                    if (!block.IsGenesis)
+                    {
+                        block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+                        (chainLevel, blockInfo) = GetBlockInfo(block);
+                    }
+                }
+            }
+
+            finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
+            
+            return finalizedBlocks;
+        }
+        */
+
+        public event EventHandler<FinalizeEventArgs> BlocksFinalized;
+        
+        public long GetLastLevelFinalizedBy(Keccak headHash)
+        {
+            var block = _blockTree.FindHeader(headHash, BlockTreeLookupOptions.None);
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = Validators.MinSealersForFinalization();
+            while (block.Number > 0)
+            {
+                validators.Add(block.Beneficiary);
+                if (validators.Count >= minSealersForFinalization)
+                {
+                    return block.Number;
+                }
+
+                block = _blockTree.FindHeader(block.ParentHash, BlockTreeLookupOptions.None);
+            }
+            
+            return 0;
+        }
+
+        public long? GetFinalizedLevel(long blockLevel)
+        {
+            BlockInfo GetBlockInfo(long level)
+            {
+                var chainLevelInfo = _chainLevelInfoRepository.LoadLevel(level);
+                return  chainLevelInfo?.MainChainBlock ?? chainLevelInfo?.BlockInfos[0];
+            }
+
+            var validators = new HashSet<Address>();
+            var minSealersForFinalization = Validators.MinSealersForFinalization();
+            var blockInfo = GetBlockInfo(blockLevel);
+            while (blockInfo != null)
+            {
+                var block = _blockTree.FindHeader(blockInfo.BlockHash, BlockTreeLookupOptions.None);
+                if (_validSealerStrategy.IsValidSealer(Validators, block.Beneficiary, block.AuRaStep.Value))
+                {
+                    validators.Add(block.Beneficiary);
+                    if (validators.Count >= minSealersForFinalization)
+                    {
+                        return block.Number;
+                    }
+                }
+
+                blockLevel++;
+                blockInfo = GetBlockInfo(blockLevel);
+            }
+
+            return null;
+        }
+
+        public long LastFinalizedBlockLevel
+        {
+            get => _lastFinalizedBlockLevel;
+            private set
+            {
+                if (_lastFinalizedBlockLevel < value)
+                {
+                    _lastFinalizedBlockLevel = value;
+                    if (_logger.IsTrace) _logger.Trace($"Setting {nameof(LastFinalizedBlockLevel)} to {value}.");
                 }
             }
         }
 
-        [Test]
-        public void correctly_finalizes_blocks_in_chain()
+        public void Dispose()
         {
-            var count = 10;
-            var blockTreeBuilder = Build.A.BlockTree();
-            HashSet<BlockHeader> finalizedBlocks = new HashSet<BlockHeader>();
-            
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
-            finalizationManager.BlocksFinalized += (sender, args) =>
+            _blockProcessor.BlockProcessed -= OnBlockProcessed;
+        }
+
+        [DebuggerDisplay("Count = {Count}")]
+        private class ValidationStampCollection
+        {
+            private readonly IDictionary<Address, int> _validatorCount = new Dictionary<Address, int>();
+            private readonly Deque<BlockHeader> _blocks = new Deque<BlockHeader>();
+
+            public int Count => _validatorCount.Count;
+
+            public void Add(BlockHeader blockHeader)
             {
-                foreach (var block in args.FinalizedBlocks)
+                bool DoesNotContainBlock() => _blocks.Count == 0 || _blocks[0].Number > blockHeader.Number || _blocks[^1].Number < blockHeader.Number;
+
+                if (DoesNotContainBlock())
                 {
-                    finalizedBlocks.Add(block);
+                    if (_blocks.Count == 0 || _blocks[0].Number < blockHeader.Number)
+                    {
+                        _blocks.AddToFront(blockHeader);
+                    }
+                    else
+                    {
+                        _blocks.AddToBack(blockHeader);
+                    }
+                    int count = _validatorCount.TryGetValue(blockHeader.Beneficiary, out count) ? count + 1 : 1;
+                    _validatorCount[blockHeader.Beneficiary] = count;
                 }
-            };
-            
-            blockTreeBuilder.OfChainLength(count, 0, 0, TestItem.AddressA, TestItem.AddressB);
-
-            var start = 0;
-            for (int i = start; i < count; i++)
-            {
-                var blockHash = blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.BlockHash;
-                var block = blockTreeBuilder.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block));
             }
 
-            var result = Enumerable.Range(start, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
-            var expected = Enumerable.Range(start, count).Select(i => i != count - 1);
-            finalizedBlocks.Count.Should().Be(count - 1);
-            result.Should().BeEquivalentTo(expected);
-        }
-        
-        [Test]
-        public void correctly_finalizes_blocks_in_already_in_chain_on_initialize()
-        {
-            var count = 2;
-            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(count, 0, 0, TestItem.AddressA, TestItem.AddressB);
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
-
-            IEnumerable<bool> result = Enumerable.Range(0, count).Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).MainChainBlock.IsFinalized);
-            result.Should().BeEquivalentTo(new[] {true, false});
-        }
-        
-        [TestCase(2, 4, ExpectedResult = new[] {1, 3, 1, 0})]
-        [TestCase(1, 4, ExpectedResult = new[] {1, 3, 3, 1})]
-        [TestCase(4, 5, ExpectedResult = new[] {1, 3, 1, 0, 0})]
-        public int[] correctly_finalizes_blocks_on_reorganisations(int validators, int chainLength)
-        {
-            _auraValidator.MinSealersForFinalization.Returns(validators / 2 + 1);
-            
-            void ProcessBlock(BlockTreeBuilder blockTreeBuilder1, int level, int index)
+            public void RemoveAncestors(long blockNumber)
             {
-                var blockHash = blockTreeBuilder1.ChainLevelInfoRepository.LoadLevel(level).BlockInfos[index].BlockHash;
-                var block = blockTreeBuilder1.TestObject.FindBlock(blockHash, BlockTreeLookupOptions.None);
-                _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(block));
+                for (int i = _blocks.Count - 1; i >= 0; i--)
+                {
+                    var item = _blocks[i];
+                    if (item.Number <= blockNumber)
+                    {
+                        _blocks.RemoveFromBack();
+                        var setCount = _validatorCount[item.Beneficiary];
+                        if (setCount == 1)
+                        {
+                            _validatorCount.Remove(item.Beneficiary);
+                        }
+                        else
+                        {
+                            _validatorCount[item.Beneficiary] = setCount - 1;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
             }
 
-            Block genesis = Build.A.Block.Genesis.TestObject;
-            var blockTreeBuilder = Build.A.BlockTree(genesis);
-
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTreeBuilder.TestObject, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
-            
-            blockTreeBuilder
-                .OfChainLength(out Block headBlock, chainLength, 1, 0, TestItem.Addresses.Take(validators).ToArray())
-                .OfChainLength(out Block alternativeHeadBlock, chainLength, 0, splitFrom: 2, TestItem.Addresses.Skip(validators).Take(validators).ToArray());
-            
-            for (int i = 0; i < chainLength - 1; i++)
+            public void Clear()
             {
-                ProcessBlock(blockTreeBuilder, i, 0);
+                _validatorCount.Clear();;
+                _blocks.Clear();
             }
 
-            for (int i = 1; i < chainLength - 1; i++)
+            public BlockHeader GetBlockThatWillBeFinalized(out HashSet<Address> validators, int minSealersForFinalization)
             {
-                ProcessBlock(blockTreeBuilder, i, 1);
+                validators = new HashSet<Address>();
+                for (int i = 0; i < _blocks.Count; i++)
+                {
+                    var block = _blocks[i];
+                    validators.Add(block.Beneficiary);
+                    if (validators.Count >= minSealersForFinalization)
+                    {
+                        return block;
+                    }
+                }
+
+                return null;
             }
-
-            ProcessBlock(blockTreeBuilder, chainLength - 1, 0);
-            
-            var finalizedBLocks = Enumerable.Range(0, chainLength)
-                .Select(i => blockTreeBuilder.ChainLevelInfoRepository.LoadLevel(i).BlockInfos.Select((b, j) => b.IsFinalized ? j + 1 : 0).Sum())
-                .ToArray();
-            return finalizedBLocks;
-        }
-
-        public static IEnumerable GetLastFinalizedByTests
-        {
-            get
-            {
-                yield return new TestCaseData(2, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 0};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 8};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 3) {ExpectedResult = 7};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 4) {ExpectedResult = 0};
-                yield return new TestCaseData(10, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 2) {ExpectedResult = 8};
-                yield return new TestCaseData(100, TestItem.Addresses.Take(30).ToArray(), 30) {ExpectedResult = 70};
-            }
-        }
-        
-        [TestCaseSource(nameof(GetLastFinalizedByTests))]
-        public long GetLastFinalizedBy_test(int chainLength, Address[] beneficiaries, int minForFinalization)
-        {
-            _auraValidator.MinSealersForFinalization.Returns(minForFinalization);
-            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength, 0, 0, beneficiaries);
-            var blockTree = blockTreeBuilder.TestObject;
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
-
-            var result = finalizationManager.GetLastLevelFinalizedBy(blockTree.Head.Hash);
-            return result;
-        }
-        
-        public static IEnumerable GetFinalizedLevelTests
-        {
-            get
-            {
-                yield return new TestCaseData(2, 1, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = null};
-                yield return new TestCaseData(10, 9, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = null};
-                yield return new TestCaseData(10, 8, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 9};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB}, 2) {ExpectedResult = 4};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 2) {ExpectedResult = 4};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 3) {ExpectedResult = 5};
-                yield return new TestCaseData(10, 3, new[] {TestItem.AddressA, TestItem.AddressB, TestItem.AddressC}, 4) {ExpectedResult = null};
-            }
-        }
-        
-        [TestCaseSource(nameof(GetFinalizedLevelTests))]
-        public long? GetFinalizedLevel_test(int chainLength, int levelToCheck, Address[] beneficiaries, int minForFinalization)
-        {
-            _auraValidator.MinSealersForFinalization.Returns(minForFinalization);
-            _auraValidator.IsValidSealer(Arg.Any<Address>(), Arg.Any<long>()).Returns(c => beneficiaries.GetItemRoundRobin(c.Arg<long>()) == c.Arg<Address>());
-            var blockTreeBuilder = Build.A.BlockTree().OfChainLength(chainLength, 0, 0, beneficiaries);
-            var blockTree = blockTreeBuilder.TestObject;
-            var finalizationManager = new AuRaBlockFinalizationManager(blockTree, blockTreeBuilder.ChainLevelInfoRepository, _blockProcessor, _auraValidator, _logManager);
-
-            var result = finalizationManager.GetFinalizedLevel(levelToCheck);
-            return result;
         }
     }
 }

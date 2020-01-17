@@ -123,5 +123,19 @@ namespace Nethermind.Core.Extensions
                 return bytes;    
             }
         }
+
+        public static long ToLongFromBigEndianByteArrayWithoutLeadingZeros(this byte[] bytes)
+        {
+            long value = 0;
+            var length = bytes.Length;
+            
+            for (int i = 0; i < length; i++)
+            {
+                value += bytes[length - 1 - i] << 8 * i;
+            }
+
+            return value;
+
+        }
     }
 }
