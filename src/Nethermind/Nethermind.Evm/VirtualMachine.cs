@@ -520,14 +520,14 @@ namespace Nethermind.Evm
             int programCounter = evmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
 
-            void UpdateCurrentState()
+            static void UpdateCurrentState()
             {
                 evmState.ProgramCounter = programCounter;
                 evmState.GasAvailable = gasAvailable;
                 evmState.StackHead = stackHead;
             }
 
-            void StartInstructionTrace(Instruction instruction, Span<byte> stack)
+            static void StartInstructionTrace(Instruction instruction, Span<byte> stack)
             {
                 if (!traceOpcodes)
                 {
@@ -539,7 +539,7 @@ namespace Nethermind.Evm
                 if (_txTracer.IsTracingStack) { _txTracer.SetOperationStack(GetStackTrace(stack)); }
             }
 
-            void EndInstructionTrace()
+            static void EndInstructionTrace()
             {
                 if (traceOpcodes)
                 {
@@ -552,7 +552,7 @@ namespace Nethermind.Evm
                 }
             }
             
-            void EndInstructionTraceError(EvmExceptionType evmExceptionType)
+            static void EndInstructionTraceError(EvmExceptionType evmExceptionType)
             {
                 if (traceOpcodes)
                 {
@@ -561,7 +561,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushBytes(Span<byte> value, Span<byte> stack)
+            static void PushBytes(Span<byte> value, Span<byte> stack)
             {
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(value);
                 
@@ -579,7 +579,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushLeftPaddedBytes(Span<byte> value, int paddingLength, Span<byte> stack)
+            static void PushLeftPaddedBytes(Span<byte> value, int paddingLength, Span<byte> stack)
             {
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(value);
                 
@@ -597,7 +597,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushByte(byte value, Span<byte> stack)
+            static void PushByte(byte value, Span<byte> stack)
             {
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(new byte[] {value});
                 
@@ -612,7 +612,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushOne(Span<byte> stack)
+            static void PushOne(Span<byte> stack)
             {
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(new byte[] {1});
                 
@@ -626,7 +626,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushZero(Span<byte> stack)
+            static void PushZero(Span<byte> stack)
             {
                 if (_txTracer.IsTracingInstructions) _txTracer.ReportStackPush(new byte[] {0});
                 
@@ -639,7 +639,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushUInt256(ref UInt256 value, Span<byte> stack)
+            static void PushUInt256(ref UInt256 value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 value.ToBigEndian(target);
@@ -654,7 +654,7 @@ namespace Nethermind.Evm
                 }
             }
             
-            void PushUInt(ref BigInteger value, Span<byte> stack)
+            static void PushUInt(ref BigInteger value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 int bytesToWrite = value.GetByteCount(true);
@@ -676,7 +676,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PushSignedInt(ref BigInteger value, Span<byte> stack)
+            static void PushSignedInt(ref BigInteger value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
                 int bytesToWrite = value.GetByteCount(false);
@@ -712,7 +712,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            void PopLimbo()
+            static void PopLimbo()
             {
                 if (stackHead == 0)
                 {
@@ -723,7 +723,7 @@ namespace Nethermind.Evm
                 stackHead--;
             }
 
-            void Dup(int depth, Span<byte> stack)
+            static void Dup(int depth, Span<byte> stack)
             {
                 if (stackHead < depth)
                 {
@@ -749,7 +749,7 @@ namespace Nethermind.Evm
             }
             
             Span<byte> wordBuffer = stackalloc byte[32];
-            void Swap(int depth, Span<byte> stack, Span<byte> buffer)
+            static void Swap(int depth, Span<byte> stack, Span<byte> buffer)
             {
                 if (stackHead < depth)
                 {
@@ -774,7 +774,7 @@ namespace Nethermind.Evm
             }
 
             // ReSharper disable once ImplicitlyCapturedClosure
-            Span<byte> PopBytes(Span<byte> stack)
+            static Span<byte> PopBytes(Span<byte> stack)
             {
                 if (stackHead == 0)
                 {
@@ -787,7 +787,7 @@ namespace Nethermind.Evm
                 return stack.Slice(stackHead * 32, 32);
             }
 
-            byte PopByte(Span<byte> stack)
+            static byte PopByte(Span<byte> stack)
             {
                 if (stackHead == 0)
                 {
@@ -800,7 +800,7 @@ namespace Nethermind.Evm
                 return stack[stackHead * 32 + 31];
             }
 
-            List<string> GetStackTrace(Span<byte> stack)
+            static List<string> GetStackTrace(Span<byte> stack)
             {
                 List<string> stackTrace = new List<string>();
                 for (int i = 0; i < stackHead; i++)
@@ -812,22 +812,22 @@ namespace Nethermind.Evm
                 return stackTrace;
             }
 
-            void PopUInt256(out UInt256 result, Span<byte> stack)
+            static void PopUInt256(out UInt256 result, Span<byte> stack)
             {
                 UInt256.CreateFromBigEndian(out result, PopBytes(stack));
             }
             
-            void PopUInt(out BigInteger result, Span<byte> stack)
+            static void PopUInt(out BigInteger result, Span<byte> stack)
             {
                 result = PopBytes(stack).ToUnsignedBigInteger();
             }
 
-            void PopInt(out BigInteger result, Span<byte> stack)
+            static void PopInt(out BigInteger result, Span<byte> stack)
             {
                 result = PopBytes(stack).ToSignedBigInteger(32);
             }
 
-            Address PopAddress(Span<byte> stack)
+            static Address PopAddress(Span<byte> stack)
             {
                 if (stackHead == 0)
                 {
@@ -840,7 +840,7 @@ namespace Nethermind.Evm
                 return new Address(stack.Slice(stackHead * 32 + 12, 20).ToArray());
             }
 
-            void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
+            static void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
             {
                 long memoryCost = evmState.Memory.CalculateMemoryCost(ref position, length);
                 if (memoryCost != 0L)
