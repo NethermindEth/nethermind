@@ -100,9 +100,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public virtual byte ProtocolVersion => 62;
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
-
-        public Guid SessionId => Session.SessionId;
-        public virtual bool IsFastSyncSupported => false;
         public Node Node => Session.Node;
         public string ClientId { get; set; }
         public UInt256 TotalDifficultyOnSessionStart { get; private set; }
