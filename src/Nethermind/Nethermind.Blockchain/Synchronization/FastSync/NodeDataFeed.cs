@@ -387,7 +387,7 @@ namespace Nethermind.Blockchain.Synchronization.FastSync
             // we want to keep more or less to the same side (left or right - we chose left) so we punish
             // the high child indices
             // we want to go deep first so we add bonus for the depth
-            float priority = 1.5f - (float) level / Math.Max(_maxStateLevel, (byte) 1) + (float) rightness / Math.Max(_maxRightness, 1) - (float) _syncProgress.LastProgress / 2;
+            float priority = 1.00f - (float) level / Math.Max(_maxStateLevel, (byte) 1) + (float) rightness / Math.Max(_maxRightness, 1) - (float) _syncProgress.LastProgress / 2;
             return priority;
         }
 

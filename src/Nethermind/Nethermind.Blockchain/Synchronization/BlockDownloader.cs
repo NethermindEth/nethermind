@@ -64,7 +64,6 @@ namespace Nethermind.Blockchain.Synchronization
 
             _syncBatchSize = new SyncBatchSize(logManager);
             _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-            _sealValidator.HintValidationRange(_sealValidatorUserGuid, _blockTree.Head.Number, _blockTree.Head.Number);
         }
 
         private void BlockTreeOnNewHeadBlock(object sender, BlockEventArgs e)
