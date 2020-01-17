@@ -35,6 +35,7 @@ namespace Nethermind.Evm
             _stackHead = stackHead;
             _tracer = txTracer;
             Register = _stack.Slice(MaxStackSize * 32, 32);
+            Register.Clear();
         }
 
         private int _stackHead;
