@@ -265,10 +265,6 @@ InitConfig
    If set to 'true' then the detailed VM trace data will be stored in teh DB (huge data sets).
    default value: false
 
- SynchronizationEnabled
-   If 'false' then the node does not download/process new blocks..
-   default value: true
-
  UseMemDb
    Diagnostics mode which uses an in-memory DB
    default value: false
@@ -456,6 +452,10 @@ SyncConfig
    Total Difficulty of the pivot block for the Fast Blocks sync (not - this is total difficulty and not difficulty).
    default value: null
 
+ SynchronizationEnabled
+   If 'false' then the node does not download/process new blocks..
+   default value: true
+
  UseGethLimitsInFastBlocks
    If set to 'true' then in the Fast Blocks mode Nethermind generates smaller requests to avoid Geth from disconnecting. On the Geth heavy networks (mainnet) it is desired while on Parity or Nethermind heavy networks (Goerli, AuRa) it slows down the sync by a factor of ~4
    default value: true
@@ -589,7 +589,6 @@ Sample configuration (mainnet)
               "StaticNodesPath" : "Data/static-nodes.json",
               "StoreReceipts" : true,
               "StoreTraces" : false,
-              "SynchronizationEnabled" : true,
               "UseMemDb" : false,
               "WebSocketsEnabled" : false
         },
@@ -649,6 +648,7 @@ Sample configuration (mainnet)
               "PivotHash" : null,
               "PivotNumber" : null,
               "PivotTotalDifficulty" : null,
+              "SynchronizationEnabled" : true,
               "UseGethLimitsInFastBlocks" : true
         },
         "TxPool": {
