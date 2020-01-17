@@ -564,8 +564,6 @@ namespace Nethermind.Evm
                 }
             }
 
-            Span<byte> wordBuffer = new byte[32];
-
             void UpdateMemoryCost(ref UInt256 position, in UInt256 length)
             {
                 long memoryCost = evmState.Memory.CalculateMemoryCost(ref position, length);
@@ -1009,13 +1007,13 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.BitwiseAnd(aVec, bVec).CopyTo(wordBuffer);
+                            Vector.BitwiseAnd(aVec, bVec).CopyTo(evmStack.Register);
                         }
                         else
                         {
                             ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
                             ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(evmStack.Register);
 
                             refBuffer = refA & refB;
                             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) & Unsafe.Add(ref refB, 1);
@@ -1023,7 +1021,7 @@ namespace Nethermind.Evm
                             Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) & Unsafe.Add(ref refB, 3);
                         }
 
-                        evmStack.PushBytes(wordBuffer);
+                        evmStack.PushBytes(evmStack.Register);
                         break;
                     }
                     case Instruction.OR:
@@ -1042,13 +1040,13 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.BitwiseOr(aVec, bVec).CopyTo(wordBuffer);
+                            Vector.BitwiseOr(aVec, bVec).CopyTo(evmStack.Register);
                         }
                         else
                         {
                             ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
                             ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(evmStack.Register);
 
                             refBuffer = refA | refB;
                             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) | Unsafe.Add(ref refB, 1);
@@ -1056,7 +1054,7 @@ namespace Nethermind.Evm
                             Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) | Unsafe.Add(ref refB, 3);
                         }
 
-                        evmStack.PushBytes(wordBuffer);
+                        evmStack.PushBytes(evmStack.Register);
                         break;
                     }
                     case Instruction.XOR:
@@ -1075,13 +1073,13 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> bVec = new Vector<byte>(b);
 
-                            Vector.Xor(aVec, bVec).CopyTo(wordBuffer);
+                            Vector.Xor(aVec, bVec).CopyTo(evmStack.Register);
                         }
                         else
                         {
                             ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
                             ref var refB = ref MemoryMarshal.AsRef<ulong>(b);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(evmStack.Register);
 
                             refBuffer = refA ^ refB;
                             Unsafe.Add(ref refBuffer, 1) = Unsafe.Add(ref refA, 1) ^ Unsafe.Add(ref refB, 1);
@@ -1089,7 +1087,7 @@ namespace Nethermind.Evm
                             Unsafe.Add(ref refBuffer, 3) = Unsafe.Add(ref refA, 3) ^ Unsafe.Add(ref refB, 3);
                         }
 
-                        evmStack.PushBytes(wordBuffer);
+                        evmStack.PushBytes(evmStack.Register);
                         break;
                     }
                     case Instruction.NOT:
@@ -1107,12 +1105,12 @@ namespace Nethermind.Evm
                             Vector<byte> aVec = new Vector<byte>(a);
                             Vector<byte> negVec = Vector.Xor(aVec, new Vector<byte>(BytesMax32));
 
-                            negVec.CopyTo(wordBuffer);
+                            negVec.CopyTo(evmStack.Register);
                         }
                         else
                         {
                             ref var refA = ref MemoryMarshal.AsRef<ulong>(a);
-                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(wordBuffer);
+                            ref var refBuffer = ref MemoryMarshal.AsRef<ulong>(evmStack.Register);
 
                             refBuffer = ~refA;
                             Unsafe.Add(ref refBuffer, 1) = ~Unsafe.Add(ref refA, 1);
@@ -1120,7 +1118,7 @@ namespace Nethermind.Evm
                             Unsafe.Add(ref refBuffer, 3) = ~Unsafe.Add(ref refA, 3);
                         }
 
-                        evmStack.PushBytes(wordBuffer);
+                        evmStack.PushBytes(evmStack.Register);
                         break;
                     }
                     case Instruction.BYTE:

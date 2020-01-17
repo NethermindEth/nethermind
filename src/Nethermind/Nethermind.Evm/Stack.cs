@@ -26,6 +26,7 @@ namespace Nethermind.Evm
 {
     public ref struct EvmStack
     {
+        public const int RegisterLength = 1;
         public const int MaxStackSize = 1025;
 
         public EvmStack(in Span<byte> bytes, in int stackHead, ITxTracer txTracer)
@@ -33,6 +34,7 @@ namespace Nethermind.Evm
             _stack = bytes;
             _stackHead = stackHead;
             _tracer = txTracer;
+            Register = _stack.Slice(MaxStackSize * 32, 32);
         }
 
         private int _stackHead;
@@ -40,6 +42,8 @@ namespace Nethermind.Evm
         private Span<byte> _stack;
 
         private ITxTracer _tracer;
+        
+        public Span<byte> Register;
 
         private Span<byte> Item(int position)
         {
