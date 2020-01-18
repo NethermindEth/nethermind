@@ -1865,7 +1865,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        int programCounterInt = (int) programCounter;
+                        int programCounterInt = programCounter;
                         if (programCounterInt >= code.Length)
                         {
                             stack.PushZero();

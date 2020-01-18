@@ -71,9 +71,8 @@ namespace Nethermind.Evm
         public void PushByte(byte value)
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(new byte[] {value});
-
-            int start = Head * 32;
-            Span<byte> word = _bytes.Slice(start, 32);
+            
+            Span<byte> word = _bytes.Slice(Head * 32, 32);
             word.Clear();
             word[31] = value;
 
@@ -314,12 +313,21 @@ namespace Nethermind.Evm
                 return;
             }
             
+            Span<byte> word =  _bytes.Slice(Head * 32, 32);
             Span<byte> test = stackalloc byte[32];
             value.TryWriteBytes(test, out int bytesWritten, true, true);
-            Span<byte> target =  _bytes.Slice(Head * 32 + (32 - bytesWritten), bytesWritten);
-            test.Slice(0, bytesWritten).CopyTo(target);
+            if (bytesWritten == 32)
+            {
+                test.CopyTo(word);
+            }
+            else
+            {
+                word.Clear();
+                Span<byte> target =  word.Slice(32 - bytesWritten, bytesWritten);
+                test.Slice(0, bytesWritten).CopyTo(target);    
+            }
 
-            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(target);
+            if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(word);
 
             if (++Head >= MaxStackSize)
             {
