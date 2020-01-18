@@ -56,7 +56,7 @@ namespace Nethermind.Evm
                         throw new Exception();
                     }
 
-                    _bytesOnStackPool.Push(new byte[VirtualMachine.MaxStackSize * 32]);
+                    _bytesOnStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
                 }
 
                 _bytesOnStackPool.TryPop(out byte[] result);
