@@ -230,7 +230,7 @@ namespace Nethermind.Evm
 
             value.CopyTo(_bytes.Slice(Head * 32 + 32 - paddingLength, value.Length));
 
-            if (Head++ >= MaxStackSize)
+            if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
                 throw new EvmStackOverflowException();
@@ -254,7 +254,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (Head++ >= MaxStackSize)
+            if (++Head >= MaxStackSize)
             {
                 Metrics.EvmExceptions++;
                 throw new EvmStackOverflowException();
