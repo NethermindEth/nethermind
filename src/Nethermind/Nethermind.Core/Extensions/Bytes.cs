@@ -438,26 +438,6 @@ namespace Nethermind.Core.Extensions
             return new BigInteger(bytesToUse);
         }
 
-        public static BigInteger ToSignedBigInteger(this Span<byte> bytes, int byteLength, Endianness endianness = Endianness.Big)
-        {
-            if (bytes.Length == byteLength)
-            {
-                return new BigInteger(bytes, false, endianness == Endianness.Big);
-            }
-
-            Span<byte> bytesToUse = new byte[byteLength].AsSpan();
-            bytes.CopyTo(bytesToUse.Slice(bytesToUse.Length - bytes.Length, bytes.Length));
-
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big ||
-                !BitConverter.IsLittleEndian && endianness == Endianness.Little)
-            {
-                bytesToUse.Reverse();
-                return new BigInteger(bytesToUse);
-            }
-
-            return new BigInteger(bytesToUse);
-        }
-
         public static UInt256 ToUInt256(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             if (endianness == Endianness.Little)
