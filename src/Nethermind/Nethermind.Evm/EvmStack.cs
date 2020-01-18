@@ -50,7 +50,7 @@ namespace Nethermind.Evm
         {
             if (_tracer.IsTracingInstructions) _tracer.ReportStackPush(value);
 
-            Span<byte> word = _bytes.Slice(Head * 32, 32 - value.Length);
+            Span<byte> word = _bytes.Slice(Head * 32, 32);
             if (value.Length != 32)
             {
                 word.Clear();
