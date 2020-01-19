@@ -189,6 +189,12 @@ namespace Nethermind.Store
             }
         }
 
+        public void UpdateRootHashSimple()
+        {
+            RootRef?.ResolveKey(true);
+            SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
+        }
+        
         public void UpdateRootHash()
         {
             RootRef?.ResolveKeyUpdateRootHash(true);
