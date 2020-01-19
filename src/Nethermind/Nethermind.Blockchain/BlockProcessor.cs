@@ -210,7 +210,7 @@ namespace Nethermind.Blockchain
                 ApplyMinerRewards(block, blockTracer);
                 
                 _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-                (_stateProvider as StateProvider).UpdateStateRoot();
+                _stateProvider.RecalculateStateRoot();
                 block.Header.StateRoot = _stateProvider.StateRoot;
                 block.Header.Hash = block.Header.CalculateHash();
                 
