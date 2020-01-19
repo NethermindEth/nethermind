@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
                 receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
-            receiptTree.UpdateRootHashSimple();
+            receiptTree.UpdateRootHash();
             return receiptTree.RootHash;
         }
         
@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain
                 txTree.Set(Rlp.Encode(i).Bytes, transactionRlp.Bytes);
             }
 
-            txTree.UpdateRootHashSimple();
+            txTree.UpdateRootHash();
             return txTree.RootHash;
         }
         

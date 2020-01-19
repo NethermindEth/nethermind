@@ -254,35 +254,6 @@ namespace Nethermind.Store
             ResolveNode(tree, true);
         }
 
-        public void ResolveKeyUpdateRootHash(bool isRoot)
-        {
-            if (Keccak != null)
-            {
-                return;
-            }
-
-            if (FullRlp == null || IsDirty)
-            {
-                if (FullRlp != null)
-                {
-                    Console.WriteLine("Extra RlpEncode");
-                }
-                FullRlp = RlpEncode();
-                _rlpStream = FullRlp.Bytes.AsRlpStream();
-            }
-
-            /* nodes that are descendants of other nodes are stored inline
-             * if their serialized length is less than Keccak length
-             * */
-            if (FullRlp.Length < 32 && !isRoot)
-            {
-                return;
-            }
-
-            Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(FullRlp.Bytes);
-        }
-        
         public void ResolveKey(bool isRoot)
         {
             if (Keccak != null)
