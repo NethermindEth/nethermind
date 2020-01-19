@@ -76,7 +76,7 @@ namespace Nethermind.Store
         private Keccak RecalculateRootHash(Address address)
         {
             StorageTree storageTree = GetOrCreateStorage(address);
-            storageTree.UpdateRootHash();
+            storageTree.UpdateRootHashSimple();
             return storageTree.RootHash;
         }
 
