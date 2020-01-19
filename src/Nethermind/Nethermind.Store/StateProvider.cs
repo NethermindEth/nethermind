@@ -95,7 +95,6 @@ namespace Nethermind.Store
                     throw new InvalidOperationException();
                 }
                 
-                Console.WriteLine("Updating root hash");
                 return _tree.RootHash;
             }
             set => _tree.RootHash = value;

@@ -104,10 +104,8 @@ namespace Nethermind.Blockchain
                 if(_logger.IsError) _logger.Error($"Uncommitted state ({stateSnapshot}, {codeSnapshot}) when processing from a branch root {branchStateRoot} starting with block {suggestedBlocks[0].ToString(Block.Format.Short)}");
             }
             
-            Console.WriteLine("Taking snapshot");
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
 
-            Console.WriteLine("Checking branch");
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
             {
                 /* discarding the other branch data - chain reorganization */
@@ -212,7 +210,6 @@ namespace Nethermind.Blockchain
                 ApplyMinerRewards(block, blockTracer);
                 
                 _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-                Console.WriteLine($"Processed {block.Number}");
                 (_stateProvider as StateProvider).UpdateStateRoot();
                 block.Header.StateRoot = _stateProvider.StateRoot;
                 block.Header.Hash = block.Header.CalculateHash();
