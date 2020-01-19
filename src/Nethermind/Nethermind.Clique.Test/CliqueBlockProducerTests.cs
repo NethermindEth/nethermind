@@ -92,7 +92,7 @@ namespace Nethermind.Clique.Test
                 
                 ISnapshotableDb stateDb = new StateDb();
                 ISnapshotableDb codeDb = new StateDb();
-                
+
                 ISpecProvider specProvider = RinkebySpecProvider.Instance;
 
                 StateProvider stateProvider = new StateProvider(stateDb, codeDb, nodeLogManager);

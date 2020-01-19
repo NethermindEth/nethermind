@@ -78,11 +78,24 @@ namespace Nethermind.Store
             return collector.Stats;
         }
 
+        public bool NeedsStateRootUpdate { get; set; }
+
+        public void UpdateStateRoot()
+        {
+            _tree.UpdateRootHash();
+            NeedsStateRootUpdate = false;
+        }
+        
         public Keccak StateRoot
         {
             get
             {
-                _tree.UpdateRootHash();
+                if (NeedsStateRootUpdate)
+                {
+                    throw new InvalidOperationException();
+                }
+                
+                Console.WriteLine("Updating root hash");
                 return _tree.RootHash;
             }
             set => _tree.RootHash = value;
@@ -136,6 +149,7 @@ namespace Nethermind.Store
 
         public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec)
         {
+            NeedsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
             {
@@ -153,6 +167,7 @@ namespace Nethermind.Store
 
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
+            NeedsStateRootUpdate = true;
             Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
@@ -194,11 +209,13 @@ namespace Nethermind.Store
 
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            NeedsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
+            NeedsStateRootUpdate = true;
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
@@ -210,6 +227,7 @@ namespace Nethermind.Store
         /// <param name="storageRoot"></param>
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
+            NeedsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             if (account.StorageRoot != storageRoot)
             {
@@ -221,6 +239,7 @@ namespace Nethermind.Store
 
         public void IncrementNonce(Address address)
         {
+            NeedsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
@@ -229,6 +248,7 @@ namespace Nethermind.Store
 
         public void DecrementNonce(Address address)
         {
+            NeedsStateRootUpdate = true;
             Account account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce - 1);
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
@@ -237,6 +257,7 @@ namespace Nethermind.Store
 
         public Keccak UpdateCode(byte[] code)
         {
+            NeedsStateRootUpdate = true;
             if (code.Length == 0)
             {
                 return Keccak.OfAnEmptyString;
@@ -272,6 +293,7 @@ namespace Nethermind.Store
 
         public void DeleteAccount(Address address)
         {
+            NeedsStateRootUpdate = true;
             PushDelete(address);
         }
 
@@ -586,6 +608,7 @@ namespace Nethermind.Store
 
         private void SetState(Address address, Account account)
         {
+            NeedsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
         }

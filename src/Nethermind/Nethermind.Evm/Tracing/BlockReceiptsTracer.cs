@@ -95,10 +95,8 @@ namespace Nethermind.Evm.Tracing
             
             txReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries, _block.Bloom);
             txReceipt.GasUsedTotal = _block.GasUsed;
-
             txReceipt.StatusCode = statusCode;
             txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
-
             txReceipt.BlockHash = _block.Hash;
             txReceipt.BlockNumber = _block.Number;
             txReceipt.Index = _currentIndex;
