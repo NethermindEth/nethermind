@@ -21,5 +21,10 @@ namespace Nethermind.Runner.Runners
     public interface ISubsystemStateAware
     {
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        
+        /// <summary>
+        /// Just to prevent an easy copy paste error of reporting on a different subsystem
+        /// </summary>
+        public EthereumSubsystem MonitoredSubsystem { get; }
     }
 }

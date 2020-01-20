@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Confluent.Kafka;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -45,6 +46,7 @@ using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
+using Nethermind.PubSub;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
@@ -56,11 +58,14 @@ namespace Nethermind.Runner.Runners
 {
     public class EthereumRunnerContext
     {
+        public T Config<T>() where T : IConfig
+        {
+            return _configProvider.GetConfig<T>();
+        }
+        
         public readonly Stack<IDisposable> _disposeStack = new Stack<IDisposable>();
 
-        public bool HiveEnabled =
-            Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
-
+        public List<IProducer> Producers = new List<IProducer>();
         public IGrpcServer _grpcServer;
         public ILogManager LogManager;
         public INdmConsumerChannelManager _ndmConsumerChannelManager;
@@ -112,7 +117,6 @@ namespace Nethermind.Runner.Runners
         public IStorageProvider _storageProvider;
         public IWallet _wallet;
         public IEnode _enode;
-        public HiveRunner _hiveRunner;
         public ISessionMonitor _sessionMonitor;
         public ISyncConfig _syncConfig;
         public IStaticNodesManager _staticNodesManager;

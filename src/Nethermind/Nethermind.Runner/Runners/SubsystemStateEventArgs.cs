@@ -20,13 +20,11 @@ namespace Nethermind.Runner.Runners
 {
     public class SubsystemStateEventArgs : EventArgs
     {
-        public SubsystemStateEventArgs(EthereumSubsystem subsystem, EthereumSubsystemState state)
+        public SubsystemStateEventArgs(EthereumSubsystemState state)
         {
-            Subsystem = subsystem;
             State = state;
         }
         
-        public EthereumSubsystem Subsystem { get; }
         public EthereumSubsystemState State { get; }
     }
 }

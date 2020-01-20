@@ -34,12 +34,12 @@ namespace Nethermind.Runner.Runners
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
-        private readonly HiveWallet _wallet;
+        private readonly IWallet _wallet;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
         public HiveRunner(IBlockTree blockTree,
-            HiveWallet wallet,
+            IWallet wallet,
             IJsonSerializer jsonSerializer,
             IConfigProvider configurationProvider,
             ILogger logger)
@@ -172,21 +172,23 @@ namespace Nethermind.Runner.Runners
 
         private void InitializeKeys(string keysDir)
         {
-            if (!Directory.Exists(keysDir))
-            {
-                if (_logger.IsInfo) _logger.Info($"HIVE Keys dir does not exist: {keysDir}, skipping");
-                return;
-            }
-
-            if (_logger.IsInfo) _logger.Info($"HIVE Loading keys from {keysDir}");
-            var files = Directory.GetFiles(keysDir);
-            foreach (var file in files)
-            {
-                if (_logger.IsInfo) _logger.Info($"HIVE Processing key file: {file}");
-                var fileContent = File.ReadAllText(file);
-                var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
-                _wallet.Add(new Address(keyStoreItem.Address));
-            }
+            // TODO: this should be written properly and should work with actual wallets
+            
+            // if (!Directory.Exists(keysDir))
+            // {
+            //     if (_logger.IsInfo) _logger.Info($"HIVE Keys dir does not exist: {keysDir}, skipping");
+            //     return;
+            // }
+            //
+            // if (_logger.IsInfo) _logger.Info($"HIVE Loading keys from {keysDir}");
+            // var files = Directory.GetFiles(keysDir);
+            // foreach (var file in files)
+            // {
+            //     if (_logger.IsInfo) _logger.Info($"HIVE Processing key file: {file}");
+            //     var fileContent = File.ReadAllText(file);
+            //     var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
+            //     _wallet.Add(new Address(keyStoreItem.Address));
+            // }
         }
     }
 }

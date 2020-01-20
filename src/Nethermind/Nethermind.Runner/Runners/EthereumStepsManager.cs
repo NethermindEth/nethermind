@@ -16,9 +16,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 
 namespace Nethermind.Runner.Runners
@@ -37,11 +39,12 @@ namespace Nethermind.Runner.Runners
         public void DiscoverAll()
         {
             Type[] types = GetType().Assembly.GetTypes()
-                .Where(t => t.GetCustomAttribute<RunnerStepAttribute>() != null).ToArray();
+                .Where(t => !t.IsInterface && typeof(IStep).IsAssignableFrom(t)).ToArray();
 
             foreach (Type type in types)
             {
-                _logger.Info($"Discovered Ethereum step: {type.Name}");
+                if(_logger.IsInfo) _logger.Info($"Discovered Ethereum step: {type.Name}");
+                _discoveredSteps.Add(type);
             }
         }
 
@@ -70,8 +73,31 @@ namespace Nethermind.Runner.Runners
                     continue;
                 }
 
+                if(_logger.IsInfo) _logger.Info($"Executing step: {step.GetType().Name}");
+                
+                ISubsystemStateAware subsystemStateAware = step as ISubsystemStateAware;
+                if (subsystemStateAware != null)
+                {
+                    subsystemStateAware.SubsystemStateChanged += SubsystemStateAwareOnSubsystemStateChanged;
+                }
+                
+                Stopwatch stopwatch = Stopwatch.StartNew();
                 await step.Execute();
+                stopwatch.Stop();
+                if(_logger.IsInfo) _logger.Info($"Step {step.GetType().Name} executed in {stopwatch.ElapsedMilliseconds}ms");
             }
+        }
+
+        private void SubsystemStateAwareOnSubsystemStateChanged(object sender, SubsystemStateEventArgs e)
+        {
+            ISubsystemStateAware subsystemStateAware = sender as ISubsystemStateAware;
+            if (subsystemStateAware is null)
+            {
+                if(_logger.IsError) _logger.Error($"Received a subsystem state event from an unexpected type of {sender.GetType()}");
+                return;
+            }
+            
+            if(_logger.IsInfo) _logger.Info($"{subsystemStateAware.MonitoredSubsystem} state changed to {e.State}");
         }
     }
 }

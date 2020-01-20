@@ -33,6 +33,12 @@ namespace Nethermind.Runner.Runners.Steps
         public EthStatsStep(EthereumRunnerContext context)
         {
             _context = context;
+            
+            EthereumSubsystemState newState = context.Config<IEthStatsConfig>().Enabled
+                ? EthereumSubsystemState.AwaitingInitialization
+                : EthereumSubsystemState.Disabled;
+
+            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(newState));
         }
 
         public async Task Execute()
@@ -40,10 +46,10 @@ namespace Nethermind.Runner.Runners.Steps
             IEthStatsConfig ethStatsConfig = _context._configProvider.GetConfig<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)
             {
-                if (_context.Logger.IsInfo) _context.Logger.Info($"ETH Stats integration is disabled.");
-                SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystem.EthStats, EthereumSubsystemState.Disabled));
                 return;
             }
+            
+            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
 
             string instanceId = $"{ethStatsConfig.Name}-{Keccak.Compute(_context._enode.Info)}";
             if (_context.Logger.IsInfo) _context.Logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {ethStatsConfig.Server}");
@@ -84,9 +90,11 @@ namespace Nethermind.Runner.Runners.Steps
             
             // TODO: handle failure
             
-            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystem.EthStats, EthereumSubsystemState.Running));
+            SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
         }
 
         public event EventHandler<SubsystemStateEventArgs> SubsystemStateChanged;
+        
+        public EthereumSubsystem MonitoredSubsystem => EthereumSubsystem.EthStats;
     }
 }

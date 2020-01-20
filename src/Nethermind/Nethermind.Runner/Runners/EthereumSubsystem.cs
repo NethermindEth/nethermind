@@ -51,6 +51,10 @@ namespace Nethermind.Runner.Runners
         /// </summary>
         Kafka,
         /// <summary>
+        /// GRPC publisher/subscriber support
+        /// </summary>
+        Grpc,
+        /// <summary>
         /// Wallet for signing messages
         /// </summary>
         Wallet,
