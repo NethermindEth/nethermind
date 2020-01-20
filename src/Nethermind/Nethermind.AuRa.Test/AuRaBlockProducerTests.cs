@@ -166,10 +166,14 @@ namespace Nethermind.AuRa.Test
 
         private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
         {
+            ManualResetEvent processedEvent = new ManualResetEvent(false);
+            _blockTree.SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>())
+                .Returns(AddBlockResult.Added)
+                .AndDoes(c => processedEvent.Set());
+
             _auRaBlockProducer.Start();
-            
-            await Task.Delay(_stepDelay * 0.2);
-            
+
+            await Task.Delay(_stepDelay * 0.1);
             if (processingQueueEmpty)
             {
                 _blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
@@ -179,10 +183,10 @@ namespace Nethermind.AuRa.Test
             {
                 _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
             }
-            
-            await Task.Delay(_stepDelay * 20);
+
+            await processedEvent.WaitOneAsync(_stepDelay * 20, new CancellationToken());
             await _auRaBlockProducer.StopAsync();
-            
+
             return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         
