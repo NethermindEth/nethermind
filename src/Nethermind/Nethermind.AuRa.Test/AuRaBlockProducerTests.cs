@@ -91,34 +91,34 @@ namespace Nethermind.AuRa.Test
         [Test]
         public async Task Produces_block()
         {
-            (await StartStop()).ShouldProduceBlocs(Quantity.AtLeastOne());
+            (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_ProcessingQueueEmpty_not_raised()
         {
-            (await StartStop(false)).ShouldProduceBlocs(Quantity.None());
+            (await StartStop(false)).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_QueueNotEmpty()
         {
             _blockProcessingQueue.IsEmpty.Returns(false);
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_cannot_seal()
         {
             _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(false);
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_ForceSealing_is_false_and_no_transactions()
         {
             _auraConfig.ForceSealing.Returns(false);
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
@@ -126,41 +126,41 @@ namespace Nethermind.AuRa.Test
         {
             _auraConfig.ForceSealing.Returns(false);
             _pendingTransactionSelector.SelectTransactions(Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
-            (await StartStop()).ShouldProduceBlocs(Quantity.AtLeastOne());
+            (await StartStop()).ShouldProduceBlocks(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_sealing_fails()
         {
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromException(new Exception()));
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_sealing_cancels()
         {
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromCanceled(new CancellationToken(true)));
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_head_is_null()
         {
             _blockTree.Head.Returns((BlockHeader) null);
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_processing_fails()
         {
             _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns((Block) null);
-            (await StartStop()).ShouldProduceBlocs(Quantity.None());
+            (await StartStop()).ShouldProduceBlocks(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_there_is_new_best_suggested_block_not_yet_processed()
         {
-            (await StartStop(true, true)).ShouldProduceBlocs(Quantity.None());
+            (await StartStop(true, true)).ShouldProduceBlocks(Quantity.None());
         }
 
 
@@ -195,7 +195,7 @@ namespace Nethermind.AuRa.Test
                 _assert = assert;
             }
 
-            public void ShouldProduceBlocs(Quantity quantity)
+            public void ShouldProduceBlocks(Quantity quantity)
             {
                 _assert(quantity);
             }
