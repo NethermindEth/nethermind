@@ -554,14 +554,14 @@ namespace Nethermind.Runner.Runners
                 _initConfig.StoreReceipts,
                 _initConfig.StoreTraces);
 
-            _finalizationManager = InitFinalizationManager(additionalBlockProcessors);
-
             // create shared objects between discovery and peer manager
             IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
             _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
 
             _blockchainProcessor.Start();
             LoadGenesisBlock(string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash));
+            
+            _finalizationManager = InitFinalizationManager(additionalBlockProcessors);
             
             InitBlockProducers();
             
@@ -738,7 +738,7 @@ namespace Nethermind.Runner.Runners
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    _validatorStore = new ValidatorStore(_dbProvider.StateDb);
+                    _validatorStore = new ValidatorStore(_dbProvider.BlockInfosDb);
                     var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_stateProvider, abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _validatorStore, _logManager)
                         .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
                     

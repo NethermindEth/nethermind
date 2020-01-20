@@ -171,10 +171,7 @@ namespace Nethermind.AuRa.Validators
             if (_blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                if (_blockFinalizationManager.LastFinalizedBlockLevel != 0)
-                {
-                    InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
-                }
+                InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
             }
 
             _currentValidator?.SetFinalizationManager(finalizationManager, forProducing);
