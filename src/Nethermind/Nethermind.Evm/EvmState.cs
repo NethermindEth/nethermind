@@ -48,19 +48,17 @@ namespace Nethermind.Evm
 
             public byte[] RentBytesOnStack()
             {
-                if (_bytesOnStackPool.Count == 0)
+                if (_bytesOnStackPool.TryPop(out byte[] result))
                 {
-                    Interlocked.Increment(ref _bytesOnStackCreated);
-                    if (_bytesOnStackCreated > _capacity)
-                    {
-                        throw new Exception();
-                    }
-
-                    _bytesOnStackPool.Push(new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32]);
+                    return result;
                 }
 
-                _bytesOnStackPool.TryPop(out byte[] result);
-                return result;
+                if (Interlocked.Increment(ref _bytesOnStackCreated) > _capacity)
+                {
+                    throw new Exception();
+                }
+
+                return new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 32];
             }
         }
 
