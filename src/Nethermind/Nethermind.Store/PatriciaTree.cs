@@ -23,8 +23,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 
 namespace Nethermind.Store
 {

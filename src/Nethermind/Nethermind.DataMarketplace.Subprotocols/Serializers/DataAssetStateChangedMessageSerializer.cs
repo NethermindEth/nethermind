@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,8 +25,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataAssetStateChangedMessageSerializer : IMessageSerializer<DataAssetStateChangedMessage>
     {
         public byte[] Serialize(DataAssetStateChangedMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId),
-                Nethermind.Core.Encoding.Rlp.Encode((int) message.State)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DataAssetId),
+                Rlp.Encode((int) message.State)).Bytes;
 
         public DataAssetStateChangedMessage Deserialize(byte[] bytes)
         {

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,14 +25,14 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class EarlyRefundTicketMessageSerializer : IMessageSerializer<EarlyRefundTicketMessage>
     {
         public byte[] Serialize(EarlyRefundTicketMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.Ticket),
-                Nethermind.Core.Encoding.Rlp.Encode((int) message.Reason)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.Ticket),
+                Rlp.Encode((int) message.Reason)).Bytes;
 
         public EarlyRefundTicketMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
-            var ticket = Nethermind.Core.Encoding.Rlp.Decode<EarlyRefundTicket>(context);
+            var ticket = Rlp.Decode<EarlyRefundTicket>(context);
             var reason = (RefundReason) context.DecodeInt();
 
             return new EarlyRefundTicketMessage(ticket, reason);

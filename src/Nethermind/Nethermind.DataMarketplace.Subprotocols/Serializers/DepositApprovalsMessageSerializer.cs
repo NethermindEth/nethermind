@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,10 +25,10 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DepositApprovalsMessageSerializer : IMessageSerializer<DepositApprovalsMessage>
     {
         public byte[] Serialize(DepositApprovalsMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(message.DepositApprovals).Bytes;
+            => Rlp.Encode(message.DepositApprovals).Bytes;
 
         public DepositApprovalsMessage Deserialize(byte[] bytes)
-            => new DepositApprovalsMessage(Nethermind.Core.Encoding.Rlp
+            => new DepositApprovalsMessage(Rlp
                 .DecodeArray<DepositApproval>(bytes.AsRlpStream()));
     }
 }

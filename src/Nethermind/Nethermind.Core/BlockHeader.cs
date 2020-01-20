@@ -20,8 +20,8 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core

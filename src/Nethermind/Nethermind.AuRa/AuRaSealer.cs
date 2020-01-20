@@ -21,7 +21,7 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Wallet;

@@ -18,7 +18,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.PubSub.Kafka.Avro.Models;
 
 namespace Nethermind.PubSub.Kafka.Avro
@@ -78,7 +78,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                 weiValue = transaction.Value.ToString()
             };
 
-        public FullTransaction MapFullTransaction(Core.FullTransaction fullTransaction)
+        public FullTransaction MapFullTransaction(PubSub.Models.FullTransaction fullTransaction)
         {
             var index = fullTransaction.Index;
             var transaction = fullTransaction.Transaction;

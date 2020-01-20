@@ -23,7 +23,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;

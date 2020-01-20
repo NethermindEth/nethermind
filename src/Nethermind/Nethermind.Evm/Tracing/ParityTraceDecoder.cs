@@ -18,8 +18,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Tracing

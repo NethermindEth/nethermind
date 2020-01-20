@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataAssetProviderDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAssetProvider)] = new DataAssetProviderDecoder();
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DataAssetProvider)] = new DataAssetProviderDecoder();
         }
 
         public DataAssetProvider Decode(RlpStream rlpStream,
@@ -51,17 +51,17 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new DataAssetProvider(address, name);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataAssetProvider item,
+        public Nethermind.Core.Serialization.Rlp Encode(DataAssetProvider item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Address),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Name));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.Address),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Name));
         }
 
         public void Encode(MemoryStream stream, DataAssetProvider item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

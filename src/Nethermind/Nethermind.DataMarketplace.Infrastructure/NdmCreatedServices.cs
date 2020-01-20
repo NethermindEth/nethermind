@@ -16,7 +16,7 @@
 
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;

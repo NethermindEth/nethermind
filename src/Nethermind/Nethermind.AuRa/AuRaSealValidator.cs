@@ -19,7 +19,7 @@ using System.Collections.Generic;
 using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using Nethermind.Mining;

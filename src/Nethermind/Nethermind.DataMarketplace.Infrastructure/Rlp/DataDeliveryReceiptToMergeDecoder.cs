@@ -16,8 +16,8 @@
 
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataDeliveryReceiptToMergeDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataDeliveryReceiptToMerge)] =
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DataDeliveryReceiptToMerge)] =
                 new DataDeliveryReceiptToMergeDecoder();
         }
 
@@ -48,25 +48,25 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 return null;
             }
 
-            var unitsRange = Nethermind.Core.Encoding.Rlp.Decode<UnitsRange>(rlpStream);
+            var unitsRange = Nethermind.Core.Serialization.Rlp.Decode<UnitsRange>(rlpStream);
             var signature = SignatureDecoder.DecodeSignature(rlpStream);
 
             return new DataDeliveryReceiptToMerge(unitsRange, signature);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataDeliveryReceiptToMerge item,
+        public Nethermind.Core.Serialization.Rlp Encode(DataDeliveryReceiptToMerge item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.UnitsRange),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Signature.V),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.UnitsRange),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.V),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
 
         public void Encode(MemoryStream stream, DataDeliveryReceiptToMerge item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

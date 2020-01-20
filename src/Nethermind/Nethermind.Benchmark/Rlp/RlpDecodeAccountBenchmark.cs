@@ -31,8 +31,8 @@ namespace Nethermind.Benchmarks.Rlp
 
         private byte[][] _scenarios =
         {
-            Nethermind.Core.Encoding.Rlp.Encode(Account.TotallyEmpty).Bytes,
-            Nethermind.Core.Encoding.Rlp.Encode(Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject).Bytes,
+            Nethermind.Core.Serialization.Rlp.Encode(Account.TotallyEmpty).Bytes,
+            Nethermind.Core.Serialization.Rlp.Encode(Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject).Bytes,
         };
 
         [Params(0, 1)]
@@ -47,13 +47,13 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public Account Improved()
         {
-            return Nethermind.Core.Encoding.Rlp.Decode<Account>(_account);
+            return Nethermind.Core.Serialization.Rlp.Decode<Account>(_account);
         }
         
         [Benchmark]
         public Account Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Decode<Account>(_account);
+            return Nethermind.Core.Serialization.Rlp.Decode<Account>(_account);
         }
     }
 }

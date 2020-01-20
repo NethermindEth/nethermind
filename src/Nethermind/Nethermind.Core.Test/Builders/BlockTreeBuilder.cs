@@ -22,7 +22,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;

@@ -17,7 +17,7 @@
 using System;
 using System.Globalization;
 using System.Numerics;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 

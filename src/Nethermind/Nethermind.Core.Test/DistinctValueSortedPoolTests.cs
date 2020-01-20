@@ -20,6 +20,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.TxPools;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.Forks;

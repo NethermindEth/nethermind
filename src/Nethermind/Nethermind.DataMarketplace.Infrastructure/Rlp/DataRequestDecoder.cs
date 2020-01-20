@@ -16,8 +16,8 @@
 
 using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataRequestDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataRequest)] = new DataRequestDecoder();
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DataRequest)] = new DataRequestDecoder();
         }
 
         public DataRequest Decode(RlpStream rlpStream,
@@ -59,24 +59,24 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new DataRequest(assetId, units, value, expiryTime, salt, provider, consumer, signature);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Nethermind.Core.Serialization.Rlp Encode(DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.DataAssetId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Units),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Value),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ExpiryTime),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Pepper),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Provider),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Consumer),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Signature.V),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.DataAssetId),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Units),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Value),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ExpiryTime),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Pepper),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Provider),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Consumer),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.V),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
 
         public void Encode(MemoryStream stream, DataRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

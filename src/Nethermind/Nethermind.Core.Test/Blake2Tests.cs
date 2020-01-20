@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using FluentAssertions;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 

@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 
@@ -23,8 +24,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataStreamDisabledMessageSerializer : IMessageSerializer<DataStreamDisabledMessage>
     {
         public byte[] Serialize(DataStreamDisabledMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Client)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode(message.Client)).Bytes;
 
         public DataStreamDisabledMessage Deserialize(byte[] bytes)
         {

@@ -21,8 +21,8 @@ using BenchmarkDotNet.Attributes;
 using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
@@ -95,7 +95,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_header).Bytes;
+            return Nethermind.Core.Serialization.Rlp.Encode(_header).Bytes;
         }
     }
 }

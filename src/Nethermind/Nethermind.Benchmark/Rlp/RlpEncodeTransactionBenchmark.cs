@@ -73,7 +73,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public byte[] Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
+            return Nethermind.Core.Serialization.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
         }
     }
 }

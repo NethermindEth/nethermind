@@ -17,8 +17,8 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63

@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers;

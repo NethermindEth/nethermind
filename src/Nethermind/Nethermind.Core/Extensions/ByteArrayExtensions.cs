@@ -23,7 +23,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using Extensions.Data;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions

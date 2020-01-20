@@ -20,7 +20,7 @@ using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Rlpx

@@ -16,8 +16,8 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Logging;
 using NUnit.Framework;
 

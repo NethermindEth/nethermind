@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 
@@ -23,7 +24,7 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class ConsumerAddressChangedMessageSerializer : IMessageSerializer<ConsumerAddressChangedMessage>
     {
         public byte[] Serialize(ConsumerAddressChangedMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.Address)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.Address)).Bytes;
 
         public ConsumerAddressChangedMessage Deserialize(byte[] bytes)
         {

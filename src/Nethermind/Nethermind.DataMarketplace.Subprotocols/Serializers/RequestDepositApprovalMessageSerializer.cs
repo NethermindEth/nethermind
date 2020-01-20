@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 
@@ -23,9 +24,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class RequestDepositApprovalMessageSerializer : IMessageSerializer<RequestDepositApprovalMessage>
     {
         public byte[] Serialize(RequestDepositApprovalMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Consumer),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Kyc)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DataAssetId),
+                Rlp.Encode(message.Consumer),
+                Rlp.Encode(message.Kyc)).Bytes;
 
         public RequestDepositApprovalMessage Deserialize(byte[] bytes)
         {

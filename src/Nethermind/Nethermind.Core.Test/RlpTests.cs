@@ -17,9 +17,9 @@
 using System;
 using System.IO;
 using System.Numerics;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
+using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 

@@ -28,7 +28,6 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using NUnit.Framework;
 

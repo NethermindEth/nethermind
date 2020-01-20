@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
-using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
 {

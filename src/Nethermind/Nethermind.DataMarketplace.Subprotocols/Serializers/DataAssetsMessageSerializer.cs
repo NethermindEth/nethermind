@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,11 +25,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataAssetsMessageSerializer : IMessageSerializer<DataAssetsMessage>
     {
         public byte[] Serialize(DataAssetsMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(message.DataAssets).Bytes;
+            => Rlp.Encode(message.DataAssets).Bytes;
 
         public DataAssetsMessage Deserialize(byte[] bytes)
         {
-            var dataAssets = Nethermind.Core.Encoding.Rlp.DecodeArray<DataAsset>(bytes.AsRlpStream());
+            var dataAssets = Rlp.DecodeArray<DataAsset>(bytes.AsRlpStream());
             foreach (var dataAsset in dataAssets)
             {
                 dataAsset.ClearPlugin();

@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Configs;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -28,7 +28,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static NdmConfigDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(NdmConfig)] = new NdmConfigDecoder();
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(NdmConfig)] = new NdmConfigDecoder();
         }
 
         public NdmConfig Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -105,44 +105,44 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             };
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Nethermind.Core.Serialization.Rlp Encode(NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Enabled),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.InitializerName),
-                Nethermind.Core.Encoding.Rlp.Encode(item.StoreConfigInDatabase),
-                Nethermind.Core.Encoding.Rlp.Encode(item.VerifyP2PSignature),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Persistence),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetEnabled),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetHost),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetWeiRequestMaxValue),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FaucetEthDailyRequestsTotalValue),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ContractAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderName),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderColdWalletAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ReceiptRequestThreshold),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ReceiptsMergeThreshold),
-                Nethermind.Core.Encoding.Rlp.Encode(item.PaymentClaimThreshold),
-                Nethermind.Core.Encoding.Rlp.Encode(item.BlockConfirmations),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FilesPath),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FileMaxSize),
-                Nethermind.Core.Encoding.Rlp.Encode(item.PluginsPath),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DatabasePath),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProxyEnabled),
-                Nethermind.Core.Encoding.Rlp.Encode(item.JsonRpcUrlProxies),
-                Nethermind.Core.Encoding.Rlp.Encode(item.GasPriceType),
-                Nethermind.Core.Encoding.Rlp.Encode(item.GasPrice),
-                Nethermind.Core.Encoding.Rlp.Encode(item.CancelTransactionGasPricePercentageMultiplier),
-                Nethermind.Core.Encoding.Rlp.Encode(item.JsonRpcDataChannelEnabled));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.Enabled),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Id),
+                Nethermind.Core.Serialization.Rlp.Encode(item.InitializerName),
+                Nethermind.Core.Serialization.Rlp.Encode(item.StoreConfigInDatabase),
+                Nethermind.Core.Serialization.Rlp.Encode(item.VerifyP2PSignature),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Persistence),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FaucetEnabled),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FaucetAddress),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FaucetHost),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FaucetWeiRequestMaxValue),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FaucetEthDailyRequestsTotalValue),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ConsumerAddress),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ContractAddress),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ProviderName),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ProviderAddress),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ProviderColdWalletAddress),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ReceiptRequestThreshold),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ReceiptsMergeThreshold),
+                Nethermind.Core.Serialization.Rlp.Encode(item.PaymentClaimThreshold),
+                Nethermind.Core.Serialization.Rlp.Encode(item.BlockConfirmations),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FilesPath),
+                Nethermind.Core.Serialization.Rlp.Encode(item.FileMaxSize),
+                Nethermind.Core.Serialization.Rlp.Encode(item.PluginsPath),
+                Nethermind.Core.Serialization.Rlp.Encode(item.DatabasePath),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ProxyEnabled),
+                Nethermind.Core.Serialization.Rlp.Encode(item.JsonRpcUrlProxies),
+                Nethermind.Core.Serialization.Rlp.Encode(item.GasPriceType),
+                Nethermind.Core.Serialization.Rlp.Encode(item.GasPrice),
+                Nethermind.Core.Serialization.Rlp.Encode(item.CancelTransactionGasPricePercentageMultiplier),
+                Nethermind.Core.Serialization.Rlp.Encode(item.JsonRpcDataChannelEnabled));
         }
 
         public void Encode(MemoryStream stream, NdmConfig item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

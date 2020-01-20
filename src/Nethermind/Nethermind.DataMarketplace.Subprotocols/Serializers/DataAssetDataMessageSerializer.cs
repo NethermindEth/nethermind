@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 
@@ -23,11 +24,11 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataAssetDataMessageSerializer : IMessageSerializer<DataAssetDataMessage>
     {
         public byte[] Serialize(DataAssetDataMessage assetDataMessage)
-            => Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.Client),
-                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.Data),
-                Nethermind.Core.Encoding.Rlp.Encode(assetDataMessage.ConsumedUnits)
+            => Rlp.Encode(
+                Rlp.Encode(assetDataMessage.DepositId),
+                Rlp.Encode(assetDataMessage.Client),
+                Rlp.Encode(assetDataMessage.Data),
+                Rlp.Encode(assetDataMessage.ConsumedUnits)
             ).Bytes;
 
         public DataAssetDataMessage Deserialize(byte[] bytes)

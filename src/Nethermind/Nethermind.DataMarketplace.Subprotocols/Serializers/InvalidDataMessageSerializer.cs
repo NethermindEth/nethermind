@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,9 +25,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class InvalidDataMessageSerializer : IMessageSerializer<InvalidDataMessage>
     {
         public byte[] Serialize(InvalidDataMessage headerDataMessage)
-            => Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(headerDataMessage.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode((int) headerDataMessage.Reason)).Bytes;
+            => Rlp.Encode(
+                Rlp.Encode(headerDataMessage.DepositId),
+                Rlp.Encode((int) headerDataMessage.Reason)).Bytes;
 
         public InvalidDataMessage Deserialize(byte[] bytes)
         {

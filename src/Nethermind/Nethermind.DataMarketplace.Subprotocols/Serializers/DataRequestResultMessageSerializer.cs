@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,8 +25,8 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataRequestResultMessageSerializer : IMessageSerializer<DataRequestResultMessage>
     {
         public byte[] Serialize(DataRequestResultMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode((int) message.Result)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode((int) message.Result)).Bytes;
 
         public DataRequestResultMessage Deserialize(byte[] bytes)
         {

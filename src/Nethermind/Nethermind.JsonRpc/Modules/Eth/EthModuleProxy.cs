@@ -22,7 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;

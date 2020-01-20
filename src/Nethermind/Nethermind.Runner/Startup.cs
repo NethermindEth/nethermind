@@ -27,7 +27,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Json;
 using Nethermind.JsonRpc;
-using Nethermind.Runner.Config;
 using Nethermind.WebSockets;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;

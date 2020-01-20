@@ -21,7 +21,7 @@ using FluentAssertions;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;

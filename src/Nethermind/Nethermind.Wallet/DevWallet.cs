@@ -20,7 +20,7 @@ using System.Linq;
 using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
 

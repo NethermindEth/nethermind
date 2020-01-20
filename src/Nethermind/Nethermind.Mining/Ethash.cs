@@ -21,8 +21,8 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Mining.Test")]

@@ -18,8 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.PubSub.Models;
+using Block = Nethermind.Core.Block;
 
 namespace Nethermind.PubSub
 {

@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static UnitsRangeDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(UnitsRange)] = new UnitsRangeDecoder();
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(UnitsRange)] = new UnitsRangeDecoder();
         }
 
         public UnitsRange Decode(RlpStream rlpStream,
@@ -51,16 +51,16 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new UnitsRange(from, to);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Nethermind.Core.Serialization.Rlp Encode(UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.From),
-                Nethermind.Core.Encoding.Rlp.Encode(item.To));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.From),
+                Nethermind.Core.Serialization.Rlp.Encode(item.To));
         }
 
         public void Encode(MemoryStream stream, UnitsRange item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

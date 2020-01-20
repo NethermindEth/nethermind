@@ -32,7 +32,7 @@ using Nethermind.Logging;
 using Nethermind.Monitoring;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Runner.Runners;
+using Nethermind.Runner.Ethereum;
 using Nethermind.Stats;
 using Nethermind.WebSockets;
 using NSubstitute;

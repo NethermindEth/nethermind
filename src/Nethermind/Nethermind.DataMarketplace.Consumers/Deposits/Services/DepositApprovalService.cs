@@ -19,7 +19,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Consumers.DataAssets;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;

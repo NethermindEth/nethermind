@@ -24,6 +24,7 @@ using System.Threading;
 using System.Timers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;

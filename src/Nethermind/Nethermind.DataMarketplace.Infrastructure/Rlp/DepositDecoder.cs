@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DepositDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(Deposit)] = new DepositDecoder();
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(Deposit)] = new DepositDecoder();
         }
 
         public Deposit Decode(RlpStream rlpStream,
@@ -53,18 +53,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new Deposit(id, units, expiryTime, value);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Nethermind.Core.Serialization.Rlp Encode(Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Units),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ExpiryTime),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Value));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.Id),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Units),
+                Nethermind.Core.Serialization.Rlp.Encode(item.ExpiryTime),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Value));
         }
 
         public void Encode(MemoryStream stream, Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

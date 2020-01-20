@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
@@ -29,7 +29,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataAssetDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAsset)] = new DataAssetDecoder();
+            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DataAsset)] = new DataAssetDecoder();
         }
 
         public DataAsset Decode(RlpStream rlpStream,
@@ -48,8 +48,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var unitType = (DataAssetUnitType) rlpStream.DecodeInt();
             var minUnits = rlpStream.DecodeUInt();
             var maxUnits = rlpStream.DecodeUInt();
-            var rules = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRules>(rlpStream);
-            var provider = Nethermind.Core.Encoding.Rlp.Decode<DataAssetProvider>(rlpStream);
+            var rules = Nethermind.Core.Serialization.Rlp.Decode<DataAssetRules>(rlpStream);
+            var provider = Nethermind.Core.Serialization.Rlp.Decode<DataAssetProvider>(rlpStream);
             var file = rlpStream.DecodeString();
             var queryType = (QueryType) rlpStream.DecodeInt();
             var state = (DataAssetState) rlpStream.DecodeInt();
@@ -61,29 +61,29 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 rules, provider, file, queryType, state, termsAndConditions, kycRequired, plugin);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataAsset item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Nethermind.Core.Serialization.Rlp Encode(DataAsset item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Name),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Description),
-                Nethermind.Core.Encoding.Rlp.Encode(item.UnitPrice),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.UnitType),
-                Nethermind.Core.Encoding.Rlp.Encode(item.MinUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(item.MaxUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Rules),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Provider),
-                Nethermind.Core.Encoding.Rlp.Encode(item.File),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.QueryType),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.State),
-                Nethermind.Core.Encoding.Rlp.Encode(item.TermsAndConditions),
-                Nethermind.Core.Encoding.Rlp.Encode(item.KycRequired),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Plugin));
+            return Nethermind.Core.Serialization.Rlp.Encode(
+                Nethermind.Core.Serialization.Rlp.Encode(item.Id),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Name),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Description),
+                Nethermind.Core.Serialization.Rlp.Encode(item.UnitPrice),
+                Nethermind.Core.Serialization.Rlp.Encode((int) item.UnitType),
+                Nethermind.Core.Serialization.Rlp.Encode(item.MinUnits),
+                Nethermind.Core.Serialization.Rlp.Encode(item.MaxUnits),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Rules),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Provider),
+                Nethermind.Core.Serialization.Rlp.Encode(item.File),
+                Nethermind.Core.Serialization.Rlp.Encode((int) item.QueryType),
+                Nethermind.Core.Serialization.Rlp.Encode((int) item.State),
+                Nethermind.Core.Serialization.Rlp.Encode(item.TermsAndConditions),
+                Nethermind.Core.Serialization.Rlp.Encode(item.KycRequired),
+                Nethermind.Core.Serialization.Rlp.Encode(item.Plugin));
         }
 
         public void Encode(MemoryStream stream, DataAsset item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

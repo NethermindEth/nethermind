@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
@@ -24,15 +25,15 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class DataDeliveryReceiptMessageSerializer : IMessageSerializer<DataDeliveryReceiptMessage>
     {
         public byte[] Serialize(DataDeliveryReceiptMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Receipt)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode(message.Receipt)).Bytes;
 
         public DataDeliveryReceiptMessage Deserialize(byte[] bytes)
         {
             var context = bytes.AsRlpStream();
             context.ReadSequenceLength();
             var depositId = context.DecodeKeccak();
-            var receipt = Nethermind.Core.Encoding.Rlp.Decode<DataDeliveryReceipt>(context);
+            var receipt = Rlp.Decode<DataDeliveryReceipt>(context);
 
             return new DataDeliveryReceiptMessage(depositId, receipt);
         }

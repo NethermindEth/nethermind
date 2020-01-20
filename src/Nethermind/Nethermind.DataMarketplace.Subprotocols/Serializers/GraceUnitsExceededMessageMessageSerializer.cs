@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
 
@@ -23,9 +24,9 @@ namespace Nethermind.DataMarketplace.Subprotocols.Serializers
     public class GraceUnitsExceededMessageMessageSerializer : IMessageSerializer<GraceUnitsExceededMessage>
     {
         public byte[] Serialize(GraceUnitsExceededMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.ConsumedUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(message.GraceUnits)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode(message.ConsumedUnits),
+                Rlp.Encode(message.GraceUnits)).Bytes;
 
         public GraceUnitsExceededMessage Deserialize(byte[] bytes)
         {

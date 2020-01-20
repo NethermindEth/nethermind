@@ -18,6 +18,7 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Benchmarks.Evm
