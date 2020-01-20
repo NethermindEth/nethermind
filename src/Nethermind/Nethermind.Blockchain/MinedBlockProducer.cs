@@ -45,11 +45,12 @@ namespace Nethermind.Blockchain
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager)
+            : base(pendingTransactionSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }
@@ -76,13 +77,13 @@ namespace Nethermind.Blockchain
 
         public override void Start()
         {
-            Processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
         }
 
         public override async Task StopAsync()
         {
-            Processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            BlockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             
             lock (_syncToken)

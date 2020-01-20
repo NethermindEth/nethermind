@@ -25,16 +25,14 @@ namespace Nethermind.Blockchain
     public class OneTimeChainProcessor : IBlockchainProcessor
     {
         private readonly IBlockchainProcessor _processor;
-        private readonly IBlockchainProcessor _mainChainProcessor;
         private readonly IReadOnlyDbProvider _readOnlyDbProvider;
 
         private object _lock = new object();
 
-        public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor, IBlockchainProcessor mainChainProcessor = null)
+        public OneTimeChainProcessor(IReadOnlyDbProvider readOnlyDbProvider, IBlockchainProcessor processor)
         {
             _readOnlyDbProvider = readOnlyDbProvider ?? throw new ArgumentNullException(nameof(readOnlyDbProvider));
             _processor = processor ?? throw new ArgumentNullException(nameof(processor));
-            _mainChainProcessor = mainChainProcessor;
         }
 
         public void Start()
@@ -54,24 +52,6 @@ namespace Nethermind.Blockchain
                 Block result = _processor.Process(block, options, listener);
                 _readOnlyDbProvider.ClearTempChanges();
                 return result;
-            }
-        }
-
-        public event EventHandler ProcessingQueueEmpty
-        {
-            add
-            {
-                if (_mainChainProcessor != null)
-                {
-                    _mainChainProcessor.ProcessingQueueEmpty += value;
-                }
-            }
-            remove
-            {
-                if (_mainChainProcessor != null)
-                {
-                    _mainChainProcessor.ProcessingQueueEmpty -= value;
-                }
             }
         }
     }

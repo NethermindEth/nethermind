@@ -43,9 +43,10 @@ namespace Nethermind.Blockchain
             IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            ILogManager logManager) : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, stateProvider, timestamper, logManager, "Dev")
+            ILogManager logManager) : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "Dev")
         {
         }
 

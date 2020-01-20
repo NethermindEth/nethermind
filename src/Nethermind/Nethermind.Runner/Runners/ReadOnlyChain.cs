@@ -32,7 +32,6 @@ namespace Nethermind.Runner.Runners
     [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
     internal class ReadOnlyChain
     {
-        private readonly IBlockchainProcessor _mainChainProcessor;
         public IBlockchainProcessor Processor { get; }
         public IStateProvider ReadOnlyStateProvider { get; }
         public IEnumerable<IAdditionalBlockProcessor> AdditionalBlockProcessors { get; }
@@ -47,7 +46,6 @@ namespace Nethermind.Runner.Runners
             ILogManager logManager,
             ITxPool customTxPool,
             IReceiptStorage receiptStorage,
-            IBlockchainProcessor mainChainProcessor,
             Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> additionalBlockProcessorsFactory)
         {
             ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);
@@ -58,7 +56,7 @@ namespace Nethermind.Runner.Runners
             ITxPool txPool = customTxPool;
             AdditionalBlockProcessors = additionalBlockProcessorsFactory?.Invoke(dbProvider.StateDb, ReadOnlyStateProvider, readOnlyTree, transactionProcessor, logManager);
             BlockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, ReadOnlyStateProvider, storageProvider, txPool, receiptStorage, logManager, AdditionalBlockProcessors);
-            Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, BlockProcessor, recoveryStep, logManager, false, false), mainChainProcessor);
+            Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(readOnlyTree, BlockProcessor, recoveryStep, logManager, false, false));
         }
     }
 }

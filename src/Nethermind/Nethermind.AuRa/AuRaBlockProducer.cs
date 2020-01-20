@@ -46,13 +46,14 @@ namespace Nethermind.AuRa
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager,
             IAuRaStepCalculator auRaStepCalculator,
             IAuraConfig config,
             Address nodeAddress) 
-            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager, "AuRa")
+            : base(pendingTransactionSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "AuRa")
         {
             _auRaStepCalculator = auRaStepCalculator ?? throw new ArgumentNullException(nameof(auRaStepCalculator));
             _config = config ?? throw new ArgumentNullException(nameof(config));

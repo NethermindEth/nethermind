@@ -32,6 +32,8 @@ namespace Nethermind.Blockchain
     {
         protected IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
+        protected IBlockProcessingQueue BlockProcessingQueue { get; }
+        
         private readonly ISealer _sealer;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
@@ -43,6 +45,7 @@ namespace Nethermind.Blockchain
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager)
@@ -51,6 +54,7 @@ namespace Nethermind.Blockchain
             Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue)); 
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));

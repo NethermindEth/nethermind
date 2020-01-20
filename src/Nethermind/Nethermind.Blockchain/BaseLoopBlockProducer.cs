@@ -29,27 +29,28 @@ namespace Nethermind.Blockchain
         private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
         private Task _producerTask;
-        private bool _canProduce = false;
         private readonly CancellationTokenSource _loopCancellationTokenSource = new CancellationTokenSource();
         private readonly CancellationTokenSource _stepCancellationTokenSource = new CancellationTokenSource();
-        
+        private bool _canProduce;
+
         protected BaseLoopBlockProducer(
             IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager,
             string name) 
-            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager)
+            : base(pendingTransactionSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
             _name = name;
         }
 
         public override void Start()
         {
-            Processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
             
             _producerTask = Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
@@ -69,19 +70,9 @@ namespace Nethermind.Blockchain
             });
         }
 
-        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
-        {
-            _canProduce = false;
-        }
-
-        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
-        {
-            _canProduce = true;
-        }
-
         public override async Task StopAsync()
         {
-            Processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            BlockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
             BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             
             _loopCancellationTokenSource?.Cancel();
@@ -93,7 +84,7 @@ namespace Nethermind.Blockchain
         {
             while (!_loopCancellationTokenSource.IsCancellationRequested)
             {
-                if (_canProduce)
+                if (_canProduce && BlockProcessingQueue.IsEmpty)
                 {
                     await ProducerLoopStep(_stepCancellationTokenSource.Token);
                 }
@@ -108,6 +99,16 @@ namespace Nethermind.Blockchain
         protected virtual async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
             await TryProduceNewBlock(cancellationToken);
+        }
+        
+        private void BlockTreeOnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
+        {
+            _canProduce = false;
+        }
+
+        private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
+        {
+            _canProduce = true;
         }
     }
 }

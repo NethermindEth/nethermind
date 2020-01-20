@@ -28,7 +28,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockchainProcessor : IBlockchainProcessor
+    public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     {
         private readonly IBlockProcessor _blockProcessor;
         private readonly IBlockDataRecoveryStep _recoveryStep;
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain
             });
         }
 
-        public async Task StopAsync(bool processRemainingBlocks)
+        public async Task StopAsync(bool processRemainingBlocks = false)
         {
             if (processRemainingBlocks)
             {
@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain
             _stats.Start();
             if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
-            if (_blockQueue.Count == 0)
+            if (IsEmpty)
             {
                 ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
             }
@@ -255,7 +255,7 @@ namespace Nethermind.Blockchain
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
-                if (_blockQueue.Count == 0)
+                if (IsEmpty)
                 {
                     ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
                 }
@@ -265,6 +265,8 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler ProcessingQueueEmpty;
+
+        public bool IsEmpty => _blockQueue.Count == 0 && _recoveryQueue.Count == 0;
 
         [Todo("Introduce priority queue and create a SuggestWithPriority that waits for block execution to return a block, then make this private")]
         public Block Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
