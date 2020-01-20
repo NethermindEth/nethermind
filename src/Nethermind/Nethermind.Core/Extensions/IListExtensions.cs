@@ -15,12 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
-using Nethermind.Core;
 
-namespace Nethermind.AuRa.Validators
+namespace Nethermind.Core.Extensions
 {
-    internal static class AuRaValidatorsCollectionExtensions
+    public static class IListExtensions
     {
-        public static int MinSealersForFinalization(this IList<Address> validators) => validators.Count / 2 + 1;
+        public static T GetItemRoundRobin<T>(this IList<T> array, long index) => array.Count == 0 ? default : array[(int) (index % array.Count)];
     }
 }

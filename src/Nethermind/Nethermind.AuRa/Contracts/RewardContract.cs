@@ -117,7 +117,7 @@ namespace Nethermind.AuRa.Contracts
         /// 101-106 - Uncle - Reward attributed to uncles, with distance 1 to 6 (Ethash engine)
         /// </param>
         public Transaction Reward(Address[] benefactors, ushort[] kind)
-            => GenerateTransaction(_abiEncoder.Encode(Definition.reward, benefactors, kind));
+            => GenerateTransaction(_abiEncoder.Encode(Definition.reward, benefactors, kind), Address.SystemUser);
         
         public (Address[] Addresses, BigInteger[] Rewards) DecodeRewards(byte[] data)
         {

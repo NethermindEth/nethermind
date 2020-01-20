@@ -60,7 +60,7 @@ namespace Nethermind.AuRa.Test
             
             _sealValidator = new AuRaSealValidator(_auRaParameters, 
                 _auRaStepCalculator,
-                Substitute.For<IAuRaValidator>(),
+                Substitute.For<IValidatorStore>(),
                 _ethereumEcdsa, 
                 _logManager);
         }

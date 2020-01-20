@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -19,8 +19,8 @@ using Nethermind.Core;
 
 namespace Nethermind.AuRa.Validators
 {
-    internal static class AuRaValidatorsCollectionExtensions
+    public interface IValidSealerStrategy
     {
-        public static int MinSealersForFinalization(this IList<Address> validators) => validators.Count / 2 + 1;
+        bool IsValidSealer(IList<Address> validators, Address address, long step);
     }
 }

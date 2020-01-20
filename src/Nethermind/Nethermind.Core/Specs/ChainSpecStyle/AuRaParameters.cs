@@ -55,12 +55,12 @@ namespace Nethermind.Core.Specs.ChainSpecStyle
         
         public Address BlockRewardContractAddress { get; set; }
         
-        public long BlockRewardContractTransition { get; set; }
+        public long? BlockRewardContractTransition { get; set; }
         
         public long ValidateScoreTransition { get; set; }
         
         public long ValidateStepTransition { get; set; }
-
+		
         public Validator Validators { get; set; }
         
         public enum ValidatorType
