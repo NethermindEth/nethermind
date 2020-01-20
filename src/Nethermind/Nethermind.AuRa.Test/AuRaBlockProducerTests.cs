@@ -53,7 +53,7 @@ namespace Nethermind.AuRa.Test
         [SetUp]
         public void SetUp()
         {
-            _stepDelay = TimeSpan.FromMilliseconds(100);
+            _stepDelay = TimeSpan.FromMilliseconds(10);
             
             _pendingTransactionSelector = Substitute.For<IPendingTransactionSelector>();
             _blockchainProcessor = Substitute.For<IBlockchainProcessor>();
@@ -180,18 +180,20 @@ namespace Nethermind.AuRa.Test
                 _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
             }
             
-            await Task.Delay(_stepDelay);
+            await Task.Delay(_stepDelay * 10);
             await _auRaBlockProducer.StopAsync();
             
-            return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
+            return new TestResult(_auRaBlockProducer, q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         
         private class TestResult
         {
+            private readonly AuRaBlockProducer _auRaBlockProducer;
             private readonly Action<Quantity> _assert;
 
-            public TestResult(Action<Quantity> assert)
+            public TestResult(AuRaBlockProducer auRaBlockProducer, Action<Quantity> assert)
             {
+                _auRaBlockProducer = auRaBlockProducer;
                 _assert = assert;
             }
 
