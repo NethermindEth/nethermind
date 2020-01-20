@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
@@ -63,8 +64,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -78,8 +78,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -94,8 +93,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -107,8 +105,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -121,8 +118,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -156,8 +152,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+               ThrowOverflow();
             }
         }
 
@@ -165,8 +160,7 @@ namespace Nethermind.Evm
         {
             if (Head-- == 0)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowUnderflow();
             }
         }
 
@@ -189,20 +183,19 @@ namespace Nethermind.Evm
         {
             if (Head-- == 0)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowUnderflow();
             }
 
             return new Address(_bytes.Slice(Head * 32 + 12, 20).ToArray());
         }
 
         // ReSharper disable once ImplicitlyCapturedClosure
+
         public Span<byte> PopBytes()
         {
             if (Head-- == 0)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowUnderflow();
             }
 
             return _bytes.Slice(Head * 32, 32);
@@ -212,8 +205,7 @@ namespace Nethermind.Evm
         {
             if (Head-- == 0)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowUnderflow();
             }
 
             return _bytes[Head * 32 + 31];
@@ -232,8 +224,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -241,8 +232,7 @@ namespace Nethermind.Evm
         {
             if (Head < depth)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+                ThrowUnderflow();
             }
 
             _bytes.Slice((Head - depth) * 32, 32).CopyTo(_bytes.Slice(Head * 32, 32));
@@ -256,8 +246,7 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
         }
 
@@ -267,8 +256,7 @@ namespace Nethermind.Evm
 
             if (Head < depth)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackUnderflowException();
+               ThrowUnderflow();
             }
 
             Span<byte> bottomSpan = _bytes.Slice((Head - depth) * 32, 32);
@@ -331,9 +319,22 @@ namespace Nethermind.Evm
 
             if (++Head >= MaxStackSize)
             {
-                Metrics.EvmExceptions++;
-                throw new EvmStackOverflowException();
+                ThrowOverflow();
             }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowOverflow()
+        {
+            Metrics.EvmExceptions++;
+            throw new EvmStackOverflowException();
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        static void ThrowUnderflow()
+        {
+            Metrics.EvmExceptions++;
+            throw new EvmStackUnderflowException();
         }
     }
 }
