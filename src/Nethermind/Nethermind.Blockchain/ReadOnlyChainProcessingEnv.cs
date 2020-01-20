@@ -28,6 +28,8 @@ namespace Nethermind.Blockchain
     {
         private readonly ReadOnlyTxProcessingEnv _txEnv;
         public IBlockchainProcessor Processor { get; }
+        public IBlockProcessingQueue BlockProcessingQueue { get; }
+        
         public IStateProvider StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
@@ -42,7 +44,9 @@ namespace Nethermind.Blockchain
         {
             _txEnv = txEnv;
             IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
-            Processor = new OneTimeChainProcessor(dbProvider, new BlockchainProcessor(_txEnv.BlockTree, blockProcessor, recoveryStep, logManager, false, false));
+            var processor = new BlockchainProcessor(_txEnv.BlockTree, blockProcessor, recoveryStep, logManager, false, false);
+            BlockProcessingQueue = processor;
+            Processor = new OneTimeChainProcessor(dbProvider, processor);
         }
     }
 }

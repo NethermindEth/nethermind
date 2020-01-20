@@ -43,18 +43,19 @@ namespace Nethermind.Blockchain
             IPendingTransactionSelector pendingTransactionSelector,
             IBlockchainProcessor processor,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
-            ILogManager logManager) : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, stateProvider, timestamper, logManager, "Dev")
+            ILogManager logManager) : base(pendingTransactionSelector, processor, NullSealEngine.Instance, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager, "Dev")
         {
         }
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => 1;
 
-        protected override async ValueTask ProducerLoopStep()
+        protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
-            await base.ProducerLoopStep();
-            await Task.Delay(DelayBetweenBlocks, CancellationTokenSource.Token);
+            await base.ProducerLoopStep(cancellationToken);
+            await Task.Delay(DelayBetweenBlocks, cancellationToken);
         }
     }
 }

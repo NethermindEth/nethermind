@@ -34,9 +34,9 @@ namespace Nethermind.JsonRpc.Modules.DebugModule
         private readonly IBlockTree _blockTree;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockchainProcessor receiptsProcessor, IBlockTree blockTree)
+        public DebugBridge(IConfigProvider configProvider, IReadOnlyDbProvider dbProvider, ITracer tracer, IBlockProcessingQueue receiptsBlockQueue, IBlockTree blockTree)
         {
-            receiptsProcessor.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
+            receiptsBlockQueue.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
             _configProvider = configProvider ?? throw new ArgumentNullException(nameof(configProvider));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

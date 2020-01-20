@@ -137,7 +137,7 @@ namespace Nethermind.Runner.Runners
         private IJsonSerializer _ethereumJsonSerializer;
         private readonly IMonitoringService _monitoringService;
         private CancellationTokenSource _runnerCancellation;
-        private IBlockchainProcessor _blockchainProcessor;
+        private BlockchainProcessor _blockchainProcessor;
         private IDiscoveryApp _discoveryApp;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeStatsManager _nodeStatsManager;
@@ -638,9 +638,18 @@ namespace Nethermind.Runner.Runners
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, allowStateModification);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
-                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage,
+                ReadOnlyChain producerChain = new ReadOnlyChain(
+                    readOnlyBlockTree,
+                    _blockValidator,
+                    _rewardCalculator,
+                    _specProvider,
+                    minerDbProvider,
+                    _recoveryStep,
+                    _logManager,
+                    _txPool,
+                    _receiptStorage,
                     createAdditionalBlockProcessors);
+                
                 return producerChain;
             }
 
@@ -666,7 +675,7 @@ namespace Nethermind.Runner.Runners
                         ReadOnlyChain producerChain = GetProducerChain();
                         PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_txPool, producerChain.ReadOnlyStateProvider, _logManager);
                         if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _blockTree, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, _txPool);
+                        _blockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _blockTree, _blockchainProcessor, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, _txPool);
                         break;
                     }
                     
@@ -677,7 +686,18 @@ namespace Nethermind.Runner.Runners
                             new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, new AbiEncoder(), t, b, _receiptStorage, _validatorStore, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
                         PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_txPool, producerChain.ReadOnlyStateProvider, _logManager);
                         if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
-                        _blockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _sealer, _blockTree, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _configProvider.GetConfig<IAuraConfig>(), _nodeKey.Address);
+                        _blockProducer = new AuRaBlockProducer(
+                            pendingTransactionSelector, 
+                            producerChain.Processor, 
+                            _sealer, 
+                            _blockTree, 
+                            _blockchainProcessor,
+                            producerChain.ReadOnlyStateProvider, 
+                            _timestamper, 
+                            _logManager, 
+                            new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), 
+                            _configProvider.GetConfig<IAuraConfig>(), 
+                            _nodeKey.Address);
                         validator.SetFinalizationManager(_finalizationManager, true);
                         break;
                     }

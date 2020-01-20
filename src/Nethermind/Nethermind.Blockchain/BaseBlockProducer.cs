@@ -30,9 +30,11 @@ namespace Nethermind.Blockchain
 {
     public abstract class BaseBlockProducer : IBlockProducer
     {
-        private readonly IBlockchainProcessor _processor;
+        protected IBlockchainProcessor Processor { get; }
+        protected IBlockTree BlockTree { get; }
+        protected IBlockProcessingQueue BlockProcessingQueue { get; }
+        
         private readonly ISealer _sealer;
-        private readonly IBlockTree _blockTree;
         private readonly IStateProvider _stateProvider;
         private readonly ITimestamper _timestamper;
         private readonly IPendingTransactionSelector _pendingTransactionSelector;
@@ -43,14 +45,16 @@ namespace Nethermind.Blockchain
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager)
         {
             _pendingTransactionSelector = pendingTransactionSelector ?? throw new ArgumentNullException(nameof(pendingTransactionSelector));
-            _processor = processor ?? throw new ArgumentNullException(nameof(processor));
+            Processor = processor ?? throw new ArgumentNullException(nameof(processor));
             _sealer = sealer ?? throw new ArgumentNullException(nameof(sealer));
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            BlockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue)); 
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -62,7 +66,7 @@ namespace Nethermind.Blockchain
         
         protected virtual async ValueTask TryProduceNewBlock(CancellationToken token)
         {
-            BlockHeader parentHeader = _blockTree.Head;
+            BlockHeader parentHeader = BlockTree.Head;
             if (parentHeader == null)
             {
                 if (Logger.IsWarn) Logger.Warn($"Preparing new block - parent header is null");
@@ -80,7 +84,7 @@ namespace Nethermind.Blockchain
             Block block = PrepareBlock(parent);
             if (PreparedBlockCanBeMined(block))
             {
-                Block processedBlock = _processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+                Block processedBlock = Processor.Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
                 if (processedBlock == null)
                 {
                     if (Logger.IsError) Logger.Error("Block prepared by block producer was rejected by processor.");
@@ -94,7 +98,7 @@ namespace Nethermind.Blockchain
                             if (t.Result != null)
                             {
                                 if (Logger.IsInfo) Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
-                                _blockTree.SuggestBlock(t.Result);
+                                BlockTree.SuggestBlock(t.Result);
                             }
                             else
                             {
