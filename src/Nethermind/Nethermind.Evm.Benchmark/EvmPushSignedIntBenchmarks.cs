@@ -55,28 +55,4 @@ namespace Nethermind.Evm.Benchmark
             stack.PopLimbo();
         }
     }
-
-    public class EvmPushPopByteBenchmarks
-    {
-        [MemoryDiagnoser]
-        public class EvmPushSignedIntBenchmarks
-        {
-            private byte[] stackBytes;
-            private ITxTracer _tracer = NullTxTracer.Instance;
-
-            [GlobalSetup]
-            public void GlobalSetup()
-            {
-                stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
-            }
-
-            [Benchmark(Baseline = true)]
-            public void Current()
-            {
-                EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-                stack.PushByte(1);
-                stack.PopByte();
-            }
-        }
-    }
 }
