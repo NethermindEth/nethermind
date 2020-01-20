@@ -15,47 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Collections.Generic;
-using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.Evm.Benchmark
 {
-    [MemoryDiagnoser]
-    public class EvmPushSignedIntBenchmarks
-    {
-        [ParamsSource(nameof(ValueSource))]
-        public BigInteger value;
-
-        // public property
-        public IEnumerable<BigInteger> ValueSource => new[] { BigInteger.Parse("-125124123718263172357123"), BigInteger.Parse("-1"), BigInteger.Parse("1"), UInt256.MaxValue, UInt256.MinValue};
-        
-        private byte[] stackBytes;
-        private ITxTracer _tracer = NullTxTracer.Instance;
-
-        [GlobalSetup]
-        public void GlobalSetup()
-        {
-            stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
-        }
-
-        [Benchmark(Baseline = true)]
-        public void Current()
-        {
-            EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-            stack.PushSignedInt(in value);
-            stack.PopLimbo();
-        }
-    }
-
     public class EvmPushPopByteBenchmarks
     {
         [MemoryDiagnoser]
@@ -70,10 +34,20 @@ namespace Nethermind.Evm.Benchmark
                 stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
             }
 
-            [Benchmark(Baseline = true)]
+            [Benchmark(Baseline = true, OperationsPerInvoke = 4)]
             public void Current()
             {
                 EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
+
+                stack.PushByte(1);
+                stack.PopByte();
+                
+                stack.PushByte(1);
+                stack.PopByte();
+                
+                stack.PushByte(1);
+                stack.PopByte();
+                
                 stack.PushByte(1);
                 stack.PopByte();
             }

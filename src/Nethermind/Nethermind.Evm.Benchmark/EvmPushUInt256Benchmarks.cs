@@ -18,25 +18,19 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;
-using Nethermind.Logging;
-using Nethermind.Store;
 
 namespace Nethermind.Evm.Benchmark
 {
     [MemoryDiagnoser]
-    public class EvmPushSignedIntBenchmarks
+    public class EvmPushUInt256Benchmarks
     {
         [ParamsSource(nameof(ValueSource))]
-        public BigInteger value;
+        public UInt256 value;
 
         // public property
-        public IEnumerable<BigInteger> ValueSource => new[] { BigInteger.Parse("-125124123718263172357123"), BigInteger.Parse("-1"), BigInteger.Parse("1"), UInt256.MaxValue, UInt256.MinValue};
+        public IEnumerable<UInt256> ValueSource => new[] { UInt256.One, UInt256.MaxValue};
         
         private byte[] stackBytes;
         private ITxTracer _tracer = NullTxTracer.Instance;
@@ -47,36 +41,22 @@ namespace Nethermind.Evm.Benchmark
             stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
         }
 
-        [Benchmark(Baseline = true)]
+        [Benchmark(Baseline = true, OperationsPerInvoke = 4)]
         public void Current()
         {
             EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-            stack.PushSignedInt(in value);
+            
+            stack.PushUInt256(ref value);
             stack.PopLimbo();
-        }
-    }
-
-    public class EvmPushPopByteBenchmarks
-    {
-        [MemoryDiagnoser]
-        public class EvmPushSignedIntBenchmarks
-        {
-            private byte[] stackBytes;
-            private ITxTracer _tracer = NullTxTracer.Instance;
-
-            [GlobalSetup]
-            public void GlobalSetup()
-            {
-                stackBytes = new byte[(EvmStack.MaxStackSize + EvmStack.RegisterLength) * 1024];
-            }
-
-            [Benchmark(Baseline = true)]
-            public void Current()
-            {
-                EvmStack stack = new EvmStack(stackBytes.AsSpan(), 0, _tracer);
-                stack.PushByte(1);
-                stack.PopByte();
-            }
+            
+            stack.PushUInt256(ref value);
+            stack.PopLimbo();
+            
+            stack.PushUInt256(ref value);
+            stack.PopLimbo();
+            
+            stack.PushUInt256(ref value);
+            stack.PopLimbo();
         }
     }
 }
