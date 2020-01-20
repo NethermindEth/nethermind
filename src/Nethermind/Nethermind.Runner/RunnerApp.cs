@@ -38,6 +38,7 @@ namespace Nethermind.Runner
             string pluginsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugins");
             if (Directory.Exists(pluginsDirectory))
             {
+                Console.WriteLine($"Loading plugins from: {pluginsDirectory}");
                 var plugins = Directory.GetFiles(pluginsDirectory, "*.dll");
                 foreach (string plugin in plugins)
                 {
@@ -45,6 +46,9 @@ namespace Nethermind.Runner
                     Console.WriteLine($"Loading plugin: {pluginName}");
                     AssemblyLoadContext.Default.LoadFromAssemblyPath(plugin);
                 }
+            } else 
+            {
+                Console.WriteLine($"Plugins directory couldn't be found at: {pluginsDirectory}");
             }
 
             var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies().ToList();
