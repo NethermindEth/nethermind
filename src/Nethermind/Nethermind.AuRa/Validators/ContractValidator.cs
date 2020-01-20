@@ -102,6 +102,10 @@ namespace Nethermind.AuRa.Validators
             if (!forSealing && _blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
+                if (_blockTree.Head?.IsGenesis == false)
+                {
+                    Validators = LoadValidatorsFromContract(_blockTree.Head);
+                }
             }
         }
 

@@ -191,8 +191,7 @@ namespace Nethermind.AuRa.Validators
                 _currentValidator.SetFinalizationManager(_blockFinalizationManager, _validatorUsedForSealing);
                 _currentValidatorPrototype = validatorPrototype;
                 
-                // TODO: Check if we can produce blocks after switching to ContractValidator
-                if (validatorPrototype.ValidatorType.CanChangeImmediately())
+                if (!_validatorUsedForSealing)
                 {
                     _validatorStore.SetValidators(finalizedAtBlockNumber, _currentValidator.Validators);
                 }
