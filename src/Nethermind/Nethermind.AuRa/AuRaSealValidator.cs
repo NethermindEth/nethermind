@@ -85,7 +85,7 @@ namespace Nethermind.AuRa
 
             if (header.AuRaStep > currentStep)
             {
-                if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is too early. Current step is {currentStep}.");
+                if (_logger.IsWarn) _logger.Warn($"Block {header.Number}, hash {header.Hash} step {header.AuRaStep} is {_stepCalculator.TimeToStep(header.AuRaStep.Value):g} too early. Current step is {currentStep}.");
             }
 
             if (header.AuRaStep - parent.AuRaStep != 1)
