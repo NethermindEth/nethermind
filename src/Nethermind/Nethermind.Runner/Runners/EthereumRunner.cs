@@ -112,108 +112,39 @@ namespace Nethermind.Runner.Runners
 {
     public class EthereumRunner : IRunner
     {
-        private readonly Stack<IDisposable> _disposeStack = new Stack<IDisposable>();
-
-        private static readonly bool HiveEnabled =
-            Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true";
-
-        private readonly IGrpcServer _grpcServer;
-        private static ILogManager _logManager;
-        private readonly INdmConsumerChannelManager _ndmConsumerChannelManager;
-        private readonly INdmDataPublisher _ndmDataPublisher;
-        private readonly INdmInitializer _ndmInitializer;
-        private readonly IWebSocketsManager _webSocketsManager;
-        private static ILogger _logger;
-
-        private IRpcModuleProvider _rpcModuleProvider;
-        private IConfigProvider _configProvider;
-        private ITxPoolConfig _txPoolConfig;
-        private IInitConfig _initConfig;
-        private IIpResolver _ipResolver;
-        private PrivateKey _nodeKey;
-        private ChainSpec _chainSpec;
-        private ICryptoRandom _cryptoRandom = new CryptoRandom();
-        private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
-        private IJsonSerializer _ethereumJsonSerializer;
-        private readonly IMonitoringService _monitoringService;
-        private CancellationTokenSource _runnerCancellation;
-        private IBlockchainProcessor _blockchainProcessor;
-        private IDiscoveryApp _discoveryApp;
-        private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
-        private INodeStatsManager _nodeStatsManager;
-        private ITxPool _txPool;
-        private IReceiptStorage _receiptStorage;
-        private IEthereumEcdsa _ethereumEcdsa;
-        private IEthSyncPeerPool _syncPeerPool;
-        private ISynchronizer _synchronizer;
-        private ISyncServer _syncServer;
-        private IKeyStore _keyStore;
-        private IPeerManager _peerManager;
-        private IProtocolsManager _protocolsManager;
-        private IBlockTree _blockTree;
-        private IBlockValidator _blockValidator;
-        private IHeaderValidator _headerValidator;
-        private IBlockDataRecoveryStep _recoveryStep;
-        private IBlockProcessor _blockProcessor;
-        private IRewardCalculator _rewardCalculator;
-        private ISpecProvider _specProvider;
-        private IStateProvider _stateProvider;
-        private ISealer _sealer;
-        private ISealValidator _sealValidator;
-        private IBlockProducer _blockProducer;
-        private ISnapshotManager _snapshotManager;
-        private IRlpxPeer _rlpxPeer;
-        private IDbProvider _dbProvider;
-        private readonly ITimestamper _timestamper = new Timestamper();
-        private IStorageProvider _storageProvider;
-        private IWallet _wallet;
-        private IEnode _enode;
-        private HiveRunner _hiveRunner;
-        private ISessionMonitor _sessionMonitor;
-        private ISyncConfig _syncConfig;
-        private IStaticNodesManager _staticNodesManager;
-        private ITransactionProcessor _transactionProcessor;
-        private ITxPoolInfoProvider _txPoolInfoProvider;
-        private INetworkConfig _networkConfig;
-        private IChainLevelInfoRepository _chainLevelInfoRepository;
-        private IBlockFinalizationManager _finalizationManager;
-        private IJsonRpcClientProxy _jsonRpcClientProxy;
-        private IEthJsonRpcClientProxy _ethJsonRpcClientProxy;
-        private IHttpClient _httpClient;
-        public const string DiscoveryNodesDbPath = "discoveryNodes";
-        public const string PeersDbPath = "peers";
-
+        private EthereumRunnerContext _context = new EthereumRunnerContext();
+        
         public EthereumRunner(IRpcModuleProvider rpcModuleProvider, IConfigProvider configurationProvider,
             ILogManager logManager, IGrpcServer grpcServer,
             INdmConsumerChannelManager ndmConsumerChannelManager, INdmDataPublisher ndmDataPublisher,
             INdmInitializer ndmInitializer, IWebSocketsManager webSocketsManager,
             IJsonSerializer ethereumJsonSerializer, IMonitoringService monitoringService)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _grpcServer = grpcServer;
-            _ndmConsumerChannelManager = ndmConsumerChannelManager;
-            _ndmDataPublisher = ndmDataPublisher;
-            _ndmInitializer = ndmInitializer;
-            _webSocketsManager = webSocketsManager;
-            _ethereumJsonSerializer = ethereumJsonSerializer;
-            _monitoringService = monitoringService;
-            _logger = _logManager.GetClassLogger();
+            _context.LogManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _context._grpcServer = grpcServer;
+            _context._ndmConsumerChannelManager = ndmConsumerChannelManager;
+            _context._ndmDataPublisher = ndmDataPublisher;
+            _context._ndmInitializer = ndmInitializer;
+            _context._webSocketsManager = webSocketsManager;
+            _context._ethereumJsonSerializer = ethereumJsonSerializer;
+            _context._monitoringService = monitoringService;
+            _context.Logger = _context.LogManager.GetClassLogger();
 
-            _configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
-            _initConfig = configurationProvider.GetConfig<IInitConfig>();
-            _txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
+            _context._configProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _context._rpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
+            _context._initConfig = configurationProvider.GetConfig<IInitConfig>();
+            _context._txPoolConfig = configurationProvider.GetConfig<ITxPoolConfig>();
 
-            _networkConfig = _configProvider.GetConfig<INetworkConfig>();
-            _ipResolver = new IpResolver(_networkConfig, _logManager);
-            _networkConfig.ExternalIp = _ipResolver.ExternalIp.ToString();
-            _networkConfig.LocalIp = _ipResolver.LocalIp.ToString();
+            _context.NetworkConfig = _context._configProvider.GetConfig<INetworkConfig>();
+            _context._ipResolver = new IpResolver(_context.NetworkConfig, _context.LogManager);
+            _context.NetworkConfig.ExternalIp = _context._ipResolver.ExternalIp.ToString();
+            _context.NetworkConfig.LocalIp = _context._ipResolver.LocalIp.ToString();
         }
 
         public async Task Start()
         {
-            if (_logger.IsDebug) _logger.Debug("Initializing Ethereum");
-            _runnerCancellation = new CancellationTokenSource();
+            if (_context.Logger.IsDebug) _context.Logger.Debug("Initializing Ethereum");
+            _context._runnerCancellation = new CancellationTokenSource();
 
             SetupKeyStore();
             LoadChainSpec();
@@ -221,9 +152,12 @@ namespace Nethermind.Runner.Runners
             UpdateDiscoveryConfig();
             await InitBlockchain();
             RegisterJsonRpcModules();
-            InitEthStats();
 
-            if (_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
+            if (_context.Logger.IsDebug) _context.Logger.Debug("Ethereum initialization completed");
+            
+            EthereumStepsManager stepsManager = new EthereumStepsManager(_context.LogManager);
+            stepsManager.DiscoverAll();
+            await stepsManager.InitializeAll();
         }
 
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]
@@ -231,7 +165,7 @@ namespace Nethermind.Runner.Runners
         {
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(ParityTraceDecoder)));
             Rlp.RegisterDecoders(Assembly.GetAssembly(typeof(NetworkNodeDecoder)));
-            if (_chainSpec.SealEngineType == SealEngineType.AuRa)
+            if (_context._chainSpec.SealEngineType == SealEngineType.AuRa)
             {
                 Rlp.Decoders[typeof(BlockInfo)] = new BlockInfoDecoder(true);
             }
@@ -240,331 +174,331 @@ namespace Nethermind.Runner.Runners
         private void SetupKeyStore()
         {
             var encrypter = new AesEncrypter(
-                _configProvider.GetConfig<IKeyStoreConfig>(),
-                _logManager);
+                _context._configProvider.GetConfig<IKeyStoreConfig>(),
+                _context.LogManager);
 
-            _keyStore = new FileKeyStore(
-                _configProvider.GetConfig<IKeyStoreConfig>(),
-                _ethereumJsonSerializer,
+            _context._keyStore = new FileKeyStore(
+                _context._configProvider.GetConfig<IKeyStoreConfig>(),
+                _context._ethereumJsonSerializer,
                 encrypter,
-                _cryptoRandom,
-                _logManager);
+                _context._cryptoRandom,
+                _context.LogManager);
 
-            switch (_initConfig)
+            switch (_context._initConfig)
             {
-                case var _ when HiveEnabled:
+                case var _ when _context.HiveEnabled:
                     // todo: use the keystore wallet here
-                    _wallet = new HiveWallet();
+                    _context._wallet = new HiveWallet();
                     break;
                 case var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory:
-                    _wallet = new DevWallet(_configProvider.GetConfig<IWalletConfig>(), _logManager);
+                    _context._wallet = new DevWallet(_context._configProvider.GetConfig<IWalletConfig>(), _context.LogManager);
                     break;
                 case var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory:
-                    _wallet = new DevKeyStoreWallet(_keyStore, _logManager);
+                    _context._wallet = new DevKeyStoreWallet(_context._keyStore, _context.LogManager);
                     break;
                 default:
-                    _wallet = NullWallet.Instance;
+                    _context._wallet = NullWallet.Instance;
                     break;
             }
 
-            INodeKeyManager nodeKeyManager = new NodeKeyManager(_cryptoRandom, _keyStore, _configProvider.GetConfig<IKeyStoreConfig>(), _logManager);
-            _nodeKey = nodeKeyManager.LoadNodeKey();
-            _enode = new Enode(_nodeKey.PublicKey, IPAddress.Parse(_networkConfig.ExternalIp), _networkConfig.P2PPort);
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context._cryptoRandom, _context._keyStore, _context._configProvider.GetConfig<IKeyStoreConfig>(), _context.LogManager);
+            _context._nodeKey = nodeKeyManager.LoadNodeKey();
+            _context._enode = new Enode(_context._nodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
         }
 
         private void RegisterJsonRpcModules()
         {
-            IJsonRpcConfig jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
+            IJsonRpcConfig jsonRpcConfig = _context._configProvider.GetConfig<IJsonRpcConfig>();
             if (!jsonRpcConfig.Enabled)
             {
                 return;
             }
 
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
-            if (_logger.IsDebug) _logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
+            if (_context.Logger.IsDebug) _context.Logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
-            var ndmConfig = _configProvider.GetConfig<INdmConfig>();
-            var rpcConfig = _configProvider.GetConfig<IRpcConfig>();
-            if (ndmConfig.Enabled && !(_ndmInitializer is null) && ndmConfig.ProxyEnabled)
+            var ndmConfig = _context._configProvider.GetConfig<INdmConfig>();
+            var rpcConfig = _context._configProvider.GetConfig<IRpcConfig>();
+            if (ndmConfig.Enabled && !(_context._ndmInitializer is null) && ndmConfig.ProxyEnabled)
             {
-                var proxyFactory = new EthModuleProxyFactory(_ethJsonRpcClientProxy, _wallet);
-                _rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
-                if (_logger.IsInfo) _logger.Info("Enabled JSON RPC Proxy for NDM.");
+                var proxyFactory = new EthModuleProxyFactory(_context._ethJsonRpcClientProxy, _context._wallet);
+                _context._rpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
+                if (_context.Logger.IsInfo) _context.Logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
             else
             {
-                EthModuleFactory ethModuleFactory = new EthModuleFactory(_dbProvider, _txPool, _wallet, _blockTree,
-                    _ethereumEcdsa, _blockProcessor, _receiptStorage, _specProvider, rpcConfig, _logManager);
-                _rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
+                EthModuleFactory ethModuleFactory = new EthModuleFactory(_context._dbProvider, _context._txPool, _context._wallet, _context.BlockTree,
+                    _context._ethereumEcdsa, _context._blockProcessor, _context._receiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
+                _context._rpcModuleProvider.Register(new BoundedModulePool<IEthModule>(8, ethModuleFactory));
             }
 
-            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_dbProvider, _blockTree, _blockValidator, _recoveryStep, _rewardCalculator, _receiptStorage, _configProvider, _specProvider, _logManager);
-            _rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
+            DebugModuleFactory debugModuleFactory = new DebugModuleFactory(_context._dbProvider, _context.BlockTree, _context._blockValidator, _context._recoveryStep, _context._rewardCalculator, _context._receiptStorage, _context._configProvider, _context.SpecProvider, _context.LogManager);
+            _context._rpcModuleProvider.Register(new BoundedModulePool<IDebugModule>(8, debugModuleFactory));
             
-            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_dbProvider, _txPool, _blockTree, _blockValidator, _ethereumEcdsa, _recoveryStep, _rewardCalculator, _receiptStorage, _specProvider, rpcConfig, _logManager);
-            _rpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
+            TraceModuleFactory traceModuleFactory = new TraceModuleFactory(_context._dbProvider, _context._txPool, _context.BlockTree, _context._blockValidator, _context._ethereumEcdsa, _context._recoveryStep, _context._rewardCalculator, _context._receiptStorage, _context.SpecProvider, rpcConfig, _context.LogManager);
+            _context._rpcModuleProvider.Register(new BoundedModulePool<ITraceModule>(8, traceModuleFactory));
 
-            if (_sealValidator is CliqueSealValidator)
+            if (_context._sealValidator is CliqueSealValidator)
             {
-                CliqueModule cliqueModule = new CliqueModule(_logManager, new CliqueBridge(_blockProducer as ICliqueBlockProducer, _snapshotManager, _blockTree));
-                _rpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
+                CliqueModule cliqueModule = new CliqueModule(_context.LogManager, new CliqueBridge(_context._blockProducer as ICliqueBlockProducer, _context._snapshotManager, _context.BlockTree));
+                _context._rpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             }
 
-            if (_initConfig.EnableUnsecuredDevWallet)
+            if (_context._initConfig.EnableUnsecuredDevWallet)
             {
-                PersonalBridge personalBridge = new PersonalBridge(_ethereumEcdsa, _wallet);
-                PersonalModule personalModule = new PersonalModule(personalBridge, _logManager);
-                _rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
+                PersonalBridge personalBridge = new PersonalBridge(_context._ethereumEcdsa, _context._wallet);
+                PersonalModule personalModule = new PersonalModule(personalBridge, _context.LogManager);
+                _context._rpcModuleProvider.Register(new SingletonModulePool<IPersonalModule>(personalModule, true));
             }
 
-            AdminModule adminModule = new AdminModule(_peerManager, _staticNodesManager);
-            _rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
+            AdminModule adminModule = new AdminModule(_context.PeerManager, _context._staticNodesManager);
+            _context._rpcModuleProvider.Register(new SingletonModulePool<IAdminModule>(adminModule, true));
             
-            TxPoolModule txPoolModule = new TxPoolModule(_logManager, _txPoolInfoProvider);
-            _rpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
+            TxPoolModule txPoolModule = new TxPoolModule(_context.LogManager, _context._txPoolInfoProvider);
+            _context._rpcModuleProvider.Register(new SingletonModulePool<ITxPoolModule>(txPoolModule, true));
 
-            NetModule netModule = new NetModule(_logManager, new NetBridge(_enode, _syncServer, _peerManager));
-            _rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
+            NetModule netModule = new NetModule(_context.LogManager, new NetBridge(_context._enode, _context._syncServer, _context.PeerManager));
+            _context._rpcModuleProvider.Register(new SingletonModulePool<INetModule>(netModule, true));
 
-            ParityModule parityModule = new ParityModule(_ethereumEcdsa, _txPool, _blockTree, _receiptStorage, _logManager);
-            _rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
+            ParityModule parityModule = new ParityModule(_context._ethereumEcdsa, _context._txPool, _context.BlockTree, _context._receiptStorage, _context.LogManager);
+            _context._rpcModuleProvider.Register(new SingletonModulePool<IParityModule>(parityModule, true));
         }
 
         private void UpdateDiscoveryConfig()
         {
-            var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            var discoveryConfig = _context._configProvider.GetConfig<IDiscoveryConfig>();
             if (discoveryConfig.Bootnodes != string.Empty)
             {
-                if (_chainSpec.Bootnodes.Length != 0)
+                if (_context._chainSpec.Bootnodes.Length != 0)
                 {
-                    discoveryConfig.Bootnodes += "," + string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                    discoveryConfig.Bootnodes += "," + string.Join(",", _context._chainSpec.Bootnodes.Select(bn => bn.ToString()));
                 }
             }
             else
             {
-                discoveryConfig.Bootnodes = string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+                discoveryConfig.Bootnodes = string.Join(",", _context._chainSpec.Bootnodes.Select(bn => bn.ToString()));
             }
         }
 
         public async Task StopAsync()
         {
-            if (_logger.IsInfo) _logger.Info("Shutting down...");
-            _runnerCancellation.Cancel();
+            if (_context.Logger.IsInfo) _context.Logger.Info("Shutting down...");
+            _context._runnerCancellation.Cancel();
             
-            if (_logger.IsInfo) _logger.Info("Stopping sesison monitor...");
-            _sessionMonitor?.Stop();
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping sesison monitor...");
+            _context._sessionMonitor?.Stop();
 
-            if (_logger.IsInfo) _logger.Info("Stopping discovery app...");
-            var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping discovery app...");
+            var discoveryStopTask = _context._discoveryApp?.StopAsync() ?? Task.CompletedTask;
             
-            if (_logger.IsInfo) _logger.Info("Stopping block producer...");
-            var blockProducerTask = _blockProducer?.StopAsync() ?? Task.CompletedTask;
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping block producer...");
+            var blockProducerTask = _context._blockProducer?.StopAsync() ?? Task.CompletedTask;
             
-            if (_logger.IsInfo) _logger.Info("Stopping sync peer pool...");
-            var peerPoolTask = _syncPeerPool?.StopAsync() ?? Task.CompletedTask;
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping sync peer pool...");
+            var peerPoolTask = _context._syncPeerPool?.StopAsync() ?? Task.CompletedTask;
 
-            if (_logger.IsInfo) _logger.Info("Stopping peer manager...");
-            var peerManagerTask = _peerManager?.StopAsync() ?? Task.CompletedTask;
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping peer manager...");
+            var peerManagerTask = _context.PeerManager?.StopAsync() ?? Task.CompletedTask;
 
-            if (_logger.IsInfo) _logger.Info("Stopping synchronizer...");
-            var synchronizerTask = (_synchronizer?.StopAsync() ?? Task.CompletedTask)
-                .ContinueWith(t => _synchronizer?.Dispose());
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping synchronizer...");
+            var synchronizerTask = (_context._synchronizer?.StopAsync() ?? Task.CompletedTask)
+                .ContinueWith(t => _context._synchronizer?.Dispose());
 
-            if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
-            var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping blockchain processor...");
+            var blockchainProcessorTask = (_context._blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
 
-            if (_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
-            var rlpxPeerTask = _rlpxPeer?.Shutdown() ?? Task.CompletedTask;
+            if (_context.Logger.IsInfo) _context.Logger.Info("Stopping rlpx peer...");
+            var rlpxPeerTask = _context._rlpxPeer?.Shutdown() ?? Task.CompletedTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
-            if (_logger.IsInfo) _logger.Info("Closing DBs...");
-            _dbProvider.Dispose();
-            if (_logger.IsInfo) _logger.Info("All DBs closed.");
+            if (_context.Logger.IsInfo) _context.Logger.Info("Closing DBs...");
+            _context._dbProvider.Dispose();
+            if (_context.Logger.IsInfo) _context.Logger.Info("All DBs closed.");
             
-            while (_disposeStack.Count != 0)
+            while (_context._disposeStack.Count != 0)
             {
-                var disposable = _disposeStack.Pop();
-                if (_logger.IsDebug) _logger.Debug($"Disposing {disposable.GetType().Name}");
+                var disposable = _context._disposeStack.Pop();
+                if (_context.Logger.IsDebug) _context.Logger.Debug($"Disposing {disposable.GetType().Name}");
             }
 
-            if (_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
+            if (_context.Logger.IsInfo) _context.Logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
         private void LoadChainSpec()
         {
-            if (_logger.IsInfo) _logger.Info($"Loading chain spec from {_initConfig.ChainSpecPath}");
+            if (_context.Logger.IsInfo) _context.Logger.Info($"Loading chain spec from {_context._initConfig.ChainSpecPath}");
 
-            IChainSpecLoader loader = string.Equals(_initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
-                ? (IChainSpecLoader) new ChainSpecLoader(_ethereumJsonSerializer)
-                : new GenesisFileLoader(_ethereumJsonSerializer);
+            IChainSpecLoader loader = string.Equals(_context._initConfig.ChainSpecFormat, "ChainSpec", StringComparison.InvariantCultureIgnoreCase)
+                ? (IChainSpecLoader) new ChainSpecLoader(_context._ethereumJsonSerializer)
+                : new GenesisFileLoader(_context._ethereumJsonSerializer);
 
-            if (HiveEnabled)
+            if (_context.HiveEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"HIVE chainspec:{Environment.NewLine}{File.ReadAllText(_initConfig.ChainSpecPath)}");
+                if (_context.Logger.IsInfo) _context.Logger.Info($"HIVE chainspec:{Environment.NewLine}{File.ReadAllText(_context._initConfig.ChainSpecPath)}");
             }
 
-            _chainSpec = loader.LoadFromFile(_initConfig.ChainSpecPath);
-            _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
+            _context._chainSpec = loader.LoadFromFile(_context._initConfig.ChainSpecPath);
+            _context._chainSpec.Bootnodes = _context._chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context._nodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
 
         [Todo(Improve.Refactor, "Use chain spec for all chain configuration")]
         private async Task InitBlockchain()
         {
-            _specProvider = new ChainSpecBasedSpecProvider(_chainSpec);
+            _context.SpecProvider = new ChainSpecBasedSpecProvider(_context._chainSpec);
 
-            Account.AccountStartNonce = _chainSpec.Parameters.AccountStartNonce;
+            Account.AccountStartNonce = _context._chainSpec.Parameters.AccountStartNonce;
 
             /* sync */
-            IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
-            _syncConfig = _configProvider.GetConfig<ISyncConfig>();
+            IDbConfig dbConfig = _context._configProvider.GetConfig<IDbConfig>();
+            _context._syncConfig = _context._configProvider.GetConfig<ISyncConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
-                if (_logger.IsDebug) _logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
+                if (_context.Logger.IsDebug) _context.Logger.Debug($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");
             }
 
-            if (_syncConfig.BeamSyncEnabled)
+            if (_context._syncConfig.BeamSyncEnabled)
             {
-                _dbProvider = new BeamSyncDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);
+                _context._dbProvider = new BeamSyncDbProvider(_context._initConfig.BaseDbPath, dbConfig, _context.LogManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts || _context._syncConfig.DownloadReceiptsInFastSync);
             }
             else
             {
-                _dbProvider = (HiveEnabled || _initConfig.UseMemDb)
+                _context._dbProvider = (_context.HiveEnabled || _context._initConfig.UseMemDb)
                     ? (IDbProvider) new MemDbProvider()
-                    : new RocksDbProvider(_initConfig.BaseDbPath, dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts || _syncConfig.DownloadReceiptsInFastSync);    
+                    : new RocksDbProvider(_context._initConfig.BaseDbPath, dbConfig, _context.LogManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts || _context._syncConfig.DownloadReceiptsInFastSync);    
             }
 
-            // IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_initConfig.BaseDbPath, "debug"), dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts);
-            // _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _jsonSerializer, _logManager), _logManager, debugRecorder);
+            // IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts);
+            // _context._dbProvider = new RpcDbProvider(_context._jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _context._jsonSerializer, _context._logManager), _context._logManager, debugRecorder);
 
-            // IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_initConfig.BaseDbPath, "debug"), dbConfig, _logManager, _initConfig.StoreTraces, _initConfig.StoreReceipts), false);
-            // _dbProvider = debugReader;
+            // IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_context._initConfig.BaseDbPath, "debug"), dbConfig, _context._logManager, _context._initConfig.StoreTraces, _context._initConfig.StoreReceipts), false);
+            // _context._dbProvider = debugReader;
 
-            _stateProvider = new StateProvider(
-                _dbProvider.StateDb,
-                _dbProvider.CodeDb,
-                _logManager);
+            _context._stateProvider = new StateProvider(
+                _context._dbProvider.StateDb,
+                _context._dbProvider.CodeDb,
+                _context.LogManager);
             
-            _ethereumEcdsa = new EthereumEcdsa(_specProvider, _logManager);
-            _txPool = new TxPool(
-                new PersistentTxStorage(_dbProvider.PendingTxsDb, _specProvider),
+            _context._ethereumEcdsa = new EthereumEcdsa(_context.SpecProvider, _context.LogManager);
+            _context._txPool = new TxPool(
+                new PersistentTxStorage(_context._dbProvider.PendingTxsDb, _context.SpecProvider),
                 Timestamper.Default,
-                _ethereumEcdsa,
-                _specProvider,
-                _txPoolConfig, 
-                _stateProvider, 
-                _logManager);
+                _context._ethereumEcdsa,
+                _context.SpecProvider,
+                _context._txPoolConfig, 
+                _context._stateProvider, 
+                _context.LogManager);
 
-            _receiptStorage = new PersistentReceiptStorage(_dbProvider.ReceiptsDb, _specProvider, _logManager);
+            _context._receiptStorage = new PersistentReceiptStorage(_context._dbProvider.ReceiptsDb, _context.SpecProvider, _context.LogManager);
 
-            _chainLevelInfoRepository = new ChainLevelInfoRepository(_dbProvider.BlockInfosDb);
+            _context._chainLevelInfoRepository = new ChainLevelInfoRepository(_context._dbProvider.BlockInfosDb);
 
-            _blockTree = new BlockTree(
-                _dbProvider.BlocksDb,
-                _dbProvider.HeadersDb,
-                _dbProvider.BlockInfosDb,
-                _chainLevelInfoRepository,
-                _specProvider,
-                _txPool,
-                _syncConfig,
-                _logManager);
+            _context.BlockTree = new BlockTree(
+                _context._dbProvider.BlocksDb,
+                _context._dbProvider.HeadersDb,
+                _context._dbProvider.BlockInfosDb,
+                _context._chainLevelInfoRepository,
+                _context.SpecProvider,
+                _context._txPool,
+                _context._syncConfig,
+                _context.LogManager);
 
             // Init state if we need system calls before actual processing starts
-            if (_blockTree.Head != null)
+            if (_context.BlockTree.Head != null)
             {
-                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                _context._stateProvider.StateRoot = _context.BlockTree.Head.StateRoot;
             }
 
-            _recoveryStep = new TxSignaturesRecoveryStep(_ethereumEcdsa, _txPool, _logManager);
+            _context._recoveryStep = new TxSignaturesRecoveryStep(_context._ethereumEcdsa, _context._txPool, _context.LogManager);
             
-            _snapshotManager = null;            
+            _context._snapshotManager = null;            
 
             
-            _storageProvider = new StorageProvider(
-                _dbProvider.StateDb,
-                _stateProvider,
-                _logManager);
+            _context._storageProvider = new StorageProvider(
+                _context._dbProvider.StateDb,
+                _context._stateProvider,
+                _context.LogManager);
             
             IList<IAdditionalBlockProcessor> additionalBlockProcessors = new List<IAdditionalBlockProcessor>();
             // blockchain processing
             var blockhashProvider = new BlockhashProvider(
-                _blockTree, _logManager);
+                _context.BlockTree, _context.LogManager);
 
             var virtualMachine = new VirtualMachine(
-                _stateProvider,
-                _storageProvider,
+                _context._stateProvider,
+                _context._storageProvider,
                 blockhashProvider,
-                _specProvider,
-                _logManager);
+                _context.SpecProvider,
+                _context.LogManager);
 
-            _transactionProcessor = new TransactionProcessor(
-                _specProvider,
-                _stateProvider,
-                _storageProvider,
+            _context._transactionProcessor = new TransactionProcessor(
+                _context.SpecProvider,
+                _context._stateProvider,
+                _context._storageProvider,
                 virtualMachine,
-                _logManager);
+                _context.LogManager);
             
             InitSealEngine(additionalBlockProcessors);
 
             /* validation */
-            _headerValidator = new HeaderValidator(
-                _blockTree,
-                _sealValidator,
-                _specProvider,
-                _logManager);
+            _context._headerValidator = new HeaderValidator(
+                _context.BlockTree,
+                _context._sealValidator,
+                _context.SpecProvider,
+                _context.LogManager);
 
             var ommersValidator = new OmmersValidator(
-                _blockTree,
-                _headerValidator,
-                _logManager);
+                _context.BlockTree,
+                _context._headerValidator,
+                _context.LogManager);
 
-            var txValidator = new TxValidator(_specProvider.ChainId);
+            var txValidator = new TxValidator(_context.SpecProvider.ChainId);
 
-            _blockValidator = new BlockValidator(
+            _context._blockValidator = new BlockValidator(
                 txValidator,
-                _headerValidator,
+                _context._headerValidator,
                 ommersValidator,
-                _specProvider,
-                _logManager);
+                _context.SpecProvider,
+                _context.LogManager);
 
-            _txPoolInfoProvider = new TxPoolInfoProvider(_stateProvider, _txPool);
+            _context._txPoolInfoProvider = new TxPoolInfoProvider(_context._stateProvider, _context._txPool);
 
-            _blockProcessor = new BlockProcessor(
-                _specProvider,
-                _blockValidator,
-                _rewardCalculator,
-                _transactionProcessor,
-                _dbProvider.StateDb,
-                _dbProvider.CodeDb,
-                _dbProvider.TraceDb,
-                _stateProvider,
-                _storageProvider,
-                _txPool,
-                _receiptStorage,
-                _logManager,
+            _context._blockProcessor = new BlockProcessor(
+                _context.SpecProvider,
+                _context._blockValidator,
+                _context._rewardCalculator,
+                _context._transactionProcessor,
+                _context._dbProvider.StateDb,
+                _context._dbProvider.CodeDb,
+                _context._dbProvider.TraceDb,
+                _context._stateProvider,
+                _context._storageProvider,
+                _context._txPool,
+                _context._receiptStorage,
+                _context.LogManager,
                 additionalBlockProcessors);
 
-            _blockchainProcessor = new BlockchainProcessor(
-                _blockTree,
-                _blockProcessor,
-                _recoveryStep,
-                _logManager,
-                _initConfig.StoreReceipts,
-                _initConfig.StoreTraces);
+            _context._blockchainProcessor = new BlockchainProcessor(
+                _context.BlockTree,
+                _context._blockProcessor,
+                _context._recoveryStep,
+                _context.LogManager,
+                _context._initConfig.StoreReceipts,
+                _context._initConfig.StoreTraces);
 
-            _finalizationManager = InitFinalizationManager(additionalBlockProcessors);
+            _context._finalizationManager = InitFinalizationManager(additionalBlockProcessors);
 
             // create shared objects between discovery and peer manager
-            IStatsConfig statsConfig = _configProvider.GetConfig<IStatsConfig>();
-            _nodeStatsManager = new NodeStatsManager(statsConfig, _logManager);
+            IStatsConfig statsConfig = _context._configProvider.GetConfig<IStatsConfig>();
+            _context._nodeStatsManager = new NodeStatsManager(statsConfig, _context.LogManager);
 
-            _blockchainProcessor.Start();
-            LoadGenesisBlock(string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash));
+            _context._blockchainProcessor.Start();
+            LoadGenesisBlock(string.IsNullOrWhiteSpace(_context._initConfig.GenesisHash) ? null : new Keccak(_context._initConfig.GenesisHash));
             
             InitBlockProducers();
             
-            if (_initConfig.ProcessingEnabled)
+            if (_context._initConfig.ProcessingEnabled)
             {
 #pragma warning disable 4014
                 RunBlockTreeInitTasks();
@@ -572,53 +506,53 @@ namespace Nethermind.Runner.Runners
             }
             else
             {
-                if (_logger.IsWarn) _logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
-                await _blockchainProcessor.StopAsync();
+                if (_context.Logger.IsWarn) _context.Logger.Warn($"Shutting down the blockchain processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                await _context._blockchainProcessor.StopAsync();
             }
 
-            if (HiveEnabled)
+            if (_context.HiveEnabled)
             {
                 await InitHive();
             }
 
             var producers = new List<IProducer>();
             
-            var kafkaConfig = _configProvider.GetConfig<IKafkaConfig>();
+            var kafkaConfig = _context._configProvider.GetConfig<IKafkaConfig>();
             if (kafkaConfig.Enabled)
             {
-                var kafkaProducer = await PrepareKafkaProducer(_blockTree, _configProvider.GetConfig<IKafkaConfig>());
+                var kafkaProducer = await PrepareKafkaProducer(_context.BlockTree, _context._configProvider.GetConfig<IKafkaConfig>());
                 producers.Add(kafkaProducer);
             }
 
-            var grpcConfig = _configProvider.GetConfig<IGrpcConfig>();
+            var grpcConfig = _context._configProvider.GetConfig<IGrpcConfig>();
             if (grpcConfig.Enabled && grpcConfig.ProducerEnabled)
             {
-                var grpcProducer = new GrpcProducer(_grpcServer);
+                var grpcProducer = new GrpcProducer(_context._grpcServer);
                 producers.Add(grpcProducer);
             }
 
             ISubscription subscription;
             if (producers.Any())
             {
-                subscription = new Subscription(producers, _blockProcessor, _logManager);
+                subscription = new Subscription(producers, _context._blockProcessor, _context.LogManager);
             }
             else
             {
                 subscription = new EmptySubscription();
             }
 
-            _disposeStack.Push(subscription);
+            _context._disposeStack.Push(subscription);
 
             await InitializeNetwork();
         }
 
         private IBlockFinalizationManager InitFinalizationManager(IList<IAdditionalBlockProcessor> blockPreProcessors)
         {
-            switch (_chainSpec.SealEngineType)
+            switch (_context._chainSpec.SealEngineType)
             {
                 case SealEngineType.AuRa:
-                    return new AuRaBlockFinalizationManager(_blockTree, _chainLevelInfoRepository, _blockProcessor, 
-                            blockPreProcessors.OfType<IAuRaValidator>().First(), _logManager);
+                    return new AuRaBlockFinalizationManager(_context.BlockTree, _context._chainLevelInfoRepository, _context._blockProcessor, 
+                            blockPreProcessors.OfType<IAuRaValidator>().First(), _context.LogManager);
                 default:
                     return null;
             }
@@ -630,153 +564,153 @@ namespace Nethermind.Runner.Runners
                 Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> createAdditionalBlockProcessors = null,
                 bool allowStateModification = false)
             {
-                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, allowStateModification);
-                ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
-                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage,
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_context._dbProvider, allowStateModification);
+                ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
+                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _context._blockValidator, _context._rewardCalculator,
+                    _context.SpecProvider, minerDbProvider, _context._recoveryStep, _context.LogManager, _context._txPool, _context._receiptStorage,
                     createAdditionalBlockProcessors);
                 return producerChain;
             }
 
-            if (_initConfig.IsMining)
+            if (_context._initConfig.IsMining)
             {
-                switch (_chainSpec.SealEngineType)
+                switch (_context._chainSpec.SealEngineType)
                 {
                     case SealEngineType.Clique:
                     {
                         ReadOnlyChain producerChain = GetProducerChain();
-                        PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_txPool, producerChain.ReadOnlyStateProvider, _logManager);
-                        if (_logger.IsWarn) _logger.Warn("Starting Clique block producer & sealer");
+                        PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context._txPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
+                        if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Clique block producer & sealer");
                         CliqueConfig cliqueConfig = new CliqueConfig();
-                        cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
-                        cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
-                        _blockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.Processor,
-                            _blockTree, _timestamper, _cryptoRandom, producerChain.ReadOnlyStateProvider, _snapshotManager, (CliqueSealer) _sealer, _nodeKey.Address, cliqueConfig, _logManager);
+                        cliqueConfig.BlockPeriod = _context._chainSpec.Clique.Period;
+                        cliqueConfig.Epoch = _context._chainSpec.Clique.Epoch;
+                        _context._blockProducer = new CliqueBlockProducer(pendingTransactionSelector, producerChain.Processor,
+                            _context.BlockTree, _context._timestamper, _context._cryptoRandom, producerChain.ReadOnlyStateProvider, _context._snapshotManager, (CliqueSealer) _context._sealer, _context._nodeKey.Address, cliqueConfig, _context.LogManager);
                         break;
                     }
 
                     case SealEngineType.NethDev:
                     {
                         ReadOnlyChain producerChain = GetProducerChain();
-                        PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_txPool, producerChain.ReadOnlyStateProvider, _logManager);
-                        if (_logger.IsWarn) _logger.Warn("Starting Dev block producer & sealer");
-                        _blockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _blockTree, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, _txPool);
+                        PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context._txPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
+                        if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Dev block producer & sealer");
+                        _context._blockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context._timestamper, _context.LogManager, _context._txPool);
                         break;
                     }
                     
                     case SealEngineType.AuRa:
                     {
                         IAuRaValidatorProcessor validator = null;
-                        ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _receiptStorage, l).CreateValidatorProcessor(_chainSpec.AuRa.Validators)});
-                        PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_txPool, producerChain.ReadOnlyStateProvider, _logManager);
-                        if (_logger.IsWarn) _logger.Warn("Starting AuRa block producer & sealer");
-                        _blockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _sealer, _blockTree, producerChain.ReadOnlyStateProvider, _timestamper, _logManager, new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper), _configProvider.GetConfig<IAuraConfig>(), _nodeKey.Address);
-                        validator.SetFinalizationManager(_finalizationManager, true);
+                        ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l)  => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _context._receiptStorage, l).CreateValidatorProcessor(_context._chainSpec.AuRa.Validators)});
+                        PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context._txPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
+                        if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
+                        _context._blockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context._sealer, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context._timestamper, _context.LogManager, new AuRaStepCalculator(_context._chainSpec.AuRa.StepDuration, _context._timestamper), _context._configProvider.GetConfig<IAuraConfig>(), _context._nodeKey.Address);
+                        validator.SetFinalizationManager(_context._finalizationManager, true);
                         break;
                     }
 
                     default:
-                        throw new NotSupportedException($"Mining in {_chainSpec.SealEngineType} mode is not supported");
+                        throw new NotSupportedException($"Mining in {_context._chainSpec.SealEngineType} mode is not supported");
                 }
 
-                _blockProducer.Start();
+                _context._blockProducer.Start();
             }
         }
 
         private void InitSealEngine(IList<IAdditionalBlockProcessor> blockPreProcessors)
         {
-            switch (_chainSpec.SealEngineType)
+            switch (_context._chainSpec.SealEngineType)
             {
                 case SealEngineType.None:
-                    _sealer = NullSealEngine.Instance;
-                    _sealValidator = NullSealEngine.Instance;
-                    _rewardCalculator = NoBlockRewards.Instance;
+                    _context._sealer = NullSealEngine.Instance;
+                    _context._sealValidator = NullSealEngine.Instance;
+                    _context._rewardCalculator = NoBlockRewards.Instance;
                     break;
                 case SealEngineType.Clique:
-                    _rewardCalculator = NoBlockRewards.Instance;
+                    _context._rewardCalculator = NoBlockRewards.Instance;
                     CliqueConfig cliqueConfig = new CliqueConfig();
-                    cliqueConfig.BlockPeriod = _chainSpec.Clique.Period;
-                    cliqueConfig.Epoch = _chainSpec.Clique.Epoch;
-                    _snapshotManager = new SnapshotManager(cliqueConfig, _dbProvider.BlocksDb, _blockTree, _ethereumEcdsa, _logManager);
-                    _sealValidator = new CliqueSealValidator(cliqueConfig, _snapshotManager, _logManager);
-                    _recoveryStep = new CompositeDataRecoveryStep(_recoveryStep, new AuthorRecoveryStep(_snapshotManager));
-                    if (_initConfig.IsMining)
+                    cliqueConfig.BlockPeriod = _context._chainSpec.Clique.Period;
+                    cliqueConfig.Epoch = _context._chainSpec.Clique.Epoch;
+                    _context._snapshotManager = new SnapshotManager(cliqueConfig, _context._dbProvider.BlocksDb, _context.BlockTree, _context._ethereumEcdsa, _context.LogManager);
+                    _context._sealValidator = new CliqueSealValidator(cliqueConfig, _context._snapshotManager, _context.LogManager);
+                    _context._recoveryStep = new CompositeDataRecoveryStep(_context._recoveryStep, new AuthorRecoveryStep(_context._snapshotManager));
+                    if (_context._initConfig.IsMining)
                     {
-                        _sealer = new CliqueSealer(new BasicWallet(_nodeKey), cliqueConfig, _snapshotManager, _nodeKey.Address, _logManager);
+                        _context._sealer = new CliqueSealer(new BasicWallet(_context._nodeKey), cliqueConfig, _context._snapshotManager, _context._nodeKey.Address, _context.LogManager);
                     }
                     else
                     {
-                        _sealer = NullSealEngine.Instance;
+                        _context._sealer = NullSealEngine.Instance;
                     }
 
                     break;
                 case SealEngineType.NethDev:
-                    _sealer = NullSealEngine.Instance;
-                    _sealValidator = NullSealEngine.Instance;
-                    _rewardCalculator = NoBlockRewards.Instance;
+                    _context._sealer = NullSealEngine.Instance;
+                    _context._sealValidator = NullSealEngine.Instance;
+                    _context._rewardCalculator = NoBlockRewards.Instance;
                     break;
                 case SealEngineType.Ethash:
-                    _rewardCalculator = new RewardCalculator(_specProvider);
-                    var difficultyCalculator = new DifficultyCalculator(_specProvider);
-                    if (_initConfig.IsMining)
+                    _context._rewardCalculator = new RewardCalculator(_context.SpecProvider);
+                    var difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
+                    if (_context._initConfig.IsMining)
                     {
-                        _sealer = new EthashSealer(new Ethash(_logManager), _logManager);
+                        _context._sealer = new EthashSealer(new Ethash(_context.LogManager), _context.LogManager);
                     }
                     else
                     {
-                        _sealer = NullSealEngine.Instance;
+                        _context._sealer = NullSealEngine.Instance;
                     }
 
-                    _sealValidator = new EthashSealValidator(_logManager, difficultyCalculator, _cryptoRandom, new Ethash(_logManager));
+                    _context._sealValidator = new EthashSealValidator(_context.LogManager, difficultyCalculator, _context._cryptoRandom, new Ethash(_context.LogManager));
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_dbProvider.StateDb, _stateProvider, abiEncoder, _transactionProcessor, _blockTree, _receiptStorage, _logManager)
-                        .CreateValidatorProcessor(_chainSpec.AuRa.Validators);
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context._dbProvider.StateDb, _context._stateProvider, abiEncoder, _context._transactionProcessor, _context.BlockTree, _context._receiptStorage, _context.LogManager)
+                        .CreateValidatorProcessor(_context._chainSpec.AuRa.Validators);
                     
-                    var auRaStepCalculator = new AuRaStepCalculator(_chainSpec.AuRa.StepDuration, _timestamper);    
-                    _sealValidator = new AuRaSealValidator(_chainSpec.AuRa, auRaStepCalculator, validatorProcessor, _ethereumEcdsa, _logManager);
-                    _rewardCalculator = new AuRaRewardCalculator(_chainSpec.AuRa, abiEncoder, _transactionProcessor);
-                    _sealer = new AuRaSealer(_blockTree, validatorProcessor, auRaStepCalculator, _nodeKey.Address, new BasicWallet(_nodeKey), _logManager);
+                    var auRaStepCalculator = new AuRaStepCalculator(_context._chainSpec.AuRa.StepDuration, _context._timestamper);    
+                    _context._sealValidator = new AuRaSealValidator(_context._chainSpec.AuRa, auRaStepCalculator, validatorProcessor, _context._ethereumEcdsa, _context.LogManager);
+                    _context._rewardCalculator = new AuRaRewardCalculator(_context._chainSpec.AuRa, abiEncoder, _context._transactionProcessor);
+                    _context._sealer = new AuRaSealer(_context.BlockTree, validatorProcessor, auRaStepCalculator, _context._nodeKey.Address, new BasicWallet(_context._nodeKey), _context.LogManager);
                     blockPreProcessors.Add(validatorProcessor);
                     break;
                 default:
-                    throw new NotSupportedException($"Seal engine type {_chainSpec.SealEngineType} is not supported in Nethermind");
+                    throw new NotSupportedException($"Seal engine type {_context._chainSpec.SealEngineType} is not supported in Nethermind");
             }
         }
 
         private async Task RunBlockTreeInitTasks()
         {
-            if (!_syncConfig.SynchronizationEnabled)
+            if (!_context._syncConfig.SynchronizationEnabled)
             {
                 return;
             }
 
-            if (!_syncConfig.FastSync)
+            if (!_context._syncConfig.FastSync)
             {
-                await _blockTree.LoadBlocksFromDb(_runnerCancellation.Token, null).ContinueWith(t =>
+                await _context.BlockTree.LoadBlocksFromDb(_context._runnerCancellation.Token, null).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Loading blocks from the DB failed.", t.Exception);
+                        if (_context.Logger.IsError) _context.Logger.Error("Loading blocks from the DB failed.", t.Exception);
                     }
                     else if (t.IsCanceled)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Loading blocks from the DB canceled.");
+                        if (_context.Logger.IsWarn) _context.Logger.Warn("Loading blocks from the DB canceled.");
                     }
                 });
             }
             else
             {
-                await _blockTree.FixFastSyncGaps(_runnerCancellation.Token).ContinueWith(t =>
+                await _context.BlockTree.FixFastSyncGaps(_context._runnerCancellation.Token).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
+                        if (_context.Logger.IsError) _context.Logger.Error("Fixing gaps in DB failed.", t.Exception);
                     }
                     else if (t.IsCanceled)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
+                        if (_context.Logger.IsWarn) _context.Logger.Warn("Fixing gaps in DB canceled.");
                     }
                 });
             }
@@ -784,36 +718,36 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitializeNetwork()
         {
-            if (_networkConfig.DiagTracerEnabled)
+            if (_context.NetworkConfig.DiagTracerEnabled)
             {
                 NetworkDiagTracer.IsEnabled = true;
                 NetworkDiagTracer.Start();
             }
             
-            var maxPeersCount = _networkConfig.ActivePeersMaxCount;
-            _syncPeerPool = new EthSyncPeerPool(_blockTree, _nodeStatsManager, _syncConfig, maxPeersCount, _logManager);
-            NodeDataFeed feed = new NodeDataFeed(_dbProvider.CodeDb, _dbProvider.StateDb, _logManager);
-            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_syncPeerPool, feed, NullDataConsumer.Instance, _logManager);
-            _synchronizer = new Synchronizer(_specProvider, _blockTree, _receiptStorage, _blockValidator, _sealValidator, _syncPeerPool, _syncConfig, nodeDataDownloader, _nodeStatsManager, _logManager);
+            var maxPeersCount = _context.NetworkConfig.ActivePeersMaxCount;
+            _context._syncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context._nodeStatsManager, _context._syncConfig, maxPeersCount, _context.LogManager);
+            NodeDataFeed feed = new NodeDataFeed(_context._dbProvider.CodeDb, _context._dbProvider.StateDb, _context.LogManager);
+            NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_context._syncPeerPool, feed, NullDataConsumer.Instance, _context.LogManager);
+            _context._synchronizer = new Synchronizer(_context.SpecProvider, _context.BlockTree, _context._receiptStorage, _context._blockValidator, _context._sealValidator, _context._syncPeerPool, _context._syncConfig, nodeDataDownloader, _context._nodeStatsManager, _context.LogManager);
 
-            _syncServer = new SyncServer(
-                _dbProvider.StateDb,
-                _dbProvider.CodeDb,
-                _blockTree,
-                _receiptStorage,
-                _blockValidator,
-                _sealValidator,
-                _syncPeerPool,
-                _synchronizer,
-                _syncConfig,
-                _logManager);
+            _context._syncServer = new SyncServer(
+                _context._dbProvider.StateDb,
+                _context._dbProvider.CodeDb,
+                _context.BlockTree,
+                _context._receiptStorage,
+                _context._blockValidator,
+                _context._sealValidator,
+                _context._syncPeerPool,
+                _context._synchronizer,
+                _context._syncConfig,
+                _context.LogManager);
 
             InitDiscovery();
             await InitPeer().ContinueWith(initPeerTask =>
             {
                 if (initPeerTask.IsFaulted)
                 {
-                    _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
+                    _context.Logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
                 }
             });
 
@@ -821,7 +755,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (initNetTask.IsFaulted)
                 {
-                    _logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
+                    _context.Logger.Error("Unable to start the synchronizer.", initNetTask.Exception);
                 }
             });
 
@@ -829,7 +763,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (initDiscoveryTask.IsFaulted)
                 {
-                    _logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
+                    _context.Logger.Error("Unable to start the discovery protocol.", initDiscoveryTask.Exception);
                 }
             });
 
@@ -839,34 +773,34 @@ namespace Nethermind.Runner.Runners
             }
             catch (Exception e)
             {
-                _logger.Error("Unable to start the peer manager.", e);
+                _context.Logger.Error("Unable to start the peer manager.", e);
             }
 
-            if (_logger.IsInfo) _logger.Info($"Ethereum     : tcp://{_enode.HostIp}:{_enode.Port}");
-            if (_logger.IsInfo) _logger.Info($"Version      : {ClientVersion.Description}");
-            if (_logger.IsInfo) _logger.Info($"This node    : {_enode.Info}");
-            if (_logger.IsInfo) _logger.Info($"Node address : {_enode.Address} (do not use as an account)");
+            if (_context.Logger.IsInfo) _context.Logger.Info($"Ethereum     : tcp://{_context._enode.HostIp}:{_context._enode.Port}");
+            if (_context.Logger.IsInfo) _context.Logger.Info($"Version      : {ClientVersion.Description}");
+            if (_context.Logger.IsInfo) _context.Logger.Info($"This node    : {_context._enode.Info}");
+            if (_context.Logger.IsInfo) _context.Logger.Info($"Node address : {_context._enode.Address} (do not use as an account)");
         }
 
         private void LoadGenesisBlock(Keccak expectedGenesisHash)
         {
             // if we already have a database with blocks then we do not need to load genesis from spec
-            if (_blockTree.Genesis != null)
+            if (_context.BlockTree.Genesis != null)
             {
                 ValidateGenesisHash(expectedGenesisHash);
                 return;
             }
 
-            Block genesis = _chainSpec.Genesis;
+            Block genesis = _context._chainSpec.Genesis;
             CreateSystemAccounts();
             
-            foreach ((Address address, ChainSpecAllocation allocation) in _chainSpec.Allocations)
+            foreach ((Address address, ChainSpecAllocation allocation) in _context._chainSpec.Allocations)
             {
-                _stateProvider.CreateAccount(address, allocation.Balance);
+                _context._stateProvider.CreateAccount(address, allocation.Balance);
                 if (allocation.Code != null)
                 {
-                    Keccak codeHash = _stateProvider.UpdateCode(allocation.Code);
-                    _stateProvider.UpdateCodeHash(address, codeHash, _specProvider.GenesisSpec);
+                    Keccak codeHash = _context._stateProvider.UpdateCode(allocation.Code);
+                    _context._stateProvider.UpdateCodeHash(address, codeHash, _context.SpecProvider.GenesisSpec);
                 }
 
                 if (allocation.Constructor != null)
@@ -877,20 +811,20 @@ namespace Nethermind.Runner.Runners
                         Init = allocation.Constructor,
                         GasLimit = genesis.GasLimit
                     };
-                    _transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
+                    _context._transactionProcessor.Execute(constructorTransaction, genesis.Header, NullTxTracer.Instance);
                 }
             }
 
-            _storageProvider.Commit();
-            _stateProvider.Commit(_specProvider.GenesisSpec);
+            _context._storageProvider.Commit();
+            _context._stateProvider.Commit(_context.SpecProvider.GenesisSpec);
 
-            _storageProvider.CommitTrees();
-            _stateProvider.CommitTree();
+            _context._storageProvider.CommitTrees();
+            _context._stateProvider.CommitTree();
             
-            _dbProvider.StateDb.Commit();
-            _dbProvider.CodeDb.Commit();
+            _context._dbProvider.StateDb.Commit();
+            _context._dbProvider.CodeDb.Commit();
 
-            genesis.StateRoot = _stateProvider.StateRoot;
+            genesis.StateRoot = _context._stateProvider.StateRoot;
             genesis.Hash = BlockHeader.CalculateHash(genesis.Header);
 
             ManualResetEventSlim genesisProcessedEvent = new ManualResetEventSlim(false);
@@ -900,12 +834,12 @@ namespace Nethermind.Runner.Runners
             void GenesisProcessed(object sender, BlockEventArgs args)
             {
                 genesisLoaded = true;
-                _blockTree.NewHeadBlock -= GenesisProcessed;
+                _context.BlockTree.NewHeadBlock -= GenesisProcessed;
                 genesisProcessedEvent.Set();
             }
 
-            _blockTree.NewHeadBlock += GenesisProcessed;
-            _blockTree.SuggestBlock(genesis);
+            _context.BlockTree.NewHeadBlock += GenesisProcessed;
+            _context.BlockTree.SuggestBlock(genesis);
             genesisProcessedEvent.Wait(TimeSpan.FromSeconds(40));
             if (!genesisLoaded)
             {
@@ -917,13 +851,13 @@ namespace Nethermind.Runner.Runners
 
         private void CreateSystemAccounts()
         {
-            var isAura = _chainSpec.SealEngineType == SealEngineType.AuRa;
-            var hasConstructorAllocation = _chainSpec.Allocations.Values.Any(a => a.Constructor != null);
+            var isAura = _context._chainSpec.SealEngineType == SealEngineType.AuRa;
+            var hasConstructorAllocation = _context._chainSpec.Allocations.Values.Any(a => a.Constructor != null);
             if (isAura && hasConstructorAllocation)
             {
-                _stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
-                _storageProvider.Commit();
-                _stateProvider.Commit(Homestead.Instance);
+                _context._stateProvider.CreateAccount(Address.Zero, UInt256.Zero);
+                _context._storageProvider.Commit();
+                _context._stateProvider.Commit(Homestead.Instance);
             }
         }
 
@@ -933,130 +867,130 @@ namespace Nethermind.Runner.Runners
         /// <param name="expectedGenesisHash"></param>
         private void ValidateGenesisHash(Keccak expectedGenesisHash)
         {
-            if (expectedGenesisHash != null && _blockTree.Genesis.Hash != expectedGenesisHash)
+            if (expectedGenesisHash != null && _context.BlockTree.Genesis.Hash != expectedGenesisHash)
             {
-                if(_logger.IsWarn) _logger.Warn(_stateProvider.DumpState());
-                if(_logger.IsWarn) _logger.Warn(_blockTree.Genesis.ToString(BlockHeader.Format.Full));
-                if(_logger.IsError) _logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_blockTree.Genesis.Hash}");
+                if(_context.Logger.IsWarn) _context.Logger.Warn(_context._stateProvider.DumpState());
+                if(_context.Logger.IsWarn) _context.Logger.Warn(_context.BlockTree.Genesis.ToString(BlockHeader.Format.Full));
+                if(_context.Logger.IsError) _context.Logger.Error($"Unexpected genesis hash, expected {expectedGenesisHash}, but was {_context.BlockTree.Genesis.Hash}");
             }
             else
             {
-                if(_logger.IsInfo) _logger.Info($"Genesis hash :  {_blockTree.Genesis.Hash}");
+                if(_context.Logger.IsInfo) _context.Logger.Info($"Genesis hash :  {_context.BlockTree.Genesis.Hash}");
             }
         }
 
         private Task StartSync()
         {
-            if (!_syncConfig.SynchronizationEnabled)
+            if (!_context._syncConfig.SynchronizationEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
+                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_blockTree.Head.ToString(BlockHeader.Format.Short)}.");
+            if (_context.Logger.IsDebug) _context.Logger.Debug($"Starting synchronization from block {_context.BlockTree.Head.ToString(BlockHeader.Format.Short)}.");
 
-            _syncPeerPool.Start();
-            _synchronizer.Start();
+            _context._syncPeerPool.Start();
+            _context._synchronizer.Start();
             return Task.CompletedTask;
         }
 
         private async Task InitPeer()
         {
             /* rlpx */
-            var eciesCipher = new EciesCipher(_cryptoRandom);
-            var eip8Pad = new Eip8MessagePad(_cryptoRandom);
-            _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-            _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            _messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
-            _messageSerializationService.Register(new ReceiptsMessageSerializer(_specProvider));
+            var eciesCipher = new EciesCipher(_context._cryptoRandom);
+            var eip8Pad = new Eip8MessagePad(_context._cryptoRandom);
+            _context._messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
+            _context._messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            _context._messageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer)));
+            _context._messageSerializationService.Register(new ReceiptsMessageSerializer(_context.SpecProvider));
 
-            var encryptionHandshakeServiceA = new HandshakeService(_messageSerializationService, eciesCipher,
-                _cryptoRandom, new Ecdsa(), _nodeKey, _logManager);
+            var encryptionHandshakeServiceA = new HandshakeService(_context._messageSerializationService, eciesCipher,
+                _context._cryptoRandom, new Ecdsa(), _context._nodeKey, _context.LogManager);
             
-            _messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
+            _context._messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
             
-            var discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            var discoveryConfig = _context._configProvider.GetConfig<IDiscoveryConfig>();
 
-            _sessionMonitor = new SessionMonitor(_networkConfig, _logManager);
-            _rlpxPeer = new RlpxPeer(
-                _messageSerializationService,
-                _nodeKey.PublicKey,
-                _networkConfig.P2PPort,
+            _context._sessionMonitor = new SessionMonitor(_context.NetworkConfig, _context.LogManager);
+            _context._rlpxPeer = new RlpxPeer(
+                _context._messageSerializationService,
+                _context._nodeKey.PublicKey,
+                _context.NetworkConfig.P2PPort,
                 encryptionHandshakeServiceA,
-                _logManager,
-                _sessionMonitor);
+                _context.LogManager,
+                _context._sessionMonitor);
 
-            await _rlpxPeer.Init();
+            await _context._rlpxPeer.Init();
 
-            _staticNodesManager = new StaticNodesManager(_initConfig.StaticNodesPath, _logManager);
-            await _staticNodesManager.InitAsync();
+            _context._staticNodesManager = new StaticNodesManager(_context._initConfig.StaticNodesPath, _context.LogManager);
+            await _context._staticNodesManager.InitAsync();
 
-            var peersDb = new SimpleFilePublicKeyDb("PeersDB", PeersDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath), _logManager);
-            var peerStorage = new NetworkStorage(peersDb, _logManager);
+            var peersDb = new SimpleFilePublicKeyDb("PeersDB", _context.PeersDbPath.GetApplicationResourcePath(_context._initConfig.BaseDbPath), _context.LogManager);
+            var peerStorage = new NetworkStorage(peersDb, _context.LogManager);
 
-            ProtocolValidator protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, _logManager);
-            _protocolsManager = new ProtocolsManager(_syncPeerPool, _syncServer, _txPool, _discoveryApp, _messageSerializationService, _rlpxPeer, _nodeStatsManager, protocolValidator, peerStorage, _logManager);
+            ProtocolValidator protocolValidator = new ProtocolValidator(_context._nodeStatsManager, _context.BlockTree, _context.LogManager);
+            _context._protocolsManager = new ProtocolsManager(_context._syncPeerPool, _context._syncServer, _context._txPool, _context._discoveryApp, _context._messageSerializationService, _context._rlpxPeer, _context._nodeStatsManager, protocolValidator, peerStorage, _context.LogManager);
 
-            if (!(_ndmInitializer is null))
+            if (!(_context._ndmInitializer is null))
             {
-                if (_logger.IsInfo) _logger.Info($"Initializing NDM...");
-                _httpClient = new DefaultHttpClient(new HttpClient(), _ethereumJsonSerializer, _logManager);
-                var ndmConfig = _configProvider.GetConfig<INdmConfig>();
+                if (_context.Logger.IsInfo) _context.Logger.Info($"Initializing NDM...");
+                _context._httpClient = new DefaultHttpClient(new HttpClient(), _context._ethereumJsonSerializer, _context.LogManager);
+                var ndmConfig = _context._configProvider.GetConfig<INdmConfig>();
                 if (ndmConfig.ProxyEnabled)
                 {
-                    _jsonRpcClientProxy = new JsonRpcClientProxy(_httpClient, ndmConfig.JsonRpcUrlProxies,
-                        _logManager);
-                    _ethJsonRpcClientProxy = new EthJsonRpcClientProxy(_jsonRpcClientProxy);
+                    _context._jsonRpcClientProxy = new JsonRpcClientProxy(_context._httpClient, ndmConfig.JsonRpcUrlProxies,
+                        _context.LogManager);
+                    _context._ethJsonRpcClientProxy = new EthJsonRpcClientProxy(_context._jsonRpcClientProxy);
                 }
 
                 var filterStore = new FilterStore();
-                var filterManager = new FilterManager(filterStore, _blockProcessor, _txPool, _logManager);
-                var capabilityConnector = await _ndmInitializer.InitAsync(_configProvider, _dbProvider,
-                    _initConfig.BaseDbPath, _blockTree, _txPool, _specProvider, _receiptStorage, _wallet, filterStore,
-                    filterManager, _timestamper, _ethereumEcdsa, _rpcModuleProvider, _keyStore, _ethereumJsonSerializer,
-                    _cryptoRandom, _enode, _ndmConsumerChannelManager, _ndmDataPublisher, _grpcServer,
-                    _nodeStatsManager, _protocolsManager, protocolValidator, _messageSerializationService,
-                    _initConfig.EnableUnsecuredDevWallet, _webSocketsManager, _logManager, _blockProcessor,
-                    _jsonRpcClientProxy, _ethJsonRpcClientProxy, _httpClient, _monitoringService);
+                var filterManager = new FilterManager(filterStore, _context._blockProcessor, _context._txPool, _context.LogManager);
+                var capabilityConnector = await _context._ndmInitializer.InitAsync(_context._configProvider, _context._dbProvider,
+                    _context._initConfig.BaseDbPath, _context.BlockTree, _context._txPool, _context.SpecProvider, _context._receiptStorage, _context._wallet, filterStore,
+                    filterManager, _context._timestamper, _context._ethereumEcdsa, _context._rpcModuleProvider, _context._keyStore, _context._ethereumJsonSerializer,
+                    _context._cryptoRandom, _context._enode, _context._ndmConsumerChannelManager, _context._ndmDataPublisher, _context._grpcServer,
+                    _context._nodeStatsManager, _context._protocolsManager, protocolValidator, _context._messageSerializationService,
+                    _context._initConfig.EnableUnsecuredDevWallet, _context._webSocketsManager, _context.LogManager, _context._blockProcessor,
+                    _context._jsonRpcClientProxy, _context._ethJsonRpcClientProxy, _context._httpClient, _context._monitoringService);
                 capabilityConnector.Init();
-                if (_logger.IsInfo) _logger.Info($"NDM initialized.");
+                if (_context.Logger.IsInfo) _context.Logger.Info($"NDM initialized.");
             }
 
-            PeerLoader peerLoader = new PeerLoader(_networkConfig, discoveryConfig, _nodeStatsManager, peerStorage, _logManager);
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _nodeStatsManager, peerStorage, peerLoader, _networkConfig, _logManager, _staticNodesManager);
-            _peerManager.Init();
+            PeerLoader peerLoader = new PeerLoader(_context.NetworkConfig, discoveryConfig, _context._nodeStatsManager, peerStorage, _context.LogManager);
+            _context.PeerManager = new PeerManager(_context._rlpxPeer, _context._discoveryApp, _context._nodeStatsManager, peerStorage, peerLoader, _context.NetworkConfig, _context.LogManager, _context._staticNodesManager);
+            _context.PeerManager.Init();
         }
 
         private void StartPeer()
         {
-            if (!_initConfig.PeerManagerEnabled)
+            if (!_context._initConfig.PeerManagerEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(_initConfig.PeerManagerEnabled)} set to false)");
+                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping peer manager init due to {nameof(_context._initConfig.PeerManagerEnabled)} set to false)");
             }
 
-            if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
-            _peerManager.Start();
-            _sessionMonitor.Start();
-            if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
+            if (_context.Logger.IsDebug) _context.Logger.Debug("Initializing peer manager");
+            _context.PeerManager.Start();
+            _context._sessionMonitor.Start();
+            if (_context.Logger.IsDebug) _context.Logger.Debug("Peer manager initialization completed");
         }
 
         private void InitDiscovery()
         {
-            if (!_initConfig.DiscoveryEnabled)
+            if (!_context._initConfig.DiscoveryEnabled)
             {
-                _discoveryApp = new NullDiscoveryApp();
+                _context._discoveryApp = new NullDiscoveryApp();
                 return;
             }
 
-            IDiscoveryConfig discoveryConfig = _configProvider.GetConfig<IDiscoveryConfig>();
+            IDiscoveryConfig discoveryConfig = _context._configProvider.GetConfig<IDiscoveryConfig>();
 
-            var privateKeyProvider = new SameKeyGenerator(_nodeKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(_timestamper);
-            var nodeIdResolver = new NodeIdResolver(_ethereumEcdsa);
+            var privateKeyProvider = new SameKeyGenerator(_context._nodeKey);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_context._timestamper);
+            var nodeIdResolver = new NodeIdResolver(_context._ethereumEcdsa);
 
             IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
-                _messageSerializationService,
-                _ethereumEcdsa,
+                _context._messageSerializationService,
+                _context._ethereumEcdsa,
                 privateKeyProvider,
                 discoveryMessageFactory,
                 nodeIdResolver);
@@ -1065,61 +999,61 @@ namespace Nethermind.Runner.Runners
 
             var nodeDistanceCalculator = new NodeDistanceCalculator(discoveryConfig);
 
-            var nodeTable = new NodeTable(nodeDistanceCalculator, discoveryConfig, _networkConfig,  _logManager);
-            var evictionManager = new EvictionManager(nodeTable, _logManager);
+            var nodeTable = new NodeTable(nodeDistanceCalculator, discoveryConfig, _context.NetworkConfig,  _context.LogManager);
+            var evictionManager = new EvictionManager(nodeTable, _context.LogManager);
 
             var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(
                 nodeTable,
                 discoveryMessageFactory,
                 evictionManager,
-                _nodeStatsManager,
+                _context._nodeStatsManager,
                 discoveryConfig,
-                _logManager);
+                _context.LogManager);
 
-            var discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", DiscoveryNodesDbPath.GetApplicationResourcePath(_initConfig.BaseDbPath), _logManager);
+            var discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", _context.DiscoveryNodesDbPath.GetApplicationResourcePath(_context._initConfig.BaseDbPath), _context.LogManager);
             var discoveryStorage = new NetworkStorage(
                 discoveryDb,
-                _logManager);
+                _context.LogManager);
 
             var discoveryManager = new DiscoveryManager(
                 nodeLifeCycleFactory,
                 nodeTable,
                 discoveryStorage,
                 discoveryConfig,
-                _logManager);
+                _context.LogManager);
 
             var nodesLocator = new NodesLocator(
                 nodeTable,
                 discoveryManager,
                 discoveryConfig,
-                _logManager);
+                _context.LogManager);
 
-            _discoveryApp = new DiscoveryApp(
+            _context._discoveryApp = new DiscoveryApp(
                 nodesLocator,
                 discoveryManager,
                 nodeTable,
-                _messageSerializationService,
-                _cryptoRandom,
+                _context._messageSerializationService,
+                _context._cryptoRandom,
                 discoveryStorage,
-                _networkConfig,
+                _context.NetworkConfig,
                 discoveryConfig,
-                _timestamper,
-                _logManager);
+                _context._timestamper,
+                _context.LogManager);
 
-            _discoveryApp.Initialize(_nodeKey.PublicKey);
+            _context._discoveryApp.Initialize(_context._nodeKey.PublicKey);
         }
 
         private Task StartDiscovery()
         {
-            if (!_initConfig.DiscoveryEnabled)
+            if (!_context._initConfig.DiscoveryEnabled)
             {
-                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
+                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
-            _discoveryApp.Start();
-            if (_logger.IsDebug) _logger.Debug("Discovery process started.");
+            if (_context.Logger.IsDebug) _context.Logger.Debug("Starting discovery process.");
+            _context._discoveryApp.Start();
+            if (_context.Logger.IsDebug) _context.Logger.Debug("Discovery process started.");
             return Task.CompletedTask;
         }
 
@@ -1127,10 +1061,10 @@ namespace Nethermind.Runner.Runners
         {
             var pubSubModelMapper = new PubSubModelMapper();
             var avroMapper = new AvroMapper(blockTree);
-            var kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _logManager);
+            var kafkaProducer = new KafkaProducer(kafkaConfig, pubSubModelMapper, avroMapper, _context.LogManager);
             await kafkaProducer.InitAsync().ContinueWith(x =>
             {
-                if (x.IsFaulted && _logger.IsError) _logger.Error("Error during Kafka initialization", x.Exception);
+                if (x.IsFaulted && _context.Logger.IsError) _context.Logger.Error("Error during Kafka initialization", x.Exception);
             });
 
             return kafkaProducer;
@@ -1138,36 +1072,9 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitHive()
         {
-            if (_logger.IsInfo) _logger.Info("Initializing Hive");
-            _hiveRunner = new HiveRunner(_blockTree as BlockTree, _wallet as HiveWallet, _jsonSerializer, _configProvider, _logger);
-            await _hiveRunner.Start();
-        }
-
-        private void InitEthStats()
-        {
-            var config = _configProvider.GetConfig<IEthStatsConfig>();
-            if (!config.Enabled)
-            {
-                if (_logger.IsInfo) _logger.Info($"ETH Stats integration is disabled.");
-                return;
-            }
-
-            var instanceId = $"{config.Name}-{Keccak.Compute(_enode.Info)}";
-            if (_logger.IsInfo) _logger.Info($"Initializing ETH Stats for the instance: {instanceId}, server: {config.Server}");
-            var sender = new MessageSender(instanceId, _logManager);
-            const int reconnectionInterval = 5000;
-            const string api = "no";
-            const string client = "0.1.1";
-            const bool canUpdateHistory = false;
-            var node = ClientVersion.Description;
-            var port = _networkConfig.P2PPort;
-            var network = _specProvider.ChainId.ToString();
-            var protocol = _syncConfig.FastSync ? "eth/63" : "eth/62";
-            var ethStatsClient = new EthStatsClient(config.Server, reconnectionInterval, sender, _logManager);
-            var ethStatsIntegration = new EthStatsIntegration(config.Name, node, port, network, protocol, api, client,
-                config.Contact, canUpdateHistory, config.Secret, ethStatsClient, sender, _blockTree, _peerManager,
-                _logManager);
-            Task.Run(() => ethStatsIntegration.InitAsync());
+            if (_context.Logger.IsInfo) _context.Logger.Info("Initializing Hive");
+            _context._hiveRunner = new HiveRunner(_context.BlockTree as BlockTree, _context._wallet as HiveWallet, _context._jsonSerializer, _context._configProvider, _context.Logger);
+            await _context._hiveRunner.Start();
         }
     }
 }
