@@ -150,7 +150,7 @@ namespace Nethermind.AuRa.Validators
                 if (validator.ValidatorType.CanChangeImmediately())
                 {
                     SetCurrentValidator(block.Number, validator);
-                    if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
+                    if (_logger.IsInfo && notProducing) _logger.Info($"Immediately applying chainspec validator change signalled at block {block.ToString(Block.Format.Short)} to {validator.ValidatorType}.");
                 }
                 else if (_logger.IsInfo && notProducing) _logger.Info($"Signal for switch to chainspec {validator.ValidatorType} based validator set at block {block.ToString(Block.Format.Short)}.");
             }
@@ -171,7 +171,10 @@ namespace Nethermind.AuRa.Validators
             if (_blockFinalizationManager != null)
             {
                 _blockFinalizationManager.BlocksFinalized += OnBlocksFinalized;
-                InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
+                if (_blockFinalizationManager.LastFinalizedBlockLevel != 0)
+                {
+                    InitCurrentValidator(_blockFinalizationManager.LastFinalizedBlockLevel);
+                }
             }
 
             _currentValidator?.SetFinalizationManager(finalizationManager, forProducing);
