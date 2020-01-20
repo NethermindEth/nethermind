@@ -183,17 +183,15 @@ namespace Nethermind.AuRa.Test
             await Task.Delay(_stepDelay * 10);
             await _auRaBlockProducer.StopAsync();
             
-            return new TestResult(_auRaBlockProducer, q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
+            return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
         }
         
         private class TestResult
         {
-            private readonly AuRaBlockProducer _auRaBlockProducer;
             private readonly Action<Quantity> _assert;
 
-            public TestResult(AuRaBlockProducer auRaBlockProducer, Action<Quantity> assert)
+            public TestResult(Action<Quantity> assert)
             {
-                _auRaBlockProducer = auRaBlockProducer;
                 _assert = assert;
             }
 
