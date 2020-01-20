@@ -17,6 +17,7 @@
 using System.Numerics;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Specs;
 
 namespace Nethermind.Mining.Difficulty
 {

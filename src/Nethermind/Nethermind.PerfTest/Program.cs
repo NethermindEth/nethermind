@@ -38,7 +38,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Json;
 using Nethermind.Core.Serialization;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Db;
@@ -50,6 +49,7 @@ using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
+using Nethermind.Specs;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 

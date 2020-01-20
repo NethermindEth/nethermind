@@ -18,9 +18,8 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Core.Specs.GenesisFileStyle;
-using Nethermind.Network;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.GenesisFileStyle;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {

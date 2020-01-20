@@ -14,6 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System.Buffers.Binary;
+using Nethermind.Dirichlet.Numerics;
+
 namespace Nethermind.Core.Extensions
 {
     public static class Int64Extensions
@@ -122,6 +125,35 @@ namespace Nethermind.Core.Extensions
                 bytes[0] = byte0;
                 return bytes;    
             }
+        }
+        
+        public static string ToHexString(this long value, bool skipLeadingZeros)
+        {
+            if (value == UInt256.Zero)
+            {
+                return "0x";
+            }
+
+            byte[] bytes = new byte[8];
+            BinaryPrimitives.WriteInt64BigEndian(bytes, value);
+            return bytes.ToHexString(true, skipLeadingZeros, false);
+        }
+        
+        public static string ToHexString(this UInt256 value, bool skipLeadingZeros)
+        {
+            if (value == UInt256.Zero)
+            {
+                return "0x";
+            }
+
+            if (value == UInt256.One)
+            {
+                return "0x1";
+            }
+            
+            byte[] bytes = new byte[32];
+            value.ToBigEndian(bytes);
+            return bytes.ToHexString(true, skipLeadingZeros, false);
         }
     }
 }

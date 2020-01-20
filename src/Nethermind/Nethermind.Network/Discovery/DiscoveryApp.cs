@@ -27,6 +27,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;

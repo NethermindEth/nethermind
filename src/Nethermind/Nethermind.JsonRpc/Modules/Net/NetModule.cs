@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Net

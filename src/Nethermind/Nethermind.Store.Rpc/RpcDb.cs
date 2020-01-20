@@ -15,11 +15,11 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Store.Rpc
 {

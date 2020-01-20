@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Reflection;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 
 namespace Nethermind.Network
 {

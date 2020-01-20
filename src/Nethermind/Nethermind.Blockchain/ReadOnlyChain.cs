@@ -21,9 +21,11 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain

@@ -23,6 +23,7 @@ using Jint;
 using Jint.Native;
 using Jint.Native.Json;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 

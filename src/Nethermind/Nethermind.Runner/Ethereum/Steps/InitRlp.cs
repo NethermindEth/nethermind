@@ -17,6 +17,7 @@
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Serialization;
 using Nethermind.Evm.Tracing;
 using Nethermind.Network;

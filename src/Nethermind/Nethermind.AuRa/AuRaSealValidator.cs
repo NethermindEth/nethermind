@@ -23,6 +23,7 @@ using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.AuRa
 {

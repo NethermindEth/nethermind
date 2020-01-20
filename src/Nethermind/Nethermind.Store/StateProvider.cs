@@ -23,6 +23,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Benchmark")]

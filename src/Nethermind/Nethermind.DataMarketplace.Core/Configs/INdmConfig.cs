@@ -16,6 +16,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.DataMarketplace.Core.Configs

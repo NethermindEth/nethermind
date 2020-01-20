@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;

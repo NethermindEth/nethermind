@@ -19,7 +19,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Initializers;
@@ -30,6 +29,7 @@ using Nethermind.Monitoring;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.Runner.Ethereum

@@ -25,6 +25,7 @@ using Nethermind.Blockchain.TxPools;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Json;
 using Nethermind.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.DataMarketplace.Channels;

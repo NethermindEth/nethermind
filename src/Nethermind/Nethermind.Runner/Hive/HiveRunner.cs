@@ -24,6 +24,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Serialization;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Hive

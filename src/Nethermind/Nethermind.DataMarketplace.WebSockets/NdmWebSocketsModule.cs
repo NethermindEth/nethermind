@@ -20,8 +20,10 @@ using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
+using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.DataMarketplace.WebSockets

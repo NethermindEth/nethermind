@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
@@ -30,6 +31,8 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain

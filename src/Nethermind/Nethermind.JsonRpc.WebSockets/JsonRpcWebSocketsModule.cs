@@ -19,6 +19,7 @@ using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.JsonRpc.WebSockets

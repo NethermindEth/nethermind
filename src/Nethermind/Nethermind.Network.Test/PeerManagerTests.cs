@@ -25,7 +25,6 @@ using DotNetty.Transport.Channels;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;

@@ -27,10 +27,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Serialization;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Specs;
 using Nethermind.Wallet;
 using NSubstitute;
 

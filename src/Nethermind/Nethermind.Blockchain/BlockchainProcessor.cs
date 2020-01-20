@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Tracing;

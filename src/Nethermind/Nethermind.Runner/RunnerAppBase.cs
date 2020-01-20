@@ -23,7 +23,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Json;
+using Nethermind.Core.Attributes;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Channels.Grpc;
 using Nethermind.DataMarketplace.Consumers.Infrastructure;
@@ -45,6 +45,7 @@ using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
+using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 using NLog;
 using NLog.Config;
@@ -79,21 +80,21 @@ namespace Nethermind.Runner
 
         public void Run(string[] args)
         {
-            var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
+            (CommandLineApplication app, var buildConfigProvider, var getDbBasePath) = BuildCommandLineApp();
             ManualResetEventSlim appClosed = new ManualResetEventSlim(true);
             app.OnExecute(async () =>
             {
                 appClosed.Reset();
-                var configProvider = buildConfigProvider();
-                var initConfig = configProvider.GetConfig<IInitConfig>();
+                IConfigProvider configProvider = buildConfigProvider();
+                IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
                 LogManager.Configuration = new XmlLoggingConfiguration("NLog.config".GetApplicationResourcePath());
                 _logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
                 LogMemoryConfiguration();
 
-                var pathDbPath = getDbBasePath();
+                string pathDbPath = getDbBasePath();
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
-                    var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
+                    string newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
                     if (_logger.IsDebug) _logger.Debug($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
                     initConfig.BaseDbPath = newDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
                 }
@@ -101,7 +102,7 @@ namespace Nethermind.Runner
                 Console.Title = initConfig.LogFileName;
                 Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
-                var serializer = new EthereumJsonSerializer();
+                EthereumJsonSerializer serializer = new EthereumJsonSerializer();
                 if (_logger.IsInfo)
                 {
                     _logger.Info($"Nethermind config:\n{serializer.Serialize(initConfig, true)}\n");
@@ -135,17 +136,17 @@ namespace Nethermind.Runner
         {
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IJsonRpcConfig jsonRpcConfig = configProvider.GetConfig<IJsonRpcConfig>();
-            var metricOptions = configProvider.GetConfig<IMetricsConfig>();
-            var logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
+            IMetricsConfig metricOptions = configProvider.GetConfig<IMetricsConfig>();
+            NLogManager logManager = new NLogManager(initConfig.LogFileName, initConfig.LogDirectory);
             IRpcModuleProvider rpcModuleProvider = jsonRpcConfig.Enabled
                 ? new RpcModuleProvider(configProvider.GetConfig<IJsonRpcConfig>(), logManager)
                 : (IRpcModuleProvider) NullModuleProvider.Instance;
-            var jsonSerializer = new EthereumJsonSerializer();
-            var webSocketsManager = new WebSocketsManager();
+            EthereumJsonSerializer jsonSerializer = new EthereumJsonSerializer();
+            WebSocketsManager webSocketsManager = new WebSocketsManager();
             
             if (metricOptions.Enabled)
             {
-                var intervalSeconds = metricOptions.IntervalSeconds;
+                int intervalSeconds = metricOptions.IntervalSeconds;
                 _monitoringService = new MonitoringService(new MetricsUpdater(intervalSeconds),
                     metricOptions.PushGatewayUrl, ClientVersion.Description,
                     metricOptions.NodeName, intervalSeconds, logManager);
@@ -168,25 +169,25 @@ namespace Nethermind.Runner
             INdmDataPublisher ndmDataPublisher = null;
             INdmConsumerChannelManager ndmConsumerChannelManager = null;
             INdmInitializer ndmInitializer = null;
-            var ndmConfig = configProvider.GetConfig<INdmConfig>();
-            var ndmEnabled = ndmConfig.Enabled;
+            INdmConfig ndmConfig = configProvider.GetConfig<INdmConfig>();
+            bool ndmEnabled = ndmConfig.Enabled;
             if (ndmEnabled)
             {
                 ndmDataPublisher = new NdmDataPublisher();
                 ndmConsumerChannelManager = new NdmConsumerChannelManager();
-                var initializerName = ndmConfig.InitializerName;
+                string initializerName = ndmConfig.InitializerName;
                 if (_logger.IsInfo) _logger.Info($"NDM initializer: {initializerName}");
-                var ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
+                Type ndmInitializerType = AppDomain.CurrentDomain.GetAssemblies()
                     .SelectMany(a => a.GetTypes())
                     .FirstOrDefault(t =>
                         t.GetCustomAttribute<NdmInitializerAttribute>()?.Name == initializerName);
-                var ndmModule = new NdmModule();
-                var ndmConsumersModule = new NdmConsumersModule();
+                NdmModule ndmModule = new NdmModule();
+                NdmConsumersModule ndmConsumersModule = new NdmConsumersModule();
                 ndmInitializer = new NdmInitializerFactory(ndmInitializerType, ndmModule, ndmConsumersModule,
                     logManager).CreateOrFail();
             }
 
-            var grpcConfig = configProvider.GetConfig<IGrpcConfig>();
+            IGrpcConfig grpcConfig = configProvider.GetConfig<IGrpcConfig>();
             GrpcServer grpcServer = null;
             if (grpcConfig.Enabled)
             {
@@ -224,8 +225,8 @@ namespace Nethermind.Runner
             if (jsonRpcConfig.Enabled)
             {
                 rpcModuleProvider.Register(new SingletonModulePool<IWeb3Module>(new Web3Module(logManager), true));
-                var jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
-                var jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, logManager);
+                JsonRpcService jsonRpcService = new JsonRpcService(rpcModuleProvider, logManager);
+                JsonRpcProcessor jsonRpcProcessor = new JsonRpcProcessor(jsonRpcService, jsonSerializer, jsonRpcConfig, logManager);
                 if (initConfig.WebSocketsEnabled)
                 {
                     webSocketsManager.AddModule(new JsonRpcWebSocketsModule(jsonRpcProcessor, jsonSerializer));
@@ -254,7 +255,7 @@ namespace Nethermind.Runner
             _grpcRunner?.StopAsync();
             _monitoringService?.StopAsync();
             _jsonRpcRunner?.StopAsync(); // do not await
-            var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
+            Task ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
             await ethereumTask;
         }
     }

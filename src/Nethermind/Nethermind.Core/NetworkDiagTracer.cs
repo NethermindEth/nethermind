@@ -21,7 +21,6 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Timers;
-using System.Xml.XPath;
 
 namespace Nethermind.Core
 {

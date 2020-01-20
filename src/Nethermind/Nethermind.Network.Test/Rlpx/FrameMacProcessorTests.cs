@@ -15,7 +15,6 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;

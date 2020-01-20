@@ -18,7 +18,6 @@ using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Model;
 using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
 

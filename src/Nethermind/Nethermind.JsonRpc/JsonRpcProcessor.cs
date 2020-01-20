@@ -22,6 +22,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Json;
 using Nethermind.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;

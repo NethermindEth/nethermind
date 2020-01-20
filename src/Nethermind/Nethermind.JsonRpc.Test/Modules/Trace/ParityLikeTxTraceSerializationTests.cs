@@ -19,6 +19,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;

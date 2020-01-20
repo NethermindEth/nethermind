@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;

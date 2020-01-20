@@ -29,7 +29,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Serialization;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpecStyle;
 using Nethermind.Core.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
