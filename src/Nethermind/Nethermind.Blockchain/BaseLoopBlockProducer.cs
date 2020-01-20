@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -25,9 +26,12 @@ namespace Nethermind.Blockchain
 {
     public abstract class BaseLoopBlockProducer : BaseBlockProducer
     {
+        private const int ChainNotYetProcessedMillisecondsDelay = 100;
         private readonly string _name;
         private Task _producerTask;
-        protected readonly CancellationTokenSource CancellationTokenSource = new CancellationTokenSource();
+        private bool _canProduce = false;
+        private readonly CancellationTokenSource _loopCancellationTokenSource = new CancellationTokenSource();
+        private readonly CancellationTokenSource _stepCancellationTokenSource = new CancellationTokenSource();
         
         protected BaseLoopBlockProducer(
             IPendingTransactionSelector pendingTransactionSelector,
@@ -45,7 +49,10 @@ namespace Nethermind.Blockchain
 
         public override void Start()
         {
-            _producerTask = Task.Run(ProducerLoop, CancellationTokenSource.Token).ContinueWith(t =>
+            Processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
+            
+            _producerTask = Task.Run(ProducerLoop, _loopCancellationTokenSource.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -61,24 +68,46 @@ namespace Nethermind.Blockchain
                 }
             });
         }
-        
+
+        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
+        {
+            _canProduce = false;
+        }
+
+        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
+        {
+            _canProduce = true;
+        }
+
         public override async Task StopAsync()
         {
-            CancellationTokenSource?.Cancel();
+            Processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            
+            _loopCancellationTokenSource?.Cancel();
+            _stepCancellationTokenSource?.Cancel();
             await (_producerTask ?? Task.CompletedTask);
         }
         
         protected virtual async ValueTask ProducerLoop()
         {
-            while (!CancellationTokenSource.IsCancellationRequested)
+            while (!_loopCancellationTokenSource.IsCancellationRequested)
             {
-                await ProducerLoopStep();
+                if (_canProduce)
+                {
+                    await ProducerLoopStep(_stepCancellationTokenSource.Token);
+                }
+                else
+                {
+                    if (Logger.IsDebug) Logger.Debug("Delaying producing block, chain not processed yet.");
+                    await Task.Delay(ChainNotYetProcessedMillisecondsDelay);
+                }
             }
         }
 
-        protected virtual async ValueTask ProducerLoopStep()
+        protected virtual async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
-            await TryProduceNewBlock(CancellationTokenSource.Token);
+            await TryProduceNewBlock(cancellationToken);
         }
     }
 }

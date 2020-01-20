@@ -59,12 +59,12 @@ namespace Nethermind.AuRa
             _nodeAddress = nodeAddress ?? throw new ArgumentNullException(nameof(nodeAddress));
         }
 
-        protected override async ValueTask ProducerLoopStep()
+        protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
-            await base.ProducerLoopStep();
+            await base.ProducerLoopStep(cancellationToken);
             var timeToNextStep = _auRaStepCalculator.TimeToNextStep;
             if (Logger.IsDebug) Logger.Debug($"Waiting {timeToNextStep} for next AuRa step.");
-            await TaskExt.DelayAtLeast(timeToNextStep, CancellationTokenSource.Token);
+            await TaskExt.DelayAtLeast(timeToNextStep, cancellationToken);
 
         }
         

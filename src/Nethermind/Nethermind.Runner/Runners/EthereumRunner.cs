@@ -632,9 +632,19 @@ namespace Nethermind.Runner.Runners
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, allowStateModification);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_blockTree);
-                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _blockValidator, _rewardCalculator,
-                    _specProvider, minerDbProvider, _recoveryStep, _logManager, _txPool, _receiptStorage,
+                ReadOnlyChain producerChain = new ReadOnlyChain(
+                    readOnlyBlockTree,
+                    _blockValidator,
+                    _rewardCalculator,
+                    _specProvider,
+                    minerDbProvider,
+                    _recoveryStep,
+                    _logManager,
+                    _txPool,
+                    _receiptStorage,
+                    _blockchainProcessor,
                     createAdditionalBlockProcessors);
+                
                 return producerChain;
             }
 

@@ -51,10 +51,10 @@ namespace Nethermind.Blockchain
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp) => 1;
 
-        protected override async ValueTask ProducerLoopStep()
+        protected override async ValueTask ProducerLoopStep(CancellationToken cancellationToken)
         {
-            await base.ProducerLoopStep();
-            await Task.Delay(DelayBetweenBlocks, CancellationTokenSource.Token);
+            await base.ProducerLoopStep(cancellationToken);
+            await Task.Delay(DelayBetweenBlocks, cancellationToken);
         }
     }
 }
