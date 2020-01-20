@@ -199,7 +199,7 @@ web3.py
 
  You may use below script in order to check your connection.
  Please make sure you have enabled JSON RPC module, this can be done by passing flag ``--JsonRpc.Enabled true``
- 
+
 ::
 
  from web3.auto import w3
@@ -215,3 +215,9 @@ web3.py
      client = None
      print(client)
 
+ You should see the following output (depends on the node version):
+
+::
+
+ True
+ Nethermind/v1.4.8-13-5c66dcdf6-20200120/X64-Linux 5.3.2-050302-generic/Core3.1.1
