@@ -180,7 +180,7 @@ namespace Nethermind.AuRa.Test
                 _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
             }
             
-            await Task.Delay(_stepDelay * 10);
+            await Task.Delay(_stepDelay * 20);
             await _auRaBlockProducer.StopAsync();
             
             return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
