@@ -31,6 +31,7 @@ using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
 using NUnit.Framework.Interfaces;
+using NUnit.Framework.Internal;
 
 namespace Nethermind.AuRa.Test
 {
@@ -90,39 +91,34 @@ namespace Nethermind.AuRa.Test
         [Test]
         public async Task Produces_block()
         {
-            await StartStop();
-            _blockTree.Received(Quantity.AtLeastOne()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_ProcessingQueueEmpty_not_raised()
         {
-            await StartStop(false);
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop(false)).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_QueueNotEmpty()
         {
             _blockProcessingQueue.IsEmpty.Returns(false);
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_cannot_seal()
         {
             _sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(false);
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_ForceSealing_is_false_and_no_transactions()
         {
             _auraConfig.ForceSealing.Returns(false);
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
@@ -130,53 +126,50 @@ namespace Nethermind.AuRa.Test
         {
             _auraConfig.ForceSealing.Returns(false);
             _pendingTransactionSelector.SelectTransactions(Arg.Any<long>()).Returns(new[] {Build.A.Transaction.TestObject});
-            await StartStop();
-            _blockTree.Received(Quantity.AtLeastOne()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.AtLeastOne());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_sealing_fails()
         {
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromException(new Exception()));
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_sealing_cancels()
         {
             _sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromCanceled(new CancellationToken(true)));
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_head_is_null()
         {
             _blockTree.Head.Returns((BlockHeader) null);
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_processing_fails()
         {
             _blockchainProcessor.Process(Arg.Any<Block>(), ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>()).Returns((Block) null);
-            await StartStop();
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop()).ShouldProduceBlocs(Quantity.None());
         }
         
         [Test]
         public async Task Doesnt_Produce_block_when_there_is_new_best_suggested_block_not_yet_processed()
         {
-            await StartStop(true, true);
-            _blockTree.Received(Quantity.None()).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>());
+            (await StartStop(true, true)).ShouldProduceBlocs(Quantity.None());
         }
 
 
-        private async Task StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
+        private async Task<TestResult> StartStop(bool processingQueueEmpty = true, bool newBestSuggestedBlock = false)
         {
             _auRaBlockProducer.Start();
+            
+            _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
+            
             if (processingQueueEmpty)
             {
                 _blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
@@ -186,8 +179,26 @@ namespace Nethermind.AuRa.Test
             {
                 _blockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
             }
+            
             await Task.Delay(_stepDelay * 1.5);
             await _auRaBlockProducer.StopAsync();
+            
+            return new TestResult(q => _blockTree.Received(q).SuggestBlock(Arg.Any<Block>(), Arg.Any<bool>()));
+        }
+        
+        private class TestResult
+        {
+            private readonly Action<Quantity> _assert;
+
+            public TestResult(Action<Quantity> assert)
+            {
+                _assert = assert;
+            }
+
+            public void ShouldProduceBlocs(Quantity quantity)
+            {
+                _assert(quantity);
+            }
         }
     }
 }
