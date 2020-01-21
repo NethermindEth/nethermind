@@ -27,11 +27,13 @@ namespace Nethermind.Serialization.Json
     {
         private JsonSerializer _internalSerializer;
         private JsonSerializer _internalReadableSerializer;
+        
+        private JsonSerializerSettings _settings;
+        private JsonSerializerSettings _readableSettings;
 
         public EthereumJsonSerializer()
         {
-            _internalSerializer = JsonSerializer.Create(_settings);
-            _internalReadableSerializer = JsonSerializer.Create(_readableSettings);
+            RebuildSerializers();
         }
 
         public static IList<JsonConverter> BasicConverters { get; } = new List<JsonConverter>
@@ -64,22 +66,6 @@ namespace Nethermind.Serialization.Json
             new PublicKeyConverter()
         };
 
-        private static JsonSerializerSettings _settings = new JsonSerializerSettings
-        {
-            ContractResolver = new CamelCasePropertyNamesContractResolver(),
-            NullValueHandling = NullValueHandling.Ignore,
-            Formatting = Formatting.None,
-            Converters = BasicConverters
-        };
-
-        private static JsonSerializerSettings _readableSettings = new JsonSerializerSettings
-        {
-            ContractResolver = new CamelCasePropertyNamesContractResolver(),
-            NullValueHandling = NullValueHandling.Ignore,
-            Formatting = Formatting.Indented,
-            Converters = ReadableConverters
-        };
-        
         public T Deserialize<T>(string json)
         {
             using StringReader reader = new StringReader(json);
@@ -128,6 +114,11 @@ namespace Nethermind.Serialization.Json
             BasicConverters.Add(converter);
             ReadableConverters.Add(converter);
 
+            RebuildSerializers();
+        }
+
+        private void RebuildSerializers()
+        {
             _readableSettings = new JsonSerializerSettings
             {
                 ContractResolver = new CamelCasePropertyNamesContractResolver(),
