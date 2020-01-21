@@ -26,10 +26,10 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
