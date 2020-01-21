@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -25,6 +26,7 @@ namespace Nethermind.Runner.Ethereum.Steps
     [RunnerStepDependency(typeof(SetupKeyStore))]
     public class LoadChainspec : IStep
     {
+        private string chainspecDir;
         private readonly EthereumRunnerContext _context;
 
         public LoadChainspec(EthereumRunnerContext context)
@@ -40,12 +42,33 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void LoadChainSpec()
         {
+
             IInitConfig initConfig = _context.Config<IInitConfig>();
-            if (_context.Logger.IsInfo) _context.Logger.Info($"Loading chain spec from {initConfig.ChainSpecPath}");
+
+            if (!string.IsNullOrEmpty(initConfig.ChainSpecDirectory))
+            {
+                chainspecDir = initConfig.ChainSpecDirectory;
+
+                if (initConfig.ChainSpecDirectory.Contains("chainspec/")) 
+                {
+                    chainspecDir = initConfig.ChainSpecDirectory.Replace("chainspec/", "");
+                } 
+                else if (initConfig.ChainSpecDirectory.Contains("chainspec"))
+                {
+                    chainspecDir = initConfig.ChainSpecDirectory.Replace("chainspec", "");
+                }
+                chainspecDir = Path.Combine(chainspecDir, initConfig.ChainSpecPath);
+            } 
+            else 
+            {
+                chainspecDir = initConfig.ChainSpecPath;
+            }
+
+            if (_context.Logger.IsInfo) _context.Logger.Info($"Loading chain spec from {chainspecDir}");
 
             IChainSpecLoader loader = new ChainSpecLoader(_context.EthereumJsonSerializer);
 
-            _context.ChainSpec = loader.LoadFromFile(initConfig.ChainSpecPath);
+            _context.ChainSpec = loader.LoadFromFile(chainspecDir);
             _context.ChainSpec.Bootnodes = _context.ChainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_context.NodeKey.PublicKey) ?? false).ToArray() ?? new NetworkNode[0];
         }
     }
