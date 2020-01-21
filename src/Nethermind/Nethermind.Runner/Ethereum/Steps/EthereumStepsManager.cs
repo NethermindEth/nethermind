@@ -151,7 +151,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 await step.Execute();
                 _hasFinishedExecution[discoveredStep] = true;
                 stopwatch.Stop();
-                if (_logger.IsDebug) _logger.Debug($"Step {step.GetType().Name} executed in {stopwatch.ElapsedMilliseconds}ms");
+                if (_logger.IsInfo) _logger.Info($"Step {step.GetType().Name.PadRight(24)} executed in {stopwatch.ElapsedMilliseconds}ms");
             }
         }
 

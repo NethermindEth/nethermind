@@ -75,7 +75,7 @@ namespace Nethermind.Runner.Ethereum
             stepsManager.DiscoverAll();
             await stepsManager.InitializeAll();
             
-            if (_context.Logger.IsDebug) _context.Logger.Debug("============== Nethermind initialization completed ==============");
+            if (_context.Logger.IsInfo) _context.Logger.Info("============== Nethermind initialization completed ==============");
             
             ThisNodeInfo.LogAll(_context.Logger);
         }

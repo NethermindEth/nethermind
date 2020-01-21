@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Logging;
 
 namespace Nethermind.Core
@@ -39,10 +40,12 @@ namespace Nethermind.Core
         {
             if (logger.IsInfo)
             {
-                foreach ((string key, string value) in _nodeInfoItems)
+                foreach ((string key, string value) in _nodeInfoItems.OrderByDescending(ni => ni.Key))
                 {
                     logger.Info($"{key} {value}"); // TODO: align nicely
                 }
+                
+                logger.Info("=================================================================");
             }
         }
     }
