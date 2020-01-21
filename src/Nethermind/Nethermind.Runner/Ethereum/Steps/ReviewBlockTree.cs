@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
@@ -30,7 +31,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute()
         {
-            if (_context.InitConfig.ProcessingEnabled)
+            if (_context.Config<IInitConfig>().ProcessingEnabled)
             {
 #pragma warning disable 4014
                 RunBlockTreeInitTasks();
@@ -45,12 +46,12 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private async Task RunBlockTreeInitTasks()
         {
-            if (!_context.SyncConfig.SynchronizationEnabled)
+            if (!_context.Config<ISyncConfig>().SynchronizationEnabled)
             {
                 return;
             }
 
-            if (!_context.SyncConfig.FastSync)
+            if (!_context.Config<ISyncConfig>().FastSync)
             {
                 await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
                 {

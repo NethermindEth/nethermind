@@ -43,7 +43,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            IInitConfig jsonRpcConfig = _context.ConfigProvider.GetConfig<IInitConfig>();
+            IInitConfig jsonRpcConfig = _context.Config<IInitConfig>();
             if (!jsonRpcConfig.IsMining)
             {
                 return Task.CompletedTask;
@@ -100,7 +100,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, new AbiEncoder(), t, b, _context.ReceiptStorage, _context.ValidatorStore, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
                     PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
-                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.ConfigProvider.GetConfig<IAuraConfig>(), _context.NodeKey.Address);
+                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.Config<IAuraConfig>(), _context.NodeKey.Address);
                     validator.SetFinalizationManager(_context.FinalizationManager, true);
                     break;
                 }

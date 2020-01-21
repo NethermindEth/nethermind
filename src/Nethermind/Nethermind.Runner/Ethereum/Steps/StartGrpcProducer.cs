@@ -22,6 +22,7 @@ using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency(typeof(InitializeNetwork))]
     public class StartGrpcProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
@@ -38,20 +39,20 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            IGrpcConfig grpcConfig = _context.ConfigProvider.GetConfig<IGrpcConfig>();
+            IGrpcConfig grpcConfig = _context.Config<IGrpcConfig>();
             if (!grpcConfig.Enabled)
             {
                 return Task.CompletedTask;
             }
-            
+
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Initializing));
-            
+
             if (grpcConfig.ProducerEnabled)
             {
                 GrpcProducer grpcProducer = new GrpcProducer(_context.GrpcServer);
                 _context.Producers.Add(grpcProducer);
             }
-            
+
             SubsystemStateChanged?.Invoke(this, new SubsystemStateEventArgs(EthereumSubsystemState.Running));
             return Task.CompletedTask;
         }

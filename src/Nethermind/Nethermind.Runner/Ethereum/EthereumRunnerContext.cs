@@ -74,7 +74,6 @@ namespace Nethermind.Runner.Ethereum
 
         public IRpcModuleProvider RpcModuleProvider;
         public IConfigProvider ConfigProvider;
-        public IInitConfig InitConfig;
         public IIpResolver IpResolver;
         public PrivateKey NodeKey;
         public ChainSpec ChainSpec;
@@ -112,7 +111,6 @@ namespace Nethermind.Runner.Ethereum
         public IWallet Wallet;
         public IEnode Enode;
         public ISessionMonitor SessionMonitor;
-        public ISyncConfig SyncConfig;
         public IStaticNodesManager StaticNodesManager;
         public ITransactionProcessor TransactionProcessor;
         public ITxPoolInfoProvider TxPoolInfoProvider;

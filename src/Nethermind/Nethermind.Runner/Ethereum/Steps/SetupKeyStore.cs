@@ -35,26 +35,26 @@ namespace Nethermind.Runner.Ethereum.Steps
         public Task Execute()
         {
             var encrypter = new AesEncrypter(
-                _context.ConfigProvider.GetConfig<IKeyStoreConfig>(),
+                _context.Config<IKeyStoreConfig>(),
                 _context.LogManager);
 
             _context.KeyStore = new FileKeyStore(
-                _context.ConfigProvider.GetConfig<IKeyStoreConfig>(),
+                _context.Config<IKeyStoreConfig>(),
                 _context.EthereumJsonSerializer,
                 encrypter,
                 _context.CryptoRandom,
                 _context.LogManager);
 
-            _context.Wallet = _context.InitConfig switch
+            _context.Wallet = _context.Config<IInitConfig>() switch
             {
                 var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory
-                => new DevWallet(_context.ConfigProvider.GetConfig<IWalletConfig>(), _context.LogManager),
+                => new DevWallet(_context.Config<IWalletConfig>(), _context.LogManager),
                 var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory
                 => new DevKeyStoreWallet(_context.KeyStore, _context.LogManager),
                 _ => NullWallet.Instance
             };
 
-            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, _context.ConfigProvider.GetConfig<IKeyStoreConfig>(), _context.LogManager);
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, _context.Config<IKeyStoreConfig>(), _context.LogManager);
             _context.NodeKey = nodeKeyManager.LoadNodeKey();
             _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
             

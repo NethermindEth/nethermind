@@ -16,6 +16,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EthStats;
@@ -26,6 +27,7 @@ using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency(typeof(LoadChainspec))]
     public class StartEthStatsClient : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;
@@ -43,7 +45,7 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public async Task Execute()
         {
-            IEthStatsConfig ethStatsConfig = _context.ConfigProvider.GetConfig<IEthStatsConfig>();
+            IEthStatsConfig ethStatsConfig = _context.Config<IEthStatsConfig>();
             if (!ethStatsConfig.Enabled)
             {
                 return;
@@ -61,7 +63,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             string node = ClientVersion.Description;
             int port = _context.NetworkConfig.P2PPort;
             string network = _context.SpecProvider.ChainId.ToString();
-            string protocol = _context.SyncConfig.FastSync ? "eth/63" : "eth/62";
+            string protocol = _context.Config<ISyncConfig>().FastSync ? "eth/63" : "eth/62";
             
             EthStatsClient ethStatsClient = new EthStatsClient(
                 ethStatsConfig.Server,

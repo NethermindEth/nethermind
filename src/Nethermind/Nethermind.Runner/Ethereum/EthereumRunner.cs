@@ -57,9 +57,8 @@ namespace Nethermind.Runner.Ethereum
 
             _context.ConfigProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
             _context.RpcModuleProvider = rpcModuleProvider ?? throw new ArgumentNullException(nameof(rpcModuleProvider));
-            _context.InitConfig = configurationProvider.GetConfig<IInitConfig>();
 
-            _context.NetworkConfig = _context.ConfigProvider.GetConfig<INetworkConfig>();
+            _context.NetworkConfig = _context.Config<INetworkConfig>();
             _context.IpResolver = new IpResolver(_context.NetworkConfig, _context.LogManager);
             _context.NetworkConfig.ExternalIp = _context.IpResolver.ExternalIp.ToString();
             _context.NetworkConfig.LocalIp = _context.IpResolver.LocalIp.ToString();

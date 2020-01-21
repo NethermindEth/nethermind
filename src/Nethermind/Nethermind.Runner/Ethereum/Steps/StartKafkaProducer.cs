@@ -24,6 +24,7 @@ using Nethermind.Runner.Ethereum.Subsystems;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
+    [RunnerStepDependency(typeof(InitializeNetwork))]
     public class StartKafkaProducer : IStep, ISubsystemStateAware
     {
         private readonly EthereumRunnerContext _context;

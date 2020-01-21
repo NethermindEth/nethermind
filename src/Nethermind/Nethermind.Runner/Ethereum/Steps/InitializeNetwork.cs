@@ -47,7 +47,7 @@ using Nethermind.Store.BeamSync;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitializeBlockchain), typeof(UpdateDiscoveryConfig), typeof(LoadChainspec), typeof(SetupKeyStore))]
+    [RunnerStepDependency(typeof(LoadGenesisBlock), typeof(UpdateDiscoveryConfig), typeof(LoadChainspec), typeof(SetupKeyStore))]
     public class InitializeNetwork : IStep
     {
         private const string DiscoveryNodesDbPath = "discoveryNodes";
@@ -74,10 +74,10 @@ namespace Nethermind.Runner.Ethereum.Steps
             }
 
             int maxPeersCount = _context.NetworkConfig.ActivePeersMaxCount;
-            _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, _context.SyncConfig, maxPeersCount, _context.LogManager);
+            _context.SyncPeerPool = new EthSyncPeerPool(_context.BlockTree, _context.NodeStatsManager, _context.Config<ISyncConfig>(), maxPeersCount, _context.LogManager);
             NodeDataFeed feed = new NodeDataFeed(_context.DbProvider.CodeDb, _context.DbProvider.StateDb, _context.LogManager);
             NodeDataDownloader nodeDataDownloader = new NodeDataDownloader(_context.SyncPeerPool, feed, NullDataConsumer.Instance, _context.LogManager);
-            _context.Synchronizer = new Synchronizer(_context.SpecProvider, _context.BlockTree, _context.ReceiptStorage, _context.BlockValidator, _context.SealValidator, _context.SyncPeerPool, _context.SyncConfig, nodeDataDownloader, _context.NodeStatsManager, _context.LogManager);
+            _context.Synchronizer = new Synchronizer(_context.SpecProvider, _context.BlockTree, _context.ReceiptStorage, _context.BlockValidator, _context.SealValidator, _context.SyncPeerPool, _context.Config<ISyncConfig>(), nodeDataDownloader, _context.NodeStatsManager, _context.LogManager);
             _context.DisposeStack.Push(_context.Synchronizer);
 
             _context.SyncServer = new SyncServer(
@@ -89,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.SealValidator,
                 _context.SyncPeerPool,
                 _context.Synchronizer,
-                _context.SyncConfig,
+                _context.Config<ISyncConfig>(),
                 _context.LogManager);
 
             InitDiscovery();
@@ -134,7 +134,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private Task StartDiscovery()
         {
-            if (!_context.InitConfig.DiscoveryEnabled)
+            if (!_context.Config<IInitConfig>().DiscoveryEnabled)
             {
                 if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
                 return Task.CompletedTask;
@@ -148,9 +148,9 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void StartPeer()
         {
-            if (!_context.InitConfig.PeerManagerEnabled)
+            if (!_context.Config<IInitConfig>().PeerManagerEnabled)
             {
-                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping peer manager init due to {nameof(_context.InitConfig.PeerManagerEnabled)} set to false)");
+                if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping peer manager init due to {nameof(IInitConfig.PeerManagerEnabled)} set to false)");
             }
 
             if (_context.Logger.IsDebug) _context.Logger.Debug("Initializing peer manager");
@@ -161,13 +161,13 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void InitDiscovery()
         {
-            if (!_context.InitConfig.DiscoveryEnabled)
+            if (!_context.Config<IInitConfig>().DiscoveryEnabled)
             {
                 _context.DiscoveryApp = new NullDiscoveryApp();
                 return;
             }
 
-            IDiscoveryConfig discoveryConfig = _context.ConfigProvider.GetConfig<IDiscoveryConfig>();
+            IDiscoveryConfig discoveryConfig = _context.Config<IDiscoveryConfig>();
 
             SameKeyGenerator privateKeyProvider = new SameKeyGenerator(_context.NodeKey);
             DiscoveryMessageFactory discoveryMessageFactory = new DiscoveryMessageFactory(_context.Timestamper);
@@ -195,7 +195,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 discoveryConfig,
                 _context.LogManager);
 
-            SimpleFilePublicKeyDb discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", DiscoveryNodesDbPath.GetApplicationResourcePath(_context.InitConfig.BaseDbPath), _context.LogManager);
+            SimpleFilePublicKeyDb discoveryDb = new SimpleFilePublicKeyDb("DiscoveryDB", DiscoveryNodesDbPath.GetApplicationResourcePath(_context.Config<IInitConfig>().BaseDbPath), _context.LogManager);
             NetworkStorage discoveryStorage = new NetworkStorage(
                 discoveryDb,
                 _context.LogManager);
@@ -230,7 +230,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
           private Task StartSync()
         {
-            if (!_context.SyncConfig.SynchronizationEnabled)
+            if (!_context.Config<ISyncConfig>().SynchronizationEnabled)
             {
                 if (_context.Logger.IsWarn) _context.Logger.Warn($"Skipping blockchain synchronization init due to ({nameof(ISyncConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
@@ -258,7 +258,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context._messageSerializationService.Register(Assembly.GetAssembly(typeof(HiMessageSerializer)));
 
-            IDiscoveryConfig discoveryConfig = _context.ConfigProvider.GetConfig<IDiscoveryConfig>();
+            IDiscoveryConfig discoveryConfig = _context.Config<IDiscoveryConfig>();
+            IInitConfig initConfig = _context.Config<IInitConfig>();
 
             _context.SessionMonitor = new SessionMonitor(_context.NetworkConfig, _context.LogManager);
             _context.RlpxPeer = new RlpxPeer(
@@ -271,10 +272,10 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             await _context.RlpxPeer.Init();
 
-            _context.StaticNodesManager = new StaticNodesManager(_context.InitConfig.StaticNodesPath, _context.LogManager);
+            _context.StaticNodesManager = new StaticNodesManager(initConfig.StaticNodesPath, _context.LogManager);
             await _context.StaticNodesManager.InitAsync();
 
-            SimpleFilePublicKeyDb peersDb = new SimpleFilePublicKeyDb("PeersDB", PeersDbPath.GetApplicationResourcePath(_context.InitConfig.BaseDbPath), _context.LogManager);
+            SimpleFilePublicKeyDb peersDb = new SimpleFilePublicKeyDb("PeersDB", PeersDbPath.GetApplicationResourcePath(initConfig.BaseDbPath), _context.LogManager);
             NetworkStorage peerStorage = new NetworkStorage(peersDb, _context.LogManager);
 
             ProtocolValidator protocolValidator = new ProtocolValidator(_context.NodeStatsManager, _context.BlockTree, _context.LogManager);
@@ -284,7 +285,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (_context.Logger.IsInfo) _context.Logger.Info($"Initializing NDM...");
                 _context.HttpClient = new DefaultHttpClient(new HttpClient(), _context.EthereumJsonSerializer, _context.LogManager);
-                INdmConfig ndmConfig = _context.ConfigProvider.GetConfig<INdmConfig>();
+                INdmConfig ndmConfig = _context.Config<INdmConfig>();
                 if (ndmConfig.ProxyEnabled)
                 {
                     _context.JsonRpcClientProxy = new JsonRpcClientProxy(_context.HttpClient, ndmConfig.JsonRpcUrlProxies,
@@ -295,11 +296,11 @@ namespace Nethermind.Runner.Ethereum.Steps
                 FilterStore filterStore = new FilterStore();
                 FilterManager filterManager = new FilterManager(filterStore, _context.BlockProcessor, _context.TxPool, _context.LogManager);
                 INdmCapabilityConnector capabilityConnector = await _context.NdmInitializer.InitAsync(_context.ConfigProvider, _context.DbProvider,
-                    _context.InitConfig.BaseDbPath, _context.BlockTree, _context.TxPool, _context.SpecProvider, _context.ReceiptStorage, _context.Wallet, filterStore,
+                    initConfig.BaseDbPath, _context.BlockTree, _context.TxPool, _context.SpecProvider, _context.ReceiptStorage, _context.Wallet, filterStore,
                     filterManager, _context.Timestamper, _context.EthereumEcdsa, _context.RpcModuleProvider, _context.KeyStore, _context.EthereumJsonSerializer,
                     _context.CryptoRandom, _context.Enode, _context.NdmConsumerChannelManager, _context.NdmDataPublisher, _context.GrpcServer,
                     _context.NodeStatsManager, _context.ProtocolsManager, protocolValidator, _context._messageSerializationService,
-                    _context.InitConfig.EnableUnsecuredDevWallet, _context.WebSocketsManager, _context.LogManager, _context.BlockProcessor,
+                    initConfig.EnableUnsecuredDevWallet, _context.WebSocketsManager, _context.LogManager, _context.BlockProcessor,
                     _context.JsonRpcClientProxy, _context.EthJsonRpcClientProxy, _context.HttpClient, _context.MonitoringService);
                 capabilityConnector.Init();
                 if (_context.Logger.IsInfo) _context.Logger.Info($"NDM initialized.");
