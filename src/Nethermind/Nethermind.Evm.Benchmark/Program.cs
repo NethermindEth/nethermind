@@ -30,6 +30,9 @@ namespace Nethermind.Evm.Benchmark
                 DefaultConfig.Instance.With(
                     Job.Default.With(CoreRuntime.Core30).With(
                         new[] {new EnvironmentVariable("NETH.BENCHMARK.BYTECODE", args.Any() ? args[0] : "0x")})));
+            // BenchmarkRunner.Run<EvmPushUIntBenchmarks>();
+            // BenchmarkRunner.Run<EvmPopIntBenchmarks>();
+            // BenchmarkRunner.Run<EvmPushSignedIntBenchmarks>();
         }
     }
 }

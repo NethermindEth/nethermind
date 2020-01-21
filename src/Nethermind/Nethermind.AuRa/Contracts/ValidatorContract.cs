@@ -83,9 +83,9 @@ namespace Nethermind.AuRa.Contracts
             _getValidatorsTransactionData = _abiEncoder.Encode(Definition.getValidators);
         }
 
-        public Transaction FinalizeChange() => GenerateTransaction(_finalizeChangeTransactionData);
+        public Transaction FinalizeChange() => GenerateTransaction(_finalizeChangeTransactionData, Address.SystemUser);
 
-        public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData);
+        public Transaction GetValidators() => GenerateTransaction(_getValidatorsTransactionData, ContractAddress);
 
         public bool CheckInitiateChangeEvent(Address contractAddress, BlockHeader blockHeader, TxReceipt[] receipts, out Address[] addresses)
         {

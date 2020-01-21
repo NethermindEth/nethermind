@@ -54,11 +54,5 @@ namespace Nethermind.Blockchain
                 return result;
             }
         }
-
-        public event EventHandler ProcessingQueueEmpty
-        {
-            add { }
-            remove { }
-        }
     }
 }

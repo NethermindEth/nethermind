@@ -36,8 +36,6 @@ namespace Nethermind.Blockchain
 {
     public class MinedBlockProducer : BaseBlockProducer
     {
-        private readonly IBlockchainProcessor _processor;
-        private readonly IBlockTree _blockTree;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly object _syncToken = new object();
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
@@ -47,14 +45,13 @@ namespace Nethermind.Blockchain
             IBlockchainProcessor processor,
             ISealer sealer,
             IBlockTree blockTree,
+            IBlockProcessingQueue blockProcessingQueue,
             IStateProvider stateProvider,
             ITimestamper timestamper,
             ILogManager logManager,
             IDifficultyCalculator difficultyCalculator) 
-            : base(pendingTransactionSelector, processor, sealer, blockTree, stateProvider, timestamper, logManager)
+            : base(pendingTransactionSelector, processor, sealer, blockTree, blockProcessingQueue, stateProvider, timestamper, logManager)
         {
-            _processor = processor ?? throw new ArgumentNullException(nameof(processor));;
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));;
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
         }
 
@@ -80,14 +77,14 @@ namespace Nethermind.Blockchain
 
         public override void Start()
         {
-            _processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
-            _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
+            BlockProcessingQueue.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
+            BlockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
         }
 
         public override async Task StopAsync()
         {
-            _processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
-            _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
+            BlockProcessingQueue.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
+            BlockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             
             lock (_syncToken)
             {
@@ -99,7 +96,7 @@ namespace Nethermind.Blockchain
 
         protected override UInt256 CalculateDifficulty(BlockHeader parent, UInt256 timestamp)
         {
-            Block parentBlock = _blockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
+            Block parentBlock = BlockTree.FindBlock(parent.Hash, BlockTreeLookupOptions.None);
             return _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, timestamp, parent.Number + 1, parentBlock.Ommers.Length > 0);
         }
     }

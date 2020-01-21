@@ -177,6 +177,8 @@ namespace Nethermind.Specs.ChainSpecStyle
                     BlockReward = chainSpecJson.Engine.AuthorityRound.BlockReward,
                     BlockRewardContractAddress = chainSpecJson.Engine.AuthorityRound.BlockRewardContractAddress,
                     BlockRewardContractTransition = chainSpecJson.Engine.AuthorityRound.BlockRewardContractTransition,
+                    ValidateScoreTransition = chainSpecJson.Engine.AuthorityRound.ValidateScoreTransition,
+                    ValidateStepTransition = chainSpecJson.Engine.AuthorityRound.ValidateStepTransition,
                     Validators = LoadValidator(chainSpecJson.Engine.AuthorityRound.Validator)
                 };
             }

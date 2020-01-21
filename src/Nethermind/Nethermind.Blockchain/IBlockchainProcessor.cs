@@ -14,7 +14,6 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,6 +26,5 @@ namespace Nethermind.Blockchain
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
         Block Process(Block block, ProcessingOptions options, IBlockTracer listener);
-        event EventHandler ProcessingQueueEmpty;
     }
 }

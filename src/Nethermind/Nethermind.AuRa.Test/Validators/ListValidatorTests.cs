@@ -35,15 +35,18 @@ namespace Nethermind.AuRa.Test.Validators
 {
     public class ListValidatorTests
     {
+        private ValidSealerStrategy _validSealerStrategy;
+
         private ListValidator GetListValidator(params Address[] address)
         {
             var logManager = Substitute.For<ILogManager>();
+            _validSealerStrategy = new ValidSealerStrategy();
             var validator = new ListValidator(
                 new AuRaParameters.Validator()
                 {
                     ValidatorType = AuRaParameters.ValidatorType.List,
                     Addresses = address
-                }, logManager);
+                }, _validSealerStrategy, logManager);
             
             return validator;
         }
@@ -60,11 +63,10 @@ namespace Nethermind.AuRa.Test.Validators
                 yield return new TestCaseData(TestItem.AddressC, 1L) {ExpectedResult = false};
             }
         }
-        
+
         [TestCaseSource(nameof(ValidateTestCases))]
         public bool should_validate_correctly(Address address, long index) =>
-            GetListValidator(TestItem.AddressA, TestItem.AddressB)
-                .IsValidSealer(address, index);
+            _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index);
 
         [TestCase(1)]
         [TestCase(2)]
@@ -72,8 +74,7 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(10)]
         public void should_get_current_sealers_count(int validatorCount)
         {
-            GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray())
-                .CurrentSealersCount.Should().Be(validatorCount);
+            GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.Length.Should().Be(validatorCount);
         }
         
         [TestCase(1, ExpectedResult = 1)]
@@ -86,13 +87,13 @@ namespace Nethermind.AuRa.Test.Validators
         [TestCase(10, ExpectedResult = 6)]
         [TestCase(100, ExpectedResult = 51)]
         public int should_get_min_sealers_for_finalization(int validatorCount) => 
-            GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).MinSealersForFinalization;
+            GetListValidator(TestItem.Addresses.Take(validatorCount).ToArray()).Validators.MinSealersForFinalization();
 
         [Test]
         public void throws_ArgumentNullException_on_empty_validator()
         {
             var logManager = Substitute.For<ILogManager>();
-            Action act = () => new ListValidator(null, logManager); 
+            Action act = () => new ListValidator(null, new ValidSealerStrategy(), logManager); 
             act.Should().Throw<ArgumentNullException>();
         }
         

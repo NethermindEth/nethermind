@@ -1,4 +1,4 @@
-//  Copyright (c) 2018 Demerzel Solutions Limited
+﻿//  Copyright (c) 2018 Demerzel Solutions Limited
 //  This file is part of the Nethermind library.
 // 
 //  The Nethermind library is free software: you can redistribute it and/or modify
@@ -14,13 +14,14 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using System;
 
-namespace Nethermind.AuRa.Validators
+namespace Nethermind.Blockchain
 {
-    internal static class AuRaValidatorsCollectionExtensions
+    public interface IBlockProcessingQueue
     {
-        public static int MinSealersForFinalization(this IList<Address> validators) => validators.Count / 2 + 1;
+        event EventHandler ProcessingQueueEmpty;
+        
+        bool IsEmpty { get; }
     }
 }

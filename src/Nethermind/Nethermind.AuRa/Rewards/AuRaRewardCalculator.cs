@@ -32,7 +32,7 @@ namespace Nethermind.AuRa.Rewards
     public class AuRaRewardCalculator : IRewardCalculator
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly long _blockRewardContractTransition;
+        private readonly long? _blockRewardContractTransition;
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly RewardContract _contract;
         private readonly CallOutputTracer _tracer = new CallOutputTracer();
@@ -42,14 +42,18 @@ namespace Nethermind.AuRa.Rewards
             if (auRaParameters == null) throw new ArgumentNullException(nameof(AuRaParameters));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _blockRewardContractTransition = auRaParameters.BlockRewardContractTransition;
-            _contract = new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress);
+            if (_blockRewardContractTransition.HasValue)
+            {
+                _contract = new RewardContract(abiEncoder, auRaParameters.BlockRewardContractAddress);
+            }
+
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
 
         public BlockReward[] CalculateRewards(Block block)
-            => block.Number < _blockRewardContractTransition
-                ? _blockRewardCalculator.CalculateRewards(block)
-                : CalculateRewardsWithContract(block);
+            => block.Number >= _blockRewardContractTransition
+                ? CalculateRewardsWithContract(block)
+                : _blockRewardCalculator.CalculateRewards(block);
 
         private BlockReward[] CalculateRewardsWithContract(Block block)
         {

@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain
             IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
             ITxPool customTxPool,
-            IReceiptStorage receiptStorage, 
+            IReceiptStorage receiptStorage,
             Func<IDb, IStateProvider, IBlockTree, ITransactionProcessor, ILogManager, IEnumerable<IAdditionalBlockProcessor>> additionalBlockProcessorsFactory)
         {
             ReadOnlyStateProvider = new StateProvider(dbProvider.StateDb, dbProvider.CodeDb, logManager);

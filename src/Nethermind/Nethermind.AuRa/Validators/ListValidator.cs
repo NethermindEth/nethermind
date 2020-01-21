@@ -28,7 +28,7 @@ namespace Nethermind.AuRa.Validators
 {
     public sealed class ListValidator : AuRaValidatorProcessorBase
     {
-        public ListValidator(AuRaParameters.Validator validator, ILogManager logManager) : base(validator, logManager)
+        public ListValidator(AuRaParameters.Validator validator, IValidSealerStrategy validSealerStrategy, ILogManager logManager) : base(validator, validSealerStrategy, logManager)
         {
             Validators = validator.Addresses?.Length > 0
                 ? validator.Addresses
