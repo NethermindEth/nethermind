@@ -55,11 +55,12 @@ namespace Nethermind.Runner.Ethereum.Steps
             // the following line needs to be called in order to make sure that the CLI library is referenced from runner and built alongside
             if (_context.Logger.IsDebug) _context.Logger.Debug($"Resolving CLI ({nameof(Cli.CliModuleLoader)})");
 
-            var ndmConfig = _context.Config<INdmConfig>();
-            var rpcConfig = _context.Config<IRpcConfig>();
+            IInitConfig initConfig = _context.Config<IInitConfig>();
+            INdmConfig ndmConfig = _context.Config<INdmConfig>();
+            IRpcConfig rpcConfig = _context.Config<IRpcConfig>();
             if (ndmConfig.Enabled && !(_context.NdmInitializer is null) && ndmConfig.ProxyEnabled)
             {
-                var proxyFactory = new EthModuleProxyFactory(_context.EthJsonRpcClientProxy, _context.Wallet);
+                EthModuleProxyFactory proxyFactory = new EthModuleProxyFactory(_context.EthJsonRpcClientProxy, _context.Wallet);
                 _context.RpcModuleProvider.Register(new SingletonModulePool<IEthModule>(proxyFactory, true));
                 if (_context.Logger.IsInfo) _context.Logger.Info("Enabled JSON RPC Proxy for NDM.");
             }
@@ -82,7 +83,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.RpcModuleProvider.Register(new SingletonModulePool<ICliqueModule>(cliqueModule, true));
             }
 
-            if (_context.Config<IInitConfig>().EnableUnsecuredDevWallet)
+            if (initConfig.EnableUnsecuredDevWallet)
             {
                 PersonalBridge personalBridge = new PersonalBridge(_context.EthereumEcdsa, _context.Wallet);
                 PersonalModule personalModule = new PersonalModule(personalBridge, _context.LogManager);

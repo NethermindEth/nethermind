@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private void Update()
         {
-            var discoveryConfig = _context.Config<IDiscoveryConfig>();
+            IDiscoveryConfig discoveryConfig = _context.Config<IDiscoveryConfig>();
             if (discoveryConfig.Bootnodes != string.Empty)
             {
                 if (_context.ChainSpec.Bootnodes.Length != 0)

@@ -17,22 +17,18 @@
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.Db.Config;
-using Nethermind.Evm.Tracing;
-using Nethermind.Network;
 using Nethermind.Store;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
     [RunnerStepDependency(typeof(LoadChainspec))]
-    public class InitDbs : IStep
+    public class InitDatabase : IStep
     {
         private readonly EthereumRunnerContext _context;
 
-        public InitDbs(EthereumRunnerContext context)
+        public InitDatabase(EthereumRunnerContext context)
         {
             _context = context;
         }

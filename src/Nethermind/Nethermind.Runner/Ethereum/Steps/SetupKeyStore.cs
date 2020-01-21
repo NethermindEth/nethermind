@@ -34,12 +34,14 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         public Task Execute()
         {
-            var encrypter = new AesEncrypter(
-                _context.Config<IKeyStoreConfig>(),
+            IKeyStoreConfig keyStoreConfig = _context.Config<IKeyStoreConfig>();
+            
+            AesEncrypter encrypter = new AesEncrypter(
+                keyStoreConfig,
                 _context.LogManager);
 
             _context.KeyStore = new FileKeyStore(
-                _context.Config<IKeyStoreConfig>(),
+                keyStoreConfig,
                 _context.EthereumJsonSerializer,
                 encrypter,
                 _context.CryptoRandom,
@@ -54,10 +56,10 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _ => NullWallet.Instance
             };
 
-            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, _context.Config<IKeyStoreConfig>(), _context.LogManager);
+            INodeKeyManager nodeKeyManager = new NodeKeyManager(_context.CryptoRandom, _context.KeyStore, keyStoreConfig, _context.LogManager);
             _context.NodeKey = nodeKeyManager.LoadNodeKey();
             _context.Enode = new Enode(_context.NodeKey.PublicKey, IPAddress.Parse(_context.NetworkConfig.ExternalIp), _context.NetworkConfig.P2PPort);
-            
+
             return Task.CompletedTask;
         }
     }

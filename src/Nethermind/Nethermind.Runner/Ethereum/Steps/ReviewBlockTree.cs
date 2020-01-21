@@ -46,12 +46,13 @@ namespace Nethermind.Runner.Ethereum.Steps
         
         private async Task RunBlockTreeInitTasks()
         {
-            if (!_context.Config<ISyncConfig>().SynchronizationEnabled)
+            ISyncConfig syncConfig = _context.Config<ISyncConfig>(); 
+            if (!syncConfig.SynchronizationEnabled)
             {
                 return;
             }
 
-            if (!_context.Config<ISyncConfig>().FastSync)
+            if (!syncConfig.FastSync)
             {
                 await _context.BlockTree.LoadBlocksFromDb(_context.RunnerCancellation.Token, null).ContinueWith(t =>
                 {

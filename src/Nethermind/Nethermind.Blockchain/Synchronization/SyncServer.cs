@@ -274,9 +274,9 @@ namespace Nethermind.Blockchain.Synchronization
                 Keccak hash = _blockTree.FindHash(number);
                 return hash;
             }
-            catch (Exception e)
+            catch (Exception)
             {
-                _logger.Warn("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
+                _logger.Debug("Could not handle a request for block by number since multiple blocks are available at the level and none is marked as canonical. (a fix is coming)");
             }
 
             return null;

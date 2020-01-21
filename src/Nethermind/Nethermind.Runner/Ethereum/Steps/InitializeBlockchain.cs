@@ -17,7 +17,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.AuRa;
@@ -34,8 +33,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.Db;
-using Nethermind.Db.Config;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
@@ -47,7 +44,7 @@ using Nethermind.Wallet;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependency(typeof(InitRlp), typeof(LoadChainspec), typeof(InitDbs))]
+    [RunnerStepDependency(typeof(InitRlp), typeof(LoadChainspec), typeof(InitDatabase))]
     public class InitializeBlockchain : IStep
     {
         private readonly EthereumRunnerContext _context;
@@ -108,17 +105,16 @@ namespace Nethermind.Runner.Ethereum.Steps
 
             _context.SnapshotManager = null;
 
-
             _context.StorageProvider = new StorageProvider(
                 _context.DbProvider.StateDb,
                 _context.StateProvider,
                 _context.LogManager);
 
             // blockchain processing
-            var blockhashProvider = new BlockhashProvider(
+            BlockhashProvider blockhashProvider = new BlockhashProvider(
                 _context.BlockTree, _context.LogManager);
 
-            var virtualMachine = new VirtualMachine(
+            VirtualMachine virtualMachine = new VirtualMachine(
                 _context.StateProvider,
                 _context.StorageProvider,
                 blockhashProvider,
@@ -142,12 +138,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.SpecProvider,
                 _context.LogManager);
 
-            var ommersValidator = new OmmersValidator(
+            OmmersValidator ommersValidator = new OmmersValidator(
                 _context.BlockTree,
                 _context.HeaderValidator,
                 _context.LogManager);
 
-            var txValidator = new TxValidator(_context.SpecProvider.ChainId);
+            TxValidator txValidator = new TxValidator(_context.SpecProvider.ChainId);
 
             _context.BlockValidator = new BlockValidator(
                 txValidator,
@@ -238,7 +234,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                     break;
                 case SealEngineType.Ethash:
                     _context.RewardCalculator = new RewardCalculator(_context.SpecProvider);
-                    var difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
+                    DifficultyCalculator difficultyCalculator = new DifficultyCalculator(_context.SpecProvider);
                     if (_context.Config<IInitConfig>().IsMining)
                     {
                         _context.Sealer = new EthashSealer(new Ethash(_context.LogManager), _context.LogManager);
@@ -251,12 +247,12 @@ namespace Nethermind.Runner.Ethereum.Steps
                     _context.SealValidator = new EthashSealValidator(_context.LogManager, difficultyCalculator, _context.CryptoRandom, new Ethash(_context.LogManager));
                     break;
                 case SealEngineType.AuRa:
-                    var abiEncoder = new AbiEncoder();
+                    AbiEncoder abiEncoder = new AbiEncoder();
                     _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
+                    IAuRaValidatorProcessor validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
                         .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
                     
-                    var auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    
+                    AuRaStepCalculator auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    
                     _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
                     _context.RewardCalculator = new AuRaRewardCalculator(_context.ChainSpec.AuRa, abiEncoder, _context.TransactionProcessor);
                     _context.Sealer = new AuRaSealer(_context.BlockTree, validatorProcessor, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
@@ -272,7 +268,7 @@ namespace Nethermind.Runner.Ethereum.Steps
             switch (_context.ChainSpec.SealEngineType)
             {
                 case SealEngineType.AuRa:
-                    var finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);
+                    AuRaBlockFinalizationManager finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);
                     foreach (IAuRaValidator auRaValidator in blockPreProcessors.OfType<IAuRaValidator>())
                     {
                         auRaValidator.SetFinalizationManager(finalizationManager);

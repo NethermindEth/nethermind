@@ -113,8 +113,8 @@ namespace Nethermind.Runner.Ethereum.Steps
 
         private void CreateSystemAccounts()
         {
-            var isAura = _context.ChainSpec.SealEngineType == SealEngineType.AuRa;
-            var hasConstructorAllocation = _context.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
+            bool isAura = _context.ChainSpec.SealEngineType == SealEngineType.AuRa;
+            bool hasConstructorAllocation = _context.ChainSpec.Allocations.Values.Any(a => a.Constructor != null);
             if (isAura && hasConstructorAllocation)
             {
                 _context.StateProvider.CreateAccount(Address.Zero, UInt256.Zero);
