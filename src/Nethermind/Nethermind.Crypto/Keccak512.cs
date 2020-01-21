@@ -16,8 +16,8 @@
 
 using System;
 using System.Threading;
-using Nethermind.Core.Serialization;
 using Nethermind.HashLib;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto
 {

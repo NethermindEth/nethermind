@@ -16,8 +16,9 @@
 
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class BlockDecoder : IRlpDecoder<Block>
     {

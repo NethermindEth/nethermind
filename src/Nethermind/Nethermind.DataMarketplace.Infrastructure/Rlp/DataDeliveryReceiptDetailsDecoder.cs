@@ -16,8 +16,8 @@
 
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataDeliveryReceiptDetailsDecoder()
         {
-            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DataDeliveryReceiptDetails)] =
+            Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceiptDetails)] =
                 new DataDeliveryReceiptDetailsDecoder();
         }
 
@@ -51,8 +51,8 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             var sessionId = rlpStream.DecodeKeccak();
             var dataAssetId = rlpStream.DecodeKeccak();
             var consumerNodeId = new PublicKey(rlpStream.DecodeByteArray());
-            var request = Nethermind.Core.Serialization.Rlp.Decode<DataDeliveryReceiptRequest>(rlpStream);
-            var receipt = Nethermind.Core.Serialization.Rlp.Decode<DataDeliveryReceipt>(rlpStream);
+            var request = Serialization.Rlp.Rlp.Decode<DataDeliveryReceiptRequest>(rlpStream);
+            var receipt = Serialization.Rlp.Rlp.Decode<DataDeliveryReceipt>(rlpStream);
             var timestamp = rlpStream.DecodeUlong();
             var isClaimed = rlpStream.DecodeBool();
 
@@ -60,23 +60,23 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 timestamp, isClaimed);
         }
 
-        public Nethermind.Core.Serialization.Rlp Encode(DataDeliveryReceiptDetails item,
+        public Serialization.Rlp.Rlp Encode(DataDeliveryReceiptDetails item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Serialization.Rlp.Encode(
-                Nethermind.Core.Serialization.Rlp.Encode(item.Id),
-                Nethermind.Core.Serialization.Rlp.Encode(item.SessionId),
-                Nethermind.Core.Serialization.Rlp.Encode(item.DataAssetId),
-                Nethermind.Core.Serialization.Rlp.Encode(item.ConsumerNodeId.Bytes),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Request),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Receipt),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Timestamp),
-                Nethermind.Core.Serialization.Rlp.Encode(item.IsClaimed));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Id),
+                Serialization.Rlp.Rlp.Encode(item.SessionId),
+                Serialization.Rlp.Rlp.Encode(item.DataAssetId),
+                Serialization.Rlp.Rlp.Encode(item.ConsumerNodeId.Bytes),
+                Serialization.Rlp.Rlp.Encode(item.Request),
+                Serialization.Rlp.Rlp.Encode(item.Receipt),
+                Serialization.Rlp.Rlp.Encode(item.Timestamp),
+                Serialization.Rlp.Rlp.Encode(item.IsClaimed));
         }
 
         public void Encode(MemoryStream stream, DataDeliveryReceiptDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

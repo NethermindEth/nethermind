@@ -26,7 +26,6 @@ using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
@@ -41,6 +40,7 @@ using Nethermind.Store.BeamSync;
 using Nethermind.Store.Repositories;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Synchronization.FastSync;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Synchronization

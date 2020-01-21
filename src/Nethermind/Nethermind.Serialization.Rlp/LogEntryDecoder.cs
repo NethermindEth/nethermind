@@ -15,9 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class LogEntryDecoder : IRlpDecoder<LogEntry>
     {

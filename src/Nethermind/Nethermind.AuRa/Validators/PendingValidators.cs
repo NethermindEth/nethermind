@@ -16,7 +16,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Serialization;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.AuRa.Validators
 {

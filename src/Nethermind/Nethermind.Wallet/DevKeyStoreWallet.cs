@@ -21,11 +21,11 @@ using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Serialization;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
 using Nethermind.Secp256k1;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Wallet
 {

@@ -17,8 +17,8 @@
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static EarlyRefundTicketDecoder()
         {
-            Nethermind.Core.Serialization.Rlp.Decoders[typeof(EarlyRefundTicket)] = new EarlyRefundTicketDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(EarlyRefundTicket)] = new EarlyRefundTicketDecoder();
         }
 
         public EarlyRefundTicket Decode(RlpStream rlpStream,
@@ -54,20 +54,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new EarlyRefundTicket(depositId, claimableAfter, signature);
         }
 
-        public Nethermind.Core.Serialization.Rlp Encode(EarlyRefundTicket item,
+        public Serialization.Rlp.Rlp Encode(EarlyRefundTicket item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Serialization.Rlp.Encode(
-                Nethermind.Core.Serialization.Rlp.Encode(item.DepositId),
-                Nethermind.Core.Serialization.Rlp.Encode(item.ClaimableAfter),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.V),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.DepositId),
+                Serialization.Rlp.Rlp.Encode(item.ClaimableAfter),
+                Serialization.Rlp.Rlp.Encode(item.Signature.V),
+                Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
+                Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
 
         public void Encode(MemoryStream stream, EarlyRefundTicket item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

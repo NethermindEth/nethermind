@@ -21,10 +21,10 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Network

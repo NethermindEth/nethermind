@@ -21,8 +21,8 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Serialization;
 using Nethermind.Evm.Tracing;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule

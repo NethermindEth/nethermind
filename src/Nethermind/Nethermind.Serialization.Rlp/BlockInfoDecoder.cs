@@ -15,8 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
     {

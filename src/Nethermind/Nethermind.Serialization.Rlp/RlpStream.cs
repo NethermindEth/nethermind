@@ -16,11 +16,12 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class RlpStream
     {
@@ -724,7 +725,7 @@ namespace Nethermind.Core.Serialization
                 throw new InvalidOperationException("Incorrect bloom RLP");
             }
 
-            if (bloomBytes.SequenceEqual(Extensions.Bytes.Zero256))
+            if (bloomBytes.SequenceEqual(Core.Extensions.Bytes.Zero256))
             {
                 return Bloom.Empty;
             }

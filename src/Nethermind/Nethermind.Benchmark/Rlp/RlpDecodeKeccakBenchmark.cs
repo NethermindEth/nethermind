@@ -19,7 +19,7 @@ using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Rlp
@@ -36,12 +36,12 @@ namespace Nethermind.Benchmarks.Rlp
         {
             _scenarios = new[]
             {
-                Nethermind.Core.Serialization.Rlp.Encode(Keccak.Zero).Bytes,
-                Nethermind.Core.Serialization.Rlp.Encode(Keccak.EmptyTreeHash).Bytes,
-                Nethermind.Core.Serialization.Rlp.Encode(Keccak.OfAnEmptyString).Bytes,
-                Nethermind.Core.Serialization.Rlp.Encode(Keccak.OfAnEmptySequenceRlp).Bytes,
-                Nethermind.Core.Serialization.Rlp.Encode(Keccak.OfAnEmptyString).Bytes.Concat(new byte[100000]).ToArray(),
-                Nethermind.Core.Serialization.Rlp.Encode(Keccak.Compute("a")).Bytes.Concat(new byte[100000]).ToArray()
+                Serialization.Rlp.Rlp.Encode(Keccak.Zero).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.EmptyTreeHash).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptyString).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptySequenceRlp).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptyString).Bytes.Concat(new byte[100000]).ToArray(),
+                Serialization.Rlp.Rlp.Encode(Keccak.Compute("a")).Bytes.Concat(new byte[100000]).ToArray()
             };
         }
         

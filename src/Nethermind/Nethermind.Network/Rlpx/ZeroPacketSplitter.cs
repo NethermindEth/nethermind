@@ -21,8 +21,8 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Serialization;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
 {

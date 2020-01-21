@@ -16,8 +16,8 @@
 
 using System;
 using System.IO;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static EthRequestDecoder()
         {
-            Nethermind.Core.Serialization.Rlp.Decoders[typeof(EthRequest)] = new EthRequestDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(EthRequest)] = new EthRequestDecoder();
         }
         
         public EthRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -55,20 +55,20 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new EthRequest(id, host, address, value, requestedAt, transactionHash);
         }
 
-        public Nethermind.Core.Serialization.Rlp Encode(EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Serialization.Rlp.Encode(
-                Nethermind.Core.Serialization.Rlp.Encode(item.Id),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Host),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Address),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Value),
-                Nethermind.Core.Serialization.Rlp.Encode(new DateTimeOffset(item.RequestedAt).ToUnixTimeSeconds()),
-                Nethermind.Core.Serialization.Rlp.Encode(item.TransactionHash));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Id),
+                Serialization.Rlp.Rlp.Encode(item.Host),
+                Serialization.Rlp.Rlp.Encode(item.Address),
+                Serialization.Rlp.Rlp.Encode(item.Value),
+                Serialization.Rlp.Rlp.Encode(new DateTimeOffset(item.RequestedAt).ToUnixTimeSeconds()),
+                Serialization.Rlp.Rlp.Encode(item.TransactionHash));
         }
 
         public void Encode(MemoryStream stream, EthRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

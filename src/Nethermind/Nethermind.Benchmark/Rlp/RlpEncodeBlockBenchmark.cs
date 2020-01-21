@@ -23,12 +23,12 @@ using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -103,7 +103,7 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark(Baseline = true)]
         public byte[] Current()
         {
-            return Nethermind.Core.Serialization.Rlp.Encode(_block).Bytes;
+            return Serialization.Rlp.Rlp.Encode(_block).Bytes;
         }
     }
 }

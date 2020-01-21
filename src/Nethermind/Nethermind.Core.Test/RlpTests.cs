@@ -18,8 +18,8 @@ using System;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

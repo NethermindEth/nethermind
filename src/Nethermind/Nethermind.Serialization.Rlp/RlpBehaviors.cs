@@ -16,7 +16,7 @@
 
 using System;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     [Flags]
     public enum RlpBehaviors

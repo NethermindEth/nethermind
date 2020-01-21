@@ -18,8 +18,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo>
     {

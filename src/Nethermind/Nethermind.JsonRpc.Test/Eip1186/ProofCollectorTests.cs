@@ -18,10 +18,10 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Eip1186;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using NUnit.Framework;
 

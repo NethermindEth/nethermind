@@ -81,15 +81,15 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public Nethermind.Core.Serialization.Rlp Improved()
+        public Serialization.Rlp.Rlp Improved()
         {
-            return Nethermind.Core.Serialization.Rlp.Encode(_value);
+            return Serialization.Rlp.Rlp.Encode(_value);
         }
 
         [Benchmark]
-        public Nethermind.Core.Serialization.Rlp Current()
+        public Serialization.Rlp.Rlp Current()
         {
-            return Nethermind.Core.Serialization.Rlp.Encode(_value);
+            return Serialization.Rlp.Rlp.Encode(_value);
         }
     }
 }

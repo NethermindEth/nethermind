@@ -18,10 +18,10 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Persistence.Rocks.Repositories

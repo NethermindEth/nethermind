@@ -18,8 +18,8 @@ using System;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Serialization;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
 

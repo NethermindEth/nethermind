@@ -16,8 +16,8 @@
 
 using System;
 using System.IO;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static FaucetRequestDetailsDecoder()
         {
-            Nethermind.Core.Serialization.Rlp.Decoders[typeof(FaucetRequestDetails)] = new FaucetRequestDetailsDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(FaucetRequestDetails)] = new FaucetRequestDetailsDecoder();
         }
 
         public FaucetRequestDetails Decode(RlpStream rlpStream,
@@ -55,22 +55,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new FaucetRequestDetails(host, address, value, date, transactionHash);
         }
 
-        public Nethermind.Core.Serialization.Rlp Encode(FaucetRequestDetails item,
+        public Serialization.Rlp.Rlp Encode(FaucetRequestDetails item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
             var date = item.Date == DateTime.MinValue ? 0 : new DateTimeOffset(item.Date).ToUnixTimeSeconds();
 
-            return Nethermind.Core.Serialization.Rlp.Encode(
-                Nethermind.Core.Serialization.Rlp.Encode(item.Host),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Address),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Value),
-                Nethermind.Core.Serialization.Rlp.Encode(date),
-                Nethermind.Core.Serialization.Rlp.Encode(item.TransactionHash));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Host),
+                Serialization.Rlp.Rlp.Encode(item.Address),
+                Serialization.Rlp.Rlp.Encode(item.Value),
+                Serialization.Rlp.Rlp.Encode(date),
+                Serialization.Rlp.Rlp.Encode(item.TransactionHash));
         }
 
         public void Encode(MemoryStream stream, FaucetRequestDetails item,

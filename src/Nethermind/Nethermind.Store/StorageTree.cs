@@ -19,8 +19,8 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Store
 {

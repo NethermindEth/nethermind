@@ -48,13 +48,13 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public byte[] Improved()
         {
-            return Nethermind.Core.Serialization.Rlp.Encode(_account).Bytes;
+            return Serialization.Rlp.Rlp.Encode(_account).Bytes;
         }
         
         [Benchmark]
         public byte[] Current()
         {
-            return Nethermind.Core.Serialization.Rlp.Encode(_account).Bytes;
+            return Serialization.Rlp.Rlp.Encode(_account).Bytes;
         }
     }
 }

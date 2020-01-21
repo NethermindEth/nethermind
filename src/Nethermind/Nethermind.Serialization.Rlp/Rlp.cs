@@ -20,11 +20,12 @@ using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
 using System.Reflection;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
@@ -1227,7 +1228,7 @@ namespace Nethermind.Core.Serialization
                     throw new InvalidOperationException("Incorrect bloom RLP");
                 }
 
-                if (bloomBytes.SequenceEqual(Extensions.Bytes.Zero256))
+                if (bloomBytes.SequenceEqual(Core.Extensions.Bytes.Zero256))
                 {
                     return Bloom.Empty;
                 }
@@ -1362,7 +1363,7 @@ namespace Nethermind.Core.Serialization
 
                 if (prefix == 128)
                 {
-                    return Extensions.Bytes.Empty;
+                    return Core.Extensions.Bytes.Empty;
                 }
 
                 if (prefix <= 183)
@@ -1422,7 +1423,7 @@ namespace Nethermind.Core.Serialization
 
         public bool Equals(Rlp other)
         {
-            return null != other && Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return null != other && Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public override string ToString()

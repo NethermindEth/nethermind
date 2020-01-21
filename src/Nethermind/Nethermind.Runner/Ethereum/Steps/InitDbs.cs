@@ -19,7 +19,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Serialization;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Evm.Tracing;

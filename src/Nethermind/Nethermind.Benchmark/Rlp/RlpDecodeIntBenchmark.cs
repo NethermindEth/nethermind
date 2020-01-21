@@ -16,7 +16,7 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Core.Serialization;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Benchmarks.Rlp
 {
@@ -49,7 +49,7 @@ namespace Nethermind.Benchmarks.Rlp
         [GlobalSetup]
         public void Setup()
         {
-            _value = Nethermind.Core.Serialization.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
+            _value = Serialization.Rlp.Rlp.Encode(_scenarios[ScenarioIndex]).Bytes;
             
             Check(Current(), Improved());
         }

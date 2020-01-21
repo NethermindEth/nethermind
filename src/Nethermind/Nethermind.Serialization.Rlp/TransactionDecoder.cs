@@ -16,10 +16,11 @@
 
 using System;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {

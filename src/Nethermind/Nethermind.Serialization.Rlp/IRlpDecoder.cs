@@ -16,7 +16,7 @@
 
 using System.IO;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public interface IRlpDecoder
     {

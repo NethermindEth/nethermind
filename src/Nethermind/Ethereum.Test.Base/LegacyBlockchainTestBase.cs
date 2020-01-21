@@ -19,10 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,18 +32,19 @@ using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -108,7 +107,6 @@ namespace Ethereum.Test.Base
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IDb traceDb = new MemDb();
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
@@ -164,7 +162,6 @@ namespace Ethereum.Test.Base
                     _logManager),
                 stateDb,
                 codeDb,
-                traceDb,
                 stateProvider,
                 storageProvider,
                 transactionPool,
@@ -176,7 +173,6 @@ namespace Ethereum.Test.Base
                 blockProcessor,
                 new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, _logManager),
                 _logManager,
-                false,
                 false);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);

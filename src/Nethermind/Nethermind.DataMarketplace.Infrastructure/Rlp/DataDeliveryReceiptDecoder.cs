@@ -17,8 +17,8 @@
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -35,7 +35,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataDeliveryReceiptDecoder()
         {
-            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceipt)] = new DataDeliveryReceiptDecoder();
         }
 
         public DataDeliveryReceipt Decode(RlpStream rlpStream,
@@ -55,21 +55,21 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new DataDeliveryReceipt(statusCode, consumedUnits, unpaidUnits, signature);
         }
 
-        public Nethermind.Core.Serialization.Rlp Encode(DataDeliveryReceipt item,
+        public Serialization.Rlp.Rlp Encode(DataDeliveryReceipt item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Serialization.Rlp.Encode(
-                Nethermind.Core.Serialization.Rlp.Encode((int) item.StatusCode),
-                Nethermind.Core.Serialization.Rlp.Encode(item.ConsumedUnits),
-                Nethermind.Core.Serialization.Rlp.Encode(item.UnpaidUnits),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.V),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode((int) item.StatusCode),
+                Serialization.Rlp.Rlp.Encode(item.ConsumedUnits),
+                Serialization.Rlp.Rlp.Encode(item.UnpaidUnits),
+                Serialization.Rlp.Rlp.Encode(item.Signature.V),
+                Serialization.Rlp.Rlp.Encode(item.Signature.R.WithoutLeadingZeros()),
+                Serialization.Rlp.Rlp.Encode(item.Signature.S.WithoutLeadingZeros()));
         }
         
         public void Encode(MemoryStream stream, DataDeliveryReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

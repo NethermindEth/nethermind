@@ -25,8 +25,9 @@ using System.Numerics;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Serialization;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Newtonsoft.Json;
@@ -75,7 +76,7 @@ namespace Ethereum.PoW.Test
             Assert.AreEqual(test.Nonce, blockHeader.Nonce, "header nonce vs test nonce");
             Assert.AreEqual(test.MixHash.Bytes, blockHeader.MixHash.Bytes, "header mix hash vs test mix hash");
             
-            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing));
+            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
 
             // seed is correct

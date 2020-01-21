@@ -17,9 +17,9 @@
 using System;
 using System.IO;
 using System.Linq;
-using Nethermind.Core.Serialization;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 {
@@ -32,7 +32,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 
         static DepositDetailsDecoder()
         {
-            Nethermind.Core.Serialization.Rlp.Decoders[typeof(DepositDetails)] = new DepositDetailsDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(DepositDetails)] = new DepositDetailsDecoder();
         }
 
         public DepositDetails Decode(RlpStream rlpStream,
@@ -46,17 +46,17 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                     return null;
                 }
 
-                var deposit = Nethermind.Core.Serialization.Rlp.Decode<Deposit>(rlpStream);
-                var dataAsset = Nethermind.Core.Serialization.Rlp.Decode<DataAsset>(rlpStream);
+                var deposit = Serialization.Rlp.Rlp.Decode<Deposit>(rlpStream);
+                var dataAsset = Serialization.Rlp.Rlp.Decode<DataAsset>(rlpStream);
                 var consumer = rlpStream.DecodeAddress();
                 var pepper = rlpStream.DecodeByteArray();
                 var timestamp = rlpStream.DecodeUInt();
-                var transactions = Nethermind.Core.Serialization.Rlp.DecodeArray<TransactionInfo>(rlpStream);
+                var transactions = Serialization.Rlp.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var confirmationTimestamp = rlpStream.DecodeUInt();
                 var rejected = rlpStream.DecodeBool();
                 var cancelled = rlpStream.DecodeBool();
-                var earlyRefundTicket = Nethermind.Core.Serialization.Rlp.Decode<EarlyRefundTicket>(rlpStream);
-                var claimedRefundTransactions = Nethermind.Core.Serialization.Rlp.DecodeArray<TransactionInfo>(rlpStream);
+                var earlyRefundTicket = Serialization.Rlp.Rlp.Decode<EarlyRefundTicket>(rlpStream);
+                var claimedRefundTransactions = Serialization.Rlp.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var refundClaimed = rlpStream.DecodeBool();
                 var refundCancelled = rlpStream.DecodeBool();
                 var kyc = rlpStream.DecodeString();
@@ -76,16 +76,16 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                     return null;
                 }
 
-                var deposit = Nethermind.Core.Serialization.Rlp.Decode<Deposit>(rlpStream);
-                var dataAsset = Nethermind.Core.Serialization.Rlp.Decode<DataAsset>(rlpStream);
+                var deposit = Serialization.Rlp.Rlp.Decode<Deposit>(rlpStream);
+                var dataAsset = Serialization.Rlp.Rlp.Decode<DataAsset>(rlpStream);
                 var consumer = rlpStream.DecodeAddress();
                 var pepper = rlpStream.DecodeByteArray();
-                var transactions = Nethermind.Core.Serialization.Rlp.DecodeArray<TransactionInfo>(rlpStream);
+                var transactions = Serialization.Rlp.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var confirmationTimestamp = rlpStream.DecodeUInt();
                 var rejected = rlpStream.DecodeBool();
                 var cancelled = rlpStream.DecodeBool();
-                var earlyRefundTicket = Nethermind.Core.Serialization.Rlp.Decode<EarlyRefundTicket>(rlpStream);
-                var claimedRefundTransactions = Nethermind.Core.Serialization.Rlp.DecodeArray<TransactionInfo>(rlpStream);
+                var earlyRefundTicket = Serialization.Rlp.Rlp.Decode<EarlyRefundTicket>(rlpStream);
+                var claimedRefundTransactions = Serialization.Rlp.Rlp.DecodeArray<TransactionInfo>(rlpStream);
                 var refundClaimed = rlpStream.DecodeBool();
                 var refundCancelled = rlpStream.DecodeBool();
                 var kyc = rlpStream.DecodeString();
@@ -103,30 +103,30 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
             }
         }
 
-        public Nethermind.Core.Serialization.Rlp Encode(DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Serialization.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Serialization.Rlp.Encode(
-                Nethermind.Core.Serialization.Rlp.Encode(item.Deposit),
-                Nethermind.Core.Serialization.Rlp.Encode(item.DataAsset),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Consumer),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Pepper),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Timestamp),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Transactions.ToArray()),
-                Nethermind.Core.Serialization.Rlp.Encode(item.ConfirmationTimestamp),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Rejected),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Cancelled),
-                Nethermind.Core.Serialization.Rlp.Encode(item.EarlyRefundTicket),
-                Nethermind.Core.Serialization.Rlp.Encode(item.ClaimedRefundTransactions.ToArray()),
-                Nethermind.Core.Serialization.Rlp.Encode(item.RefundClaimed),
-                Nethermind.Core.Serialization.Rlp.Encode(item.RefundCancelled),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Kyc),
-                Nethermind.Core.Serialization.Rlp.Encode(item.Confirmations),
-                Nethermind.Core.Serialization.Rlp.Encode(item.RequiredConfirmations));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Deposit),
+                Serialization.Rlp.Rlp.Encode(item.DataAsset),
+                Serialization.Rlp.Rlp.Encode(item.Consumer),
+                Serialization.Rlp.Rlp.Encode(item.Pepper),
+                Serialization.Rlp.Rlp.Encode(item.Timestamp),
+                Serialization.Rlp.Rlp.Encode(item.Transactions.ToArray()),
+                Serialization.Rlp.Rlp.Encode(item.ConfirmationTimestamp),
+                Serialization.Rlp.Rlp.Encode(item.Rejected),
+                Serialization.Rlp.Rlp.Encode(item.Cancelled),
+                Serialization.Rlp.Rlp.Encode(item.EarlyRefundTicket),
+                Serialization.Rlp.Rlp.Encode(item.ClaimedRefundTransactions.ToArray()),
+                Serialization.Rlp.Rlp.Encode(item.RefundClaimed),
+                Serialization.Rlp.Rlp.Encode(item.RefundCancelled),
+                Serialization.Rlp.Rlp.Encode(item.Kyc),
+                Serialization.Rlp.Rlp.Encode(item.Confirmations),
+                Serialization.Rlp.Rlp.Encode(item.RequiredConfirmations));
         }
 
         public void Encode(MemoryStream stream, DepositDetails item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

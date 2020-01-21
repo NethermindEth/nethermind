@@ -16,9 +16,10 @@
 
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core.Serialization
+namespace Nethermind.Serialization.Rlp
 {
     public class ReceiptDecoder : IRlpDecoder<TxReceipt>
     {
