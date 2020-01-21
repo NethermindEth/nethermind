@@ -205,12 +205,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                 _context.LogManager,
                 additionalBlockProcessors);
 
-            _context.BlockchainProcessor = new BlockchainProcessor(
+            BlockchainProcessor processor = new BlockchainProcessor(
                 _context.BlockTree,
                 _context.BlockProcessor,
                 _context.RecoveryStep,
                 _context.LogManager,
-                _context.InitConfig.StoreReceipts);
+                _context.InitConfig.StoreReceipts); 
+            _context.BlockchainProcessor = processor;
+            _context.BlockProcessingQueue = processor;
 
             _context.FinalizationManager = InitFinalizationManager(additionalBlockProcessors);
 
@@ -284,13 +286,14 @@ namespace Nethermind.Runner.Ethereum.Steps
                     break;
                 case SealEngineType.AuRa:
                     var abiEncoder = new AbiEncoder();
-                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.DbProvider.StateDb, _context.StateProvider, abiEncoder, _context.TransactionProcessor, _context.BlockTree, _context.ReceiptStorage, _context.LogManager)
+                    _context.ValidatorStore = new ValidatorStore(_context.DbProvider.BlockInfosDb);
+                    var validatorProcessor = new AuRaAdditionalBlockProcessorFactory(_context.StateProvider, abiEncoder, _context.TransactionProcessor, _context.BlockTree, _context.ReceiptStorage, _context.ValidatorStore, _context.LogManager)
                         .CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators);
-
-                    var auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);
-                    _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, validatorProcessor, _context.EthereumEcdsa, _context.LogManager);
+                    
+                    var auRaStepCalculator = new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper);    
+                    _context.SealValidator = new AuRaSealValidator(_context.ChainSpec.AuRa, auRaStepCalculator, _context.ValidatorStore, _context.EthereumEcdsa, _context.LogManager);
                     _context.RewardCalculator = new AuRaRewardCalculator(_context.ChainSpec.AuRa, abiEncoder, _context.TransactionProcessor);
-                    _context.Sealer = new AuRaSealer(_context.BlockTree, validatorProcessor, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), _context.LogManager);
+                    _context.Sealer = new AuRaSealer(_context.BlockTree, validatorProcessor, _context.ValidatorStore, auRaStepCalculator, _context.NodeKey.Address, new BasicWallet(_context.NodeKey), new ValidSealerStrategy(), _context.LogManager);
                     blockPreProcessors.Add(validatorProcessor);
                     break;
                 default:
@@ -401,8 +404,13 @@ namespace Nethermind.Runner.Ethereum.Steps
             switch (_context.ChainSpec.SealEngineType)
             {
                 case SealEngineType.AuRa:
-                    return new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor,
-                        blockPreProcessors.OfType<IAuRaValidator>().First(), _context.LogManager);
+                    var finalizationManager = new AuRaBlockFinalizationManager(_context.BlockTree, _context.ChainLevelInfoRepository, _context.BlockProcessor, _context.ValidatorStore, new ValidSealerStrategy(), _context.LogManager);
+                    foreach (IAuRaValidator auRaValidator in blockPreProcessors.OfType<IAuRaValidator>())
+                    {
+                        auRaValidator.SetFinalizationManager(finalizationManager);
+                    }
+
+                    return finalizationManager;
                 default:
                     return null;
             }

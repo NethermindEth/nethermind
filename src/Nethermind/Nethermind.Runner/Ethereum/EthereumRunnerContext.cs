@@ -17,6 +17,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Rewards;
@@ -118,6 +119,8 @@ namespace Nethermind.Runner.Ethereum
         public INetworkConfig NetworkConfig;
         public IChainLevelInfoRepository ChainLevelInfoRepository;
         public IBlockFinalizationManager FinalizationManager;
+        public IBlockProcessingQueue BlockProcessingQueue;
+        public IValidatorStore ValidatorStore;
         
         public IRlpxPeer RlpxPeer;
         public IWebSocketsManager WebSocketsManager;
@@ -125,6 +128,5 @@ namespace Nethermind.Runner.Ethereum
         public IEthJsonRpcClientProxy EthJsonRpcClientProxy;
         public IHttpClient HttpClient;
         public IMonitoringService MonitoringService;
-
     }
 }

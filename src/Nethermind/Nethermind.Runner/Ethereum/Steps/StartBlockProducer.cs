@@ -55,8 +55,16 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_context.DbProvider, allowStateModification);
                 ReadOnlyBlockTree readOnlyBlockTree = new ReadOnlyBlockTree(_context.BlockTree);
-                ReadOnlyChain producerChain = new ReadOnlyChain(readOnlyBlockTree, _context.BlockValidator, _context.RewardCalculator,
-                    _context.SpecProvider, minerDbProvider, _context.RecoveryStep, _context.LogManager, _context.TxPool, _context.ReceiptStorage,
+                ReadOnlyChain producerChain = new ReadOnlyChain(
+                    readOnlyBlockTree,
+                    _context.BlockValidator,
+                    _context.RewardCalculator,
+                    _context.SpecProvider,
+                    minerDbProvider,
+                    _context.RecoveryStep,
+                    _context.LogManager,
+                    _context.TxPool,
+                    _context.ReceiptStorage,
                     createAdditionalBlockProcessors);
                 return producerChain;
             }
@@ -81,20 +89,22 @@ namespace Nethermind.Runner.Ethereum.Steps
                     ReadOnlyChain producerChain = GetProducerChain();
                     PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting Dev block producer & sealer");
-                    _context.BlockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, _context.TxPool);
+                    _context.BlockProducer = new DevBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, _context.TxPool);
                     break;
                 }
 
                 case SealEngineType.AuRa:
                 {
                     IAuRaValidatorProcessor validator = null;
-                    ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l) => new[] {validator = new AuRaAdditionalBlockProcessorFactory(db, s, new AbiEncoder(), t, b, _context.ReceiptStorage, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
+                    ReadOnlyChain producerChain = GetProducerChain((db, s, b, t, l)  => 
+                        new[] {validator = new AuRaAdditionalBlockProcessorFactory(s, new AbiEncoder(), t, b, _context.ReceiptStorage, _context.ValidatorStore, l).CreateValidatorProcessor(_context.ChainSpec.AuRa.Validators)});
                     PendingTransactionSelector pendingTransactionSelector = new PendingTransactionSelector(_context.TxPool, producerChain.ReadOnlyStateProvider, _context.LogManager);
                     if (_context.Logger.IsWarn) _context.Logger.Warn("Starting AuRa block producer & sealer");
-                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.ConfigProvider.GetConfig<IAuraConfig>(), _context.NodeKey.Address);
+                    _context.BlockProducer = new AuRaBlockProducer(pendingTransactionSelector, producerChain.Processor, _context.Sealer, _context.BlockTree, _context.BlockProcessingQueue, producerChain.ReadOnlyStateProvider, _context.Timestamper, _context.LogManager, new AuRaStepCalculator(_context.ChainSpec.AuRa.StepDuration, _context.Timestamper), _context.ConfigProvider.GetConfig<IAuraConfig>(), _context.NodeKey.Address);
                     validator.SetFinalizationManager(_context.FinalizationManager, true);
                     break;
                 }
+
 
                 default:
                     throw new NotSupportedException($"Mining in {_context.ChainSpec.SealEngineType} mode is not supported");
