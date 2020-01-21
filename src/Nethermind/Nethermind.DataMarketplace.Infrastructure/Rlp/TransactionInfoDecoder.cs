@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static TransactionInfoDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(TransactionInfo)] = new TransactionInfoDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(TransactionInfo)] = new TransactionInfoDecoder();
         }
         
         public TransactionInfo Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -55,21 +55,21 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new TransactionInfo(hash, value, gasPrice, gasLimit, timestamp, type, state);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item is null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Hash),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Value),
-                Nethermind.Core.Encoding.Rlp.Encode(item.GasPrice),
-                Nethermind.Core.Encoding.Rlp.Encode(item.GasLimit),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Timestamp),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.Type),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.State));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Hash),
+                Serialization.Rlp.Rlp.Encode(item.Value),
+                Serialization.Rlp.Rlp.Encode(item.GasPrice),
+                Serialization.Rlp.Rlp.Encode(item.GasLimit),
+                Serialization.Rlp.Rlp.Encode(item.Timestamp),
+                Serialization.Rlp.Rlp.Encode((int) item.Type),
+                Serialization.Rlp.Rlp.Encode((int) item.State));
         }
 
         public void Encode(MemoryStream stream, TransactionInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

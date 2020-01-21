@@ -2,7 +2,6 @@
   <PropertyGroup>
     <TargetFramework>netcoreapp3.0</TargetFramework>
     <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
-    <InternalsVisibleTo>Nethermind.Core.Test</InternalsVisibleTo>
     <LangVersion>8.0</LangVersion>
   </PropertyGroup>
   <ItemGroup>
@@ -15,6 +14,7 @@
       <Name>Nethermind.Evm</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />
     <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj">
       <Project>{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}</Project>

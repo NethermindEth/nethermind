@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 
 namespace Nethermind.Clique
 {

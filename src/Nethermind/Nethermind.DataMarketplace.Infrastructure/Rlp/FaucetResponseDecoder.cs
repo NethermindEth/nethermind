@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static FaucetResponseDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(FaucetResponse)] = new FaucetResponseDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(FaucetResponse)] = new FaucetResponseDecoder();
         }
 
         public FaucetResponse Decode(RlpStream rlpStream,
@@ -46,21 +46,21 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             }
 
             var status = (FaucetRequestStatus) rlpStream.DecodeInt();
-            var request = Nethermind.Core.Encoding.Rlp.Decode<FaucetRequestDetails>(rlpStream);
+            var request = Serialization.Rlp.Rlp.Decode<FaucetRequestDetails>(rlpStream);
 
             return new FaucetResponse(status, request);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(FaucetResponse item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(FaucetResponse item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.Status),
-                Nethermind.Core.Encoding.Rlp.Encode(item.LatestRequest));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode((int) item.Status),
+                Serialization.Rlp.Rlp.Encode(item.LatestRequest));
         }
 
         public void Encode(MemoryStream stream, FaucetResponse item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -18,9 +18,9 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs.ChainSpecStyle
@@ -58,7 +58,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
             Assert.AreEqual(0L, chainSpec.Ethash.Eip100bTransition);
 
             Assert.AreEqual(1, chainSpec.ChainId, $"{nameof(chainSpec.ChainId)}");
-            Assert.NotNull(chainSpec.Genesis, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Genesis)}");
+            Assert.NotNull(chainSpec.Genesis, $"{nameof(ChainSpec.Genesis)}");
             
             Assert.AreEqual(0xdeadbeefdeadbeef, chainSpec.Genesis.Header.Nonce, $"genesis {nameof(BlockHeader.Nonce)}");
             Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.MixHash, $"genesis {nameof(BlockHeader.MixHash)}");
@@ -72,7 +72,7 @@ namespace Nethermind.Core.Test.Specs.ChainSpecStyle
                 $"genesis {nameof(BlockHeader.ExtraData)}");
             Assert.AreEqual(0x8000000L, chainSpec.Genesis.Header.GasLimit, $"genesis {nameof(BlockHeader.GasLimit)}");
             
-            Assert.NotNull(chainSpec.Allocations, $"{nameof(Core.Specs.ChainSpecStyle.ChainSpec.Allocations)}");
+            Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
             Assert.AreEqual(1, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
                 new UInt256(0xf4240),

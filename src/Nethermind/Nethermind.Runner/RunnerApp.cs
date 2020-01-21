@@ -36,7 +36,6 @@ namespace Nethermind.Runner
         protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
         {
             string pluginsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "plugins");
-            Console.WriteLine($"Loading plugins from: {pluginsDirectory}");
             if (Directory.Exists(pluginsDirectory))
             {
                 var plugins = Directory.GetFiles(pluginsDirectory, "*.dll");
@@ -46,6 +45,10 @@ namespace Nethermind.Runner
                     string pluginName = plugin.Contains("/") ? plugin.Split("/").Last() : plugin.Split("\\").Last();
                     AssemblyLoadContext.Default.LoadFromAssemblyPath(plugin);
                 }
+            }
+            else
+            {
+                Console.WriteLine($"Could not find plugins directory at: {pluginsDirectory}");
             }
 
             var loadedAssemblies = AppDomain.CurrentDomain.GetAssemblies().ToList();
@@ -143,7 +146,6 @@ namespace Nethermind.Runner
                 if (!Path.HasExtension(configFilePath) && !configFilePath.Contains(Path.DirectorySeparatorChar))
                 {
                     string redirectedConfigPath = Path.Combine(DefaultConfigsDirectory, string.Concat(configFilePath, ".cfg"));
-                    Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
                     {
@@ -162,7 +164,6 @@ namespace Nethermind.Runner
                     string configName = Path.GetFileName(configFilePath);
                     string configDirectory = Path.GetDirectoryName(configFilePath);
                     string redirectedConfigPath = Path.Combine(configDirectory, DefaultConfigsDirectory, configName);
-                    Console.WriteLine($"Redirecting config {configFilePath} to {redirectedConfigPath}");
                     configFilePath = redirectedConfigPath;
                     if (!File.Exists(configFilePath))
                     {

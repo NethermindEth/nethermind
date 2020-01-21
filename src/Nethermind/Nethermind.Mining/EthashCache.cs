@@ -17,6 +17,7 @@
 using System;
 using System.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Mining
 {

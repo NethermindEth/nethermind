@@ -19,11 +19,9 @@
 using System;
 using System.Collections.Generic;
 using Ethereum.Test.Base;
-using Nethermind.Core;
-using Nethermind.Core.Json;
-using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.State.Test.Runner
 {

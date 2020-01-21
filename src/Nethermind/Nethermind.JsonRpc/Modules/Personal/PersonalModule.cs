@@ -18,6 +18,7 @@ using System;
 using System.Security;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;

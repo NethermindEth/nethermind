@@ -25,12 +25,13 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Wallet;
 using NSubstitute;
 
@@ -95,7 +96,7 @@ namespace Nethermind.AuRa.Test
             var ecdsa = new EthereumEcdsa(new MordenSpecProvider(), NullLogManager.Instance);
             var signature = new Signature(block.Header.AuRaSignature);
             signature.V += Signature.VOffset;
-            var recoveredAddress = ecdsa.RecoverAddress(signature, BlockHeader.CalculateHash(block.Header, RlpBehaviors.ForSealing));
+            var recoveredAddress = ecdsa.RecoverAddress(signature, block.Header.CalculateHash(RlpBehaviors.ForSealing));
 
             recoveredAddress.Should().Be(_address);
         }

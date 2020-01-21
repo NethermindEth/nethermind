@@ -17,13 +17,14 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class ConsumerAddressChangedMessageSerializer : IMessageSerializer<ConsumerAddressChangedMessage>
     {
         public byte[] Serialize(ConsumerAddressChangedMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.Address)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.Address)).Bytes;
 
         public ConsumerAddressChangedMessage Deserialize(byte[] bytes)
         {

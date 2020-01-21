@@ -19,14 +19,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
-using Newtonsoft.Json;
+using Nethermind.Crypto;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 
 namespace Ethereum.Test.Base
 {
@@ -118,7 +119,7 @@ namespace Ethereum.Test.Base
             transaction.Init = transaction.To == null ? transactionJson.Data[postStateJson.Indexes.Data] : null;
             transaction.SenderAddress = new PrivateKey(transactionJson.SecretKey).Address;
             transaction.Signature = new Signature(1, 1, 27);
-            transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
             return transaction;
         }
 
@@ -133,7 +134,7 @@ namespace Ethereum.Test.Base
             transaction.Data = transaction.To == null ? null : transactionJson.Data;
             transaction.Init = transaction.To == null ? transactionJson.Data : null;
             transaction.Signature = new Signature(transactionJson.R, transactionJson.S, (int) transactionJson.V);
-            transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
             return transaction;
         }
 

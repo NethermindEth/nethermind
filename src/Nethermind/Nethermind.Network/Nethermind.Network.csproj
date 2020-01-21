@@ -13,6 +13,7 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Crypto\Nethermind.Crypto.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
     <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />

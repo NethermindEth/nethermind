@@ -17,10 +17,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
 {
@@ -65,12 +62,12 @@ namespace Nethermind.Core.Crypto
     [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
-        internal const int Size = 32;
+        public const int Size = 32;
 
         public int MemorySize => MemorySizes.ArrayOverhead + Size;
 
         public Keccak(string hexString)
-            : this(Extensions.Bytes.FromHexString(hexString))
+            : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
 
@@ -129,12 +126,6 @@ namespace Nethermind.Core.Crypto
         }
 
         [DebuggerStepThrough]
-        public static Keccak Compute(Rlp rlp)
-        {
-            return InternalCompute(rlp.Bytes);
-        }
-
-        [DebuggerStepThrough]
         public static Keccak Compute(byte[] input)
         {
             if (input == null || input.Length == 0)
@@ -179,7 +170,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
+            return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
         public override bool Equals(object obj)
@@ -204,7 +195,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator !=(Keccak a, Keccak b)

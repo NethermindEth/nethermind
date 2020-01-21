@@ -15,8 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Json;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

@@ -17,7 +17,7 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Store;

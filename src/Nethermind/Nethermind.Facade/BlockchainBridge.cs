@@ -22,8 +22,10 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -119,7 +121,7 @@ namespace Nethermind.Facade
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
-            transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
             transaction.Timestamp = _timestamper.EpochSeconds;
 
             var result = _txPool.AddTransaction(transaction, _blockTree.Head.Number, isOwn);
@@ -127,7 +129,7 @@ namespace Nethermind.Facade
             {
                 transaction.Nonce = _txPool.ReserveOwnTransactionNonce(transaction.SenderAddress);
                 Sign(transaction);
-                transaction.Hash = Transaction.CalculateHash(transaction);
+                transaction.Hash = transaction.CalculateHash();
                 _txPool.AddTransaction(transaction, _blockTree.Head.Number, true);
             }
 
@@ -184,7 +186,7 @@ namespace Nethermind.Facade
                 transaction.Nonce = GetNonce(blockHeader.StateRoot, transaction.SenderAddress);
             }
             
-            transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
             CallOutputTracer callOutputTracer = new CallOutputTracer();
             _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
             _stateProvider.Reset();
@@ -198,7 +200,7 @@ namespace Nethermind.Facade
             BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary,
                 block.Difficulty, block.Number + 1, block.GasLimit, block.Timestamp + 1, Bytes.Empty);
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            transaction.Hash = Nethermind.Core.Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
             CallOutputTracer callOutputTracer = new CallOutputTracer();
             _transactionProcessor.CallAndRestore(transaction, header, callOutputTracer);
             _stateProvider.Reset();

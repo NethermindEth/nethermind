@@ -16,7 +16,8 @@
 
 using System.Linq;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules.Personal;
 using Nethermind.Logging;

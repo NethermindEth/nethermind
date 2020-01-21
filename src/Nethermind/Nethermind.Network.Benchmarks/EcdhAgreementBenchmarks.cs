@@ -19,6 +19,7 @@ using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Network.Crypto;
 using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;

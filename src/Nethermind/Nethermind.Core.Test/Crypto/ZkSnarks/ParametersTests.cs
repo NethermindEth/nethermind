@@ -16,8 +16,8 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Core.Crypto.ZkSnarks;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto.ZkSnarks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto.ZkSnarks

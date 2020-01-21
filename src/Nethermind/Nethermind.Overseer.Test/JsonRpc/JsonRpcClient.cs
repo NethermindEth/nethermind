@@ -20,9 +20,8 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
-using Nethermind.Core.Json;
 using Nethermind.JsonRpc;
-using Newtonsoft.Json;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Overseer.Test.JsonRpc
 {

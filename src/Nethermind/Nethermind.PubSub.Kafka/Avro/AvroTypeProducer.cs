@@ -86,7 +86,7 @@ namespace Nethermind.PubSub.Kafka.Avro
                 return;
             }
 
-            var transaction = data as Core.FullTransaction;
+            var transaction = data as PubSub.Models.FullTransaction;
             if (transaction != null)
             {
                 await ProduceAvroTransactionAsync(topic, transaction);
@@ -103,7 +103,7 @@ namespace Nethermind.PubSub.Kafka.Avro
             }
         }
 
-        private async Task ProduceAvroTransactionAsync(string topic, Core.FullTransaction fullTransaction)
+        private async Task ProduceAvroTransactionAsync(string topic, PubSub.Models.FullTransaction fullTransaction)
         {
 
             var message = new Message<Null, FullTransaction> {Value = _mapper.MapFullTransaction(fullTransaction)};

@@ -16,6 +16,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Network.Discovery.Messages
 {

@@ -20,11 +20,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
-using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.Synchronization.FastSync

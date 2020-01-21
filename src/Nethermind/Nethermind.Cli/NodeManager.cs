@@ -19,12 +19,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Threading.Tasks;
-using Jint;
 using Jint.Native;
 using Jint.Native.Json;
-using Nethermind.Core;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Cli
 {

@@ -16,8 +16,9 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -72,7 +73,7 @@ namespace Nethermind.Blockchain
         {
             return block.Ommers.Length == 0
                 ? Keccak.OfAnEmptySequenceRlp
-                : Keccak.Compute(Rlp.Encode(block.Ommers));
+                : Keccak.Compute(Rlp.Encode(block.Ommers).Bytes);
         }
     }
 }

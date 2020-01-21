@@ -16,6 +16,7 @@
 
 using System.Linq;
 using System.Numerics;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -149,7 +150,7 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             base.BeforeReturn();
-            TestObjectInternal.Header.Hash = BlockHeader.CalculateHash(TestObjectInternal.Header);
+            TestObjectInternal.Header.Hash = TestObjectInternal.Header.CalculateHash();
         }
     }
 }

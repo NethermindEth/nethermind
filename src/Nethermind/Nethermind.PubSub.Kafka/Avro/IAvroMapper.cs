@@ -26,6 +26,6 @@ namespace Nethermind.PubSub.Kafka.Avro
         Transaction MapTransaction(int index, long blockNumber,
             Keccak blockHash, Core.Transaction transaction);
 
-        FullTransaction MapFullTransaction(Core.FullTransaction fullTransaction);
+        FullTransaction MapFullTransaction(PubSub.Models.FullTransaction fullTransaction);
     }
 }

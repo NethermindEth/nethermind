@@ -17,10 +17,10 @@
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 {
@@ -37,7 +37,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
     
         public async Task<bool> IsVerifiedAsync(Keccak dataAssetId, Address address)
         {
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(dataAssetId), Rlp.Encode(address)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(dataAssetId), Rlp.Encode(address)).Bytes);
             var depositApproval = await _depositApprovalRepository.GetAsync(id);
             if (depositApproval is null)
             {

@@ -16,8 +16,8 @@
 
 using System.IO;
 using System.Linq;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -34,7 +34,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataDeliveryReceiptRequestDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataDeliveryReceiptRequest)] =
+            Serialization.Rlp.Rlp.Decoders[typeof(DataDeliveryReceiptRequest)] =
                 new DataDeliveryReceiptRequestDecoder();
         }
 
@@ -49,27 +49,27 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
             var number = rlpStream.DecodeUInt();
             var depositId = rlpStream.DecodeKeccak();
-            var unitsRange = Nethermind.Core.Encoding.Rlp.Decode<UnitsRange>(rlpStream);
+            var unitsRange = Serialization.Rlp.Rlp.Decode<UnitsRange>(rlpStream);
             var isSettlement = rlpStream.DecodeBool();
-            var receipts = Nethermind.Core.Encoding.Rlp.DecodeArray<DataDeliveryReceiptToMerge>(rlpStream);
+            var receipts = Serialization.Rlp.Rlp.DecodeArray<DataDeliveryReceiptToMerge>(rlpStream);
 
             return new DataDeliveryReceiptRequest(number, depositId, unitsRange, isSettlement, receipts);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataDeliveryReceiptRequest item,
+        public Serialization.Rlp.Rlp Encode(DataDeliveryReceiptRequest item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Number),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.UnitsRange),
-                Nethermind.Core.Encoding.Rlp.Encode(item.IsSettlement),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ReceiptsToMerge.ToArray()));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Number),
+                Serialization.Rlp.Rlp.Encode(item.DepositId),
+                Serialization.Rlp.Rlp.Encode(item.UnitsRange),
+                Serialization.Rlp.Rlp.Encode(item.IsSettlement),
+                Serialization.Rlp.Rlp.Encode(item.ReceiptsToMerge.ToArray()));
         }
         
         public void Encode(MemoryStream stream, DataDeliveryReceiptRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

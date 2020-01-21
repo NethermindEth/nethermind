@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataAssetRulesDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAssetRules)] = new DataAssetRulesDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(DataAssetRules)] = new DataAssetRulesDecoder();
         }
 
         public DataAssetRules Decode(RlpStream rlpStream,
@@ -45,22 +45,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
                 return null;
             }
 
-            var expiry = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRule>(rlpStream);
-            var upfrontPayment = Nethermind.Core.Encoding.Rlp.Decode<DataAssetRule>(rlpStream);
+            var expiry = Serialization.Rlp.Rlp.Decode<DataAssetRule>(rlpStream);
+            var upfrontPayment = Serialization.Rlp.Rlp.Decode<DataAssetRule>(rlpStream);
 
             return new DataAssetRules(expiry, upfrontPayment);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataAssetRules item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DataAssetRules item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Expiry),
-                Nethermind.Core.Encoding.Rlp.Encode(item.UpfrontPayment));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Expiry),
+                Serialization.Rlp.Rlp.Encode(item.UpfrontPayment));
         }
 
         public void Encode(MemoryStream stream, DataAssetRules item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

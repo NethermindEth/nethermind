@@ -17,9 +17,10 @@
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers
 {

@@ -17,9 +17,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain.TxPools.Storages

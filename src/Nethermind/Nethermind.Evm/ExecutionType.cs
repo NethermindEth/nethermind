@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 
 namespace Nethermind.Evm
 {

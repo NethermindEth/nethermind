@@ -32,7 +32,6 @@ namespace Nethermind.Store
         IDb HeadersDb { get; }
         IDb BlockInfosDb { get; }
         IDb PendingTxsDb { get; }
-        IDb TraceDb { get; }
         IDb ConfigsDb { get; }
         IDb EthRequestsDb { get; }
         // add C#8 Dispose (default implementation)

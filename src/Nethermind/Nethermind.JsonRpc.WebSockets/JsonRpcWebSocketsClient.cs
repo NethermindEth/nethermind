@@ -14,10 +14,9 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Serialization.Json;
 using Nethermind.WebSockets;
 
 namespace Nethermind.JsonRpc.WebSockets

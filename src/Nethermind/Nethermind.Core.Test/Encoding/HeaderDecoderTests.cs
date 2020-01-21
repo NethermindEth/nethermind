@@ -16,9 +16,10 @@
 
 using System;
 using Microsoft.VisualStudio.TestPlatform.ObjectModel;
+using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using NUnit.Framework.Internal;
 
@@ -38,7 +39,7 @@ namespace Nethermind.Core.Test.Encoding
             HeaderDecoder decoder = new HeaderDecoder();
             Rlp rlp = decoder.Encode(header);
             BlockHeader decoded = decoder.Decode(new Rlp.ValueDecoderContext(rlp.Bytes));
-            decoded.Hash = BlockHeader.CalculateHash(decoded);
+            decoded.Hash = decoded.CalculateHash();
             
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
         }
@@ -55,7 +56,7 @@ namespace Nethermind.Core.Test.Encoding
             HeaderDecoder decoder = new HeaderDecoder();
             Rlp rlp = decoder.Encode(header);
             BlockHeader decoded = decoder.Decode(new Rlp.ValueDecoderContext(rlp.Bytes));
-            decoded.Hash = BlockHeader.CalculateHash(decoded);
+            decoded.Hash = decoded.CalculateHash();
             
             Assert.AreEqual(header.Hash, decoded.Hash, "hash");
         }

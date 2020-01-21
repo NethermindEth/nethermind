@@ -20,13 +20,6 @@ using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Modules
 {
-    public enum ModuleResolution
-    {
-        Enabled,
-        Disabled,
-        Unknown
-    }
-    
     public interface IRpcModuleProvider
     {
         void Register<T>(IRpcModulePool<T> pool) where T : IModule;

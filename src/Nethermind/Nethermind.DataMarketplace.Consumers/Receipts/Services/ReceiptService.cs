@@ -19,7 +19,7 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Consumers.Deposits;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers;
@@ -29,6 +29,7 @@ using Nethermind.DataMarketplace.Consumers.Sessions.Repositories;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
@@ -92,7 +93,7 @@ namespace Nethermind.DataMarketplace.Consumers.Receipts.Services
             }
 
             var receiptId = Keccak.Compute(Rlp.Encode(Rlp.Encode(depositId), Rlp.Encode(request.Number),
-                Rlp.Encode(_timestamper.EpochSeconds)));
+                Rlp.Encode(_timestamper.EpochSeconds)).Bytes);
             if (!_receiptRequestValidator.IsValid(request, session.UnpaidUnits, session.ConsumedUnits,
                 deposit.Deposit.Units))
             {

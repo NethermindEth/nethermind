@@ -20,13 +20,13 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Json;
 using Nethermind.DataMarketplace.Consumers.Infrastructure.Rpc.Models;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Infrastructure.Rpc.Models;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.DataMarketplace.Consumers.Test.EndToEnd
 {

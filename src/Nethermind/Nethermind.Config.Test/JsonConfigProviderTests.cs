@@ -75,18 +75,18 @@ namespace Nethermind.Config.Test
                 Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
 
-            NetworkNode[] nodes = NetworkNode.ParseNodes(networkConfig.Bootnodes, LimboNoErrorLogger.Instance);
-            Assert.AreEqual(2, nodes.Length);
+            // NetworkNode[] nodes = NetworkNode.ParseNodes(networkConfig.Bootnodes, LimboNoErrorLogger.Instance);
+            // Assert.AreEqual(2, nodes.Length);
 
-            var node1 = nodes[0];
-            Assert.IsNotNull(node1);
-            Assert.AreEqual("40.70.214.166", node1.Host);
-            Assert.AreEqual(40303, node1.Port);
-
-            var node2 = nodes[1];
-            Assert.IsNotNull(node2);
-            Assert.AreEqual("213.186.16.82", node2.Host);
-            Assert.AreEqual(1345, node2.Port);
+            // var node1 = nodes[0];
+            // Assert.IsNotNull(node1);
+            // Assert.AreEqual("40.70.214.166", node1.Host);
+            // Assert.AreEqual(40303, node1.Port);
+            //
+            // var node2 = nodes[1];
+            // Assert.IsNotNull(node2);
+            // Assert.AreEqual("213.186.16.82", node2.Host);
+            // Assert.AreEqual(1345, node2.Port);
         }
     }
 }

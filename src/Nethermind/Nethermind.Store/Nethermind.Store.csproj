@@ -8,5 +8,7 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
   </ItemGroup>
 </Project>

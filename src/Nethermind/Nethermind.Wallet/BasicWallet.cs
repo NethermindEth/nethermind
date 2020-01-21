@@ -17,6 +17,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet

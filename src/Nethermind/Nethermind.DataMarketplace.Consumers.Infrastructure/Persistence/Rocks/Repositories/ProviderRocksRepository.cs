@@ -17,12 +17,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Consumers.DataAssets.Domain;
 using Nethermind.DataMarketplace.Consumers.Deposits.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Domain;
 using Nethermind.DataMarketplace.Consumers.Providers.Repositories;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Persistence.Rocks.Repositories

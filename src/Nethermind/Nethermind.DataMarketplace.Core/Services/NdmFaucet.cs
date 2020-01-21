@@ -19,12 +19,12 @@ using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Repositories;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.DataMarketplace.Core.Services
@@ -185,7 +185,7 @@ namespace Nethermind.DataMarketplace.Core.Services
                 var transactionHash = await _blockchainBridge.SendOwnTransactionAsync(transaction);
                 if (latestRequest is null)
                 {
-                    var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)));
+                    var requestId = Keccak.Compute(Rlp.Encode(Rlp.Encode(node)).Bytes);
                     latestRequest = new EthRequest(requestId, node, address, value, requestedAt, transactionHash);
                     await _requestRepository.AddAsync(latestRequest);
                 }

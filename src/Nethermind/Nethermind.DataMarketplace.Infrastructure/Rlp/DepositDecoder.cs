@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DepositDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(Deposit)] = new DepositDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(Deposit)] = new DepositDecoder();
         }
 
         public Deposit Decode(RlpStream rlpStream,
@@ -53,18 +53,18 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new Deposit(id, units, expiryTime, value);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Units),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ExpiryTime),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Value));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Id),
+                Serialization.Rlp.Rlp.Encode(item.Units),
+                Serialization.Rlp.Rlp.Encode(item.ExpiryTime),
+                Serialization.Rlp.Rlp.Encode(item.Value));
         }
 
         public void Encode(MemoryStream stream, Deposit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

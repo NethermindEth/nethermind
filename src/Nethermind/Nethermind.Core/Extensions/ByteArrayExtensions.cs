@@ -23,19 +23,12 @@ using System.Security.Cryptography;
 using System.Threading;
 using Extensions.Data;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this Span<byte> span)
-        {
-            return span.IsEmpty ? new Rlp.ValueDecoderContext(Bytes.Empty) : new Rlp.ValueDecoderContext(span);
-        }
-        
-        
         public static string ToHexString(this Span<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);
@@ -190,16 +183,6 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        public static RlpStream AsRlpStream(this byte[] bytes)
-        {
-            return bytes == null ? new RlpStream(Bytes.Empty) : new RlpStream(bytes);
-        }
-        
-        public static Rlp.ValueDecoderContext AsRlpValueContext(this byte[] bytes)
-        {
-            return bytes == null ? new Rlp.ValueDecoderContext(Bytes.Empty) : new Rlp.ValueDecoderContext(bytes);
-        }
-        
         public static byte[] Slice(this byte[] bytes, int startIndex)
         {
             byte[] slice = new byte[bytes.Length - startIndex];

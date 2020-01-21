@@ -26,7 +26,6 @@ using Jint.Runtime;
 using Jint.Runtime.Interop;
 using Nethermind.Cli.Converters;
 using Nethermind.Cli.Modules;
-using Nethermind.Core.Converters;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Cli

@@ -16,11 +16,11 @@
 
 using Nethermind.Abi;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Core;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Core.Services;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure
 {

@@ -19,6 +19,8 @@ using System.Threading.Tasks;
 using Confluent.Kafka;
 using Nethermind.Core;
 using Nethermind.Logging;
+using Nethermind.PubSub.Models;
+using Block = Nethermind.Core.Block;
 using JsonSerializer = Utf8Json.JsonSerializer;
 
 namespace Nethermind.PubSub.Kafka.TypeProducers

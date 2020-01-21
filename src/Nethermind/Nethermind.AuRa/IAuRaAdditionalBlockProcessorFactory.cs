@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.AuRa.Validators;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.AuRa
 {

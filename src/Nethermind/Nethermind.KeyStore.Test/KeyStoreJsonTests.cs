@@ -17,15 +17,12 @@
 using System.IO;
 using System.Linq;
 using System.Security;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
-using Nethermind.Core.Model;
-using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

@@ -249,6 +249,14 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Json", "Ne
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core2.Cryptography", "Nethermind.Core2.Cryptography\Nethermind.Core2.Cryptography.csproj", "{FC8F352F-2F4C-41BF-93E4-C8905B3FFF47}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Json", "Nethermind.Serialization.Json\Nethermind.Serialization.Json.csproj", "{D3475FB1-E71A-430C-A758-460DD6D19A2C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Specs", "Nethermind.Specs\Nethermind.Specs.csproj", "{BABC9F9C-38A4-445A-8BCC-439E5189497F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Crypto", "Nethermind.Crypto\Nethermind.Crypto.csproj", "{3111BE47-C805-43F4-8724-8310D579EB80}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -659,6 +667,22 @@ Global
 		{FC8F352F-2F4C-41BF-93E4-C8905B3FFF47}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FC8F352F-2F4C-41BF-93E4-C8905B3FFF47}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FC8F352F-2F4C-41BF-93E4-C8905B3FFF47}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D3475FB1-E71A-430C-A758-460DD6D19A2C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BABC9F9C-38A4-445A-8BCC-439E5189497F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BABC9F9C-38A4-445A-8BCC-439E5189497F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BABC9F9C-38A4-445A-8BCC-439E5189497F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BABC9F9C-38A4-445A-8BCC-439E5189497F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3111BE47-C805-43F4-8724-8310D579EB80}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3111BE47-C805-43F4-8724-8310D579EB80}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3111BE47-C805-43F4-8724-8310D579EB80}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3111BE47-C805-43F4-8724-8310D579EB80}.Release|Any CPU.Build.0 = Release|Any CPU
+		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{01D726FD-6980-4F7B-A77B-60BCDBDFECDB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

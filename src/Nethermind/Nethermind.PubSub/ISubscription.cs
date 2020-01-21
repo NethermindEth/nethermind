@@ -16,7 +16,8 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.PubSub.Models;
+using Block = Nethermind.Core.Block;
 
 namespace Nethermind.PubSub
 {

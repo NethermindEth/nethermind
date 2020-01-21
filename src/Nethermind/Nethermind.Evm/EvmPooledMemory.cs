@@ -19,7 +19,6 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 

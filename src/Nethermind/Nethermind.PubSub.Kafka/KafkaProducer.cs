@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Logging;
 using Nethermind.PubSub.Kafka.Avro;
 using Nethermind.PubSub.Kafka.TypeProducers;
+using Nethermind.PubSub.Models;
 
 namespace Nethermind.PubSub.Kafka
 {
@@ -192,7 +193,7 @@ namespace Nethermind.PubSub.Kafka
             => new Dictionary<Type, string>
             {
                 [typeof(Core.Block)] = _kafkaConfig.TopicBlocks,
-                [typeof(Core.FullTransaction)] = _kafkaConfig.TopicTransactions,
+                [typeof(FullTransaction)] = _kafkaConfig.TopicTransactions,
                 [typeof(Core.TxReceipt)] = _kafkaConfig.TopicReceipts,
             };
     }

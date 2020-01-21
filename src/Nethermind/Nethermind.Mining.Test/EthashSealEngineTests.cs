@@ -18,6 +18,7 @@ using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -76,12 +77,12 @@ namespace Nethermind.Mining.Test
         public async Task Find_nonce()
         {
             BlockHeader parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });
-            parentHeader.Hash = BlockHeader.CalculateHash(parentHeader);
+            parentHeader.Hash = parentHeader.CalculateHash();
 
             BlockHeader blockHeader = new BlockHeader(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
             blockHeader.Nonce = 7217048144105167954;
             blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
-            blockHeader.Hash = BlockHeader.CalculateHash(blockHeader);
+            blockHeader.Hash = blockHeader.CalculateHash();
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash(LimboLogs.Instance);

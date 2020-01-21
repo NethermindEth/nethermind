@@ -17,6 +17,8 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto
@@ -30,7 +32,7 @@ namespace Nethermind.Core.Crypto
         private byte[] _prefixedBytes;
 
         public PublicKey(string hexString)
-            : this(Extensions.Bytes.FromHexString(hexString))
+            : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
         
@@ -78,7 +80,7 @@ namespace Nethermind.Core.Crypto
                 if (_prefixedBytes == null)
                 {
                     return LazyInitializer.EnsureInitialized(ref _prefixedBytes,
-                        () => Extensions.Bytes.Concat(0x04, Bytes));
+                        () => Core.Extensions.Bytes.Concat(0x04, Bytes));
                 }
 
                 return _prefixedBytes;
@@ -92,7 +94,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
         
         private Address ComputeAddress()
@@ -139,7 +141,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
+            return Core.Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator !=(PublicKey a, PublicKey b)

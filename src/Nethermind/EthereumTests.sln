@@ -60,6 +60,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.State.Test.Runne
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Logging.NLog", "Nethermind.Logging.NLog\Nethermind.Logging.NLog.csproj", "{5880276D-35B7-4E79-AF0E-9B9E43A61012}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Serialization.Rlp", "Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj", "{E30BDBE1-0A17-4694-AB3E-01E9543E88BE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -182,6 +184,10 @@ Global
 		{5880276D-35B7-4E79-AF0E-9B9E43A61012}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5880276D-35B7-4E79-AF0E-9B9E43A61012}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5880276D-35B7-4E79-AF0E-9B9E43A61012}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E30BDBE1-0A17-4694-AB3E-01E9543E88BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E30BDBE1-0A17-4694-AB3E-01E9543E88BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E30BDBE1-0A17-4694-AB3E-01E9543E88BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E30BDBE1-0A17-4694-AB3E-01E9543E88BE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{DD4B1F0B-F939-4BE1-A846-EAA8DDB2B792} = {199F75FD-E02D-4434-B4F0-0B35B63A1D77}
@@ -198,5 +204,6 @@ Global
 		{CAE4331F-749F-48AF-92B0-2AC4C6C02B16} = {199F75FD-E02D-4434-B4F0-0B35B63A1D77}
 		{C216A246-ED2B-44D6-90E1-F89005334AA0} = {199F75FD-E02D-4434-B4F0-0B35B63A1D77}
 		{5880276D-35B7-4E79-AF0E-9B9E43A61012} = {199F75FD-E02D-4434-B4F0-0B35B63A1D77}
+		{E30BDBE1-0A17-4694-AB3E-01E9543E88BE} = {199F75FD-E02D-4434-B4F0-0B35B63A1D77}
 	EndGlobalSection
 EndGlobal

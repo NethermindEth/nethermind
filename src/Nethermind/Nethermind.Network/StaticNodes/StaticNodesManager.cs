@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -54,10 +55,9 @@ namespace Nethermind.Network.StaticNodes
                 return;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Loading static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             string data = await File.ReadAllTextAsync(_staticNodesPath);
             string[] nodes = JsonConvert.DeserializeObject<string[]>(data).Distinct().ToArray();
-            if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes.");
+            if (_logger.IsInfo) _logger.Info($"Loaded {nodes.Length} static nodes from file: {Path.GetFullPath(_staticNodesPath)}");
             if (nodes.Length != 0)
             {
                 if (_logger.IsInfo) _logger.Info($"Static nodes: {Environment.NewLine}{data}");

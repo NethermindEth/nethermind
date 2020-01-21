@@ -16,8 +16,8 @@
 
 using FluentAssertions;
 using Nethermind.AuRa.Validators;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators

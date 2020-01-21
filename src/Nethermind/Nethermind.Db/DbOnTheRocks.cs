@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
@@ -38,6 +39,8 @@ namespace Nethermind.Db
         public abstract string Name { get; }
 
         private static long _maxRocksSize;
+        
+        private long _maxThisDbSize;
 
         public DbOnTheRocks(string basePath, string dbPath, IDbConfig dbConfig, ILogManager logManager = null) // TODO: check column families
         {
@@ -48,11 +51,14 @@ namespace Nethermind.Db
                 Directory.CreateDirectory(fullPath);
             }
 
-            if (_logger.IsInfo) _logger.Info($"Using database directory {fullPath}");
-
             try
             {
+                // ReSharper disable once VirtualMemberCallInConstructor
+                if (_logger.IsDebug) _logger.Debug($"Building options for {Name} DB");
                 DbOptions options = BuildOptions(dbConfig);
+                
+                // ReSharper disable once VirtualMemberCallInConstructor
+                if (_logger.IsInfo) _logger.Info($"Loading {Name.PadRight(16)} from {fullPath} with max memory footprint of {_maxThisDbSize / 1024 / 1024}MB");
                 _db = DbsByPath.GetOrAdd(fullPath, path => RocksDb.Open(options, path));
             }
             catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -82,7 +88,7 @@ namespace Nethermind.Db
 
         private DbOptions BuildOptions(IDbConfig dbConfig)
         {
-            long thisDbSize = 0;
+            _maxThisDbSize = 0;
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
@@ -92,7 +98,7 @@ namespace Nethermind.Db
             tableOptions.SetFormatVersion(2);
 
             ulong blockCacheSize = ReadConfig<ulong>(dbConfig, nameof(dbConfig.BlockCacheSize));
-            thisDbSize += (long) blockCacheSize;
+            _maxThisDbSize += (long) blockCacheSize;
 
             IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
@@ -122,10 +128,11 @@ namespace Nethermind.Db
             options.SetMinWriteBufferNumberToMerge(2);
 
 
-            thisDbSize += (long) writeBufferSize * writeBufferNumber;
-            Interlocked.Add(ref _maxRocksSize, thisDbSize);
-            _logger.Info($"Expected max memory footprint of {Name} DB is {thisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
-            _logger.Info($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
+            _maxThisDbSize += (long) writeBufferSize * writeBufferNumber;
+            Interlocked.Add(ref _maxRocksSize, _maxThisDbSize);
+            if(_logger.IsDebug) _logger.Debug($"Expected max memory footprint of {Name} DB is {_maxThisDbSize / 1024 / 1024}MB ({writeBufferNumber} * {writeBufferSize / 1024 / 1024}MB + {blockCacheSize / 1024 / 1024}MB)");
+            if(_logger.IsDebug) _logger.Debug($"Total max DB footprint so far is {_maxRocksSize / 1024 / 1024}MB");
+            ThisNodeInfo.AddInfo("DB mem est   :", $"{_maxRocksSize / 1024 / 1024}MB");
 
             options.SetBlockBasedTableFactory(tableOptions);
 

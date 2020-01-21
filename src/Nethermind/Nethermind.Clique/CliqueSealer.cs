@@ -54,7 +54,7 @@ namespace Nethermind.Clique
             Block? sealedBlock = Seal(processed);
             if (sealedBlock is null) return null;
 
-            sealedBlock.Hash = BlockHeader.CalculateHash(sealedBlock.Header);
+            sealedBlock.Hash = sealedBlock.Header.CalculateHash();
             return await Task.FromResult(sealedBlock);
         }
 

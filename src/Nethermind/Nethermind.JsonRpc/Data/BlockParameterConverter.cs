@@ -15,7 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using Nethermind.Core.Json;
+using Nethermind.Serialization.Json;
 using Newtonsoft.Json;
 
 namespace Nethermind.JsonRpc.Data

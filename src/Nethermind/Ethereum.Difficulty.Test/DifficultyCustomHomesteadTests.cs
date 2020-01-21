@@ -17,9 +17,8 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test

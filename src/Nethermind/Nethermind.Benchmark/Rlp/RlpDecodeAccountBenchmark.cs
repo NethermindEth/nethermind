@@ -17,7 +17,7 @@
 using System.Globalization;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 
@@ -31,8 +31,8 @@ namespace Nethermind.Benchmarks.Rlp
 
         private byte[][] _scenarios =
         {
-            Nethermind.Core.Encoding.Rlp.Encode(Account.TotallyEmpty).Bytes,
-            Nethermind.Core.Encoding.Rlp.Encode(Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject).Bytes,
+            Serialization.Rlp.Rlp.Encode(Account.TotallyEmpty).Bytes,
+            Serialization.Rlp.Rlp.Encode(Build.An.Account.WithBalance(UInt256.Parse("0x1000000000000000000000", NumberStyles.HexNumber)).WithNonce(123).TestObject).Bytes,
         };
 
         [Params(0, 1)]
@@ -47,13 +47,13 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public Account Improved()
         {
-            return Nethermind.Core.Encoding.Rlp.Decode<Account>(_account);
+            return Serialization.Rlp.Rlp.Decode<Account>(_account);
         }
         
         [Benchmark]
         public Account Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Decode<Account>(_account);
+            return Serialization.Rlp.Rlp.Decode<Account>(_account);
         }
     }
 }

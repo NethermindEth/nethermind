@@ -20,7 +20,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core

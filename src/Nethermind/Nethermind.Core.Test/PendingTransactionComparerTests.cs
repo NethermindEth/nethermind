@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections;
+using Nethermind.Blockchain.TxPools;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 

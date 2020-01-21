@@ -16,8 +16,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Evm.Tracing;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule
 {

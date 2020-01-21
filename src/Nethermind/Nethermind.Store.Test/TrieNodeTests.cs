@@ -17,7 +17,7 @@
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 

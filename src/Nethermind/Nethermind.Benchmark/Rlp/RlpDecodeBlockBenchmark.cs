@@ -17,8 +17,9 @@
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
 
@@ -42,8 +43,8 @@ namespace Nethermind.Benchmarks.Rlp
 
             _scenarios = new[]
             {
-                Nethermind.Core.Encoding.Rlp.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes,
-                Nethermind.Core.Encoding.Rlp.Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject).Bytes
+                Serialization.Rlp.Rlp.Encode(Build.A.Block.WithNumber(1).TestObject).Bytes,
+                Serialization.Rlp.Rlp.Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).WithOmmers(Build.A.BlockHeader.TestObject).WithMixHash(Keccak.EmptyTreeHash).TestObject).Bytes
             };
         }
 
@@ -59,13 +60,13 @@ namespace Nethermind.Benchmarks.Rlp
         [Benchmark]
         public Block Improved()
         {
-            return Nethermind.Core.Encoding.Rlp.Decode<Block>(_block);
+            return Serialization.Rlp.Rlp.Decode<Block>(_block);
         }
 
         [Benchmark]
         public Block Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Decode<Block>(_block);
+            return Serialization.Rlp.Rlp.Decode<Block>(_block);
         }
     }
 }

@@ -21,12 +21,12 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Test.Builders;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
+using Nethermind.Serialization.Rlp;
 using NSubstitute;
 using NUnit.Framework;
 

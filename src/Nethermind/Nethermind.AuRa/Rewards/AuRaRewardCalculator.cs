@@ -23,7 +23,7 @@ using Nethermind.AuRa.Contracts;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 

@@ -17,7 +17,8 @@
 using System;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
+using Nethermind.Core.Caching;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Store.Repositories
 {

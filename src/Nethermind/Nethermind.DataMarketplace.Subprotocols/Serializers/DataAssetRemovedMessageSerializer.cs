@@ -17,13 +17,14 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class DataAssetRemovedMessageSerializer : IMessageSerializer<DataAssetRemovedMessage>
     {
         public byte[] Serialize(DataAssetRemovedMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DataAssetId)).Bytes;
 
         public DataAssetRemovedMessage Deserialize(byte[] bytes)
         {

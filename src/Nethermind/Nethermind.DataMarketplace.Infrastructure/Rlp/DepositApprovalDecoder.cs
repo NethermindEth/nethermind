@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DepositApprovalDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DepositApproval)] = new DepositApprovalDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(DepositApproval)] = new DepositApprovalDecoder();
         }
 
         public DepositApproval Decode(RlpStream rlpStream,
@@ -57,22 +57,22 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new DepositApproval(id, assetId, assetName, kyc, consumer, provider, timestamp, state);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.AssetId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.AssetName),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Kyc),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Consumer),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Provider),
-                Nethermind.Core.Encoding.Rlp.Encode(item.Timestamp),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.State));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Id),
+                Serialization.Rlp.Rlp.Encode(item.AssetId),
+                Serialization.Rlp.Rlp.Encode(item.AssetName),
+                Serialization.Rlp.Rlp.Encode(item.Kyc),
+                Serialization.Rlp.Rlp.Encode(item.Consumer),
+                Serialization.Rlp.Rlp.Encode(item.Provider),
+                Serialization.Rlp.Rlp.Encode(item.Timestamp),
+                Serialization.Rlp.Rlp.Encode((int) item.State));
         }
 
         public void Encode(MemoryStream stream, DepositApproval item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -17,13 +17,14 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class FinishSessionMessageSerializer : IMessageSerializer<FinishSessionMessage>
     {
         public byte[] Serialize(FinishSessionMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId)).Bytes;
 
         public FinishSessionMessage Deserialize(byte[] bytes)
         {

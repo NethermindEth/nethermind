@@ -18,14 +18,15 @@ using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class DataAvailabilityMessageSerializer : IMessageSerializer<DataAvailabilityMessage>
     {
         public byte[] Serialize(DataAvailabilityMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode((int) message.DataAvailability)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode((int) message.DataAvailability)).Bytes;
 
         public DataAvailabilityMessage Deserialize(byte[] bytes)
         {

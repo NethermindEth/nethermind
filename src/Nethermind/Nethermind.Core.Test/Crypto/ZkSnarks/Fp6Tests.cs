@@ -14,7 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Crypto.ZkSnarks;
+using Nethermind.Crypto.ZkSnarks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto.ZkSnarks

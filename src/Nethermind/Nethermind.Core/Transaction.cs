@@ -17,9 +17,7 @@
 using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -56,8 +54,6 @@ namespace Nethermind.Core
         public Keccak Hash { get; set; }
         public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
         public UInt256 Timestamp { get; set; }
-
-        public static Keccak CalculateHash(Transaction transaction) => Keccak.Compute(Rlp.Encode(transaction));
 
         public string ToString(string indent)
         {

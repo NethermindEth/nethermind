@@ -15,12 +15,12 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Blockchain.Synchronization.FastSync;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Synchronization.FastSync;
 using NSubstitute;
 using NUnit.Framework;
 

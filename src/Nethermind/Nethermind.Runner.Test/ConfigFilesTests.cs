@@ -17,7 +17,6 @@
 using System.IO;
 using System.Net;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.DataMarketplace.Core.Configs;
@@ -28,7 +27,6 @@ using Nethermind.Monitoring;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network.Config;
 using Nethermind.PubSub.Kafka;
-using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using NUnit.Framework;
 
@@ -484,10 +482,8 @@ namespace Nethermind.Runner.Test
             Assert.False(initConfig.KeepDevWalletInMemory, nameof(initConfig.KeepDevWalletInMemory));
             Assert.False(initConfig.IsMining, nameof(initConfig.IsMining));
             Assert.True(initConfig.StoreReceipts, nameof(initConfig.StoreReceipts));
-            Assert.False(initConfig.StoreTraces, nameof(initConfig.StoreTraces));
-            
+
             Assert.AreEqual(configFile.Replace("cfg", "logs.txt"), initConfig.LogFileName, nameof(initConfig.LogFileName));
-            Assert.AreEqual("chainspec", initConfig.ChainSpecFormat, nameof(initConfig.ChainSpecFormat));
         }
 
         private static ConfigProvider GetConfigProviderFromFile(string configFile)

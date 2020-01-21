@@ -16,6 +16,7 @@
 
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NUnit.Framework;

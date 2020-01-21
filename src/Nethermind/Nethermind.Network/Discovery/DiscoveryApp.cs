@@ -26,8 +26,11 @@ using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -135,7 +138,8 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsInfo) _logger.Info($"Discovery    : udp://{_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort}");
+            if(_logger.IsDebug) _logger.Debug($"Discovery    : udp://{_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort}");
+            ThisNodeInfo.AddInfo("Discovery    :", $"udp://{_networkConfig.LocalIp}:{_networkConfig.DiscoveryPort}");
             _group = new MultithreadEventLoopGroup(1);
             Bootstrap bootstrap = new Bootstrap();
             bootstrap
@@ -174,7 +178,7 @@ namespace Nethermind.Network.Discovery
         
         private void OnChannelActivated(object sender, EventArgs e)
         {
-            if(_logger.IsInfo) _logger.Info("Activated discovery channel.");
+            if(_logger.IsDebug) _logger.Debug("Activated discovery channel.");
             
             //Make sure this is non blocking code, otherwise netty will not process messages
             Task.Run(() => OnChannelActivated(_appShutdownSource.Token)).ContinueWith
@@ -290,7 +294,7 @@ namespace Nethermind.Network.Discovery
                 if (_logger.IsTrace) _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
             }
 
-            if (_logger.IsInfo) _logger.Info($"Added persisted discovery nodes: {nodes.Length}");
+            if (_logger.IsDebug) _logger.Debug($"Added persisted discovery nodes: {nodes.Length}");
         }
 
         private void InitializeDiscoveryTimer()

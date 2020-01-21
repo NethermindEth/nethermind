@@ -19,9 +19,8 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Serialization.Rlp;
 
 namespace Ethereum.Test.Base
 {

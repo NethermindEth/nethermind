@@ -20,11 +20,14 @@ using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 
 namespace Nethermind.Clique
@@ -85,7 +88,7 @@ namespace Nethermind.Clique
             byte[] fullExtraData = blockHeader.ExtraData;
             byte[] shortExtraData = blockHeader.ExtraData.Slice(0, shortExtraLength);
             blockHeader.ExtraData = shortExtraData;
-            Keccak sigHash = BlockHeader.CalculateHash(blockHeader);
+            Keccak sigHash = blockHeader.CalculateHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
         }
@@ -346,7 +349,7 @@ namespace Nethermind.Clique
             snapshot.Number += headers.Count;
             
             // was this needed?
-//            snapshot.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]);
+//            snapshot.Hash = headers[headers.Count - 1].CalculateHash();
             snapshot.Hash = headers[headers.Count - 1].Hash;
             return snapshot;
         }

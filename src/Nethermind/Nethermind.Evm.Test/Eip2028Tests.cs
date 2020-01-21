@@ -17,7 +17,8 @@
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test

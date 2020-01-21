@@ -17,9 +17,12 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
@@ -62,7 +65,7 @@ namespace Nethermind.Evm
         private void QuickFail(Transaction tx, BlockHeader block, ITxTracer txTracer, bool readOnly)
         {
             block.GasUsed += tx.GasLimit;
-            Address recipient = tx.To ?? Address.OfContract(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
+            Address recipient = tx.To ?? ContractAddress.From(tx.SenderAddress, _stateProvider.GetNonce(tx.SenderAddress));
             if (txTracer.IsTracingReceipt) txTracer.MarkAsFailed(recipient, tx.GasLimit, Bytes.Empty, "invalid");
         }
 
@@ -177,7 +180,7 @@ namespace Nethermind.Evm
             {
                 if (transaction.IsContractCreation)
                 {
-                    recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
+                    recipient = ContractAddress.From(sender, _stateProvider.GetNonce(sender) - 1);
                     if (transaction.IsSystem())
                     {
                         recipient = transaction.SenderAddress;

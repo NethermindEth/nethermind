@@ -14,8 +14,8 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
@@ -23,8 +23,8 @@ namespace Nethermind.Network.P2P
     public class AddCapabilityMessageSerializer : IMessageSerializer<AddCapabilityMessage>
     {
         public byte[] Serialize(AddCapabilityMessage message)
-            => Core.Encoding.Rlp.Encode(Core.Encoding.Rlp.Encode(message.Capability.ProtocolCode.ToLowerInvariant()),
-                Core.Encoding.Rlp.Encode(message.Capability.Version)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.Capability.ProtocolCode.ToLowerInvariant()),
+                Rlp.Encode(message.Capability.Version)).Bytes;
 
         public AddCapabilityMessage Deserialize(byte[] bytes)
         {

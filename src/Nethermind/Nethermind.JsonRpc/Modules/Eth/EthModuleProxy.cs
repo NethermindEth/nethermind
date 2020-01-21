@@ -22,12 +22,12 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Facade.Proxy;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Eip1186;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Eth

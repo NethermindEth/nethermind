@@ -19,6 +19,7 @@ using Nethermind.Blockchain.Rewards;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Store;
 
@@ -43,8 +44,8 @@ namespace Nethermind.Blockchain
             ILogManager logManager)
         {
             _txEnv = txEnv;
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
-            var processor = new BlockchainProcessor(_txEnv.BlockTree, blockProcessor, recoveryStep, logManager, false, false);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
+            var processor = new BlockchainProcessor(_txEnv.BlockTree, blockProcessor, recoveryStep, logManager, false);
             BlockProcessingQueue = processor;
             Processor = new OneTimeChainProcessor(dbProvider, processor);
         }

@@ -21,7 +21,7 @@ using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.AuRa.Contracts

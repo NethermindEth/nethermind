@@ -22,13 +22,11 @@ using Nethermind.AuRa.Validators;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
-using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using Nito.Collections;
 
-namespace Nethermind.AuRa
+namespace Nethermind.AuRa.Test
 {
     public class AuRaBlockFinalizationManager : IBlockFinalizationManager
     {

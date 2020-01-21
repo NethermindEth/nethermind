@@ -24,7 +24,7 @@ namespace Nethermind.Db
 {
     public class RocksDbProvider : IDbProvider
     {
-        public RocksDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useTraceDb, bool useReceiptsDb)
+        public RocksDbProvider(string basePath, IDbConfig dbConfig, ILogManager logManager, bool useReceiptsDb)
         {
             BlocksDb = new BlocksRocksDb(basePath, dbConfig, logManager);
             HeadersDb = new HeadersRocksDb(basePath, dbConfig, logManager);
@@ -43,20 +43,10 @@ namespace Nethermind.Db
             {
                 ReceiptsDb = new ReadOnlyDb(new MemDb(), false);
             }
-
-            if (useTraceDb)
-            {
-                TraceDb = new TraceRocksDb(basePath, dbConfig, logManager);
-            }
-            else
-            {
-                TraceDb = new ReadOnlyDb(new MemDb(), false);
-            }
         }
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
-        public IDb TraceDb { get; }
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb HeadersDb { get; }
@@ -74,7 +64,6 @@ namespace Nethermind.Db
             HeadersDb?.Dispose();
             BlockInfosDb?.Dispose();
             PendingTxsDb?.Dispose();
-            TraceDb?.Dispose();
             ConfigsDb?.Dispose();
             EthRequestsDb?.Dispose();
         }

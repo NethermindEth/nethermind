@@ -22,9 +22,11 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using NSubstitute;
@@ -154,7 +156,7 @@ namespace Nethermind.Core.Test.Builders
 
                 current.Header.TxRoot = current.CalculateTxRoot();
                 current.Header.ReceiptsRoot = current.CalculateReceiptRoot(_specProvider, receipts.ToArray());
-                current.Hash = BlockHeader.CalculateHash(current);
+                current.Hash = current.CalculateHash();
             }
             else
             {

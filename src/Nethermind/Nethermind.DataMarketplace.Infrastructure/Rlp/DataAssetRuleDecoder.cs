@@ -15,8 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.IO;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 {
@@ -33,7 +33,7 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
 
         static DataAssetRuleDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(DataAssetRule)] = new DataAssetRuleDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(DataAssetRule)] = new DataAssetRuleDecoder();
         }
 
         public DataAssetRule Decode(RlpStream rlpStream,
@@ -50,15 +50,15 @@ namespace Nethermind.DataMarketplace.Infrastructure.Rlp
             return new DataAssetRule(value);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(DataAssetRule item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(DataAssetRule item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Value));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Value));
         }
 
         public void Encode(MemoryStream stream, DataAssetRule item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

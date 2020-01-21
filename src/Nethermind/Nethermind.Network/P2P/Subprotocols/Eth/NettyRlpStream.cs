@@ -18,7 +18,7 @@ using System;
 using System.Security.Cryptography;
 using DotNetty.Buffers;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {

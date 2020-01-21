@@ -23,9 +23,9 @@ using FluentAssertions;
 using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using NUnit.Framework;
 

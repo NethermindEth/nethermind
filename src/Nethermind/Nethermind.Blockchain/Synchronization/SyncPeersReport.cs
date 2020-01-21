@@ -19,7 +19,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
 using Nethermind.Stats;
-using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain.Synchronization
 {

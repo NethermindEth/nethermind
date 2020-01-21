@@ -15,9 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Numerics;
-using System.Reflection.Metadata.Ecma335;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
@@ -86,7 +85,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public Signature(string hexString)
-            : this(Extensions.Bytes.FromHexString(hexString))
+            : this(Core.Extensions.Bytes.FromHexString(hexString))
         {
         }
 
@@ -124,7 +123,7 @@ namespace Nethermind.Core.Crypto
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Extensions.Bytes.AreEqual(Bytes, other.Bytes) && V == other.V;
+            return Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes) && V == other.V;
         }
 
         public override bool Equals(object obj)

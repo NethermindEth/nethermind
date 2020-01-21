@@ -15,9 +15,9 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Microsoft.Extensions.DependencyInjection;
-using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner
 {

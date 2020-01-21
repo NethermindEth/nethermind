@@ -19,6 +19,7 @@ using System.Linq;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Rlp
@@ -27,7 +28,7 @@ namespace Nethermind.Benchmarks.Rlp
     [CoreJob(baseline: true)]
     public class RlpDecodeKeccakBenchmark
     {
-        private Nethermind.Core.Encoding.RlpStream[] _scenariosContext;
+        private RlpStream[] _scenariosContext;
         private byte[][] _scenarios;
 
         [GlobalSetup]
@@ -35,19 +36,19 @@ namespace Nethermind.Benchmarks.Rlp
         {
             _scenarios = new[]
             {
-                Nethermind.Core.Encoding.Rlp.Encode(Keccak.Zero).Bytes,
-                Nethermind.Core.Encoding.Rlp.Encode(Keccak.EmptyTreeHash).Bytes,
-                Nethermind.Core.Encoding.Rlp.Encode(Keccak.OfAnEmptyString).Bytes,
-                Nethermind.Core.Encoding.Rlp.Encode(Keccak.OfAnEmptySequenceRlp).Bytes,
-                Nethermind.Core.Encoding.Rlp.Encode(Keccak.OfAnEmptyString).Bytes.Concat(new byte[100000]).ToArray(),
-                Nethermind.Core.Encoding.Rlp.Encode(Keccak.Compute("a")).Bytes.Concat(new byte[100000]).ToArray()
+                Serialization.Rlp.Rlp.Encode(Keccak.Zero).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.EmptyTreeHash).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptyString).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptySequenceRlp).Bytes,
+                Serialization.Rlp.Rlp.Encode(Keccak.OfAnEmptyString).Bytes.Concat(new byte[100000]).ToArray(),
+                Serialization.Rlp.Rlp.Encode(Keccak.Compute("a")).Bytes.Concat(new byte[100000]).ToArray()
             };
         }
         
         [IterationSetup]
         public void Setup()
         {
-            _scenariosContext = _scenarios.Select(s => new Nethermind.Core.Encoding.RlpStream(s)).ToArray();
+            _scenariosContext = _scenarios.Select(s => new RlpStream(s)).ToArray();
         }
 
         [Params(0, 1, 2, 3)]

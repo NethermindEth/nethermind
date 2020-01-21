@@ -16,9 +16,9 @@
 
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Consumers.Sessions.Domain;
 using Nethermind.DataMarketplace.Core.Domain;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 {
@@ -31,7 +31,7 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
 
         static ConsumerSessionDecoder()
         {
-            Nethermind.Core.Encoding.Rlp.Decoders[typeof(ConsumerSession)] = new ConsumerSessionDecoder();
+            Serialization.Rlp.Rlp.Decoders[typeof(ConsumerSession)] = new ConsumerSessionDecoder();
         }
 
         public ConsumerSession Decode(RlpStream rlpStream,
@@ -67,32 +67,32 @@ namespace Nethermind.DataMarketplace.Consumers.Infrastructure.Rlp
                 consumedUnits, unpaidUnits, paidUnits, settledUnits, consumedUnitsFromProvider, dataAvailability);
         }
 
-        public Nethermind.Core.Encoding.Rlp Encode(ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Serialization.Rlp.Rlp Encode(ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (item == null)
             {
-                return Nethermind.Core.Encoding.Rlp.OfEmptySequence;
+                return Serialization.Rlp.Rlp.OfEmptySequence;
             }
 
-            return Nethermind.Core.Encoding.Rlp.Encode(
-                Nethermind.Core.Encoding.Rlp.Encode(item.Id),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.DataAssetId),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ConsumerNodeId.Bytes),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderAddress),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ProviderNodeId.Bytes),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.State),
-                Nethermind.Core.Encoding.Rlp.Encode(item.StartUnitsFromProvider),
-                Nethermind.Core.Encoding.Rlp.Encode(item.StartUnitsFromConsumer),
-                Nethermind.Core.Encoding.Rlp.Encode(item.StartTimestamp),
-                Nethermind.Core.Encoding.Rlp.Encode(item.FinishTimestamp),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ConsumedUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(item.UnpaidUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(item.PaidUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(item.SettledUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(item.ConsumedUnitsFromProvider),
-                Nethermind.Core.Encoding.Rlp.Encode((int) item.DataAvailability));
+            return Serialization.Rlp.Rlp.Encode(
+                Serialization.Rlp.Rlp.Encode(item.Id),
+                Serialization.Rlp.Rlp.Encode(item.DepositId),
+                Serialization.Rlp.Rlp.Encode(item.DataAssetId),
+                Serialization.Rlp.Rlp.Encode(item.ConsumerAddress),
+                Serialization.Rlp.Rlp.Encode(item.ConsumerNodeId.Bytes),
+                Serialization.Rlp.Rlp.Encode(item.ProviderAddress),
+                Serialization.Rlp.Rlp.Encode(item.ProviderNodeId.Bytes),
+                Serialization.Rlp.Rlp.Encode((int) item.State),
+                Serialization.Rlp.Rlp.Encode(item.StartUnitsFromProvider),
+                Serialization.Rlp.Rlp.Encode(item.StartUnitsFromConsumer),
+                Serialization.Rlp.Rlp.Encode(item.StartTimestamp),
+                Serialization.Rlp.Rlp.Encode(item.FinishTimestamp),
+                Serialization.Rlp.Rlp.Encode(item.ConsumedUnits),
+                Serialization.Rlp.Rlp.Encode(item.UnpaidUnits),
+                Serialization.Rlp.Rlp.Encode(item.PaidUnits),
+                Serialization.Rlp.Rlp.Encode(item.SettledUnits),
+                Serialization.Rlp.Rlp.Encode(item.ConsumedUnitsFromProvider),
+                Serialization.Rlp.Rlp.Encode((int) item.DataAvailability));
         }
 
         public void Encode(MemoryStream stream, ConsumerSession item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

@@ -17,12 +17,14 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.AuRa.Validators;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Crypto;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Logging;
 using Nethermind.Mining;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.AuRa
 {
@@ -140,7 +142,7 @@ namespace Nethermind.AuRa
         {
             Signature signature = new Signature(header.AuRaSignature);
             signature.V += Signature.VOffset;
-            Keccak message = BlockHeader.CalculateHash(header, RlpBehaviors.ForSealing);
+            Keccak message = header.CalculateHash(RlpBehaviors.ForSealing);
             return _ecdsa.RecoverAddress(signature, message);
         }
 

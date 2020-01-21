@@ -22,12 +22,13 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using Nethermind.Wallet;
 using NUnit.Framework;
@@ -112,12 +113,12 @@ namespace Nethermind.Clique.Test
             byte[] extraData = Bytes.FromHexString(GetGenesisExtraData());
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new Block(header, new BlockHeader[0]);            
-            genesis.Hash = BlockHeader.CalculateHash(genesis);
+            genesis.Hash = genesis.CalculateHash();
             
             // this would need to be loaded from rinkeby chainspec to include allocations
 //            Assert.AreEqual(new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177"), genesis.Hash);
             
-            genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
+            genesis.Header.Hash = genesis.Header.CalculateHash();
             return genesis;
         }
 
@@ -153,8 +154,7 @@ namespace Nethermind.Clique.Test
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = Keccak.Zero;
             Block block = new Block(header, new BlockHeader[0]);
-            block.Hash = BlockHeader.CalculateHash(block);
-            block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+            block.Hash = block.CalculateHash();
             return block;
         }
 

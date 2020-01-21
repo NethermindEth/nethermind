@@ -22,7 +22,7 @@ using Nethermind.Abi;
 using Nethermind.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;

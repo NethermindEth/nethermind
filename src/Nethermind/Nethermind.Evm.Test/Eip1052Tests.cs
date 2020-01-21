@@ -18,6 +18,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
@@ -219,7 +220,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] code = Prepare.EvmCode
                 .Create(Bytes.Empty, 0)
-                .PushData(Address.OfContract(Recipient, 0))
+                .PushData(ContractAddress.From(Recipient, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
@@ -229,7 +230,7 @@ namespace Nethermind.Evm.Test
 
             // todo: so far EIP does not define whether it should be zero or empty data
             AssertStorage(0, Keccak.OfAnEmptyString);
-            Assert.True(TestState.AccountExists(Address.OfContract(Recipient, 0)),
+            Assert.True(TestState.AccountExists(ContractAddress.From(Recipient, 0)),
                 "did not test the right thing - it was not a newly created empty account scenario");
         }
 
@@ -257,7 +258,7 @@ namespace Nethermind.Evm.Test
             
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
-                .PushData(Address.OfContract(TestItem.AddressC, 0))
+                .PushData(ContractAddress.From(TestItem.AddressC, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
@@ -285,7 +286,7 @@ namespace Nethermind.Evm.Test
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
-                .PushData(Address.OfContract(TestItem.AddressC, 0))
+                .PushData(ContractAddress.From(TestItem.AddressC, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)
                 .Op(Instruction.SSTORE)

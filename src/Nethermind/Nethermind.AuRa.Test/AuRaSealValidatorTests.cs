@@ -21,13 +21,15 @@ using System.Net;
 using System.Security;
 using FluentAssertions;
 using Nethermind.AuRa.Validators;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
@@ -143,7 +145,7 @@ namespace Nethermind.AuRa.Test
                 .WithNumber(blockNumber)
                 .TestObject;
             
-            var hash = BlockHeader.CalculateHash(block, RlpBehaviors.ForSealing);
+            var hash = block.CalculateHash(RlpBehaviors.ForSealing);
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 

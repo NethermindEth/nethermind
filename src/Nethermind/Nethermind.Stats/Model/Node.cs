@@ -17,6 +17,7 @@
 using System;
 using System.Net;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 
 namespace Nethermind.Stats.Model
 {   

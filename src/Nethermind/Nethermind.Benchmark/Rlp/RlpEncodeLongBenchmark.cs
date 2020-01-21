@@ -22,7 +22,7 @@ using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 
@@ -81,15 +81,15 @@ namespace Nethermind.Benchmarks.Rlp
         }
 
         [Benchmark]
-        public Nethermind.Core.Encoding.Rlp Improved()
+        public Serialization.Rlp.Rlp Improved()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_value);
+            return Serialization.Rlp.Rlp.Encode(_value);
         }
 
         [Benchmark]
-        public Nethermind.Core.Encoding.Rlp Current()
+        public Serialization.Rlp.Rlp Current()
         {
-            return Nethermind.Core.Encoding.Rlp.Encode(_value);
+            return Serialization.Rlp.Rlp.Encode(_value);
         }
     }
 }

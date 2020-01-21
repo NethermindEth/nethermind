@@ -15,9 +15,10 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Specs.Forks;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -47,7 +48,7 @@ namespace Nethermind.AuRa.Contracts
                 Nonce = nonce ?? UInt256.Zero,
             };
                 
-            transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
 
             return transaction;
         }

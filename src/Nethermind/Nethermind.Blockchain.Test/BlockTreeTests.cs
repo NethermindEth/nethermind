@@ -23,10 +23,10 @@ using FluentAssertions;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Specs;
+using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 using NSubstitute;
@@ -187,7 +187,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.TestObject;
             blockTree.SuggestBlock(block);
             Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.None);
-            Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(found.Header));
+            Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
 
         [Test]
@@ -197,7 +197,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.TestObject;
             AddToMain(blockTree, block);
             Block found = blockTree.FindBlock(block.Hash, BlockTreeLookupOptions.RequireCanonical);
-            Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(found.Header));
+            Assert.AreEqual(block.Hash, found.Header.CalculateHash());
         }
 
         [Test]
@@ -222,7 +222,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block2);
 
             Block found = blockTree.FindBlock(2, BlockTreeLookupOptions.None);
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(found.Header));
+            Assert.AreEqual(block2.Hash, found.Header.CalculateHash());
         }
 
         [Test]
@@ -390,9 +390,9 @@ namespace Nethermind.Blockchain.Test
             int length = 256;
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
             Assert.AreEqual(length, blocks.Length);
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[1]));
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2]));
+            Assert.AreEqual(block0.Hash, blocks[0].CalculateHash());
+            Assert.AreEqual(block1.Hash, blocks[1].CalculateHash());
+            Assert.AreEqual(block2.Hash, blocks[2].CalculateHash());
         }
 
         [Test]
@@ -409,8 +409,8 @@ namespace Nethermind.Blockchain.Test
             int length = 2;
             BlockHeader[] blocks = blockTree.FindHeaders(block1.Hash, length, 0, false);
             Assert.AreEqual(length, blocks.Length);
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[0]));
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[1]));
+            Assert.AreEqual(block1.Hash, blocks[0].CalculateHash());
+            Assert.AreEqual(block2.Hash, blocks[1].CalculateHash());
         }
 
         [Test]
@@ -427,9 +427,9 @@ namespace Nethermind.Blockchain.Test
             int length = 3;
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, length, 0, false);
             Assert.AreEqual(length, blocks.Length);
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blocks[1]));
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[2]));
+            Assert.AreEqual(block0.Hash, blocks[0].CalculateHash());
+            Assert.AreEqual(block1.Hash, blocks[1].CalculateHash());
+            Assert.AreEqual(block2.Hash, blocks[2].CalculateHash());
         }
 
         [Test]
@@ -446,8 +446,8 @@ namespace Nethermind.Blockchain.Test
             BlockHeader[] blocks = blockTree.FindHeaders(block2.Hash, 3, 0, true);
             Assert.AreEqual(3, blocks.Length);
 
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[0]));
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[2]));
+            Assert.AreEqual(block2.Hash, blocks[0].CalculateHash());
+            Assert.AreEqual(block0.Hash, blocks[2].CalculateHash());
         }
 
 
@@ -494,8 +494,8 @@ namespace Nethermind.Blockchain.Test
 
             BlockHeader[] blocks = blockTree.FindHeaders(block0.Hash, 2, 1, false);
             Assert.AreEqual(2, blocks.Length, "length");
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[0]));
-            Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[1]));
+            Assert.AreEqual(block0.Hash, blocks[0].CalculateHash());
+            Assert.AreEqual(block2.Hash, blocks[1].CalculateHash());
         }
 
         [Test]
@@ -548,7 +548,7 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.Head));
+            Assert.AreEqual(block1.Hash, blockTree.Head.CalculateHash());
         }
 
         [Test]
@@ -560,8 +560,8 @@ namespace Nethermind.Blockchain.Test
             AddToMain(blockTree, block0);
             blockTree.SuggestBlock(block1);
 
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.Head), "head block");
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.BestSuggestedHeader), "best suggested");
+            Assert.AreEqual(block0.Hash, blockTree.Head.CalculateHash(), "head block");
+            Assert.AreEqual(block1.Hash, blockTree.BestSuggestedHeader.CalculateHash(), "best suggested");
         }
 
         [Test]
@@ -571,7 +571,7 @@ namespace Nethermind.Blockchain.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             AddToMain(blockTree, block0);
 
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.Genesis));
+            Assert.AreEqual(block0.Hash, blockTree.Genesis.CalculateHash());
         }
 
         [Test]
@@ -587,7 +587,7 @@ namespace Nethermind.Blockchain.Test
 
             Block found = blockTree.FindBlock(block1B.Hash, BlockTreeLookupOptions.None);
 
-            Assert.AreEqual(block1B.Hash, BlockHeader.CalculateHash(found.Header));
+            Assert.AreEqual(block1B.Hash, found.Header.CalculateHash());
         }
 
         [Test]

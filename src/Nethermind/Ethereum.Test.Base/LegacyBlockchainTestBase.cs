@@ -19,10 +19,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection.Metadata.Ecma335;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -34,18 +32,19 @@ using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Crypto;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -108,7 +107,6 @@ namespace Ethereum.Test.Base
 
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
-            IDb traceDb = new MemDb();
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
@@ -164,7 +162,6 @@ namespace Ethereum.Test.Base
                     _logManager),
                 stateDb,
                 codeDb,
-                traceDb,
                 stateProvider,
                 storageProvider,
                 transactionPool,
@@ -176,12 +173,11 @@ namespace Ethereum.Test.Base
                 blockProcessor,
                 new TxSignaturesRecoveryStep(ecdsa, NullTxPool.Instance, _logManager),
                 _logManager,
-                false,
                 false);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
-            List<(Block Block, string ExpectedException)> correctRlpsBlocks = new List<(Block, string)>();
+            List<(Block Block, string ExpectedException)> correctRlp = new List<(Block, string)>();
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 try
@@ -197,7 +193,7 @@ namespace Ethereum.Test.Base
                         Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[ommerIndex].Hash), suggestedBlock.Ommers[ommerIndex].Hash, "hash of the ommer");
                     }
 
-                    correctRlpsBlocks.Add((suggestedBlock, testBlockJson.ExpectedException));
+                    correctRlp.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
                 catch (Exception)
                 {
@@ -205,7 +201,7 @@ namespace Ethereum.Test.Base
                 }
             }
 
-            if (correctRlpsBlocks.Count == 0)
+            if (correctRlp.Count == 0)
             {
                 Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
                 return;
@@ -234,25 +230,25 @@ namespace Ethereum.Test.Base
 
             genesisProcessed.WaitOne();
 
-            for (int i = 0; i < correctRlpsBlocks.Count; i++)
+            for (int i = 0; i < correctRlp.Count; i++)
             {
                 stopwatch?.Start();
                 try
                 {
-                    if (correctRlpsBlocks[i].ExpectedException != null)
+                    if (correctRlp[i].ExpectedException != null)
                     {
-                        _logger.Info($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");
+                        _logger.Info($"Expecting block exception: {correctRlp[i].ExpectedException}");
                     }
 
-                    if (correctRlpsBlocks[i].Block.Hash == null)
+                    if (correctRlp[i].Block.Hash == null)
                     {
                         throw new Exception($"null hash in {test.Name} block {i}");
                     }
 
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
+                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
                     {
-                        blockTree.SuggestBlock(correctRlpsBlocks[i].Block);
+                        blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
                     {

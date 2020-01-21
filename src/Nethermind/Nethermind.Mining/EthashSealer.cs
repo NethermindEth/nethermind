@@ -19,6 +19,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -83,7 +84,7 @@ namespace Nethermind.Mining
                 {
                     if (t.IsCompleted)
                     {
-                        t.Result.Header.Hash = BlockHeader.CalculateHash(t.Result.Header);
+                        t.Result.Header.Hash = t.Result.Header.CalculateHash();
                     }
                 }, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Default);
 

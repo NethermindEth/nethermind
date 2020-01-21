@@ -18,7 +18,6 @@ using System;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Benchmark

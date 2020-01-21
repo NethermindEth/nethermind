@@ -15,6 +15,7 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Core;
 
 namespace Nethermind.Network

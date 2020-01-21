@@ -27,12 +27,14 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Attributes;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 
@@ -316,10 +318,7 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Canceled visiting blocks in DB at block {blockNumber}");
             }
 
-            if (_logger.IsInfo)
-            {
-                _logger.Info($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Completed visiting blocks in DB at block {blockNumber} - best known {BestKnownNumber}");            
         }
 
         public async Task LoadBlocksFromDb(

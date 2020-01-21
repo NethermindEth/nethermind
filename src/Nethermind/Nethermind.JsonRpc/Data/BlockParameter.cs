@@ -16,8 +16,7 @@
 
 using System;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Core;
-using Nethermind.Core.Json;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Data
 {

@@ -101,12 +101,12 @@ namespace Nethermind.Blockchain
             await TryProduceNewBlock(cancellationToken);
         }
         
-        private void BlockTreeOnNewBestSuggestedBlock(object? sender, BlockEventArgs e)
+        private void BlockTreeOnNewBestSuggestedBlock(object sender, BlockEventArgs e)
         {
             _canProduce = false;
         }
 
-        private void OnBlockProcessorQueueEmpty(object? sender, EventArgs e)
+        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
             _canProduce = true;
         }

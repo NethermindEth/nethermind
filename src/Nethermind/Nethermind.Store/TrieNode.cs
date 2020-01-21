@@ -20,8 +20,8 @@ using System.Runtime.Serialization;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 
@@ -275,7 +275,7 @@ namespace Nethermind.Store
             }
 
             Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(FullRlp);
+            Keccak = Keccak.Compute(FullRlp.Bytes);
         }
 
         internal Rlp RlpEncode()

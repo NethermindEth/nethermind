@@ -18,16 +18,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.TxPools;
 using Nethermind.Blockchain.TxPools.Storages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Logging;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.DataMarketplace.Core.Configs;
 using Nethermind.DataMarketplace.Core.Services;
 using Nethermind.DataMarketplace.Core.Services.Models;
@@ -282,12 +285,12 @@ namespace Nethermind.DataMarketplace.Test
 
             public Keccak SendTransaction(Transaction transaction, bool isOwn = false)
             {
-                transaction.Hash = Transaction.CalculateHash(transaction);
+                transaction.Hash = transaction.CalculateHash();
                 _headBlock.Transactions[_txIndex++] = transaction;
                 _receiptsTracer.StartNewTxTrace(transaction.Hash);
                 _processor.Execute(transaction, Head, _receiptsTracer);
                 _receiptsTracer.EndTxTrace();
-                return Transaction.CalculateHash(transaction);
+                return transaction.CalculateHash();
             }
 
             public TxReceipt GetReceipt(Keccak txHash) => _receiptsTracer.TxReceipts.Single(r => r?.TxHash == txHash);

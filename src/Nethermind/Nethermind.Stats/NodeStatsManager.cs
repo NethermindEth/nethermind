@@ -20,7 +20,6 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 

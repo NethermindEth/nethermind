@@ -14,6 +14,7 @@
 //  You should have received a copy of the GNU Lesser General Public License
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -38,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             transaction.Signature = new Signature(1, 2, 27);
             transaction.To = Address.Zero;
             transaction.Value = 10000;
-            transaction.Hash = Transaction.CalculateHash(transaction);
+            transaction.Hash = transaction.CalculateHash();
 
             TransactionsMessage message = new TransactionsMessage(transaction, transaction);
             byte[] bytes = serializer.Serialize(message);

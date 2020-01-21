@@ -17,15 +17,16 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class GraceUnitsExceededMessageMessageSerializer : IMessageSerializer<GraceUnitsExceededMessage>
     {
         public byte[] Serialize(GraceUnitsExceededMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.ConsumedUnits),
-                Nethermind.Core.Encoding.Rlp.Encode(message.GraceUnits)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode(message.ConsumedUnits),
+                Rlp.Encode(message.GraceUnits)).Bytes;
 
         public GraceUnitsExceededMessage Deserialize(byte[] bytes)
         {

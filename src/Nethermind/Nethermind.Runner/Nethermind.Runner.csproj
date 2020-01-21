@@ -46,6 +46,7 @@
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub.Kafka\Nethermind.PubSub.Kafka.csproj" />
     <ProjectReference Include="..\Nethermind.PubSub\Nethermind.PubSub.csproj" />
+    <ProjectReference Include="..\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\Nethermind.Store.Rpc\Nethermind.Store.Rpc.csproj" />
     <ProjectReference Include="..\Nethermind.WebSockets\Nethermind.WebSockets.csproj" />
   </ItemGroup>
@@ -70,6 +71,10 @@
     </Content>
     <Content Remove="out\**" />
     <Content Remove="keystore\**" />
+    <None Remove="plugins\readme.txt" />
+    <Content Include="plugins\readme.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <ItemGroup>
     <Content Update="NLog.config">

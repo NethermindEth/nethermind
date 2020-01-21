@@ -15,11 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using System;
-using System.Diagnostics.CodeAnalysis;
-using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
@@ -119,30 +116,6 @@ namespace Nethermind.Core
             byte[] addressBytes = new byte[20];
             number.ToBigEndian(addressBytes);
             return new Address(addressBytes);
-        }
-
-        public static Address OfContract(Address deployingAddress, UInt256 nonce)
-        {
-            ValueKeccak contractAddressKeccak =
-                ValueKeccak.Compute(
-                    Rlp.Encode(
-                        Rlp.Encode(deployingAddress),
-                        Rlp.Encode(nonce)).Bytes);
-
-            return new Address(in contractAddressKeccak);
-        }
-        
-        public static Address OfContract(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
-        {
-            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
-            Span<byte> bytes = new byte[1 + ByteLength + 32 + salt.Length];
-            bytes[0] = 0xff;
-            deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
-            salt.CopyTo(bytes.Slice(21, salt.Length));
-            ValueKeccak.Compute(initCode).BytesAsSpan.CopyTo(bytes.Slice(21 + salt.Length, 32));
-                
-            ValueKeccak contractAddressKeccak = ValueKeccak.Compute(bytes);
-            return new Address(in contractAddressKeccak);
         }
 
         public override string ToString()

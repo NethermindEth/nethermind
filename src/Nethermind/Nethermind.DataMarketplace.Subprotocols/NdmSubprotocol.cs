@@ -21,7 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.DataMarketplace.Channels;
 using Nethermind.DataMarketplace.Consumers;

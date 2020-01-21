@@ -35,12 +35,9 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Json;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Specs.ChainSpecStyle;
-using Nethermind.Core.Specs.Forks;
+using Nethermind.Crypto;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Forks;
 using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
@@ -50,6 +47,9 @@ using Nethermind.Logging;
 using Nethermind.Logging.NLog;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Store;
 using Nethermind.Store.Repositories;
 
@@ -240,10 +240,9 @@ namespace Nethermind.PerfTest
             var specProvider = new ChainSpecBasedSpecProvider(chainSpec);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
-            var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default, _logManager, true, true);
+            var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default, _logManager, true);
             var stateDb = dbProvider.StateDb;
             var codeDb = dbProvider.CodeDb;
-            var traceDb = dbProvider.TraceDb;
             var blocksDb = dbProvider.BlocksDb;
             var headersDb = dbProvider.HeadersDb;
             var blockInfosDb = dbProvider.BlockInfosDb;
@@ -312,8 +311,8 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
             
             /* blockchain processing */
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, traceDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, blockProcessors);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true, false);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionPool, receiptStorage, _logManager, blockProcessors);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, recoveryStep, _logManager, true);
             
             if (chainSpec.SealEngineType == SealEngineType.AuRa)
             {
@@ -355,7 +354,7 @@ namespace Nethermind.PerfTest
             
             _logger.Info($"Finalizing genesis...");
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
-            chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
+            chainSpec.Genesis.Header.Hash = chainSpec.Genesis.Header.CalculateHash();
 
             if (chainSpec.Genesis.Hash != blockTree.Genesis.Hash)
             {

@@ -15,7 +15,8 @@
 //  along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
+using Nethermind.Core.Attributes;
+using Nethermind.Specs;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Evm

@@ -16,7 +16,8 @@
 
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx;

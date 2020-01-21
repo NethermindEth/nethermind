@@ -17,14 +17,15 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class DepositApprovalConfirmedMessageSerializer : IMessageSerializer<DepositApprovalConfirmedMessage>
     {
         public byte[] Serialize(DepositApprovalConfirmedMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DataAssetId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Consumer)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DataAssetId),
+                Rlp.Encode(message.Consumer)).Bytes;
 
         public DepositApprovalConfirmedMessage Deserialize(byte[] bytes)
         {

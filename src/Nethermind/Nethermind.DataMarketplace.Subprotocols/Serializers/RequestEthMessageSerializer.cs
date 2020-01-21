@@ -17,14 +17,15 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class RequestEthMessageSerializer : IMessageSerializer<RequestEthMessage>
     {
         public byte[] Serialize(RequestEthMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.Address),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Value)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.Address),
+                Rlp.Encode(message.Value)).Bytes;
 
         public RequestEthMessage Deserialize(byte[] bytes)
         {

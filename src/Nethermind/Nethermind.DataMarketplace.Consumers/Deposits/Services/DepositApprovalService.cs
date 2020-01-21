@@ -19,7 +19,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.DataMarketplace.Consumers.DataAssets;
 using Nethermind.DataMarketplace.Consumers.Deposits.Queries;
 using Nethermind.DataMarketplace.Consumers.Deposits.Repositories;
@@ -27,6 +26,7 @@ using Nethermind.DataMarketplace.Consumers.Notifiers;
 using Nethermind.DataMarketplace.Consumers.Providers;
 using Nethermind.DataMarketplace.Core.Domain;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 {
@@ -87,7 +87,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
                 return null;
             }
 
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)).Bytes);
             var approval = await _depositApprovalRepository.GetAsync(id);
             if (approval is null)
             {
@@ -104,7 +104,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
         public async Task ConfirmAsync(Keccak assetId, Address consumer)
         {
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)).Bytes);
             var approval = await _depositApprovalRepository.GetAsync(id);
             if (approval is null)
             {
@@ -128,7 +128,7 @@ namespace Nethermind.DataMarketplace.Consumers.Deposits.Services
 
         public async Task RejectAsync(Keccak assetId, Address consumer)
         {
-            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)));
+            var id = Keccak.Compute(Rlp.Encode(Rlp.Encode(assetId), Rlp.Encode(consumer)).Bytes);
             var approval = await _depositApprovalRepository.GetAsync(id);
             if (approval is null)
             {

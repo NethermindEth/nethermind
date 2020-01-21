@@ -24,7 +24,7 @@ using FluentAssertions;
 using Nethermind.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;

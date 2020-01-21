@@ -17,15 +17,16 @@
 using Nethermind.Core.Extensions;
 using Nethermind.DataMarketplace.Subprotocols.Messages;
 using Nethermind.Network;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.DataMarketplace.Subprotocols.Serializers
 {
     public class EnableDataStreamMessageSerializer : IMessageSerializer<EnableDataStreamMessage>
     {
         public byte[] Serialize(EnableDataStreamMessage message)
-            => Nethermind.Core.Encoding.Rlp.Encode(Nethermind.Core.Encoding.Rlp.Encode(message.DepositId),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Client),
-                Nethermind.Core.Encoding.Rlp.Encode(message.Args)).Bytes;
+            => Rlp.Encode(Rlp.Encode(message.DepositId),
+                Rlp.Encode(message.Client),
+                Rlp.Encode(message.Args)).Bytes;
 
         public EnableDataStreamMessage Deserialize(byte[] bytes)
         {
