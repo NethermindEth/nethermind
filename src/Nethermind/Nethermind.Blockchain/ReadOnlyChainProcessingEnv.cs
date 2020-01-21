@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain
             ILogManager logManager)
         {
             _txEnv = txEnv;
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, dbProvider.TraceDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, _txEnv.TransactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, StateProvider, _txEnv.StorageProvider, NullTxPool.Instance, receiptStorage, logManager);
             var processor = new BlockchainProcessor(_txEnv.BlockTree, blockProcessor, recoveryStep, logManager, false);
             BlockProcessingQueue = processor;
             Processor = new OneTimeChainProcessor(dbProvider, processor);
